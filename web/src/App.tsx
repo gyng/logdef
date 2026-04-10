@@ -60,7 +60,7 @@ export function App() {
   return (
     <div id="supply-line">
       {(phase === "MapView" || phase === "Travel") && (
-        <MapPage sendCommand={sendCommand} refreshPhase={refreshPhase} phase={phase} />
+        <MapPage sendCommand={sendCommand} refreshPhase={refreshPhase} initialPhase={phase} />
       )}
       {phase === "Encounter" && (
         <CombatPage sendCommand={sendCommand} refreshPhase={refreshPhase} />

@@ -87,10 +87,12 @@ pub const WAVE_DELAY: Scalar = 5.0;
 pub const BREACH_DURATION: Scalar = 15.0;
 
 // ── Threat budgets by difficulty ────────────────────────
-pub const DIFFICULTY_1_BUDGET: u32 = 8;
-pub const DIFFICULTY_2_BUDGET: u32 = 16;
-pub const DIFFICULTY_3_BUDGET: u32 = 28;
+// MVP: smaller budgets so encounters fit the available ammo + click-fire pace.
+// These will scale up once companions/full transport are implemented.
+pub const DIFFICULTY_1_BUDGET: u32 = 4;
+pub const DIFFICULTY_2_BUDGET: u32 = 8;
+pub const DIFFICULTY_3_BUDGET: u32 = 12;
 
 // ── Hero ────────────────────────────────────────────────
-pub const HERO_PERSONAL_AMMO: u32 = 15;
+pub const HERO_PERSONAL_AMMO: u32 = 99;
 pub const AMMO_RACK_MAX: u32 = 3;

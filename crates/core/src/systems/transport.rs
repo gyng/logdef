@@ -16,19 +16,20 @@ pub fn run(state: &mut GameState, _dt: Scalar, _sounds: &mut Vec<SoundEvent>) {
 
     for floor in &mut state.tower.floors {
         if let Some(building) = &mut floor.building
-            && building.output_buffer.current > 0 {
-                match building.output_buffer.resource {
-                    ResourceType::Arrows => {
-                        arrows_available += building.output_buffer.current;
-                        building.output_buffer.current = 0;
-                    }
-                    ResourceType::Bolts => {
-                        bolts_available += building.output_buffer.current;
-                        building.output_buffer.current = 0;
-                    }
-                    _ => {}
+            && building.output_buffer.current > 0
+        {
+            match building.output_buffer.resource {
+                ResourceType::Arrows => {
+                    arrows_available += building.output_buffer.current;
+                    building.output_buffer.current = 0;
                 }
+                ResourceType::Bolts => {
+                    bolts_available += building.output_buffer.current;
+                    building.output_buffer.current = 0;
+                }
+                _ => {}
             }
+        }
     }
 
     // Deliver to hero's personal ammo (MVP simplification)

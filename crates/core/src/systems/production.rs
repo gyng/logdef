@@ -13,7 +13,6 @@ pub fn run(state: &mut GameState, _dt: Scalar, sounds: &mut Vec<SoundEvent>) {
             _ => continue,
         };
 
-
         // Accumulate fractional production in a simple way:
         // Add to a "progress" counter using the existing buffer current as integer.
         // We track fractional progress by checking if accumulated production crosses 1.0.

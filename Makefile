@@ -1,4 +1,4 @@
-.PHONY: check lint fmt fmt-check test build wasm dev clean
+.PHONY: check lint fmt fmt-check test e2e build wasm dev clean
 
 # Run all checks (format + lint + test)
 check: fmt-check lint test
@@ -22,6 +22,10 @@ fmt-check:
 # Run all tests
 test:
 	cargo test
+
+# End-to-end smoke test (requires WASM built)
+e2e: wasm
+	cd web && npm run e2e
 
 # Build WASM bridge (release, optimized)
 wasm:

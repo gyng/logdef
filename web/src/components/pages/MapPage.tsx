@@ -5,7 +5,7 @@ import type { GamePhase, JourneySnapshot, TowerSnapshot } from "../../bridge/typ
 interface Props {
   sendCommand: (cmd: Record<string, unknown> | string) => { Ok?: null; Error?: unknown };
   refreshPhase: () => void;
-  phase: GamePhase;
+  initialPhase: GamePhase;
 }
 
 function readState() {
@@ -14,17 +14,18 @@ function readState() {
     journey: JSON.parse(bridge.get_journey_state()) as JourneySnapshot,
     tower: JSON.parse(bridge.get_tower_state()) as TowerSnapshot,
     hud: JSON.parse(bridge.get_hud_state()) as { gold: number },
+    phase: bridge.get_phase() as GamePhase,
   };
 }
 
-export function MapPage({ sendCommand, refreshPhase, phase }: Props) {
-  const [state, setState] = useState(readState);
+export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
+  const [state, setState] = useState(() => ({ ...readState(), phase: initialPhase }));
 
   const refresh = useCallback(() => {
     setState(readState());
   }, []);
 
-  const { journey, tower, hud } = state;
+  const { journey, tower, hud, phase } = state;
   const chapter = journey.chapters[journey.current_chapter - 1];
   if (!chapter) return <div>No chapter data</div>;
 
@@ -43,7 +44,6 @@ export function MapPage({ sendCommand, refreshPhase, phase }: Props) {
         </div>
       </div>
 
-      {/* Map nodes */}
       <div className="map-nodes">
         {chapter.nodes.map((node) => {
           const isReachable = reachableNodes.includes(node.id);
@@ -71,7 +71,6 @@ export function MapPage({ sendCommand, refreshPhase, phase }: Props) {
         })}
       </div>
 
-      {/* Prep controls — only in Travel phase */}
       {phase === "Travel" && (
         <div className="prep-controls">
           <h3>Prep (Node: {currentNode?.node_type})</h3>

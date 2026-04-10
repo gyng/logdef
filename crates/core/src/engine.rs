@@ -256,6 +256,9 @@ impl GameEngine {
                 let difficulty = node.and_then(|n| n.difficulty).unwrap_or(1);
                 let is_boss = node.is_some_and(|n| n.node_type == NodeType::Boss);
 
+                // Refill ammo from warehouse before combat
+                self.state.tower.hero.personal_ammo = HERO_PERSONAL_AMMO;
+
                 // Generate encounter
                 let encounter = self.generate_encounter(difficulty, is_boss);
                 self.state.encounter = Some(encounter);

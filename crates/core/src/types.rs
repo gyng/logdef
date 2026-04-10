@@ -28,6 +28,7 @@ impl Vec2 {
 macro_rules! id_type {
     ($name:ident) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        #[serde(transparent)]
         pub struct $name(pub u32);
     };
 }

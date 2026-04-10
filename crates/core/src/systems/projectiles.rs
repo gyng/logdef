@@ -67,4 +67,9 @@ pub fn run(state: &mut GameState, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
             position: pos,
         });
     }
+
+    // ── Cleanup non-flying projectiles to prevent unbounded growth ──
+    encounter
+        .projectiles
+        .retain(|p| matches!(p.state, ProjectileState::Flying));
 }
