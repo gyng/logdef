@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getBridge } from "../../bridge";
 import type { EncounterSnapshot, HudSnapshot } from "../../bridge/types";
+import { t } from "../../i18n";
 
 interface Props {
   sendCommand: (cmd: Record<string, unknown> | string) => { Ok?: null; Error?: unknown };
@@ -90,14 +91,18 @@ export function CombatPage({ sendCommand, refreshPhase }: Props) {
       {hud && (
         <div className="combat-hud">
           <span>
-            Wave {hud.current_wave + 1}/{hud.total_waves} |{" "}
+            {t("combat.wave", { current: hud.current_wave + 1, total: hud.total_waves })} |{" "}
           </span>
-          <span>Enemies: {hud.enemies_remaining} | </span>
+          <span>{t("combat.enemies", { count: hud.enemies_remaining })} | </span>
           <span>
-            Ammo: {hud.ammo_primary} | {hud.active_weapon === "Primary" ? "Bow" : "Dagger"} |{" "}
+            {t("combat.ammo", { ammo: hud.ammo_primary })} |{" "}
+            {hud.active_weapon === "Primary"
+              ? t("combat.weapon.primary")
+              : t("combat.weapon.secondary")}{" "}
+            |{" "}
           </span>
-          <span>Gold: {hud.gold} | </span>
-          <span>Tower: {Math.round(hud.tower_hp_fraction * 100)}%</span>
+          <span>{t("combat.gold", { gold: hud.gold })} | </span>
+          <span>{t("combat.tower", { hp: Math.round(hud.tower_hp_fraction * 100) })}</span>
         </div>
       )}
     </div>
@@ -160,7 +165,11 @@ function render(ctx: CanvasRenderingContext2D, encounter: EncounterSnapshot, hud
   ctx.fillStyle = "#e8e0d4";
   ctx.font = "14px Lora, serif";
   ctx.fillText(
-    `Wave ${encounter.current_wave + 1}/${encounter.total_waves}  |  ${encounter.enemies_remaining} enemies`,
+    t("combat.canvas.wave_line", {
+      current: encounter.current_wave + 1,
+      total: encounter.total_waves,
+      enemies: encounter.enemies_remaining,
+    }),
     TOWER_W + 10,
     20,
   );

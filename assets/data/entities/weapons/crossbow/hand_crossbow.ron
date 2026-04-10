@@ -1,0 +1,12 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+WeaponDef(
+    id: "weapon.crossbow.hand_crossbow",
+    base_type: Crossbow,
+    sub_type: "hand_crossbow",
+    damage: 25.0,
+    fire_rate: 1.2,
+    range: 300.0,
+    projectile_speed: 400.0,
+)

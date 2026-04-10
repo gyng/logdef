@@ -3,6 +3,9 @@ name = "supply-line-core"
 version.workspace = true
 edition.workspace = true
 
+[features]
+hot_reload = ["dep:notify", "dep:arc-swap"]
+
 [lints]
 workspace = true
 
@@ -10,3 +13,7 @@ workspace = true
 serde.workspace = true
 serde_json.workspace = true
 log.workspace = true
+ron = "0.8"
+include_dir = "0.7"
+notify = { version = "8", optional = true }
+arc-swap = { version = "1", optional = true }

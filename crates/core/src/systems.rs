@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-#[cfg(debug_assertions)]
+// Perf timers use std::time::Instant, which panics on wasm32-unknown-unknown.
+// Gate on non-wasm + debug_assertions.
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use std::time::Instant;
 
 pub mod combat;
@@ -19,34 +21,35 @@ pub mod production;
 pub mod projectiles;
 pub mod transport;
 
+use crate::registry::Registry;
 use crate::snapshot::SoundEvent;
 use crate::state::GameState;
 use crate::types::Scalar;
 
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 #[derive(Debug, Clone, Copy)]
 struct Timer(Instant);
 
-#[cfg(not(debug_assertions))]
+#[cfg(any(not(debug_assertions), target_arch = "wasm32"))]
 #[derive(Debug, Clone, Copy, Default)]
 struct Timer;
 
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 fn start_timer() -> Timer {
     Timer(Instant::now())
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(any(not(debug_assertions), target_arch = "wasm32"))]
 fn start_timer() -> Timer {
     Timer
 }
 
-#[cfg(debug_assertions)]
+#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 fn finish_timer(timer: Timer) -> Duration {
     timer.0.elapsed()
 }
 
-#[cfg(not(debug_assertions))]
+#[cfg(any(not(debug_assertions), target_arch = "wasm32"))]
 fn finish_timer(_timer: Timer) -> Duration {
     Duration::ZERO
 }
@@ -69,34 +72,34 @@ pub struct TickResult {
 }
 
 /// Run one simulation tick. Returns sound events produced.
-pub fn tick(state: &mut GameState, dt: Scalar) -> TickResult {
+pub fn tick(state: &mut GameState, registry: &Registry, dt: Scalar) -> TickResult {
     let tick_start = start_timer();
     let mut sounds = Vec::new();
     let mut profile = TickProfile::default();
 
     if state.encounter.is_some() {
         let start = start_timer();
-        production::run(state, dt, &mut sounds);
+        production::run(state, registry, dt, &mut sounds);
         profile.production = finish_timer(start);
 
         let start = start_timer();
-        transport::run(state, dt, &mut sounds);
+        transport::run(state, registry, dt, &mut sounds);
         profile.transport = finish_timer(start);
 
         let start = start_timer();
-        companion_ai::run(state, dt, &mut sounds);
+        companion_ai::run(state, registry, dt, &mut sounds);
         profile.companion_ai = finish_timer(start);
 
         let start = start_timer();
-        projectiles::run(state, dt, &mut sounds);
+        projectiles::run(state, registry, dt, &mut sounds);
         profile.projectiles = finish_timer(start);
 
         let start = start_timer();
-        combat::run(state, dt, &mut sounds);
+        combat::run(state, registry, dt, &mut sounds);
         profile.combat = finish_timer(start);
 
         let start = start_timer();
-        economy::run(state, dt, &mut sounds);
+        economy::run(state, registry, dt, &mut sounds);
         profile.economy = finish_timer(start);
     }
 

@@ -1,13 +1,15 @@
-use crate::balance::*;
+use crate::registry::Registry;
 use crate::snapshot::SoundEvent;
 use crate::state::*;
 use crate::types::Scalar;
 
-pub fn run(state: &mut GameState, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
+pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
     let encounter = match &mut state.encounter {
         Some(e) => e,
         None => return,
     };
+
+    let battlefield_width = registry.balance.combat.battlefield_width;
 
     // ── Move projectiles ────────────────────────────────────
     for proj in &mut encounter.projectiles {
@@ -18,7 +20,7 @@ pub fn run(state: &mut GameState, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
         proj.position.y += proj.velocity.y * dt;
 
         // Out of bounds → remove
-        if proj.position.x > BATTLEFIELD_WIDTH || proj.position.x < -50.0 {
+        if proj.position.x > battlefield_width || proj.position.x < -50.0 {
             proj.state = ProjectileState::OnGround;
             sounds.push(SoundEvent::ProjectileMiss {
                 position: proj.position,

@@ -1,8 +1,9 @@
+use crate::registry::Registry;
 use crate::snapshot::SoundEvent;
 use crate::state::GameState;
 use crate::types::Scalar;
 
-pub fn run(state: &mut GameState, _dt: Scalar, sounds: &mut Vec<SoundEvent>) {
+pub fn run(state: &mut GameState, _registry: &Registry, _dt: Scalar, sounds: &mut Vec<SoundEvent>) {
     if state.encounter.is_none() {
         return;
     }

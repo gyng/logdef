@@ -1,0 +1,18 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+HeroDef(
+    id: "hero.commander",
+    class: Commander,
+    starting_weapon_primary: "weapon.bow.shortbow",
+    starting_weapon_secondary: "weapon.melee.dagger",
+    starting_stats: HeroStats(
+        precision: 5,
+        draw_power: 5,
+        tempo: 5,
+        grit: 5,
+        salvage: 5,
+        unspent_points: 0,
+    ),
+    skill: Rally,
+)

@@ -1,31 +1,34 @@
 use std::hint::black_box;
 use std::time::Instant;
 
-use supply_line_core::balance::*;
 use supply_line_core::engine::GameEngine;
+use supply_line_core::registry::Registry;
 use supply_line_core::state::*;
 use supply_line_core::types::*;
 
-fn make_floor(index: usize) -> Floor {
+fn make_floor(registry: &Registry, index: usize) -> Floor {
+    let building_def = registry
+        .building_by_type(BuildingType::Fletcher)
+        .expect("registry must define fletcher");
     Floor {
         index,
         building: Some(Building {
             building_type: BuildingType::Fletcher,
-            tier: ProductionTier::T1,
+            tier: building_def.tier,
             output_buffer: ResourceBuffer {
-                resource: ResourceType::Arrows,
+                resource: building_def.output_resource,
                 current: 8,
-                max: FLETCHER_BUFFER_MAX,
+                max: building_def.output_buffer_max,
             },
             input_buffers: Vec::new(),
-            production_rate: FLETCHER_RATE,
-            operating_cost: FLETCHER_OPERATING_COST,
+            production_rate: building_def.production_rate,
+            operating_cost: building_def.operating_cost,
             is_active: true,
         }),
         cache: None,
         panel: WallPanel {
-            current_hp: WOOD_PANEL_HP,
-            max_hp: WOOD_PANEL_HP,
+            current_hp: registry.balance.construction.wood_panel_hp,
+            max_hp: registry.balance.construction.wood_panel_hp,
             is_breached: false,
         },
         material: FloorMaterial::Wood,
@@ -37,9 +40,24 @@ fn make_floor(index: usize) -> Floor {
 
 fn make_busy_engine() -> GameEngine {
     let mut engine = GameEngine::new(42, HeroClass::Archer);
+    let registry = engine.registry.clone();
+    let grunt = registry
+        .enemy_by_archetype(EnemyArchetype::Grunt)
+        .expect("registry must define grunt");
+    let runner = registry
+        .enemy_by_archetype(EnemyArchetype::Runner)
+        .expect("registry must define runner");
+    let shortbow = registry
+        .weapon_by_sub_type("Shortbow")
+        .expect("registry must define shortbow");
+
     engine.state.phase = GamePhase::Encounter;
-    engine.state.tower.floors = vec![make_floor(0), make_floor(1), make_floor(2)];
-    engine.state.tower.hero.personal_ammo = HERO_PERSONAL_AMMO;
+    engine.state.tower.floors = vec![
+        make_floor(&registry, 0),
+        make_floor(&registry, 1),
+        make_floor(&registry, 2),
+    ];
+    engine.state.tower.hero.personal_ammo = registry.balance.hero.personal_ammo;
 
     let enemies = (0..40)
         .map(|idx| Enemy {
@@ -57,9 +75,9 @@ fn make_busy_engine() -> GameEngine {
             hp: 500.0,
             max_hp: 500.0,
             speed: if idx % 3 == 0 {
-                RUNNER_ENEMY_SPEED
+                runner.speed
             } else {
-                GRUNT_SPEED
+                grunt.speed
             },
             state: EnemyState::Approaching,
             stuck_arrows: Vec::new(),
@@ -72,9 +90,9 @@ fn make_busy_engine() -> GameEngine {
             source: engine.state.tower.hero.id,
             weapon_type: WeaponBaseType::Bow,
             position: Vec2::new(10.0 + idx as Scalar * 8.0, 0.0),
-            velocity: Vec2::new(SHORTBOW_PROJ_SPEED, 0.0),
+            velocity: Vec2::new(shortbow.projectile_speed.unwrap_or(0.0), 0.0),
             gravity: 0.0,
-            damage: SHORTBOW_DAMAGE,
+            damage: shortbow.damage,
             modifier: None,
             state: ProjectileState::Flying,
         })

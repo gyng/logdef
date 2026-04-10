@@ -100,6 +100,7 @@ npm run lint                # eslint
 npm run format              # prettier write
 npm run typecheck           # tsc --noEmit
 npm run lint:css            # stylelint
+npm run test:e2e -- --grep smoke  # smoke test after changes that touch web, WASM, or bridge flow
 ```
 
 ### Tooling
@@ -122,6 +123,7 @@ npm run lint:css            # stylelint
 - **Property-based testing for procedural generation.** Map gen, loot gen, encounter composition — these should satisfy invariants (no orphan nodes, threat budget respected, anti-frustration rules hold) across thousands of seeds.
 - **Determinism is testable.** Same seed + same commands = same result. If a test is flaky, determinism is broken — treat as a P0 bug.
 - **Snapshot tests for bridge outputs.** The typed accessors (`get_hud_state()`, etc.) return compact structs. Snapshot-test their shape to catch unintentional bridge changes.
+- **Always run a smoke test before wrapping up.** If a change touches React, WASM, the bridge, or phase flow, run the smoke path as part of verification, not just unit tests. Browser-only failures count as regressions even when `cargo test` passes.
 
 ### Code organization
 

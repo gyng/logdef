@@ -1,0 +1,13 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+EnemyDef(
+    id: "enemy.armored",
+    archetype: Armored,
+    hp: 150.0,
+    speed: 30.0,
+    damage: 15.0,
+    attack_rate: 0.8,
+    bounty: 10,
+    threat: 4,
+)

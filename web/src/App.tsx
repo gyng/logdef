@@ -4,6 +4,7 @@ import type { GamePhase } from "./bridge/types";
 import { MapPage } from "./components/pages/MapPage";
 import { CombatPage } from "./components/pages/CombatPage";
 import { PostCombatPage } from "./components/pages/PostCombatPage";
+import { t } from "./i18n";
 
 type AppState = "loading" | "error" | "ready";
 
@@ -44,14 +45,14 @@ export function App() {
   if (appState === "loading") {
     return (
       <div className="loading">
-        <p>Loading...</p>
+        <p>{t("app.loading")}</p>
       </div>
     );
   }
   if (appState === "error") {
     return (
       <div className="error">
-        <h1>Failed to load</h1>
+        <h1>{t("app.error.title")}</h1>
         <pre>{error}</pre>
       </div>
     );
@@ -75,9 +76,9 @@ export function App() {
 function GameOverPage() {
   return (
     <div className="end-screen">
-      <h1>Game Over</h1>
-      <p>Your tower has fallen.</p>
-      <button onClick={() => window.location.reload()}>New Game</button>
+      <h1>{t("end.game_over.title")}</h1>
+      <p>{t("end.game_over.body")}</p>
+      <button onClick={() => window.location.reload()}>{t("end.new_game")}</button>
     </div>
   );
 }
@@ -85,9 +86,9 @@ function GameOverPage() {
 function VictoryPage() {
   return (
     <div className="end-screen">
-      <h1>Victory!</h1>
-      <p>You reached The Harbor.</p>
-      <button onClick={() => window.location.reload()}>Play Again</button>
+      <h1>{t("end.victory.title")}</h1>
+      <p>{t("end.victory.body")}</p>
+      <button onClick={() => window.location.reload()}>{t("end.play_again")}</button>
     </div>
   );
 }

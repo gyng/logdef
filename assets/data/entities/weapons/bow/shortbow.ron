@@ -1,0 +1,12 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+WeaponDef(
+    id: "weapon.bow.shortbow",
+    base_type: Bow,
+    sub_type: "shortbow",
+    damage: 15.0,
+    fire_rate: 1.8,
+    range: 250.0,
+    projectile_speed: 300.0,
+)

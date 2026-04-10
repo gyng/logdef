@@ -1,4 +1,3 @@
-use crate::balance::*;
 use crate::command::*;
 use crate::engine::GameEngine;
 use crate::state::*;
@@ -137,7 +136,10 @@ fn new_game_hero_matches_class() {
 #[test]
 fn new_game_has_correct_starting_resources() {
     let engine = GameEngine::new(42, HeroClass::Archer);
-    assert_eq!(engine.state.economy.gold, STARTING_GOLD);
+    assert_eq!(
+        engine.state.economy.gold,
+        engine.registry.balance.economy.starting_gold
+    );
     let wood = engine
         .state
         .economy
@@ -145,7 +147,7 @@ fn new_game_has_correct_starting_resources() {
         .iter()
         .find(|m| m.resource == ResourceType::Wood)
         .unwrap();
-    assert_eq!(wood.current, STARTING_WOOD);
+    assert_eq!(wood.current, engine.registry.balance.economy.starting_wood);
     let stone = engine
         .state
         .economy
@@ -153,7 +155,10 @@ fn new_game_has_correct_starting_resources() {
         .iter()
         .find(|m| m.resource == ResourceType::Stone)
         .unwrap();
-    assert_eq!(stone.current, STARTING_STONE);
+    assert_eq!(
+        stone.current,
+        engine.registry.balance.economy.starting_stone
+    );
 }
 
 #[test]
@@ -199,7 +204,10 @@ fn select_node_transitions_to_travel() {
     });
     assert!(matches!(result, CommandResult::Ok));
     assert_eq!(engine.state.phase, GamePhase::Travel);
-    assert_eq!(engine.state.economy.ticks_remaining, CH1_TICKS);
+    assert_eq!(
+        engine.state.economy.ticks_remaining,
+        engine.registry.balance.economy.chapter_ticks[0]
+    );
 }
 
 #[test]
@@ -237,7 +245,7 @@ fn build_floor_deducts_ticks_and_materials() {
 
     assert_eq!(
         engine.state.economy.ticks_remaining,
-        ticks_before - FLOOR_TICK_COST
+        ticks_before - engine.registry.balance.construction.floor_tick_cost
     );
     let wood_after = engine
         .state
@@ -247,7 +255,15 @@ fn build_floor_deducts_ticks_and_materials() {
         .find(|m| m.resource == ResourceType::Wood)
         .unwrap()
         .current;
-    assert_eq!(wood_after, wood_before - WOOD_FLOOR_MATERIAL_COST);
+    assert_eq!(
+        wood_after,
+        wood_before
+            - engine
+                .registry
+                .balance
+                .construction
+                .wood_floor_material_cost
+    );
     assert_eq!(engine.state.tower.floors.len(), 1);
     assert_eq!(engine.state.tower.balconies.len(), 1);
 }
@@ -314,6 +330,26 @@ fn place_building_on_occupied_floor_fails() {
     ));
 }
 
+#[test]
+fn place_cache_on_floor_consumes_ticks() {
+    let mut engine = GameEngine::new(42, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode {
+        node: crate::types::NodeId(1),
+    });
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+
+    let ticks_before = engine.state.economy.ticks_remaining;
+    let result = engine.send_command(GameCommand::PlaceCache { floor: 0 });
+    assert!(matches!(result, CommandResult::Ok));
+    assert!(engine.state.tower.floors[0].cache.is_some());
+    assert_eq!(
+        engine.state.economy.ticks_remaining,
+        ticks_before - engine.registry.balance.construction.building_tick_cost
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Command processing — Combat
 // ---------------------------------------------------------------------------
@@ -347,7 +383,7 @@ fn march_converts_unused_ticks_to_gold() {
 
     assert_eq!(
         engine.state.economy.gold,
-        gold_before + ticks * UNUSED_TICK_GOLD
+        gold_before + ticks * engine.registry.balance.economy.unused_tick_gold
     );
 }
 
@@ -714,6 +750,7 @@ fn production_delivers_ammo_during_combat() {
         floor: 0,
         building_type: BuildingType::Fletcher,
     });
+    engine.send_command(GameCommand::PlaceCache { floor: 0 });
     engine.send_command(GameCommand::March);
 
     // Drain all ammo
@@ -728,5 +765,39 @@ fn production_delivers_ammo_during_combat() {
         engine.state.tower.hero.personal_ammo > 0,
         "Hero should have received ammo from fletcher: got {}",
         engine.state.tower.hero.personal_ammo
+    );
+}
+
+#[test]
+fn production_stays_in_warehouse_without_cache() {
+    let mut engine = GameEngine::new(42, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 0,
+        building_type: BuildingType::Fletcher,
+    });
+    engine.send_command(GameCommand::March);
+
+    engine.state.tower.hero.personal_ammo = 0;
+
+    for _ in 0..450 {
+        engine.tick(FIXED_DT);
+    }
+
+    assert_eq!(engine.state.tower.hero.personal_ammo, 0);
+    let arrow_stock = engine
+        .state
+        .tower
+        .warehouse
+        .slots
+        .iter()
+        .find(|slot| slot.resource == ResourceType::Arrows)
+        .map_or(0, |slot| slot.current);
+    assert!(
+        arrow_stock > 0,
+        "Warehouse should be holding produced arrows"
     );
 }

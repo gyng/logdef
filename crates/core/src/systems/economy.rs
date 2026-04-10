@@ -1,10 +1,15 @@
-use crate::balance::*;
+use crate::registry::Registry;
 use crate::snapshot::SoundEvent;
 use crate::state::*;
 use crate::types::Scalar;
 
 #[allow(clippy::ptr_arg)] // Will push to sounds when kill events are emitted
-pub fn run(state: &mut GameState, _dt: Scalar, _sounds: &mut Vec<SoundEvent>) {
+pub fn run(
+    state: &mut GameState,
+    _registry: &Registry,
+    _dt: Scalar,
+    _sounds: &mut Vec<SoundEvent>,
+) {
     let encounter = match &state.encounter {
         Some(e) => e,
         None => return,
@@ -33,7 +38,7 @@ pub fn run(state: &mut GameState, _dt: Scalar, _sounds: &mut Vec<SoundEvent>) {
 }
 
 /// Called once when an encounter ends in victory. Awards kill bounties.
-pub fn award_encounter_rewards(state: &mut GameState) {
+pub fn award_encounter_rewards(state: &mut GameState, registry: &Registry) {
     let encounter = match &state.encounter {
         Some(e) => e,
         None => return,
@@ -42,16 +47,14 @@ pub fn award_encounter_rewards(state: &mut GameState) {
     let mut gold_earned: u32 = 0;
     for enemy in &encounter.enemies {
         if enemy.state == EnemyState::Dead {
-            let bounty = match enemy.archetype {
-                EnemyArchetype::Grunt => GRUNT_BOUNTY,
-                EnemyArchetype::Runner => RUNNER_ENEMY_BOUNTY,
-                EnemyArchetype::Armored => ARMORED_BOUNTY,
-                _ => GRUNT_BOUNTY,
+            let Some(enemy_def) = registry.enemy_by_archetype(enemy.archetype) else {
+                continue;
             };
             // MVP: all kills count as hero kills (1.5x multiplier)
-            gold_earned += (bounty as Scalar * HERO_KILL_MULTIPLIER) as u32;
+            gold_earned +=
+                (enemy_def.bounty as Scalar * registry.balance.economy.hero_kill_multiplier) as u32;
         }
     }
-    gold_earned += ENCOUNTER_COMPLETION_BONUS;
+    gold_earned += registry.balance.economy.encounter_completion_bonus;
     state.economy.gold += gold_earned;
 }

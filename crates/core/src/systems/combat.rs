@@ -1,9 +1,9 @@
-use crate::balance::*;
+use crate::registry::Registry;
 use crate::snapshot::SoundEvent;
 use crate::state::*;
 use crate::types::Scalar;
 
-pub fn run(state: &mut GameState, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
+pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
     let encounter = match &mut state.encounter {
         Some(e) => e,
         None => return,
@@ -46,11 +46,13 @@ pub fn run(state: &mut GameState, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
             if all_dead {
                 if encounter.current_wave >= encounter.waves.len().saturating_sub(1) {
                     sounds.push(SoundEvent::EncounterVictory);
-                    super::economy::award_encounter_rewards(state);
+                    super::economy::award_encounter_rewards(state, registry);
                     state.phase = GamePhase::PostCombat;
                     return;
                 } else {
-                    encounter.wave_state = WaveState::Lull { timer: WAVE_DELAY };
+                    encounter.wave_state = WaveState::Lull {
+                        timer: registry.balance.combat.wave_delay,
+                    };
                 }
             }
         }
@@ -79,12 +81,10 @@ pub fn run(state: &mut GameState, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
         if enemy.state != EnemyState::AttackingPanel {
             continue;
         }
-        let damage_per_tick = match enemy.archetype {
-            EnemyArchetype::Grunt => GRUNT_DAMAGE * GRUNT_ATTACK_RATE * dt,
-            EnemyArchetype::Runner => RUNNER_ENEMY_DAMAGE * RUNNER_ENEMY_ATTACK_RATE * dt,
-            EnemyArchetype::Armored => ARMORED_DAMAGE * ARMORED_ATTACK_RATE * dt,
-            _ => GRUNT_DAMAGE * dt,
+        let Some(enemy_def) = registry.enemy_by_archetype(enemy.archetype) else {
+            continue;
         };
+        let damage_per_tick = enemy_def.damage * enemy_def.attack_rate * dt;
         if num_floors > 0 {
             let floor = &mut state.tower.floors[0];
             if !floor.panel.is_breached {

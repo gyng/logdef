@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { getBridge } from "../../bridge";
 import type { GamePhase, JourneySnapshot, TowerSnapshot } from "../../bridge/types";
+import { t } from "../../i18n";
 
 interface Props {
   sendCommand: (cmd: Record<string, unknown> | string) => { Ok?: null; Error?: unknown };
@@ -27,7 +28,7 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
 
   const { journey, tower, gold, phase } = state;
   const chapter = journey.chapters[journey.current_chapter - 1];
-  if (!chapter) return <div>No chapter data</div>;
+  if (!chapter) return <div>{t("map.no_chapter")}</div>;
 
   const reachableNodes = chapter.edges
     .filter((e) => e.from === journey.current_node)
@@ -38,9 +39,9 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
   return (
     <div className="map-page">
       <div className="map-header">
-        <h2>Chapter {journey.current_chapter}</h2>
+        <h2>{t("map.chapter", { chapter: journey.current_chapter })}</h2>
         <div className="resources">
-          <span className="gold">Gold: {gold}</span>
+          <span className="gold">{t("map.gold", { gold })}</span>
         </div>
       </div>
 
@@ -61,7 +62,7 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
                 refreshPhase();
               }}
             >
-              <div className="node-type">{node.node_type}</div>
+              <div className="node-type">{nodeTypeLabel(node.node_type)}</div>
               {node.difficulty != null && (
                 <div className="node-diff">{"⚔".repeat(node.difficulty)}</div>
               )}
@@ -73,16 +74,22 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
 
       {phase === "Travel" && (
         <div className="prep-controls">
-          <h3>Prep (Node: {currentNode?.node_type})</h3>
+          <h3>{t("map.prep.title", { node: nodeTypeLabel(currentNode?.node_type) })}</h3>
 
           <div className="tower-info">
-            <p>Floors: {tower.floors.length}</p>
+            <p>{t("map.tower.floors", { count: tower.floors.length })}</p>
             {tower.floors.map((floor) => (
               <div key={floor.index} className="floor-row">
-                Floor {floor.index}: {floor.material}
-                {floor.building ? ` [${floor.building.building_type}]` : " [empty]"}
-                {" | HP: "}
-                {Math.round(floor.panel_hp_fraction * 100)}%
+                {t("map.floor.line", {
+                  index: floor.index,
+                  material: materialLabel(floor.material),
+                  building: floor.building
+                    ? t("map.floor.building", {
+                        building: buildingLabel(floor.building.building_type),
+                      })
+                    : t("map.floor.empty"),
+                  hp: Math.round(floor.panel_hp_fraction * 100),
+                })}
               </div>
             ))}
           </div>
@@ -94,7 +101,7 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
                 refresh();
               }}
             >
-              Build Wood Floor (2t, 3 wood)
+              {t("map.build.wood_floor")}
             </button>
             <button
               onClick={() => {
@@ -102,7 +109,7 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
                 refresh();
               }}
             >
-              Build Stone Floor (2t, 4 stone)
+              {t("map.build.stone_floor")}
             </button>
             {tower.floors.map(
               (floor) =>
@@ -116,7 +123,7 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
                       refresh();
                     }}
                   >
-                    Place Fletcher on F{floor.index} (2t, 2 wood)
+                    {t("map.build.fletcher", { floor: floor.index })}
                   </button>
                 ),
             )}
@@ -129,10 +136,53 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
               refreshPhase();
             }}
           >
-            March!
+            {t("map.march")}
           </button>
         </div>
       )}
     </div>
   );
+}
+
+function nodeTypeLabel(
+  nodeType: JourneySnapshot["chapters"][number]["nodes"][number]["node_type"] | undefined,
+) {
+  switch (nodeType) {
+    case "Combat":
+      return t("map.node.combat");
+    case "Boss":
+      return t("map.node.boss");
+    case "Merchant":
+      return t("map.node.merchant");
+    case "Camp":
+      return t("map.node.camp");
+    case "Recruit":
+      return t("map.node.recruit");
+    case "Event":
+      return t("map.node.event");
+    default:
+      return "";
+  }
+}
+
+function materialLabel(material: TowerSnapshot["floors"][number]["material"]) {
+  switch (material) {
+    case "Wood":
+      return t("map.material.wood");
+    case "Stone":
+      return t("map.material.stone");
+    default:
+      return material;
+  }
+}
+
+function buildingLabel(
+  buildingType: NonNullable<TowerSnapshot["floors"][number]["building"]>["building_type"],
+) {
+  switch (buildingType) {
+    case "Fletcher":
+      return t("map.building.fletcher");
+    default:
+      return buildingType;
+  }
 }

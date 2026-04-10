@@ -1,0 +1,45 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+Balance(
+    economy: EconomyBalance(
+        starting_gold: 30,
+        starting_wood: 5,
+        starting_stone: 3,
+        chapter_ticks: (6, 8, 10),
+        unused_tick_gold: 3,
+        encounter_completion_bonus: 15,
+        hero_kill_multiplier: 1.5,
+        runner_salary: 3,
+        companion_wage: 2,
+        leg_maintenance: 5,
+    ),
+    construction: ConstructionBalance(
+        floor_tick_cost: 2,
+        wood_floor_material_cost: 3,
+        stone_floor_material_cost: 4,
+        wood_panel_hp: 80.0,
+        stone_panel_hp: 120.0,
+        foundation_hp: 300.0,
+        max_floors: 4,
+        building_tick_cost: 2,
+    ),
+    production: ProductionBalance(
+        fletcher_rate: 6.0,
+        fletcher_operating_cost: 5,
+        fletcher_buffer_max: 4,
+        quarry_rate: 5.0,
+        quarry_operating_cost: 6,
+        quarry_buffer_max: 4,
+    ),
+    combat: CombatBalance(
+        battlefield_width: 800.0,
+        wave_delay: 5.0,
+        breach_duration: 15.0,
+        difficulty_budgets: (4, 8, 12),
+    ),
+    hero: HeroBalance(
+        personal_ammo: 99,
+        ammo_rack_max: 3,
+    ),
+)

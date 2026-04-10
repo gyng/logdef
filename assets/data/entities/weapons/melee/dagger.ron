@@ -1,0 +1,12 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+WeaponDef(
+    id: "weapon.melee.dagger",
+    base_type: Melee,
+    sub_type: "dagger",
+    damage: 8.0,
+    fire_rate: 3.5,
+    range: 30.0,
+    projectile_speed: None,
+)

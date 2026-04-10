@@ -1,6 +1,6 @@
-pub mod balance;
 pub mod command;
 pub mod engine;
+pub mod registry;
 pub mod rng;
 pub mod snapshot;
 pub mod state;
