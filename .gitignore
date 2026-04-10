@@ -13,7 +13,6 @@ Thumbs.db
 
 # Rust
 target/
-Cargo.lock
 
 # Node/web
 node_modules/
@@ -22,6 +21,9 @@ build/
 .vite/
 coverage/
 *.tsbuildinfo
+
+# wasm-pack output
+web/pkg/
 
 # Playwright/browser automation
 .playwright/

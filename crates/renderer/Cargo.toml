@@ -1,0 +1,10 @@
+[package]
+name = "supply-line-renderer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+supply-line-core = { path = "../core" }
+wgpu.workspace = true
+bytemuck.workspace = true
+log.workspace = true

@@ -207,3 +207,13 @@ The [registries.md](registries.md) unlock table is canonical. Bows, crossbows, a
 Green is overloaded (healthy + uncommon). Resolution: uncommon rarity uses **teal-green** (#48b066), which is bluer than status healthy (#3daa5e). They're distinguishable in context (rarity badges vs. health bars) but the hue gap should be verified in testing.
 
 Gold is overloaded (currency + legendary rarity). Resolution: gold currency in the HUD uses a smaller, less saturated coin icon. Legendary rarity uses a larger, more saturated shimmer border. Context distinguishes them — currency is a number, rarity is a border treatment.
+
+---
+
+## 18. UI state management — no Zustand
+
+**Decision: plain React state and context. No Zustand.**
+
+React is not the source of truth for game state — Rust is. The React layer only needs to cache compact snapshots from the bridge and track transient UI state (selections, panel open/closed, hover targets). This is a small amount of state that React's built-in `useState` and `useContext` handle well without a third-party store.
+
+Other docs reference Zustand in diagrams and code examples. Those references describe the *role* (UI state cache) correctly — the implementation is React context instead of a Zustand store. The role and data flow are identical; only the library is different.

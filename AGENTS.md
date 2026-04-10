@@ -130,11 +130,11 @@ Every design decision should reinforce: **logistics IS strategy, shooting IS act
 ### React is the view layer (mostly)
 
 - **During prep:** pure view + input. Render snapshots from Rust, send commands back. No game logic in React.
-- **During combat:** React also orchestrates the frame loop (rAF), collects input, calls `tick()`, and syncs the Zustand store. This is the correct architecture for browser-first — but keep the orchestration thin. React decides WHEN to tick, not WHAT happens during the tick.
+- **During combat:** React also orchestrates the frame loop (rAF), collects input, calls `tick()`, and syncs React context/state. This is the correct architecture for browser-first — but keep the orchestration thin. React decides WHEN to tick, not WHAT happens during the tick.
 
 ### State management
 
-- **Zustand for UI state only.** Selections, panel open/closed, hover targets, cached snapshots from Rust. Never authoritative game state.
+- **React state/context for UI state only.** Selections, panel open/closed, hover targets, cached snapshots from Rust. Never authoritative game state. No external state library — see `implementation-decisions.md` §18.
 - **Don't mirror GameState in React.** Call the typed accessor, use the result, discard. If you find yourself building a parallel state tree, you're fighting the architecture.
 - **Throttle combat HUD updates to 30hz.** The sim ticks at 30hz. Updating the HUD at 144hz is waste. Use a throttled subscription.
 
