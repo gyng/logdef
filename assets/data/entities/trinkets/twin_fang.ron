@@ -1,0 +1,10 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+TrinketDef(
+    id: "trinket.twin_fang",
+    name: "Twin Fang",
+    category: Combat,
+    description: "Every 5th shot fires a bonus projectile at a nearby target.",
+    effect: BonusProjectileEveryNth(interval: 5),
+)

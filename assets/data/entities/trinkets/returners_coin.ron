@@ -1,0 +1,10 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+TrinketDef(
+    id: "trinket.returners_coin",
+    name: "Returner's Coin",
+    category: Combat,
+    description: "25% of missed shots ricochet for half damage.",
+    effect: RicochetOnMiss(chance: 0.25, damage_fraction: 0.5),
+)

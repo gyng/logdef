@@ -162,12 +162,12 @@ fn new_game_has_correct_starting_resources() {
 }
 
 #[test]
-fn new_game_has_hardcoded_map() {
+fn new_game_loads_chapters_from_registry() {
     let engine = GameEngine::new(42, HeroClass::Archer);
-    assert_eq!(engine.state.journey.chapters.len(), 1);
-    let chapter = &engine.state.journey.chapters[0];
-    assert_eq!(chapter.nodes.len(), 4);
-    assert_eq!(chapter.edges.len(), 3);
+    assert!(!engine.state.journey.chapters.is_empty());
+    let chapter1 = &engine.state.journey.chapters[0];
+    assert!(!chapter1.nodes.is_empty());
+    assert!(!chapter1.edges.is_empty());
 }
 
 #[test]
@@ -672,44 +672,36 @@ fn full_game_loop_to_victory() {
     let mut engine = GameEngine::new(42, HeroClass::Archer);
     assert_eq!(engine.state.phase, GamePhase::MapView);
 
-    // Node 0 → Node 1 (combat, difficulty 1)
-    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
-    assert_eq!(engine.state.phase, GamePhase::Travel);
+    // Play through every chapter until Victory. Always pick the first
+    // reachable node from the current position.
+    let max_encounters = 100;
+    let mut played = 0;
 
-    // Build a floor and fletcher
-    engine.send_command(GameCommand::BuildFloor {
-        material: FloorMaterial::Wood,
-    });
-    engine.send_command(GameCommand::PlaceBuilding {
-        floor: 0,
-        building_type: BuildingType::Fletcher,
-    });
+    while engine.state.phase != GamePhase::Victory && played < max_encounters {
+        assert_eq!(engine.state.phase, GamePhase::MapView);
 
-    // March into combat
-    engine.send_command(GameCommand::March);
-    assert_eq!(engine.state.phase, GamePhase::Encounter);
+        let current_chapter =
+            &engine.state.journey.chapters[engine.state.journey.current_chapter - 1];
+        let current = engine.state.journey.current_node;
+        let next = current_chapter
+            .edges
+            .iter()
+            .find(|e| e.from == current)
+            .map(|e| e.to)
+            .expect("non-boss nodes must have an outgoing edge");
 
-    // Win the encounter
-    win_encounter(&mut engine);
-    assert_eq!(engine.state.phase, GamePhase::PostCombat);
-    engine.send_command(GameCommand::ContinueJourney);
-    assert_eq!(engine.state.phase, GamePhase::MapView);
+        engine.send_command(GameCommand::SelectNode { node: next });
+        engine.send_command(GameCommand::March);
+        win_encounter(&mut engine);
+        engine.send_command(GameCommand::ContinueJourney);
+        played += 1;
+    }
 
-    // Node 1 → Node 2 (combat, difficulty 2)
-    engine.send_command(GameCommand::SelectNode { node: NodeId(2) });
-    engine.send_command(GameCommand::March);
-    win_encounter(&mut engine);
-    engine.send_command(GameCommand::ContinueJourney);
-    assert_eq!(engine.state.phase, GamePhase::MapView);
-
-    // Node 2 → Node 3 (boss)
-    engine.send_command(GameCommand::SelectNode { node: NodeId(3) });
-    engine.send_command(GameCommand::March);
-    win_encounter(&mut engine);
-    engine.send_command(GameCommand::ContinueJourney);
-
-    // Should be Victory after boss
-    assert_eq!(engine.state.phase, GamePhase::Victory);
+    assert_eq!(
+        engine.state.phase,
+        GamePhase::Victory,
+        "Should reach Victory within {max_encounters} encounters (played {played})"
+    );
 }
 
 #[test]

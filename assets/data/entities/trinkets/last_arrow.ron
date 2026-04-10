@@ -1,0 +1,10 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+TrinketDef(
+    id: "trinket.last_arrow",
+    name: "Last Arrow",
+    category: Combat,
+    description: "When your rack drops to 1 crate, the next shot deals 3x damage.",
+    effect: LastArrowBonus(damage_multiplier: 3.0),
+)

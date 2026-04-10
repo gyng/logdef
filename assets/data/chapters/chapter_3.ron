@@ -1,0 +1,38 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+ChapterDef(
+    id: "chapter.3",
+    name: "The Frontier",
+    nodes: [
+        MapNode(id: 0, node_type: Combat,    column: 0, difficulty: 2, visited: true),
+        MapNode(id: 1, node_type: Combat,    column: 1, difficulty: 2, visited: false),
+        MapNode(id: 2, node_type: Mystery,   column: 1, difficulty: None, visited: false),
+        MapNode(id: 3, node_type: Combat,    column: 2, difficulty: 3, visited: false),
+        MapNode(id: 4, node_type: Merchant,  column: 2, difficulty: None, visited: false),
+        MapNode(id: 5, node_type: EliteCombat, column: 3, difficulty: 3, visited: false),
+        MapNode(id: 6, node_type: Rest,      column: 3, difficulty: None, visited: false),
+        MapNode(id: 7, node_type: Combat,    column: 4, difficulty: 3, visited: false),
+        MapNode(id: 8, node_type: Boss,      column: 5, difficulty: 3, visited: false),
+    ],
+    edges: [
+        MapEdge(from: 0, to: 1),
+        MapEdge(from: 0, to: 2),
+        MapEdge(from: 1, to: 3),
+        MapEdge(from: 1, to: 4),
+        MapEdge(from: 2, to: 3),
+        MapEdge(from: 2, to: 4),
+        MapEdge(from: 3, to: 5),
+        MapEdge(from: 3, to: 6),
+        MapEdge(from: 4, to: 5),
+        MapEdge(from: 4, to: 6),
+        MapEdge(from: 5, to: 7),
+        MapEdge(from: 6, to: 7),
+        MapEdge(from: 7, to: 8),
+    ],
+    boss_node: 8,
+    enemy_pool: [
+        "enemy.grunt", "enemy.runner", "enemy.armored", "enemy.climber",
+        "enemy.flyer", "enemy.catapult", "enemy.ram", "enemy.sapper"
+    ],
+)

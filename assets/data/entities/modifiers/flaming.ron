@@ -1,0 +1,10 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+ModifierDef(
+    id: "modifier.flaming",
+    name: "Flaming",
+    category: Combat,
+    description: "+15% damage and 3 burn damage per second for 3 seconds.",
+    effect: Flaming(damage_bonus: 0.15, dot_per_sec: 3.0, dot_duration: 3.0),
+)

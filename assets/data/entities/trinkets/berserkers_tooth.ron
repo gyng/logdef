@@ -1,0 +1,14 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+TrinketDef(
+    id: "trinket.berserkers_tooth",
+    name: "Berserker's Tooth",
+    category: Combat,
+    description: "When the panel below you drops below 50% HP, +30% fire rate and +20% damage.",
+    effect: LowPanelRageBoost(
+        hp_threshold: 0.5,
+        fire_rate_bonus: 0.3,
+        damage_bonus: 0.2,
+    ),
+)

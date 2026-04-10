@@ -1,0 +1,10 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+ModifierDef(
+    id: "modifier.scavenging",
+    name: "Scavenging",
+    category: Economy,
+    description: "Loot rolls 50% faster.",
+    effect: Scavenging(loot_speed_multiplier: 1.5),
+)

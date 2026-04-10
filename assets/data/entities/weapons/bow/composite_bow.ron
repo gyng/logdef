@@ -1,0 +1,12 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+WeaponDef(
+    id: "weapon.bow.composite_bow",
+    base_type: Bow,
+    sub_type: "composite_bow",
+    damage: 22.0,
+    fire_rate: 1.2,
+    range: 300.0,
+    projectile_speed: 320.0,
+)

@@ -1,0 +1,12 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+WeaponDef(
+    id: "weapon.melee.sword",
+    base_type: Melee,
+    sub_type: "sword",
+    damage: 20.0,
+    fire_rate: 1.5,
+    range: 40.0,
+    projectile_speed: None,
+)

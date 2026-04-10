@@ -1,0 +1,12 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+WeaponDef(
+    id: "weapon.crossbow.heavy_crossbow",
+    base_type: Crossbow,
+    sub_type: "heavy_crossbow",
+    damage: 50.0,
+    fire_rate: 0.5,
+    range: 400.0,
+    projectile_speed: 500.0,
+)

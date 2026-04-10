@@ -1,0 +1,10 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+ModifierDef(
+    id: "modifier.vampiric",
+    name: "Vampiric",
+    category: Combat,
+    description: "Heals the nearest panel for 10% of damage dealt.",
+    effect: Vampiric(heal_fraction: 0.1),
+)

@@ -1,0 +1,10 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+ModifierDef(
+    id: "modifier.bloodthirsty",
+    name: "Bloodthirsty",
+    category: Drawback,
+    description: "+5% damage per kill this encounter, -1 ammo per rack restock.",
+    effect: Bloodthirsty(damage_per_kill: 0.05, ammo_penalty: 1),
+)

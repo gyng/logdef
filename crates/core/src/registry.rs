@@ -30,6 +30,14 @@ pub struct EnemyDefId(pub String);
 #[serde(transparent)]
 pub struct BuildingDefId(pub String);
 
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TrinketId(pub String);
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ModifierId(pub String);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Registry {
@@ -39,6 +47,10 @@ pub struct Registry {
     pub enemies: BTreeMap<EnemyDefId, EnemyDef>,
     pub buildings: BTreeMap<BuildingDefId, BuildingDef>,
     pub chapters: Vec<ChapterDef>,
+    #[serde(default)]
+    pub trinkets: BTreeMap<TrinketId, TrinketDef>,
+    #[serde(default)]
+    pub modifiers: BTreeMap<ModifierId, ModifierDef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +152,144 @@ pub struct EnemyDef {
     pub attack_rate: Scalar,
     pub bounty: u32,
     pub threat: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrinketDef {
+    pub id: TrinketId,
+    pub name: String,
+    pub category: TrinketCategory,
+    pub description: String,
+    #[serde(default)]
+    pub effect: TrinketEffect,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrinketCategory {
+    Combat,
+    Logistics,
+    Defensive,
+    Wild,
+}
+
+/// Typed trinket effects. Runtime implementations consume these by matching
+/// the variant; unimplemented variants are no-ops until coded.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub enum TrinketEffect {
+    #[default]
+    None,
+    LastArrowBonus {
+        damage_multiplier: Scalar,
+    },
+    RicochetOnMiss {
+        chance: Scalar,
+        damage_fraction: Scalar,
+    },
+    BonusProjectileEveryNth {
+        interval: u32,
+    },
+    LowPanelRageBoost {
+        hp_threshold: Scalar,
+        fire_rate_bonus: Scalar,
+        damage_bonus: Scalar,
+    },
+    LeechAmmoFromKills,
+    EmergencyCrate {
+        charges: u32,
+    },
+    LootMagnet {
+        radius_floors: u32,
+        speed_multiplier: Scalar,
+    },
+    PhaseShotsThroughPanels {
+        shot_count: u32,
+    },
+    DecoyPhantom,
+    FasterBreachExpel {
+        seconds: Scalar,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModifierDef {
+    pub id: ModifierId,
+    pub name: String,
+    pub category: ModifierCategory,
+    pub description: String,
+    #[serde(default)]
+    pub effect: ModifierEffect,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ModifierCategory {
+    Combat,
+    Economy,
+    Utility,
+    Drawback,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub enum ModifierEffect {
+    #[default]
+    None,
+    Flaming {
+        damage_bonus: Scalar,
+        dot_per_sec: Scalar,
+        dot_duration: Scalar,
+    },
+    Frost {
+        slow_fraction: Scalar,
+        duration: Scalar,
+    },
+    Explosive {
+        radius: Scalar,
+        splash_fraction: Scalar,
+    },
+    Piercing {
+        armor_pierce_fraction: Scalar,
+    },
+    Vampiric {
+        heal_fraction: Scalar,
+    },
+    Venomous {
+        dot_per_sec: Scalar,
+        duration: Scalar,
+    },
+    Efficient {
+        chance_no_ammo: Scalar,
+    },
+    Gilded {
+        bonus_gold_per_kill: u32,
+    },
+    Scavenging {
+        loot_speed_multiplier: Scalar,
+    },
+    Silent,
+    Beacon {
+        vuln_bonus: Scalar,
+        duration: Scalar,
+    },
+    Magnetic {
+        radius_floors: u32,
+    },
+    Cursed {
+        damage_bonus: Scalar,
+        accuracy_penalty: Scalar,
+    },
+    Heavy {
+        damage_bonus: Scalar,
+        fire_rate_penalty: Scalar,
+    },
+    Fragile {
+        fire_rate_bonus: Scalar,
+        encounters_until_break: u32,
+    },
+    Bloodthirsty {
+        damage_per_kill: Scalar,
+        ammo_penalty: u32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -246,6 +396,10 @@ impl Registry {
             &mut errors,
         );
         let chapters = parse_vec_dir::<ChapterDef>(source, "chapters", &mut errors);
+        let trinkets =
+            parse_keyed_dir::<TrinketId, TrinketDef>(source, "entities/trinkets", &mut errors);
+        let modifiers =
+            parse_keyed_dir::<ModifierId, ModifierDef>(source, "entities/modifiers", &mut errors);
 
         if !errors.is_empty() {
             return Err(errors);
@@ -258,6 +412,8 @@ impl Registry {
             enemies,
             buildings,
             chapters,
+            trinkets,
+            modifiers,
         };
 
         validate(&registry).map(|_| registry)
@@ -318,6 +474,18 @@ impl RegistryItem<EnemyDefId> for EnemyDef {
 
 impl RegistryItem<BuildingDefId> for BuildingDef {
     fn id(&self) -> BuildingDefId {
+        self.id.clone()
+    }
+}
+
+impl RegistryItem<TrinketId> for TrinketDef {
+    fn id(&self) -> TrinketId {
+        self.id.clone()
+    }
+}
+
+impl RegistryItem<ModifierId> for ModifierDef {
+    fn id(&self) -> ModifierId {
         self.id.clone()
     }
 }

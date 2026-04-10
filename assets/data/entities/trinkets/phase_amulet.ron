@@ -1,0 +1,10 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+TrinketDef(
+    id: "trinket.phase_amulet",
+    name: "Phase Amulet",
+    category: Defensive,
+    description: "Once per encounter, your next 5 shots pass through your own panels to hit interior raiders.",
+    effect: PhaseShotsThroughPanels(shot_count: 5),
+)

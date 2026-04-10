@@ -1,0 +1,12 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+WeaponDef(
+    id: "weapon.thrown.bomb",
+    base_type: Thrown,
+    sub_type: "bomb",
+    damage: 20.0,
+    fire_rate: 0.8,
+    range: 250.0,
+    projectile_speed: 200.0,
+)

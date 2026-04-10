@@ -1,0 +1,10 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+ModifierDef(
+    id: "modifier.explosive",
+    name: "Explosive",
+    category: Combat,
+    description: "Splash radius of 30 pixels; splash targets take 50% damage.",
+    effect: Explosive(radius: 30.0, splash_fraction: 0.5),
+)

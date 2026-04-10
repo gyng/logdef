@@ -1,0 +1,10 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+ModifierDef(
+    id: "modifier.frost",
+    name: "Frost",
+    category: Combat,
+    description: "Slows hit enemies by 30% for 2 seconds.",
+    effect: Frost(slow_fraction: 0.3, duration: 2.0),
+)
