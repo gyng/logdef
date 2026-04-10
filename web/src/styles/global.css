@@ -117,3 +117,188 @@ button:disabled {
 #ui-overlay > * {
   pointer-events: auto;
 }
+
+/* ── Loading / Error ─────────────────────────────────────── */
+
+.loading,
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: var(--space-4);
+}
+
+.error pre {
+  max-width: 600px;
+  overflow: auto;
+  color: var(--status-critical);
+}
+
+/* ── Map page ────────────────────────────────────────────── */
+
+.map-page {
+  padding: var(--space-6);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-6);
+}
+
+.map-header h2 {
+  margin: 0;
+}
+
+.resources {
+  font-size: var(--text-lg);
+}
+
+.gold {
+  color: var(--resource-gold);
+}
+
+.map-nodes {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.map-node {
+  flex: 1;
+  padding: var(--space-4);
+  text-align: center;
+  border: 2px solid var(--border-default);
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.map-node.current {
+  border-color: var(--interactive-focus);
+  box-shadow: var(--shadow-md);
+}
+
+.map-node.visited {
+  opacity: 0.4;
+}
+
+.map-node.reachable:not(:disabled) {
+  border-color: var(--status-healthy);
+}
+
+.node-type {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--text-secondary);
+}
+
+.node-marker {
+  color: var(--interactive-focus);
+}
+
+/* ── Prep controls ───────────────────────────────────────── */
+
+.prep-controls {
+  border-top: 1px solid var(--border-default);
+  padding-top: var(--space-4);
+}
+
+.tower-info {
+  margin-bottom: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.floor-row {
+  padding: var(--space-1) 0;
+}
+
+.prep-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.march-button {
+  width: 100%;
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--text-xl);
+  font-family: var(--font-display);
+  background: var(--status-healthy);
+  color: var(--text-inverse);
+  border-color: var(--status-healthy);
+}
+
+.march-button:hover {
+  filter: brightness(1.1);
+}
+
+/* ── Combat page ─────────────────────────────────────────── */
+
+.combat-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: var(--space-4);
+}
+
+.combat-canvas {
+  border: 1px solid var(--border-default);
+  cursor: crosshair;
+}
+
+.combat-hud {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* ── Post-combat page ────────────────────────────────────── */
+
+.post-combat-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: var(--space-4);
+}
+
+.summary {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  text-align: center;
+}
+
+.continue-button {
+  padding: var(--space-3) var(--space-8);
+  font-size: var(--text-xl);
+  font-family: var(--font-display);
+}
+
+/* ── End screens ─────────────────────────────────────────── */
+
+.end-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: var(--space-4);
+}
