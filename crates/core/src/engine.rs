@@ -325,9 +325,9 @@ impl GameEngine {
                                 };
                                 ax.partial_cmp(&bx).unwrap()
                             })
-                        {
-                            enemy.hp -= damage;
-                        }
+                    {
+                        enemy.hp -= damage;
+                    }
                 } else {
                     // Ranged: create projectile
                     let proj_id = self.next_projectile_id();

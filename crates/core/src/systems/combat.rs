@@ -62,13 +62,15 @@ pub fn run(state: &mut GameState, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
             continue;
         }
         if let EnemyPosition::Ground { x } = &mut enemy.position
-            && *x > 0.0 && enemy.state == EnemyState::Approaching {
-                *x -= enemy.speed * dt;
-                if *x <= 0.0 {
-                    *x = 0.0;
-                    enemy.state = EnemyState::AttackingPanel;
-                }
+            && *x > 0.0
+            && enemy.state == EnemyState::Approaching
+        {
+            *x -= enemy.speed * dt;
+            if *x <= 0.0 {
+                *x = 0.0;
+                enemy.state = EnemyState::AttackingPanel;
             }
+        }
     }
 
     // ── Enemy attacking panels ──────────────────────────────

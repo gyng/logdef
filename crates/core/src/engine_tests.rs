@@ -581,6 +581,8 @@ fn encounter_ends_when_all_enemies_dead() {
 
 /// Helper: kill all enemies and tick until PostCombat
 fn win_encounter(engine: &mut GameEngine) {
+    // Ensure enough ammo for large encounters
+    engine.state.tower.hero.personal_ammo = 99;
     if let Some(encounter) = &mut engine.state.encounter {
         for (i, enemy) in encounter.enemies.iter_mut().enumerate() {
             enemy.hp = 1.0;
@@ -591,13 +593,13 @@ fn win_encounter(engine: &mut GameEngine) {
         }
     }
     let enemy_count = engine.state.encounter.as_ref().unwrap().enemies.len();
-    for _ in 0..(enemy_count + 5) {
-        engine.send_command(GameCommand::Fire);
-        for _ in 0..10 {
-            engine.tick(FIXED_DT);
-        }
-        if engine.state.phase == GamePhase::PostCombat {
+    for _ in 0..(enemy_count * 2 + 10) {
+        if engine.state.phase != GamePhase::Encounter {
             return;
+        }
+        engine.send_command(GameCommand::Fire);
+        for _ in 0..15 {
+            engine.tick(FIXED_DT);
         }
     }
 }
@@ -623,4 +625,108 @@ fn continue_journey_returns_to_map() {
     assert_eq!(engine.state.phase, GamePhase::PostCombat);
     engine.send_command(GameCommand::ContinueJourney);
     assert_eq!(engine.state.phase, GamePhase::MapView);
+}
+
+// ---------------------------------------------------------------------------
+// Full game loop integration
+// ---------------------------------------------------------------------------
+
+#[test]
+fn full_game_loop_to_victory() {
+    let mut engine = GameEngine::new(42, HeroClass::Archer);
+    assert_eq!(engine.state.phase, GamePhase::MapView);
+
+    // Node 0 → Node 1 (combat, difficulty 1)
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    assert_eq!(engine.state.phase, GamePhase::Travel);
+
+    // Build a floor and fletcher
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 0,
+        building_type: BuildingType::Fletcher,
+    });
+
+    // March into combat
+    engine.send_command(GameCommand::March);
+    assert_eq!(engine.state.phase, GamePhase::Encounter);
+
+    // Win the encounter
+    win_encounter(&mut engine);
+    assert_eq!(engine.state.phase, GamePhase::PostCombat);
+    engine.send_command(GameCommand::ContinueJourney);
+    assert_eq!(engine.state.phase, GamePhase::MapView);
+
+    // Node 1 → Node 2 (combat, difficulty 2)
+    engine.send_command(GameCommand::SelectNode { node: NodeId(2) });
+    engine.send_command(GameCommand::March);
+    win_encounter(&mut engine);
+    engine.send_command(GameCommand::ContinueJourney);
+    assert_eq!(engine.state.phase, GamePhase::MapView);
+
+    // Node 2 → Node 3 (boss)
+    engine.send_command(GameCommand::SelectNode { node: NodeId(3) });
+    engine.send_command(GameCommand::March);
+    win_encounter(&mut engine);
+    engine.send_command(GameCommand::ContinueJourney);
+
+    // Should be Victory after boss
+    assert_eq!(engine.state.phase, GamePhase::Victory);
+}
+
+#[test]
+fn defeat_when_foundation_destroyed() {
+    let mut engine = GameEngine::new(42, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.send_command(GameCommand::March);
+
+    // Set foundation HP very low
+    engine.state.tower.foundation.current_hp = 1.0;
+
+    // Move enemies to tower face instantly
+    if let Some(encounter) = &mut engine.state.encounter {
+        for enemy in &mut encounter.enemies {
+            enemy.position = EnemyPosition::Ground { x: 0.0 };
+            enemy.state = EnemyState::AttackingPanel;
+        }
+    }
+
+    // Tick until game over
+    for _ in 0..300 {
+        engine.tick(FIXED_DT);
+        if engine.state.phase == GamePhase::GameOver {
+            break;
+        }
+    }
+    assert_eq!(engine.state.phase, GamePhase::GameOver);
+}
+
+#[test]
+fn production_delivers_ammo_during_combat() {
+    let mut engine = GameEngine::new(42, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 0,
+        building_type: BuildingType::Fletcher,
+    });
+    engine.send_command(GameCommand::March);
+
+    // Drain all ammo
+    engine.state.tower.hero.personal_ammo = 0;
+
+    // Run for 15 seconds (450 ticks) — Fletcher at 6/min should produce ~1.5 crates
+    for _ in 0..450 {
+        engine.tick(FIXED_DT);
+    }
+
+    assert!(
+        engine.state.tower.hero.personal_ammo > 0,
+        "Hero should have received ammo from fletcher: got {}",
+        engine.state.tower.hero.personal_ammo
+    );
 }
