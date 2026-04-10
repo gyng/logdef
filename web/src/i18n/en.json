@@ -44,5 +44,7 @@
   "merchant.gold": "Gold: {gold}",
   "merchant.price": "Price: {gold}g",
   "merchant.buy": "Buy",
-  "merchant.leave": "Leave"
+  "merchant.leave": "Leave",
+  "save.save": "Save",
+  "save.load": "Load"
 }

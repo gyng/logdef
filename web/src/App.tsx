@@ -73,6 +73,41 @@ export function App() {
       )}
       {phase === "GameOver" && <GameOverPage />}
       {phase === "Victory" && <VictoryPage />}
+      {(phase === "MapView" || phase === "Travel" || phase === "Merchant") && (
+        <SaveLoadMenu refreshPhase={refreshPhase} />
+      )}
+    </div>
+  );
+}
+
+function SaveLoadMenu({ refreshPhase }: { refreshPhase: () => void }) {
+  const handleSave = () => {
+    const data = getBridge().save();
+    localStorage.setItem("supply-line.save", data);
+  };
+
+  const handleLoad = () => {
+    const data = localStorage.getItem("supply-line.save");
+    if (!data) return;
+    try {
+      getBridge().load(data);
+      refreshPhase();
+    } catch (e) {
+      console.error("Load failed:", e);
+    }
+  };
+
+  const hasSave =
+    typeof window !== "undefined" && localStorage.getItem("supply-line.save") !== null;
+
+  return (
+    <div className="save-load-menu">
+      <button onClick={handleSave} title={t("save.save")}>
+        {t("save.save")}
+      </button>
+      <button onClick={handleLoad} disabled={!hasSave} title={t("save.load")}>
+        {t("save.load")}
+      </button>
     </div>
   );
 }

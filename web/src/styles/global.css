@@ -350,3 +350,24 @@ button:disabled {
   color: var(--resource-gold);
   font-family: var(--font-mono);
 }
+
+/* ── Save/load menu ──────────────────────────────────────── */
+
+.save-load-menu {
+  position: fixed;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  gap: var(--space-1);
+  z-index: var(--z-toast);
+}
+
+.save-load-menu button {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  opacity: 0.7;
+}
+
+.save-load-menu button:hover {
+  opacity: 1;
+}

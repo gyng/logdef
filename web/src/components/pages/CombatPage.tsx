@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getBridge } from "../../bridge";
-import type { EncounterSnapshot, HudSnapshot } from "../../bridge/types";
+import type { EncounterSnapshot, HudSnapshot, SoundEvent } from "../../bridge/types";
 import { t } from "../../i18n";
+import { AudioManager } from "../../audio/AudioManager";
 
 interface Props {
   sendCommand: (cmd: Record<string, unknown> | string) => { Ok?: null; Error?: unknown };
@@ -24,8 +25,14 @@ export function CombatPage({ sendCommand, refreshPhase }: Props) {
     refreshPhaseRef.current = refreshPhase;
   }, [refreshPhase]);
 
+  const audioRef = useRef<AudioManager | null>(null);
+  if (audioRef.current === null) {
+    audioRef.current = new AudioManager();
+  }
+
   useEffect(() => {
     lastTimeRef.current = performance.now();
+    audioRef.current?.init();
 
     const gameLoop = () => {
       const bridge = getBridge();
@@ -33,7 +40,17 @@ export function CombatPage({ sendCommand, refreshPhase }: Props) {
       const dt = (now - lastTimeRef.current) / 1000;
       lastTimeRef.current = now;
 
-      bridge.tick(dt);
+      const soundsJson = bridge.tick(dt);
+      if (audioRef.current) {
+        try {
+          const sounds = JSON.parse(soundsJson) as SoundEvent[];
+          if (Array.isArray(sounds) && sounds.length > 0) {
+            audioRef.current.play(sounds);
+          }
+        } catch {
+          // ignore audio errors
+        }
+      }
 
       const hudData: HudSnapshot = JSON.parse(bridge.get_hud_state());
       setHud(hudData);
