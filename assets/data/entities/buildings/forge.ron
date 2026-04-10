@@ -1,0 +1,15 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+BuildingDef(
+    id: "building.forge",
+    building_type: Forge,
+    tier: T1,
+    output_resource: Bolts,
+    production_rate: 5.0,
+    operating_cost: 6,
+    output_buffer_max: 4,
+    build_tick_cost: 2,
+    build_resource: Stone,
+    build_resource_cost: 2,
+)

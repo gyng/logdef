@@ -10,6 +10,10 @@ pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut 
     };
 
     let battlefield_width = registry.balance.combat.battlefield_width;
+    // Projectiles travel beyond the visible battlefield to reach enemies
+    // that have not yet entered view (they spawn beyond battlefield_width
+    // and walk left).
+    let projectile_max_range = battlefield_width * 2.0;
 
     // ── Move projectiles ────────────────────────────────────
     for proj in &mut encounter.projectiles {
@@ -20,7 +24,7 @@ pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut 
         proj.position.y += proj.velocity.y * dt;
 
         // Out of bounds → remove
-        if proj.position.x > battlefield_width || proj.position.x < -50.0 {
+        if proj.position.x > projectile_max_range || proj.position.x < -50.0 {
             proj.state = ProjectileState::OnGround;
             sounds.push(SoundEvent::ProjectileMiss {
                 position: proj.position,

@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { getBridge } from "../../bridge";
-import type { GamePhase, JourneySnapshot, TowerSnapshot } from "../../bridge/types";
+import type { GamePhase, HeroSnapshot, JourneySnapshot, TowerSnapshot } from "../../bridge/types";
 import { t } from "../../i18n";
 
 interface Props {
@@ -9,11 +9,35 @@ interface Props {
   initialPhase: GamePhase;
 }
 
+const BUILDING_TYPES = [
+  "Fletcher",
+  "Forge",
+  "Quarry",
+  "Lumberyard",
+  "Smelter",
+  "Alchemist",
+  "Enchanter",
+] as const;
+
+type BuildingType = (typeof BUILDING_TYPES)[number];
+
+const STAT_TYPES: Array<{
+  key: "Precision" | "DrawPower" | "Tempo" | "Grit" | "Salvage";
+  label: string;
+}> = [
+  { key: "Precision", label: "Precision" },
+  { key: "DrawPower", label: "Draw" },
+  { key: "Tempo", label: "Tempo" },
+  { key: "Grit", label: "Grit" },
+  { key: "Salvage", label: "Salvage" },
+];
+
 function readState() {
   const bridge = getBridge();
   return {
     journey: JSON.parse(bridge.get_journey_state()) as JourneySnapshot,
     tower: JSON.parse(bridge.get_tower_state()) as TowerSnapshot,
+    hero: JSON.parse(bridge.get_hero_state()) as HeroSnapshot,
     gold: bridge.get_gold(),
     phase: bridge.get_phase() as GamePhase,
   };
@@ -21,12 +45,13 @@ function readState() {
 
 export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
   const [state, setState] = useState(() => ({ ...readState(), phase: initialPhase }));
+  const [selectedBuilding, setSelectedBuilding] = useState<BuildingType>("Fletcher");
 
   const refresh = useCallback(() => {
     setState(readState());
   }, []);
 
-  const { journey, tower, gold, phase } = state;
+  const { journey, tower, hero, gold, phase } = state;
   const chapter = journey.chapters[journey.current_chapter - 1];
   if (!chapter) return <div>{t("map.no_chapter")}</div>;
 
@@ -76,6 +101,30 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
         <div className="prep-controls">
           <h3>{t("map.prep.title", { node: nodeTypeLabel(currentNode?.node_type) })}</h3>
 
+          <p className="hero-line">
+            {t("map.hero.label", {
+              class: hero.class,
+              level: hero.level,
+              xp: hero.xp,
+              points: hero.stats.unspent_points,
+            })}
+          </p>
+          {hero.stats.unspent_points > 0 && (
+            <div className="stat-allocate">
+              {STAT_TYPES.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => {
+                    sendCommand({ AllocateStat: { stat: s.key } });
+                    refresh();
+                  }}
+                >
+                  {t("map.hero.allocate", { stat: s.label })}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="tower-info">
             <p>{t("map.tower.floors", { count: tower.floors.length })}</p>
             {tower.floors.map((floor) => (
@@ -111,6 +160,18 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
             >
               {t("map.build.stone_floor")}
             </button>
+
+            <select
+              value={selectedBuilding}
+              onChange={(e) => setSelectedBuilding(e.target.value as BuildingType)}
+            >
+              {BUILDING_TYPES.map((b) => (
+                <option key={b} value={b}>
+                  {buildingLabel(b)}
+                </option>
+              ))}
+            </select>
+
             {tower.floors.map(
               (floor) =>
                 !floor.building && (
@@ -118,12 +179,18 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
                     key={`build-${floor.index}`}
                     onClick={() => {
                       sendCommand({
-                        PlaceBuilding: { floor: floor.index, building_type: "Fletcher" },
+                        PlaceBuilding: {
+                          floor: floor.index,
+                          building_type: selectedBuilding,
+                        },
                       });
                       refresh();
                     }}
                   >
-                    {t("map.build.fletcher", { floor: floor.index })}
+                    {t("map.build.place_on", {
+                      building: buildingLabel(selectedBuilding),
+                      floor: floor.index,
+                    })}
                   </button>
                 ),
             )}
@@ -176,12 +243,22 @@ function materialLabel(material: TowerSnapshot["floors"][number]["material"]) {
   }
 }
 
-function buildingLabel(
-  buildingType: NonNullable<TowerSnapshot["floors"][number]["building"]>["building_type"],
-) {
+function buildingLabel(buildingType: string): string {
   switch (buildingType) {
     case "Fletcher":
       return t("map.building.fletcher");
+    case "Forge":
+      return t("map.building.forge");
+    case "Quarry":
+      return t("map.building.quarry");
+    case "Lumberyard":
+      return t("map.building.lumberyard");
+    case "Smelter":
+      return t("map.building.smelter");
+    case "Alchemist":
+      return t("map.building.alchemist");
+    case "Enchanter":
+      return t("map.building.enchanter");
     default:
       return buildingType;
   }

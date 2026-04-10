@@ -90,7 +90,9 @@ pub struct Building {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BuildingType {
     Fletcher,
+    Forge,
     Quarry,
+    Lumberyard,
     Smelter,
     Alchemist,
     Enchanter,
@@ -482,6 +484,8 @@ pub enum EnemyArchetype {
     Ram,
     SiegeTower,
     Sapper,
+    BossGround,
+    BossClimber,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -121,6 +121,26 @@ export interface ValidationWarning {
   message: string;
 }
 
+export interface HeroStats {
+  precision: number;
+  draw_power: number;
+  tempo: number;
+  grit: number;
+  salvage: number;
+  unspent_points: number;
+}
+
+export interface HeroSnapshot {
+  class: string;
+  level: number;
+  xp: number;
+  stats: HeroStats;
+  perks: unknown[];
+  weapon_primary: { sub_type: string; damage: number; fire_rate: number };
+  weapon_secondary: { sub_type: string; damage: number; fire_rate: number };
+  trinket: { id: string; name: string } | null;
+}
+
 export interface MerchantItem {
   index: number;
   id: string;

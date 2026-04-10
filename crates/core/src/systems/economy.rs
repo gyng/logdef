@@ -57,4 +57,13 @@ pub fn award_encounter_rewards(state: &mut GameState, registry: &Registry) {
     }
     gold_earned += registry.balance.economy.encounter_completion_bonus;
     state.economy.gold += gold_earned;
+
+    // Encounter XP and stat point reward.
+    state.tower.hero.xp += 10;
+    let level_threshold = state.tower.hero.level * 30;
+    if state.tower.hero.xp >= level_threshold {
+        state.tower.hero.xp = 0;
+        state.tower.hero.level += 1;
+        state.tower.hero.stats.unspent_points += 1;
+    }
 }

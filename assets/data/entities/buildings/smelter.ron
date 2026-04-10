@@ -1,0 +1,15 @@
+#![enable(implicit_some)]
+#![enable(unwrap_newtypes)]
+#![enable(unwrap_variant_newtypes)]
+BuildingDef(
+    id: "building.smelter",
+    building_type: Smelter,
+    tier: T2,
+    output_resource: Iron,
+    production_rate: 2.0,
+    operating_cost: 0,
+    output_buffer_max: 3,
+    build_tick_cost: 3,
+    build_resource: Stone,
+    build_resource_cost: 3,
+)

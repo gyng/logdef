@@ -6,7 +6,7 @@ use std::time::Duration;
 #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
 use std::time::Instant;
 
-use crate::command::{CommandError, CommandResult, GameCommand};
+use crate::command::{CommandError, CommandResult, GameCommand, StatType};
 use crate::registry::Registry;
 use crate::snapshot::*;
 use crate::state::*;
@@ -571,6 +571,40 @@ impl GameEngine {
                 Ok(())
             }
 
+            GameCommand::EquipWeapon { slot, weapon } => {
+                // Allowed in any non-combat phase
+                if self.state.phase == GamePhase::Encounter {
+                    return Err(CommandError::WrongPhase {
+                        expected: "non-combat".into(),
+                        actual: format!("{:?}", self.state.phase),
+                    });
+                }
+                match slot {
+                    WeaponSlot::Primary => self.state.tower.hero.weapon_primary = weapon,
+                    WeaponSlot::Secondary => self.state.tower.hero.weapon_secondary = weapon,
+                }
+                Ok(())
+            }
+
+            GameCommand::AllocateStat { stat } => {
+                // Allowed in any non-combat phase
+                if self.state.tower.hero.stats.unspent_points == 0 {
+                    return Err(CommandError::InvalidCommand {
+                        reason: "No unspent stat points".into(),
+                    });
+                }
+                let stats = &mut self.state.tower.hero.stats;
+                stats.unspent_points -= 1;
+                match stat {
+                    StatType::Precision => stats.precision += 1,
+                    StatType::DrawPower => stats.draw_power += 1,
+                    StatType::Tempo => stats.tempo += 1,
+                    StatType::Grit => stats.grit += 1,
+                    StatType::Salvage => stats.salvage += 1,
+                }
+                Ok(())
+            }
+
             GameCommand::BuyItem { item_index } => {
                 self.require_phase(GamePhase::Merchant)?;
                 // MVP merchant sells the first 3 trinkets from the registry
@@ -799,21 +833,30 @@ impl GameEngine {
             spawn_x += 40.0; // Stagger spawn positions
         }
 
-        // For boss encounters, add a tough enemy
+        // For boss encounters, spawn a real boss instead of a tough grunt.
+        // Falls back to Armored if no boss def is loaded.
+        let _ = (armored_archetype, armored_hp, armored_speed);
         if is_boss {
-            let id = self.next_enemy_id();
-            enemies.push(Enemy {
-                id,
-                archetype: armored_archetype,
-                position: EnemyPosition::Ground {
-                    x: battlefield_width + 200.0,
-                },
-                hp: armored_hp,
-                max_hp: armored_hp,
-                speed: armored_speed,
-                state: EnemyState::Approaching,
-                stuck_arrows: Vec::new(),
-            });
+            let boss_data = self
+                .registry
+                .enemy_by_archetype(EnemyArchetype::BossGround)
+                .or_else(|| self.registry.enemy_by_archetype(EnemyArchetype::Armored))
+                .map(|def| (def.archetype, def.hp, def.speed));
+            if let Some((archetype, hp, speed)) = boss_data {
+                let id = self.next_enemy_id();
+                enemies.push(Enemy {
+                    id,
+                    archetype,
+                    position: EnemyPosition::Ground {
+                        x: battlefield_width + 200.0,
+                    },
+                    hp,
+                    max_hp: hp,
+                    speed,
+                    state: EnemyState::Approaching,
+                    stuck_arrows: Vec::new(),
+                });
+            }
         }
 
         EncounterState {

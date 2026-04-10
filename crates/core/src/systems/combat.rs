@@ -77,16 +77,23 @@ pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut 
             continue;
         }
 
-        // Ground enemies walk left until they reach the tower face.
+        // Catapults stop at long range and bombard the tower.
+        let stop_distance: Scalar = match enemy.archetype {
+            EnemyArchetype::Catapult => 350.0,
+            EnemyArchetype::HovererFlyer => 200.0,
+            _ => 0.0,
+        };
+
+        // Ground enemies walk left until they reach their stop distance.
         if let EnemyPosition::Ground { x } = &mut enemy.position
             && enemy.state == EnemyState::Approaching
-            && *x > 0.0
+            && *x > stop_distance
         {
             *x -= enemy.speed * dt;
-            if *x <= 0.0 {
-                *x = 0.0;
-                // Climbers transition to climbing the tower face.
-                // Other ground enemies begin attacking the base panel.
+            if *x <= stop_distance {
+                *x = stop_distance;
+                // Climbers transition to climbing the tower face when they
+                // actually reach x=0. Other ground enemies start attacking.
                 match enemy.archetype {
                     EnemyArchetype::Climber => {
                         enemy.position = EnemyPosition::Climbing { floor: 0.0 };
@@ -125,6 +132,31 @@ pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut 
         }
     }
 
+    // ── Sapper one-time infrastructure damage ───────────────
+    // When a Sapper reaches the tower, it destroys the first building
+    // it finds (or removes a cache), then dies.
+    let mut sapper_kills: Vec<usize> = Vec::new();
+    for (idx, enemy) in encounter.enemies.iter().enumerate() {
+        if enemy.archetype == EnemyArchetype::Sapper && enemy.state == EnemyState::AttackingPanel {
+            // Find first floor with a building or cache and remove one
+            for floor in state.tower.floors.iter_mut() {
+                if floor.building.is_some() {
+                    floor.building = None;
+                    break;
+                }
+                if floor.cache.is_some() {
+                    floor.cache = None;
+                    break;
+                }
+            }
+            sapper_kills.push(idx);
+        }
+    }
+    for idx in sapper_kills {
+        encounter.enemies[idx].hp = 0.0;
+        encounter.enemies[idx].state = EnemyState::Dead;
+    }
+
     // ── Enemy attacking panels ──────────────────────────────
     let num_floors = state.tower.floors.len();
     for enemy in &mut encounter.enemies {
@@ -134,7 +166,13 @@ pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut 
         let Some(enemy_def) = registry.enemy_by_archetype(enemy.archetype) else {
             continue;
         };
-        let damage_per_tick = enemy_def.damage * enemy_def.attack_rate * dt;
+        // Boss phase 2: when below 66% HP, +50% damage
+        let phase2 = matches!(
+            enemy.archetype,
+            EnemyArchetype::BossGround | EnemyArchetype::BossClimber
+        ) && enemy.hp < enemy.max_hp * 0.66;
+        let damage_multiplier = if phase2 { 1.5 } else { 1.0 };
+        let damage_per_tick = enemy_def.damage * enemy_def.attack_rate * damage_multiplier * dt;
         if num_floors > 0 {
             let floor = &mut state.tower.floors[0];
             if !floor.panel.is_breached {

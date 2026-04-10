@@ -24,6 +24,7 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
   const maxEncountersInChapter1 = 3;
 
   while (encountersPlayed < maxEncountersInChapter1) {
+    console.log(`[smoke] iter=${encountersPlayed} top of loop`);
     if (
       await page
         .locator(".end-screen")
@@ -56,7 +57,9 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
     await page.getByRole("button", { name: "March!" }).click();
 
     await expect(page.locator(".combat-page")).toBeVisible({ timeout: 5_000 });
+    console.log(`[smoke] iter=${encountersPlayed} fireUntilDone start`);
     await fireUntilDone(page);
+    console.log(`[smoke] iter=${encountersPlayed} fireUntilDone end`);
 
     if (
       await page
@@ -70,6 +73,7 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
     await page.getByRole("button", { name: "Continue" }).click();
 
     encountersPlayed += 1;
+    console.log(`[smoke] encountersPlayed now ${encountersPlayed}`);
     await page.waitForTimeout(200); // let React settle after Continue
 
     // Chapter 1 only — stop after beating the chapter 1 boss (next view
@@ -92,15 +96,21 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
 });
 
 async function fireUntilDone(page: Page) {
-  const canvas = page.locator(".combat-canvas");
+  // Polls phase via the bridge debug helper instead of expensive DOM
+  // queries — cuts ~10x off each iteration in headless.
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
-    const done = await page
-      .locator(".post-combat-page, .end-screen")
-      .isVisible()
-      .catch(() => false);
-    if (done) return;
-    await canvas.click({ position: { x: 400, y: 200 } }).catch(() => {});
+    const phase = await page
+      .evaluate(() => {
+        type DebugWindow = Window & { __getPhase?: () => string };
+        return (window as DebugWindow).__getPhase?.() ?? "";
+      })
+      .catch(() => "");
+    if (phase && phase !== "Encounter") return;
+    await page
+      .locator(".combat-canvas")
+      .click({ position: { x: 400, y: 200 } })
+      .catch(() => {});
     await page.waitForTimeout(50);
   }
 }

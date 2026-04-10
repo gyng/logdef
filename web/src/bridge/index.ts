@@ -96,6 +96,10 @@ function installDebugHelpers(activeBridge: GameBridge): void {
     debug?: {
       metrics?: () => { bridge: BridgePerfSnapshot; core: SimPerfSnapshot };
     };
+    __getPhase?: () => string;
+    __getEncounter?: () => string;
+    __getHud?: () => string;
+    __tick?: (dt: number) => string;
   };
 
   const debugWindow = window as DebugWindow;
@@ -104,6 +108,11 @@ function installDebugHelpers(activeBridge: GameBridge): void {
     bridge: getBridgePerfSnapshot(),
     core: JSON.parse(activeBridge.get_perf_state()) as SimPerfSnapshot,
   });
+  // Test hooks: let Playwright drive the engine without React in the loop.
+  debugWindow.__getPhase = () => activeBridge.get_phase();
+  debugWindow.__getEncounter = () => activeBridge.get_encounter_state();
+  debugWindow.__getHud = () => activeBridge.get_hud_state();
+  debugWindow.__tick = (dt: number) => activeBridge.tick(dt);
 }
 
 interface WasmBridgeModule {
