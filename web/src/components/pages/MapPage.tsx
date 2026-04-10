@@ -23,13 +23,13 @@ type BuildingType = (typeof BUILDING_TYPES)[number];
 
 const STAT_TYPES: Array<{
   key: "Precision" | "DrawPower" | "Tempo" | "Grit" | "Salvage";
-  label: string;
+  labelKey: "stat.precision" | "stat.draw_power" | "stat.tempo" | "stat.grit" | "stat.salvage";
 }> = [
-  { key: "Precision", label: "Precision" },
-  { key: "DrawPower", label: "Draw" },
-  { key: "Tempo", label: "Tempo" },
-  { key: "Grit", label: "Grit" },
-  { key: "Salvage", label: "Salvage" },
+  { key: "Precision", labelKey: "stat.precision" },
+  { key: "DrawPower", labelKey: "stat.draw_power" },
+  { key: "Tempo", labelKey: "stat.tempo" },
+  { key: "Grit", labelKey: "stat.grit" },
+  { key: "Salvage", labelKey: "stat.salvage" },
 ];
 
 function readState() {
@@ -135,7 +135,7 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
                     refresh();
                   }}
                 >
-                  {t("map.hero.allocate", { stat: s.label })}
+                  {t("map.hero.allocate", { stat: t(s.labelKey) })}
                 </button>
               ))}
             </div>

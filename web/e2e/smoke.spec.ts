@@ -24,7 +24,6 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
   const maxEncountersInChapter1 = 3;
 
   while (encountersPlayed < maxEncountersInChapter1) {
-    console.log(`[smoke] iter=${encountersPlayed} top of loop`);
     if (
       await page
         .locator(".end-screen")
@@ -57,9 +56,7 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
     await page.getByRole("button", { name: "March!" }).click();
 
     await expect(page.locator(".combat-page")).toBeVisible({ timeout: 5_000 });
-    console.log(`[smoke] iter=${encountersPlayed} fireUntilDone start`);
     await fireUntilDone(page);
-    console.log(`[smoke] iter=${encountersPlayed} fireUntilDone end`);
 
     if (
       await page
@@ -73,7 +70,6 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
     await page.getByRole("button", { name: "Continue" }).click();
 
     encountersPlayed += 1;
-    console.log(`[smoke] encountersPlayed now ${encountersPlayed}`);
     await page.waitForTimeout(200); // let React settle after Continue
 
     // Chapter 1 only — stop after beating the chapter 1 boss (next view
