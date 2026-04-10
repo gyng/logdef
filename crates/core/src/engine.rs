@@ -1,3 +1,8 @@
+use std::time::Duration;
+
+#[cfg(debug_assertions)]
+use std::time::Instant;
+
 use crate::balance::*;
 use crate::command::{CommandError, CommandResult, GameCommand};
 use crate::snapshot::*;
@@ -12,6 +17,88 @@ pub struct GameEngine {
     accumulator: Scalar,
     /// Counter for generating unique entity IDs.
     next_id: u32,
+    perf: EnginePerfState,
+}
+
+#[derive(Debug, Clone, Default)]
+struct PerfMetricState {
+    calls: u64,
+    last_ms: f64,
+    avg_ms: f64,
+    max_ms: f64,
+}
+
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
+impl PerfMetricState {
+    fn record(&mut self, duration: Duration) {
+        let millis = duration.as_secs_f64() * 1000.0;
+        self.calls += 1;
+        self.last_ms = millis;
+        if self.calls == 1 {
+            self.avg_ms = millis;
+            self.max_ms = millis;
+            return;
+        }
+        let prior_calls = (self.calls - 1) as f64;
+        self.avg_ms = ((self.avg_ms * prior_calls) + millis) / self.calls as f64;
+        self.max_ms = self.max_ms.max(millis);
+    }
+
+    fn snapshot(&self) -> PerfMetricSnapshot {
+        PerfMetricSnapshot {
+            calls: self.calls,
+            last_ms: self.last_ms,
+            avg_ms: self.avg_ms,
+            max_ms: self.max_ms,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct EnginePerfState {
+    ticks_last_frame: u32,
+    frame_sim: PerfMetricState,
+    tick_total: PerfMetricState,
+    production: PerfMetricState,
+    transport: PerfMetricState,
+    companion_ai: PerfMetricState,
+    projectiles: PerfMetricState,
+    combat: PerfMetricState,
+    economy: PerfMetricState,
+}
+
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
+impl EnginePerfState {
+    fn record_tick(&mut self, profile: &systems::TickProfile) {
+        self.tick_total.record(profile.total);
+        self.production.record(profile.production);
+        self.transport.record(profile.transport);
+        self.companion_ai.record(profile.companion_ai);
+        self.projectiles.record(profile.projectiles);
+        self.combat.record(profile.combat);
+        self.economy.record(profile.economy);
+    }
+
+    fn record_frame(&mut self, ticks: u32, duration: Duration) {
+        self.ticks_last_frame = ticks;
+        self.frame_sim.record(duration);
+    }
+
+    fn snapshot(&self) -> SimPerfSnapshot {
+        SimPerfSnapshot {
+            ticks_last_frame: self.ticks_last_frame,
+            frame_sim: self.frame_sim.snapshot(),
+            tick_total: self.tick_total.snapshot(),
+            systems: SystemPerfSnapshot {
+                production: self.production.snapshot(),
+                transport: self.transport.snapshot(),
+                companion_ai: self.companion_ai.snapshot(),
+                projectiles: self.projectiles.snapshot(),
+                combat: self.combat.snapshot(),
+                economy: self.economy.snapshot(),
+            },
+        }
+    }
 }
 
 impl GameEngine {
@@ -21,6 +108,7 @@ impl GameEngine {
             state,
             accumulator: 0.0,
             next_id: 100,
+            perf: EnginePerfState::default(),
         }
     }
 
@@ -502,11 +590,29 @@ impl GameEngine {
         let capped_dt = real_dt.min(FIXED_DT * MAX_TICKS_PER_FRAME as Scalar);
         self.accumulator += capped_dt;
         let mut all_sounds = Vec::new();
+        let mut ticks_this_frame = 0;
+
+        #[cfg(debug_assertions)]
+        let frame_start = Instant::now();
 
         while self.accumulator >= FIXED_DT {
-            let sounds = systems::tick(&mut self.state, FIXED_DT);
-            all_sounds.extend(sounds);
+            let result = systems::tick(&mut self.state, FIXED_DT);
+
+            #[cfg(debug_assertions)]
+            self.perf.record_tick(&result.profile);
+
+            all_sounds.extend(result.sounds);
             self.accumulator -= FIXED_DT;
+            ticks_this_frame += 1;
+        }
+
+        #[cfg(debug_assertions)]
+        self.perf
+            .record_frame(ticks_this_frame, frame_start.elapsed());
+
+        #[cfg(not(debug_assertions))]
+        {
+            let _ = ticks_this_frame;
         }
 
         all_sounds
@@ -600,6 +706,19 @@ impl GameEngine {
         }
     }
 
+    pub fn get_economy_state(&self) -> EconomySnapshot {
+        let economy = &self.state.economy;
+        EconomySnapshot {
+            gold: economy.gold,
+            materials: economy.materials.clone(),
+            ticks_remaining: economy.ticks_remaining,
+        }
+    }
+
+    pub fn get_gold(&self) -> u32 {
+        self.state.economy.gold
+    }
+
     pub fn get_hero_state(&self) -> HeroSnapshot {
         let h = &self.state.tower.hero;
         HeroSnapshot {
@@ -656,6 +775,10 @@ impl GameEngine {
 
     pub fn get_validation_warnings(&self) -> Vec<ValidationWarning> {
         Vec::new()
+    }
+
+    pub fn get_perf_state(&self) -> SimPerfSnapshot {
+        self.perf.snapshot()
     }
 
     pub fn save(&self) -> String {

@@ -58,6 +58,13 @@ pub struct JourneySnapshot {
     pub visited_nodes: Vec<NodeId>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EconomySnapshot {
+    pub gold: u32,
+    pub materials: Vec<ResourceBuffer>,
+    pub ticks_remaining: u32,
+}
+
 /// Hero state sent to React.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeroSnapshot {
@@ -94,6 +101,32 @@ pub struct EncounterSnapshot {
     pub current_wave: usize,
     pub total_waves: usize,
     pub enemies_remaining: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PerfMetricSnapshot {
+    pub calls: u64,
+    pub last_ms: f64,
+    pub avg_ms: f64,
+    pub max_ms: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SystemPerfSnapshot {
+    pub production: PerfMetricSnapshot,
+    pub transport: PerfMetricSnapshot,
+    pub companion_ai: PerfMetricSnapshot,
+    pub projectiles: PerfMetricSnapshot,
+    pub combat: PerfMetricSnapshot,
+    pub economy: PerfMetricSnapshot,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SimPerfSnapshot {
+    pub ticks_last_frame: u32,
+    pub frame_sim: PerfMetricSnapshot,
+    pub tick_total: PerfMetricSnapshot,
+    pub systems: SystemPerfSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

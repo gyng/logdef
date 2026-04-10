@@ -73,11 +73,19 @@ docs/foundation/            # design docs (see doc hierarchy above)
 # Unified (Makefile)
 make check                  # fmt-check + lint + test — run before every PR
 make fmt                    # auto-format Rust + TypeScript
-make lint                   # clippy + eslint + tsc + prettier check
+make lint                   # clippy + frontend typecheck + eslint
 make test                   # cargo test
-make build                  # wasm-pack + cargo build + vite build
+make build                  # fast local build: wasm-pack + native cargo build + vite build
+make build-fast             # fastest local build path: dev wasm + vite only
+make build-checked          # build + explicit frontend typecheck
 make wasm                   # build WASM bridge only (wasm-pack)
+make wasm-dev               # quick dev WASM build (no wasm-opt)
 make dev                    # build WASM + start Vite dev server
+make bench-core             # lightweight engine microbenchmarks
+make bench-scenario         # representative combat scenario benchmark
+make bench-pipeline         # wall-clock timings for test/check/build + core bench
+make timings-build          # cargo build --timings HTML report
+make timings-test           # cargo test --timings HTML report
 
 # Rust
 cargo fmt --all             # format
@@ -87,6 +95,7 @@ cargo test                  # test
 
 # Frontend (from web/)
 npm run check               # typecheck + lint + format:check
+npm run check:code          # typecheck + lint
 npm run lint                # eslint
 npm run format              # prettier write
 npm run typecheck           # tsc --noEmit
@@ -127,7 +136,7 @@ npm run lint:css            # stylelint
 - **Validate at the command boundary.** `GameCommand` processing validates legality (enough ticks? valid floor? correct phase?). Reject bad commands with errors. Don't silently ignore them.
 - **Panic on impossible states.** If the simulation reaches a state that should be structurally impossible (negative HP, missing floor, orphaned runner), panic with a descriptive message. These are bugs, not edge cases.
 - **Degrade gracefully in presentation.** If the renderer gets unexpected data, render a fallback — don't crash. If audio gets an unknown SoundEvent, skip it. The simulation is authoritative; presentation layers are resilient.
-- **Bridge issues have a dedicated guide.** For serialization mismatches, snapshot drift, tick/accumulator problems, or WASM loading failures, follow the decision tree in `docs/guides/debugging-bridge.md`.
+- **Bridge issues have a dedicated guide.** For serialization mismatches, snapshot drift, tick/accumulator problems, or WASM loading failures, follow the decision tree in `docs/foundation/debugging-bridge.md`.
 
 ### Performance discipline
 

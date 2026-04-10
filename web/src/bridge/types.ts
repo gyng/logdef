@@ -121,6 +121,45 @@ export interface ValidationWarning {
   message: string;
 }
 
+export interface PerfMetricSnapshot {
+  calls: number;
+  last_ms: number;
+  avg_ms: number;
+  max_ms: number;
+}
+
+export interface SimPerfSnapshot {
+  ticks_last_frame: number;
+  frame_sim: PerfMetricSnapshot;
+  tick_total: PerfMetricSnapshot;
+  systems: {
+    production: PerfMetricSnapshot;
+    transport: PerfMetricSnapshot;
+    companion_ai: PerfMetricSnapshot;
+    projectiles: PerfMetricSnapshot;
+    combat: PerfMetricSnapshot;
+    economy: PerfMetricSnapshot;
+  };
+}
+
+export interface BridgePerfSnapshot {
+  send_command: PerfMetricSnapshot;
+  tick: PerfMetricSnapshot;
+  interpolation_alpha: PerfMetricSnapshot;
+  get_phase: PerfMetricSnapshot;
+  get_hud_state: PerfMetricSnapshot;
+  get_tower_state: PerfMetricSnapshot;
+  get_journey_state: PerfMetricSnapshot;
+  get_economy_state: PerfMetricSnapshot;
+  get_gold: PerfMetricSnapshot;
+  get_hero_state: PerfMetricSnapshot;
+  get_encounter_state: PerfMetricSnapshot;
+  get_validation_warnings: PerfMetricSnapshot;
+  get_perf_state: PerfMetricSnapshot;
+  save: PerfMetricSnapshot;
+  load: PerfMetricSnapshot;
+}
+
 export interface EconomySnapshot {
   gold: number;
   materials: ResourceBuffer[];

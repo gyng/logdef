@@ -31,6 +31,12 @@ cd web && npm install && cd ..
 
 # Run the standard checks
 make check
+
+# Capture timing baselines for the pipeline
+make bench-pipeline
+
+# Generate Cargo compile timing reports
+make timings-all
 ```
 
 ## Common Commands
@@ -38,9 +44,16 @@ make check
 ```bash
 make check   # format check + lint + test
 make fmt     # format Rust + TypeScript
-make lint    # clippy + eslint + tsc + prettier
+make lint    # clippy + frontend typecheck + eslint
 make test    # cargo test
-make build   # cargo build + vite build
+make build   # fast local build: wasm-pack + native cargo build + vite build
+make build-fast     # fastest local build path: dev wasm + vite only
+make build-checked  # build + explicit frontend typecheck
+make bench-core     # lightweight engine microbenchmarks
+make bench-scenario # representative combat scenario benchmark
+make bench-pipeline # wall-clock timings for test/check/build + core bench
+make timings-build  # cargo build --timings HTML report
+make timings-test   # cargo test --timings HTML report
 ```
 
 See [Makefile](Makefile) for the current command set.

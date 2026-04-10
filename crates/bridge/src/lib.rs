@@ -74,6 +74,16 @@ pub fn get_journey_state() -> String {
 }
 
 #[wasm_bindgen]
+pub fn get_economy_state() -> String {
+    with_engine(|e| serde_json::to_string(&e.get_economy_state()).unwrap_or_default())
+}
+
+#[wasm_bindgen]
+pub fn get_gold() -> u32 {
+    with_engine(supply_line_core::engine::GameEngine::get_gold)
+}
+
+#[wasm_bindgen]
 pub fn get_hero_state() -> String {
     with_engine(|e| serde_json::to_string(&e.get_hero_state()).unwrap_or_default())
 }
@@ -86,6 +96,11 @@ pub fn get_encounter_state() -> String {
 #[wasm_bindgen]
 pub fn get_validation_warnings() -> String {
     with_engine(|e| serde_json::to_string(&e.get_validation_warnings()).unwrap_or_default())
+}
+
+#[wasm_bindgen]
+pub fn get_perf_state() -> String {
+    with_engine(|e| serde_json::to_string(&e.get_perf_state()).unwrap_or_default())
 }
 
 #[wasm_bindgen]

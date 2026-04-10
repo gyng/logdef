@@ -13,7 +13,7 @@ function readState() {
   return {
     journey: JSON.parse(bridge.get_journey_state()) as JourneySnapshot,
     tower: JSON.parse(bridge.get_tower_state()) as TowerSnapshot,
-    hud: JSON.parse(bridge.get_hud_state()) as { gold: number },
+    gold: bridge.get_gold(),
     phase: bridge.get_phase() as GamePhase,
   };
 }
@@ -25,7 +25,7 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
     setState(readState());
   }, []);
 
-  const { journey, tower, hud, phase } = state;
+  const { journey, tower, gold, phase } = state;
   const chapter = journey.chapters[journey.current_chapter - 1];
   if (!chapter) return <div>No chapter data</div>;
 
@@ -40,7 +40,7 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
       <div className="map-header">
         <h2>Chapter {journey.current_chapter}</h2>
         <div className="resources">
-          <span className="gold">Gold: {hud.gold}</span>
+          <span className="gold">Gold: {gold}</span>
         </div>
       </div>
 
