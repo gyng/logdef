@@ -38,9 +38,15 @@ function readState() {
     journey: JSON.parse(bridge.get_journey_state()) as JourneySnapshot,
     tower: JSON.parse(bridge.get_tower_state()) as TowerSnapshot,
     hero: JSON.parse(bridge.get_hero_state()) as HeroSnapshot,
+    warnings: JSON.parse(bridge.get_validation_warnings()) as ValidationWarning[],
     gold: bridge.get_gold(),
     phase: bridge.get_phase() as GamePhase,
   };
+}
+
+interface ValidationWarning {
+  severity: "Info" | "Warning" | "Critical";
+  message: string;
 }
 
 export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
@@ -100,6 +106,16 @@ export function MapPage({ sendCommand, refreshPhase, initialPhase }: Props) {
       {phase === "Travel" && (
         <div className="prep-controls">
           <h3>{t("map.prep.title", { node: nodeTypeLabel(currentNode?.node_type) })}</h3>
+
+          {state.warnings.length > 0 && (
+            <div className="validation-warnings">
+              {state.warnings.map((w, i) => (
+                <div key={i} className={`warning warning-${w.severity.toLowerCase()}`}>
+                  {w.message}
+                </div>
+              ))}
+            </div>
+          )}
 
           <p className="hero-line">
             {t("map.hero.label", {

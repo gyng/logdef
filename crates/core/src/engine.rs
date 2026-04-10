@@ -1163,7 +1163,51 @@ impl GameEngine {
     }
 
     pub fn get_validation_warnings(&self) -> Vec<ValidationWarning> {
-        Vec::new()
+        let mut warnings = Vec::new();
+
+        // No floors → tower has no defenses
+        if self.state.tower.floors.is_empty() {
+            warnings.push(ValidationWarning {
+                severity: WarningSeverity::Warning,
+                message: "Tower has no floors. Build at least one before marching.".into(),
+            });
+        }
+
+        // No production buildings → hero will run out of ammo if encounter is long
+        let has_production = self.state.tower.floors.iter().any(|f| f.building.is_some());
+        if !has_production
+            && self.state.tower.hero.weapon_primary.base_type != WeaponBaseType::Melee
+        {
+            warnings.push(ValidationWarning {
+                severity: WarningSeverity::Info,
+                message: "No production buildings. Ammo will not regenerate during combat.".into(),
+            });
+        }
+
+        // Damaged panels
+        let damaged = self
+            .state
+            .tower
+            .floors
+            .iter()
+            .filter(|f| f.panel.current_hp < f.panel.max_hp * 0.5)
+            .count();
+        if damaged > 0 {
+            warnings.push(ValidationWarning {
+                severity: WarningSeverity::Warning,
+                message: format!("{damaged} panel(s) below 50% HP. Consider a Rest node."),
+            });
+        }
+
+        // Foundation low
+        if self.state.tower.foundation.current_hp < self.state.tower.foundation.max_hp * 0.3 {
+            warnings.push(ValidationWarning {
+                severity: WarningSeverity::Critical,
+                message: "Foundation HP is critical. Tower may fall this encounter.".into(),
+            });
+        }
+
+        warnings
     }
 
     pub fn get_perf_state(&self) -> SimPerfSnapshot {
