@@ -92,10 +92,25 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
 });
 
 async function fireUntilDone(page: Page) {
-  // Polls phase via the bridge debug helper instead of expensive DOM
-  // queries — cuts ~10x off each iteration in headless.
+  // Polls phase via the bridge debug helper. If the helper is missing
+  // or returns stale data, falls back to a DOM count check on
+  // .post-combat-page so we always exit when the page transitions.
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
+    // Cheap DOM check first — if post-combat is on screen, we're done.
+    const postCombatCount = await page
+      .locator(".post-combat-page")
+      .count()
+      .catch(() => 0);
+    if (postCombatCount > 0) return;
+
+    const endScreenCount = await page
+      .locator(".end-screen")
+      .count()
+      .catch(() => 0);
+    if (endScreenCount > 0) return;
+
+    // Bridge phase check (covers race where DOM hasn't updated yet)
     const phase = await page
       .evaluate(() => {
         type DebugWindow = Window & { __getPhase?: () => string };
@@ -103,9 +118,12 @@ async function fireUntilDone(page: Page) {
       })
       .catch(() => "");
     if (phase && phase !== "Encounter") return;
+
+    // Click to fire — short timeout so we don't block 30s waiting for
+    // .combat-canvas to "appear" after the page already transitioned away.
     await page
       .locator(".combat-canvas")
-      .click({ position: { x: 400, y: 200 } })
+      .click({ position: { x: 400, y: 200 }, timeout: 200 })
       .catch(() => {});
     await page.waitForTimeout(50);
   }
