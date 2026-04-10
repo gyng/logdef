@@ -115,8 +115,10 @@ pub enum ResourceType {
     Bolts,
     Mana,
     Thrown,
+    Wood,
     Stone,
     Iron,
+    Planks,
     Gold,
 }
 

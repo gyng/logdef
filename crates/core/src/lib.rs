@@ -1,3 +1,4 @@
+pub mod balance;
 pub mod command;
 pub mod engine;
 pub mod rng;

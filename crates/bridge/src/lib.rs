@@ -47,6 +47,11 @@ impl Bridge {
         self.engine.interpolation_alpha()
     }
 
+    /// Current game phase as a string.
+    pub fn get_phase(&self) -> String {
+        format!("{:?}", self.engine.get_phase())
+    }
+
     /// Compact HUD state for the combat overlay (call once per sim tick).
     pub fn get_hud_state(&self) -> String {
         serde_json::to_string(&self.engine.get_hud_state()).unwrap_or_default()
@@ -65,6 +70,11 @@ impl Bridge {
     /// Hero stats/equipment.
     pub fn get_hero_state(&self) -> String {
         serde_json::to_string(&self.engine.get_hero_state()).unwrap_or_default()
+    }
+
+    /// Encounter state for Canvas2D rendering (enemy/projectile positions).
+    pub fn get_encounter_state(&self) -> String {
+        serde_json::to_string(&self.engine.get_encounter_state()).unwrap_or_default()
     }
 
     /// Pre-march validation warnings.

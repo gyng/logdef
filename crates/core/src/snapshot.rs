@@ -85,6 +85,32 @@ pub enum WarningSeverity {
     Critical,
 }
 
+/// Compact encounter state for Canvas2D rendering.
+/// Sent to React during combat — positions, HP fractions, wave info.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncounterSnapshot {
+    pub enemies: Vec<EnemySnapshot>,
+    pub projectiles: Vec<ProjectileSnapshot>,
+    pub current_wave: usize,
+    pub total_waves: usize,
+    pub enemies_remaining: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnemySnapshot {
+    pub id: EnemyId,
+    pub archetype: EnemyArchetype,
+    pub x: Scalar,
+    pub hp_fraction: Scalar,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectileSnapshot {
+    pub id: ProjectileId,
+    pub x: Scalar,
+    pub y: Scalar,
+}
+
 /// Sound events produced by the simulation for the JS AudioManager.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SoundEvent {
