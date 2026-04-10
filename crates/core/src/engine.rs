@@ -533,6 +533,114 @@ impl GameEngine {
                 Ok(())
             }
 
+            GameCommand::UseWeaponAbility => {
+                self.require_phase(GamePhase::Encounter)?;
+                if self.state.tower.hero.weapon_ability_cooldown > 0.0 {
+                    return Err(CommandError::InvalidCommand {
+                        reason: "Weapon ability on cooldown".into(),
+                    });
+                }
+                // Ability effect: fire a burst of 3 projectiles in a
+                // spread that all hit the frontmost enemy. This is the
+                // MVP "burst moment" for all weapons.
+                let hero = &self.state.tower.hero;
+                let weapon = match hero.active_weapon {
+                    WeaponSlot::Primary => &hero.weapon_primary,
+                    WeaponSlot::Secondary => &hero.weapon_secondary,
+                };
+                let base_type = weapon.base_type;
+                let damage = weapon.damage * 1.8;
+                let hero_id = hero.id;
+                let speed = match base_type {
+                    WeaponBaseType::Bow => 300.0,
+                    WeaponBaseType::Crossbow => 400.0,
+                    WeaponBaseType::Staff => 500.0,
+                    WeaponBaseType::Thrown => 250.0,
+                    WeaponBaseType::Melee => 0.0,
+                };
+
+                self.state.tower.hero.weapon_ability_cooldown = 12.0;
+                let ids = [
+                    self.next_projectile_id(),
+                    self.next_projectile_id(),
+                    self.next_projectile_id(),
+                ];
+                if let Some(encounter) = self.state.encounter.as_mut() {
+                    for (i, id) in ids.into_iter().enumerate() {
+                        encounter.projectiles.push(Projectile {
+                            id,
+                            source: hero_id,
+                            weapon_type: base_type,
+                            position: Vec2::new(0.0, (i as Scalar - 1.0) * 4.0),
+                            velocity: Vec2::new(speed, 0.0),
+                            gravity: 0.0,
+                            damage,
+                            modifier: None,
+                            state: ProjectileState::Flying,
+                        });
+                    }
+                }
+                Ok(())
+            }
+
+            GameCommand::UseHeroSkill => {
+                self.require_phase(GamePhase::Encounter)?;
+                if self.state.tower.hero.hero_skill_cooldown > 0.0 {
+                    return Err(CommandError::InvalidCommand {
+                        reason: "Hero skill on cooldown".into(),
+                    });
+                }
+                // Skills have class-specific effects. MVP implements
+                // one tangible benefit per class.
+                let skill = self.state.tower.hero.hero_skill;
+                let encounter = self.state.encounter.as_mut();
+                match (skill, encounter) {
+                    (HeroSkill::Focus, Some(enc)) => {
+                        // Focus: deal heavy damage to the nearest enemy.
+                        if let Some(target) = enc
+                            .enemies
+                            .iter_mut()
+                            .filter(|e| e.state != EnemyState::Dead)
+                            .min_by(|a, b| {
+                                let ax = match a.position {
+                                    EnemyPosition::Ground { x } => x,
+                                    _ => Scalar::INFINITY,
+                                };
+                                let bx = match b.position {
+                                    EnemyPosition::Ground { x } => x,
+                                    _ => Scalar::INFINITY,
+                                };
+                                ax.partial_cmp(&bx).unwrap()
+                            })
+                        {
+                            target.hp -= 60.0;
+                        }
+                    }
+                    (HeroSkill::Overclock, Some(enc)) => {
+                        // Overclock: damage all enemies in a spread
+                        // (lightning-like AoE).
+                        for enemy in enc
+                            .enemies
+                            .iter_mut()
+                            .filter(|e| e.state != EnemyState::Dead)
+                            .take(3)
+                        {
+                            enemy.hp -= 25.0;
+                        }
+                    }
+                    (HeroSkill::Rally, _) => {
+                        // Rally: boost companion accuracy temporarily.
+                        // MVP: permanent small boost (+0.05) up to 0.95.
+                        for companion in self.state.tower.companions.iter_mut() {
+                            companion.accuracy = (companion.accuracy + 0.05).min(0.95);
+                        }
+                    }
+                    _ => {}
+                }
+                self.state.tower.hero.hero_skill_cooldown = 20.0;
+                Ok(())
+            }
+
             // ── Unimplemented (MVP) ─────────────────────────────
             _ => Err(CommandError::InvalidCommand {
                 reason: "Command not implemented in MVP".into(),
@@ -963,7 +1071,7 @@ impl GameState {
                     hero_skill_cooldown: 0.0,
                     hero_skill: hero_def.skill,
                 },
-                companions: Vec::new(),
+                companions: starting_companions(registry),
             },
             encounter: None,
             journey: JourneyState {
@@ -1036,4 +1144,55 @@ pub(crate) fn weapon_resource(base_type: WeaponBaseType) -> Option<ResourceType>
         WeaponBaseType::Thrown => Some(ResourceType::Thrown),
         WeaponBaseType::Melee => None,
     }
+}
+
+/// Build the starting companion roster for a new run.
+/// MVP: hero starts with Ren (Mark) and Drift (Pinning) auto-assigned
+/// to the first balcony. Companion roster management moves to the prep
+/// UI in a later milestone.
+fn starting_companions(registry: &Registry) -> Vec<Companion> {
+    let default_bow = registry
+        .weapons
+        .values()
+        .find(|w| matches!(w.base_type, WeaponBaseType::Bow | WeaponBaseType::Crossbow));
+    let weapon = default_bow.map(weapon_from_def).unwrap_or_else(|| Weapon {
+        base_type: WeaponBaseType::Bow,
+        sub_type: "shortbow".into(),
+        damage: 10.0,
+        fire_rate: 1.2,
+        modifiers: Vec::new(),
+    });
+
+    vec![
+        Companion {
+            id: EntityId(1000),
+            name: "Ren".into(),
+            position: Some(BalconyId(0)),
+            passive: CompanionPassive::Mark,
+            accuracy: 0.4,
+            combat_xp: 0,
+            weapon: weapon.clone(),
+            trinket: None,
+            target_order: TargetOrder::Closest,
+            fire_discipline: FireDiscipline::AtWill,
+            wage: 2,
+            injured: false,
+            injury_remaining: 0,
+        },
+        Companion {
+            id: EntityId(1001),
+            name: "Drift".into(),
+            position: Some(BalconyId(0)),
+            passive: CompanionPassive::PinningShots,
+            accuracy: 0.4,
+            combat_xp: 0,
+            weapon,
+            trinket: None,
+            target_order: TargetOrder::Closest,
+            fire_discipline: FireDiscipline::AtWill,
+            wage: 2,
+            injured: false,
+            injury_remaining: 0,
+        },
+    ]
 }

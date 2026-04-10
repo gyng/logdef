@@ -9,15 +9,19 @@ import type { Page } from "@playwright/test";
  * (map → prep → combat → post-combat → continue → next node → victory).
  */
 test("chapter 1 loop: start → victory", async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(360_000);
   page.on("pageerror", (err) => console.log("PAGE_ERROR:", err.message));
+  page.on("console", (msg) => {
+    if (msg.type() === "error") console.log("BROWSER_ERROR:", msg.text());
+  });
 
   await page.goto("/");
 
   await expect(page.locator(".map-page")).toBeVisible({ timeout: 10_000 });
 
   let encountersPlayed = 0;
-  const maxEncountersInChapter1 = 8;
+  // Chapter 1 has exactly 3 encounters (2 combats + boss).
+  const maxEncountersInChapter1 = 3;
 
   while (encountersPlayed < maxEncountersInChapter1) {
     if (

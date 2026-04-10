@@ -4,10 +4,22 @@ use crate::state::*;
 use crate::types::Scalar;
 
 pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
-    let encounter = match &mut state.encounter {
-        Some(e) => e,
-        None => return,
-    };
+    // ── Decrement hero cooldowns (before taking encounter borrow) ──
+    if state.encounter.is_none() {
+        return;
+    }
+    if state.tower.hero.weapon_ability_cooldown > 0.0 {
+        state.tower.hero.weapon_ability_cooldown =
+            (state.tower.hero.weapon_ability_cooldown - dt).max(0.0);
+    }
+    if state.tower.hero.hero_skill_cooldown > 0.0 {
+        state.tower.hero.hero_skill_cooldown = (state.tower.hero.hero_skill_cooldown - dt).max(0.0);
+    }
+
+    let encounter = state
+        .encounter
+        .as_mut()
+        .expect("encounter presence checked above");
 
     // ── Death cleanup (runs first so wave checks see accurate state) ──
     for enemy in &mut encounter.enemies {
@@ -59,17 +71,55 @@ pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut 
     }
 
     // ── Enemy movement ──────────────────────────────────────
+    let num_floors_for_climb = state.tower.floors.len().max(1) as Scalar;
     for enemy in &mut encounter.enemies {
         if enemy.state == EnemyState::Dead {
             continue;
         }
+
+        // Ground enemies walk left until they reach the tower face.
         if let EnemyPosition::Ground { x } = &mut enemy.position
-            && *x > 0.0
             && enemy.state == EnemyState::Approaching
+            && *x > 0.0
         {
             *x -= enemy.speed * dt;
             if *x <= 0.0 {
                 *x = 0.0;
+                // Climbers transition to climbing the tower face.
+                // Other ground enemies begin attacking the base panel.
+                match enemy.archetype {
+                    EnemyArchetype::Climber => {
+                        enemy.position = EnemyPosition::Climbing { floor: 0.0 };
+                        enemy.state = EnemyState::Climbing;
+                    }
+                    _ => {
+                        enemy.state = EnemyState::AttackingPanel;
+                    }
+                }
+            }
+        }
+
+        // Climbers progress up the tower face until they reach the top.
+        if let EnemyPosition::Climbing { floor } = &mut enemy.position
+            && enemy.state == EnemyState::Climbing
+        {
+            // Climb at (speed / 60) floors per second.
+            *floor += (enemy.speed / 60.0) * dt;
+            if *floor >= num_floors_for_climb {
+                *floor = num_floors_for_climb;
+                // Top of the tower — attack panels
+                enemy.state = EnemyState::AttackingPanel;
+            }
+        }
+
+        // Flyers hover above ground and approach. For MVP they get
+        // translated to Ground { x } equivalents — vertical movement
+        // is visual only.
+        if let EnemyPosition::Flying { x, y: _ } = &mut enemy.position
+            && enemy.state == EnemyState::Approaching
+        {
+            *x -= enemy.speed * dt;
+            if *x <= 0.0 {
                 enemy.state = EnemyState::AttackingPanel;
             }
         }

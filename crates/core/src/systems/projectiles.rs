@@ -41,14 +41,18 @@ pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut 
             if enemy.state == EnemyState::Dead {
                 continue;
             }
+            // Projectile position is 1D on the horizontal lane; resolve
+            // every enemy archetype to a comparable x coordinate.
             let enemy_x = match &enemy.position {
                 EnemyPosition::Ground { x } => *x,
-                _ => continue,
+                EnemyPosition::Climbing { .. } => 0.0, // at the tower face
+                EnemyPosition::Flying { x, .. } => *x,
+                EnemyPosition::AtBase => 0.0,
+                EnemyPosition::AtPanel { .. } => 0.0,
             };
-            // Hit if projectile x is within 15px of enemy x (hit tolerance)
             if (proj.position.x - enemy_x).abs() < 15.0 {
                 hits.push((pi, ei, proj.damage));
-                break; // One projectile hits one enemy
+                break;
             }
         }
     }
