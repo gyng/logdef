@@ -1,25 +1,14 @@
 /**
  * Bridge to the Rust/WASM game engine.
  *
- * In dev, this will be loaded via wasm-pack output.
  * All game state lives in Rust — this module only provides
  * the JS-side interface to send commands and read snapshots.
  */
 
-export interface GameBridge {
-  send_command(json: string): string;
-  tick(real_dt: number): string;
-  interpolation_alpha(): number;
-  get_hud_state(): string;
-  get_tower_state(): string;
-  get_journey_state(): string;
-  get_hero_state(): string;
-  get_validation_warnings(): string;
-  save(): string;
-  load(data: string): void;
-}
+import type { Bridge as WasmBridge } from "../../pkg/supply_line_bridge";
 
-// eslint-disable-next-line prefer-const -- will be assigned in initBridge once wasm-pack is wired up
+export type GameBridge = WasmBridge;
+
 let bridge: GameBridge | null = null;
 
 export function getBridge(): GameBridge {
@@ -29,9 +18,9 @@ export function getBridge(): GameBridge {
   return bridge;
 }
 
-export async function initBridge(_seed: number, _heroClass: string): Promise<GameBridge> {
-  // TODO: load wasm-pack output, construct Bridge instance
-  // const wasm = await import("../../pkg/supply_line_bridge");
-  // bridge = new wasm.Bridge(seed, heroClass);
-  throw new Error("WASM bridge not yet built — run wasm-pack first");
+export async function initBridge(seed: number, heroClass: string): Promise<GameBridge> {
+  const wasm = await import("../../pkg/supply_line_bridge");
+  await wasm.default();
+  bridge = new wasm.Bridge(BigInt(seed), heroClass);
+  return bridge;
 }

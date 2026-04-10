@@ -217,3 +217,36 @@ Gold is overloaded (currency + legendary rarity). Resolution: gold currency in t
 React is not the source of truth for game state — Rust is. The React layer only needs to cache compact snapshots from the bridge and track transient UI state (selections, panel open/closed, hover targets). This is a small amount of state that React's built-in `useState` and `useContext` handle well without a third-party store.
 
 All docs have been updated to reference React context/state instead of Zustand.
+
+---
+
+## 19. Deterministic simulation — strict enforcement
+
+**Decision: the simulation must be fully deterministic. Same seed + same commands = identical state. No exceptions.**
+
+This is a hard requirement for v1, not a nice-to-have. It enables:
+- **Seed sharing:** players share seeds for identical runs.
+- **Replay:** record the command stream, replay to reproduce any game state.
+- **Bug reproduction:** "seed 12345, commands X Y Z" is a complete repro case.
+- **Testing:** determinism tests catch bugs that probabilistic tests miss.
+- **Future networking:** if we ever add co-op or competitive, deterministic lockstep is the cheapest netcode model. The architecture already supports it — commands in, state out. This is a free option, not a design goal driving v1 decisions, but breaking determinism now would foreclose it.
+
+### Rules (enforced in code and CI)
+
+1. **No `HashMap` in GameState or any simulation code.** Use `Vec`, `BTreeMap`, or sorted collections. `HashMap` iteration order is non-deterministic across runs. The workspace Cargo.toml should eventually lint for this.
+
+2. **No `f32` operations that depend on iteration order over unordered collections.** Accumulating `f32` values in different orders produces different results due to floating-point non-associativity.
+
+3. **All randomness goes through `DeterministicRng`.** No `rand::thread_rng()`, no `SystemTime`, no `Instant` in simulation code. The RNG is seeded once per scope (run → chapter → encounter) via `DeterministicRng::derive()`.
+
+4. **Fixed system execution order.** Systems run in the same order every tick: production → transport → companion_ai → projectiles → combat → economy. No scheduler, no parallelism, no conditional reordering.
+
+5. **`Scalar` type alias.** All simulation math uses `type Scalar = f32` (defined in `types.rs`). If cross-platform determinism breaks (ARM vs x86 f32 divergence), swap to a fixed-point type in one place.
+
+6. **Determinism tests run in CI.** The test suite includes: same-seed identity tests, multi-tick sequence tests, and save/load roundtrip tests. If any test becomes flaky, treat it as a P0 — flaky determinism tests mean determinism is broken.
+
+### What is NOT required
+
+- Lock-step networking code in v1. The architecture supports it; we don't build it.
+- Fixed-point math in v1. Start with `f32`, switch if cross-platform divergence appears.
+- Avoiding `HashMap` in non-simulation code (React bridge, renderer, tooling). Only the simulation path must be deterministic.

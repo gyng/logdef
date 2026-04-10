@@ -35,10 +35,13 @@ impl GameEngine {
     }
 
     /// Advance the simulation by real_dt seconds.
-    /// Uses a fixed timestep accumulator — runs 0 or 1 sim ticks per call.
-    /// Returns sound events from any tick that ran.
+    /// Uses a fixed timestep accumulator. Capped to MAX_TICKS_PER_FRAME
+    /// to prevent spiral-of-death after long pauses (e.g., tab switch).
+    /// Returns sound events from any ticks that ran.
     pub fn tick(&mut self, real_dt: Scalar) -> Vec<SoundEvent> {
-        self.accumulator += real_dt;
+        // Cap to prevent runaway catch-up after long pause
+        let capped_dt = real_dt.min(FIXED_DT * MAX_TICKS_PER_FRAME as Scalar);
+        self.accumulator += capped_dt;
         let mut all_sounds = Vec::new();
 
         while self.accumulator >= FIXED_DT {

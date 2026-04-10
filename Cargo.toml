@@ -11,6 +11,9 @@ ptr_arg = "warn"
 needless_pass_by_value = "warn"
 cloned_instead_of_copied = "warn"
 redundant_closure_for_method_calls = "warn"
+# Determinism: HashMap/HashSet have non-deterministic iteration order.
+# Use Vec or BTreeMap/BTreeSet. See implementation-decisions.md §19.
+disallowed_types = "deny"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

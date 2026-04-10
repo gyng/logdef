@@ -1,4 +1,4 @@
-.PHONY: check lint fmt fmt-check test build clean
+.PHONY: check lint fmt fmt-check test build wasm dev clean
 
 # Run all checks (format + lint + test)
 check: fmt-check lint test
@@ -23,12 +23,20 @@ fmt-check:
 test:
 	cargo test
 
+# Build WASM bridge (release, optimized)
+wasm:
+	wasm-pack build crates/bridge --target web --out-dir ../../web/pkg
+
 # Build everything
-build:
+build: wasm
 	cargo build
 	cd web && npm run build
+
+# Dev: build WASM then start Vite dev server
+dev: wasm
+	cd web && npm run dev
 
 # Clean build artifacts
 clean:
 	cargo clean
-	rm -rf web/dist web/node_modules/.vite
+	rm -rf web/dist web/pkg web/node_modules/.vite

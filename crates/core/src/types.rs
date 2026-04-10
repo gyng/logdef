@@ -1,8 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 /// Type alias for simulation math. Can be swapped to fixed-point if
-/// cross-platform determinism requires it (see AGENTS.md §IV).
+/// cross-platform determinism requires it (see implementation-decisions.md §19).
 pub type Scalar = f32;
+
+/// Maximum simulation ticks per frame call, to prevent spiral-of-death
+/// when real_dt is large (e.g., after a tab switch).
+pub const MAX_TICKS_PER_FRAME: u32 = 4;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub struct Vec2 {

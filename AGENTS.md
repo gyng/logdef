@@ -39,6 +39,7 @@ crates/
       state.rs              # GameState + all data model structs
       command.rs            # GameCommand enum + CommandResult/CommandError
       engine.rs             # GameEngine: command processing, tick, typed accessors
+      engine_tests.rs       # command roundtrip, snapshot shape, determinism tests
       rng.rs                # DeterministicRng (xorshift64, seeded)
       snapshot.rs           # HudSnapshot, TowerSnapshot, SoundEvent, etc.
       types.rs              # Scalar alias, Vec2, strongly-typed IDs, FIXED_DT
@@ -74,7 +75,9 @@ make check                  # fmt-check + lint + test — run before every PR
 make fmt                    # auto-format Rust + TypeScript
 make lint                   # clippy + eslint + tsc + prettier check
 make test                   # cargo test
-make build                  # cargo build + vite build
+make build                  # wasm-pack + cargo build + vite build
+make wasm                   # build WASM bridge only (wasm-pack)
+make dev                    # build WASM + start Vite dev server
 
 # Rust
 cargo fmt --all             # format
@@ -92,11 +95,12 @@ npm run lint:css            # stylelint
 
 ### Tooling
 
-- **Rust:** rustfmt (config: `rustfmt.toml`), clippy (workspace lints in `Cargo.toml`)
+- **Rust:** rustfmt (config: `rustfmt.toml`), clippy (workspace lints in `Cargo.toml`). `HashMap`/`HashSet` are denied via `disallowed_types` — use `Vec` or `BTreeMap` for determinism (see `implementation-decisions.md` §19).
 - **TypeScript:** ESLint 9 + typescript-eslint + react-hooks plugin (`web/eslint.config.js`)
 - **Formatting:** Prettier (`web/.prettierrc`)
 - **CSS:** Stylelint (`web/.stylelintrc.json`)
 - **Design tokens:** CSS custom properties in `web/src/styles/tokens.css`, sourced from `docs/foundation/design-system.md`
+- **WASM build:** `wasm-pack build crates/bridge --target web --out-dir ../../web/pkg` (or `make wasm`)
 
 ---
 

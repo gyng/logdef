@@ -5,3 +5,6 @@ pub mod snapshot;
 pub mod state;
 pub mod systems;
 pub mod types;
+
+#[cfg(test)]
+mod engine_tests;
