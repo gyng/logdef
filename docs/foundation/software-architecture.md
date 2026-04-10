@@ -6,7 +6,7 @@ Project: SUPPLY LINE | Software Architecture
 
 Supply Line is a two-layer application: a Rust game core compiled to WASM and a React/TypeScript frontend. They communicate through wasm-bindgen. The Rust side owns all game state and simulation. The React side handles UI rendering, input collection, and frame orchestration.
 
-**React's role is broader than "pure view."** During prep, React is genuinely a view/input layer: it renders snapshots and sends commands. During combat, React also drives the frame loop (requestAnimationFrame), collects per-frame input, calls `bridge.tick(dt)`, and synchronizes React context/state — effectively acting as the application's main loop coordinator. This is the correct architecture for a browser-first game (the browser's rAF is the only reliable frame clock), but it means React is an orchestration layer during combat, not just a renderer. (See [implementation-decisions.md §18](implementation-decisions.md) for the state management decision; see [debugging-bridge.md](../debugging-bridge.md) for bridge troubleshooting.)
+**React's role is broader than "pure view."** During prep, React is genuinely a view/input layer: it renders snapshots and sends commands. During combat, React also drives the frame loop (requestAnimationFrame), collects per-frame input, calls `bridge.tick(dt)`, and synchronizes React context/state — effectively acting as the application's main loop coordinator. This is the correct architecture for a browser-first game (the browser's rAF is the only reliable frame clock), but it means React is an orchestration layer during combat, not just a renderer. (See [implementation-decisions.md §18](implementation-decisions.md) for the state management decision; see [debugging-bridge.md](/mnt/c/Users/gng/w/logdef/docs/guides/debugging-bridge.md) for bridge troubleshooting.)
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -817,7 +817,7 @@ The renderer knows about sprites and screen coordinates. It does NOT know about 
 
 ## VII. React ↔ Rust Bridge
 
-> For diagnosing bridge issues (serialization mismatches, snapshot drift, tick problems, performance), see [debugging-bridge.md](../debugging-bridge.md).
+> For diagnosing bridge issues (serialization mismatches, snapshot drift, tick problems, performance), see [debugging-bridge.md](/mnt/c/Users/gng/w/logdef/docs/guides/debugging-bridge.md).
 
 ### Exposed API (wasm-bindgen)
 

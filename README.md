@@ -1,67 +1,83 @@
 # Supply Line
 
-A walking-fortress roguelike: build the supply chain inside, defend the exterior in real-time.
+A walking-fortress roguelike where you build the supply chain inside the tower and defend its exterior in real time.
 
-Rust/WASM game core + React/TypeScript frontend. Browser-first (itch.io), desktop via Tauri.
+The project is browser-first: a Rust/WASM game core with a React/TypeScript frontend and a Rust-rendered game canvas. Desktop packaging is intended via Tauri later, but the architecture is optimized around the web runtime.
 
-## Quick start
+## Status
+
+This repo is in active implementation. The design and architecture docs are relatively mature and are intended to drive the first playable version.
+
+If you're starting work here, do not begin with the broad vision docs. Start with the canonical implementation docs:
+
+1. [implementation-decisions.md](docs/foundation/implementation-decisions.md)
+2. [v1-scope.md](docs/foundation/v1-scope.md)
+3. [registries.md](docs/foundation/registries.md)
+4. [balance-config.md](docs/foundation/balance-config.md)
+
+Those files override the rest of the foundation set when there is any disagreement.
+
+## Quick Start
+
+Prerequisites:
+
+- Rust toolchain
+- Node.js 20+
+- `wasm-pack`
 
 ```bash
-# Prerequisites: Rust toolchain, Node.js 20+, wasm-pack
-
 # Install frontend dependencies
 cd web && npm install && cd ..
 
-# Check everything compiles
+# Run the standard checks
 make check
 ```
 
-## Dev commands
+## Common Commands
 
 ```bash
-make check       # format check + lint + test (run before every PR)
-make fmt          # auto-format Rust + TypeScript
-make lint         # clippy + eslint + tsc + prettier
-make test         # cargo test
-make build        # cargo build + vite build
+make check   # format check + lint + test
+make fmt     # format Rust + TypeScript
+make lint    # clippy + eslint + tsc + prettier
+make test    # cargo test
+make build   # cargo build + vite build
 ```
 
-See the [Makefile](Makefile) for individual commands.
+See [Makefile](Makefile) for the current command set.
 
-## Project structure
+## Project Structure
 
-```
+```text
 crates/
-  core/           Simulation: GameState, GameCommand, systems, RNG
-  bridge/         wasm-bindgen entry points (WASM ↔ JS)
-  renderer/       wgpu game canvas
-web/              React/TypeScript frontend (Vite)
-  src/
-    styles/       CSS tokens + global styles
-    bridge/       TS types + WASM bridge interface
-    hooks/        React hooks (useGameCommand, etc.)
-    audio/        AudioManager (Web Audio API)
-    components/   Atomic design: atoms → molecules → organisms → pages
-docs/foundation/  Design docs
+  core/        GameState, commands, systems, deterministic simulation
+  bridge/      wasm-bindgen bridge between Rust and the web app
+  renderer/    Rust-side wgpu renderer for the game canvas
+web/           React/TypeScript frontend
+docs/
+  foundation/  Product, design, architecture, and balance source docs
+  plans/       Implementation and migration plans
+.agents/       Project-local agent configuration/skills
 ```
 
 ## Architecture
 
-Rust owns all game state and simulation (30hz fixed tick). React owns UI, input collection, and frame orchestration. They communicate through wasm-bindgen. All mutations flow through `GameCommand` variants. GameState is the single source of truth.
+- Rust owns the authoritative game state and fixed-timestep simulation.
+- Rust also owns the game canvas renderer.
+- React owns prep UI, overlays, input collection, and frame orchestration in the browser.
+- The full `RenderSnapshot` stays in Rust; compact typed accessors cross the WASM bridge to React.
+- Audio is handled in the JS layer via Web Audio API.
 
-```
-React (input + UI) → GameCommand → Rust (simulation) → typed snapshots → React (render)
-                                                      → RenderSnapshot → wgpu (canvas)
-                                                      → SoundEvents → Web Audio API
-```
+For the detailed version, read [software-architecture.md](docs/foundation/software-architecture.md) and [tech-performance.md](docs/foundation/tech-performance.md) after the canonical files above.
 
-## Docs
+## Documentation
 
-Start with the [foundation docs README](docs/foundation/README.md). The override chain:
+Start with [docs/foundation/README.md](docs/foundation/README.md) for the main document map.
 
-1. **[implementation-decisions.md](docs/foundation/implementation-decisions.md)** — overrides everything
-2. **[v1-scope.md](docs/foundation/v1-scope.md)** — what ships
-3. **[registries.md](docs/foundation/registries.md)** — canonical names and stats
-4. **[balance-config.md](docs/foundation/balance-config.md)** — all tuning numbers
+Other useful docs:
 
-For contributor guidelines, see [AGENTS.md](AGENTS.md).
+- [docs/plans/plan-001-data-driven-config.md](docs/plans/plan-001-data-driven-config.md) — migration plan for data-driven balance/content
+- [docs/foundation/debugging-bridge.md](docs/foundation/debugging-bridge.md) — guide for Rust/WASM bridge debugging
+
+## Contributing
+
+Project-specific working norms for coding agents and collaborators live in [AGENTS.md](AGENTS.md).

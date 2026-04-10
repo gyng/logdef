@@ -127,7 +127,7 @@ npm run lint:css            # stylelint
 - **Validate at the command boundary.** `GameCommand` processing validates legality (enough ticks? valid floor? correct phase?). Reject bad commands with errors. Don't silently ignore them.
 - **Panic on impossible states.** If the simulation reaches a state that should be structurally impossible (negative HP, missing floor, orphaned runner), panic with a descriptive message. These are bugs, not edge cases.
 - **Degrade gracefully in presentation.** If the renderer gets unexpected data, render a fallback — don't crash. If audio gets an unknown SoundEvent, skip it. The simulation is authoritative; presentation layers are resilient.
-- **Bridge issues have a dedicated guide.** For serialization mismatches, snapshot drift, tick/accumulator problems, or WASM loading failures, follow the decision tree in `docs/debugging-bridge.md`.
+- **Bridge issues have a dedicated guide.** For serialization mismatches, snapshot drift, tick/accumulator problems, or WASM loading failures, follow the decision tree in `docs/guides/debugging-bridge.md`.
 
 ### Performance discipline
 
