@@ -1,0 +1,146 @@
+/*
+ * Design tokens — canonical source: docs/foundation/design-system.md
+ * Color hierarchy (§17): resource > status > rarity > UI accent
+ */
+
+:root {
+  /* ── Backgrounds ───────────────────────────────────────── */
+  --bg-base: #141210;
+  --bg-surface: #1e1a16;
+  --bg-elevated: #2a2420;
+  --bg-overlay: rgb(16 12 10 / 85%);
+
+  /* ── Text ──────────────────────────────────────────────── */
+  --text-primary: #e8e0d4;
+  --text-secondary: #a89880;
+  --text-muted: #5c5244;
+  --text-inverse: #141210;
+  --text-accent: #e6a23c;
+
+  /* ── Interactive ────────────────────────────────────────── */
+  --interactive-default: #4a3d30;
+  --interactive-hover: #5c4d3e;
+  --interactive-active: #6e5d4c;
+  --interactive-focus: #c49040;
+  --interactive-disabled: #2a2420;
+
+  /* ── Resource types (sacred — these never mean anything else) ── */
+  --resource-arrows: #c87941;
+  --resource-bolts: #7a8fa3;
+  --resource-mana: #7c5cbf;
+  --resource-wood: #8b6914;
+  --resource-stone: #8a8a8a;
+  --resource-planks: #c4a35a;
+  --resource-fire-oil: #d45722;
+  --resource-potions: #2ea88a;
+  --resource-gunpowder: #3a3a3a;
+  --resource-gold: #f0c240;
+
+  /* ── Status ────────────────────────────────────────────── */
+  --status-healthy: #3daa5e;
+  --status-producing: #5bb87a;
+  --status-warning: #d4922a;
+  --status-critical: #c9433a;
+  --status-starved: #6b5a8a;
+  --status-empty: #444c56;
+
+  /* ── Rarity (distinct from resource + status hues) ─────── */
+  --rarity-common: #a0a8b4;
+  --rarity-uncommon: #48b066;
+  --rarity-rare: #4a8fd4;
+  --rarity-legendary: #e8a830;
+
+  /* ── Terrain (map) ─────────────────────────────────────── */
+  --terrain-plains: #c4b078;
+  --terrain-forest: #3a7a4a;
+  --terrain-mountain: #7088a0;
+  --terrain-swamp: #6a7a3a;
+  --terrain-desert: #c8b888;
+  --terrain-storm: #4a5568;
+
+  /* ── Borders ───────────────────────────────────────────── */
+  --border-subtle: #2a2420;
+  --border-default: #3a3028;
+  --border-strong: #4a3d30;
+
+  /* ── Spacing (4px base) ────────────────────────────────── */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Typography — families ─────────────────────────────── */
+  --font-ui: "Lora", "Georgia", "Palatino", serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --font-display: "Cinzel", "Palatino", serif;
+
+  /* ── Typography — sizes ────────────────────────────────── */
+  --text-xs: 10px;
+  --text-sm: 12px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 32px;
+  --text-4xl: 40px;
+
+  /* ── Typography — weights ──────────────────────────────── */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ── Typography — line heights ─────────────────────────── */
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+  --leading-loose: 1.8;
+
+  /* ── Typography — letter spacing ───────────────────────── */
+  --tracking-tight: -0.01em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-wider: 0.05em;
+
+  /* ── Border radii ──────────────────────────────────────── */
+  --radius-none: 0;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ───────────────────────────────────────────── */
+  --shadow-none: none;
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 30%);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 40%);
+  --shadow-lg: 0 8px 24px rgb(0 0 0 / 50%);
+
+  /* ── Animation — durations ─────────────────────────────── */
+  --duration-instant: 50ms;
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 400ms;
+  --duration-glacial: 800ms;
+
+  /* ── Animation — easing ────────────────────────────────── */
+  --ease-snap: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.15, 0.265, 1.15);
+  --ease-decel: cubic-bezier(0, 0, 0.2, 1);
+  --ease-accel: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ── Z-index ───────────────────────────────────────────── */
+  --z-canvas: 0;
+  --z-hud: 10;
+  --z-panel: 20;
+  --z-dropdown: 30;
+  --z-tooltip: 40;
+  --z-dialog: 50;
+  --z-overlay: 60;
+  --z-toast: 70;
+}

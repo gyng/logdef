@@ -932,21 +932,26 @@ interface UIState {
 }
 ```
 
-**State manager: Zustand.** Lightweight, no boilerplate, works well with external state sources (Rust snapshots). Single store, sliced by domain.
+**State manager: plain React state/context.** No external state library. UI state (selections, panel open/closed, hover targets, cached Rust snapshots) is managed via `useState` and `useContext`. See [implementation-decisions.md §18](implementation-decisions.md) for the rationale.
 
 ```typescript
-const useUIStore = create<UIState>((set) => ({
-  currentPage: 'menu',
-  panelStack: [],
-  selectedFloor: null,
-  // ... initial state
+// React context for UI state — never authoritative game state
+const UIContext = createContext<UIState>(initialState);
 
-  // Actions
-  openPanel: (panel) => set(s => ({ panelStack: [...s.panelStack, panel].slice(-2) })),
-  closePanel: () => set(s => ({ panelStack: s.panelStack.slice(0, -1) })),
-  selectFloor: (idx) => set({ selectedFloor: idx }),
-  // ...
-}));
+function UIProvider({ children }: { children: React.ReactNode }) {
+  const [panelStack, setPanelStack] = useState<string[]>([]);
+  const [selectedFloor, setSelectedFloor] = useState<number | null>(null);
+  // ... UI-only state
+
+  const value = useMemo(() => ({
+    panelStack, selectedFloor,
+    openPanel: (p: string) => setPanelStack(s => [...s, p].slice(-2)),
+    closePanel: () => setPanelStack(s => s.slice(0, -1)),
+    setSelectedFloor,
+  }), [panelStack, selectedFloor]);
+
+  return <UIContext.Provider value={value}>{children}</UIContext.Provider>;
+}
 ```
 
 **Rust snapshot refresh pattern:**
@@ -954,48 +959,29 @@ const useUIStore = create<UIState>((set) => ({
 React syncs with Rust state differently depending on game phase:
 
 ```typescript
-// Hook that syncs Rust state into Zustand
+// Hook that syncs Rust state into React state
 function useRustSync(phase: 'prep' | 'combat') {
   const rafRef = useRef<number>();
+  const [combatSnapshot, setCombatSnapshot] = useState<HudSnapshot | null>(null);
 
   useEffect(() => {
     if (phase === 'combat') {
       // Combat: sync every frame via requestAnimationFrame.
-      // The game canvas renders at 60fps; React HUD elements
-      // (ammo count, cooldowns, wave indicator) must stay in sync.
+      // React HUD elements (ammo, cooldowns, wave) must stay in sync.
       const tick = () => {
-        const snapshot = wasm.get_render_snapshot(); // returns typed object, not JSON string
-        useUIStore.setState({
-          combatSnapshot: snapshot.combat,
-          towerSnapshot: snapshot.tower,
-        });
+        const snapshot = JSON.parse(bridge.get_hud_state());
+        setCombatSnapshot(snapshot);
         rafRef.current = requestAnimationFrame(tick);
       };
       rafRef.current = requestAnimationFrame(tick);
       return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
     } else {
       // Prep: sync on command, not on interval. Each prep action
-      // (build, repair, equip) sends a command to Rust and receives
-      // the updated state as the response. No polling needed.
-      // This avoids wasted JSON serialization during idle prep time.
+      // sends a command to Rust and reads the updated snapshot.
+      // No polling needed — avoids wasted JSON serialization.
       return () => {};
     }
   }, [phase]);
-}
-
-// Prep command pattern:
-async function sendPrepCommand(cmd: PrepCommand): Promise<void> {
-  const result = wasm.execute_prep_command(cmd);
-  if (result.ok) {
-    useUIStore.setState({
-      towerSnapshot: result.tower,
-      heroSnapshot: result.hero,
-      inventorySnapshot: result.inventory,
-    });
-  } else {
-    // Validation failure — show warning, don't update state
-    useUIStore.setState({ notification: { type: 'warning', message: result.error } });
-  }
 }
 ```
 
@@ -1125,14 +1111,14 @@ src/
 │   │   └── MetaPage.tsx
 │   │
 │   ├── hooks/
-│   │   ├── useRustSync.ts     // syncs Rust state snapshots
-│   │   ├── useGameCommand.ts  // sends commands to Rust
-│   │   ├── useTooltip.ts      // tooltip positioning
-│   │   └── useAnimatedValue.ts // smooth number transitions
+│   │   └── useGameCommand.ts  // sends commands to Rust
 │   │
-│   ├── store/
-│   │   └── uiStore.ts         // Zustand store
+│   ├── audio/
+│   │   └── AudioManager.ts    // Web Audio API, consumes SoundEvents
+│   │
+│   ├── context/               // React context (UI state only, see impl-decisions §18)
 │   │
 │   └── styles/
+│       ├── tokens.css          // CSS custom properties (design tokens)
 │       └── global.css          // reset, font imports, base styles
 ```

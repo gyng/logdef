@@ -6,7 +6,7 @@ Project: SUPPLY LINE | Software Architecture
 
 Supply Line is a two-layer application: a Rust game core compiled to WASM and a React/TypeScript frontend. They communicate through wasm-bindgen. The Rust side owns all game state and simulation. The React side handles UI rendering, input collection, and frame orchestration.
 
-**React's role is broader than "pure view."** During prep, React is genuinely a view/input layer: it renders snapshots and sends commands. During combat, React also drives the frame loop (requestAnimationFrame), collects per-frame input, calls `bridge.tick(dt)`, and synchronizes the Zustand store — effectively acting as the application's main loop coordinator. This is the correct architecture for a browser-first game (the browser's rAF is the only reliable frame clock), but it means React is an orchestration layer during combat, not just a renderer.
+**React's role is broader than "pure view."** During prep, React is genuinely a view/input layer: it renders snapshots and sends commands. During combat, React also drives the frame loop (requestAnimationFrame), collects per-frame input, calls `bridge.tick(dt)`, and synchronizes React context/state — effectively acting as the application's main loop coordinator. This is the correct architecture for a browser-first game (the browser's rAF is the only reliable frame clock), but it means React is an orchestration layer during combat, not just a renderer. (See [implementation-decisions.md §18](implementation-decisions.md) for the state management decision; see [debugging-bridge.md](../debugging-bridge.md) for bridge troubleshooting.)
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -16,8 +16,8 @@ Supply Line is a two-layer application: a Rust game core compiled to WASM and a 
 │  │              React (TypeScript)                │   │
 │  │                                               │   │
 │  │  ┌─────────┐ ┌──────────┐ ┌──────────────┐   │   │
-│  │  │  Pages  │ │Organisms │ │  Zustand      │   │   │
-│  │  │         │ │          │ │  UI Store     │   │   │
+│  │  │  Pages  │ │Organisms │ │  React        │   │   │
+│  │  │         │ │          │ │  Context      │   │   │
 │  │  │ Prep    │ │ Tower    │ │              │   │   │
 │  │  │ Combat  │ │ Editor   │ │ selections   │   │   │
 │  │  │ Map     │ │ Map      │ │ panel state  │   │   │
@@ -817,6 +817,8 @@ The renderer knows about sprites and screen coordinates. It does NOT know about 
 
 ## VII. React ↔ Rust Bridge
 
+> For diagnosing bridge issues (serialization mismatches, snapshot drift, tick problems, performance), see [debugging-bridge.md](../debugging-bridge.md).
+
 ### Exposed API (wasm-bindgen)
 
 ```rust
@@ -892,10 +894,10 @@ function useGameCommand() {
     }, [bridge]);
 }
 
-// Hook: sync Rust state into Zustand
+// Hook: sync Rust state into React context/state
 function useRustSync() {
     const bridge = useGameBridge();
-    const phase = useUIStore(s => s.currentPhase);
+    const [phase] = useGamePhase(); // from React context
 
     useEffect(() => {
         if (phase === 'encounter') {
@@ -907,7 +909,7 @@ function useRustSync() {
                 lastTime = time;
                 bridge.tick(dt);
                 const snapshot = JSON.parse(bridge.get_hud_state());
-                useUIStore.setState({ combatSnapshot: snapshot });
+                setCombatSnapshot(snapshot); // React state setter
                 raf = requestAnimationFrame(loop);
             };
             raf = requestAnimationFrame(loop);
@@ -916,7 +918,8 @@ function useRustSync() {
             // During prep: sync on demand (after each command)
             const tower = JSON.parse(bridge.get_tower_state());
             const journey = JSON.parse(bridge.get_journey_state());
-            useUIStore.setState({ towerSnapshot: tower, journeySnapshot: journey });
+            setTowerSnapshot(tower);
+            setJourneySnapshot(journey);
         }
     }, [phase, bridge]);
 }
@@ -934,7 +937,7 @@ function useRustSync() {
    (RenderSnapshot generated and consumed INSIDE Rust — never crosses bridge)
 7. bridge.get_hud_state() → compact HudSnapshot (~20 values) crosses to React
 8. bridge.get_sound_events() → sound events cross to JS AudioManager
-9. React updates Zustand store with HUD snapshot
+9. React updates context/state with HUD snapshot
 10. React HUD components re-render (ammo, cooldowns, wave)
 ```
 
@@ -946,7 +949,7 @@ function useRustSync() {
 3. Rust validates: correct phase? enough ticks? floor available? materials?
 4. If valid: apply, return success. If invalid: return error with reason.
 5. React calls bridge.get_tower_state() to refresh tower display
-6. React updates Zustand, TowerEditor re-renders
+6. React updates state, TowerEditor re-renders
 7. Tick counter decrements
 ```
 
@@ -1128,27 +1131,26 @@ supply-line/
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── vite.config.ts
+│   ├── eslint.config.js
 │   └── src/
 │       ├── main.tsx
 │       ├── App.tsx
 │       ├── bridge/
-│       │   ├── GameBridge.ts     # wasm-bindgen wrapper
+│       │   ├── index.ts          # wasm-bindgen bridge interface
 │       │   └── types.ts          # TypeScript types matching Rust structs
-│       ├── ui/                   # Atomic design system (see design-system.md)
-│       │   ├── tokens/
+│       ├── components/           # Atomic design system (see design-system.md)
 │       │   ├── atoms/
 │       │   ├── molecules/
 │       │   ├── organisms/
 │       │   └── pages/
 │       ├── hooks/
-│       │   ├── useGameBridge.ts
-│       │   ├── useGameCommand.ts
-│       │   ├── useRustSync.ts
-│       │   └── useAnimatedValue.ts
-│       ├── store/
-│       │   └── uiStore.ts        # Zustand
+│       │   └── useGameCommand.ts
+│       ├── audio/
+│       │   └── AudioManager.ts   # Web Audio API, consumes SoundEvents
+│       ├── context/              # React context (UI state only, see impl-decisions §18)
 │       └── styles/
-│           └── global.css
+│           ├── tokens.css        # CSS custom properties (design tokens)
+│           └── global.css        # reset, font imports, base styles
 │
 ├── assets/                       # Game assets (sprites, sounds)
 │   ├── sprites/

@@ -28,6 +28,76 @@ Rust owns all game state and simulation (30hz fixed tick). React owns UI, input 
 
 3 hero classes, 11 weapon sub-types (5 base types), 16 modifiers, 10 trinkets, 10 companions (8 exterior + 2 interior), 3-chapter journey to The Harbor, full tower building with Tier 1-2 production, seeded procedural generation. No between-run persistence, no relationship system, no pacing adaptation. See `v1-scope.md` for the complete list.
 
+### Project structure
+
+```
+Cargo.toml                  # Rust workspace root
+crates/
+  core/                     # supply-line-core: GameState, GameCommand, systems, RNG
+    src/
+      lib.rs                # pub mod declarations
+      state.rs              # GameState + all data model structs
+      command.rs            # GameCommand enum + CommandResult/CommandError
+      engine.rs             # GameEngine: command processing, tick, typed accessors
+      rng.rs                # DeterministicRng (xorshift64, seeded)
+      snapshot.rs           # HudSnapshot, TowerSnapshot, SoundEvent, etc.
+      types.rs              # Scalar alias, Vec2, strongly-typed IDs, FIXED_DT
+      systems.rs            # tick() orchestrator
+      systems/              # one file per system (production, transport, companion_ai,
+                            #   projectiles, combat, economy)
+  bridge/                   # supply-line-bridge: wasm-bindgen entry points (cdylib)
+  renderer/                 # supply-line-renderer: wgpu game canvas
+web/                        # React/TypeScript frontend (Vite)
+  src/
+    main.tsx                # entry point
+    App.tsx                 # root component, phase routing
+    styles/
+      tokens.css            # CSS custom properties (design-system.md tokens)
+      global.css            # reset, base styles, layout
+    bridge/                 # TS types + bridge interface to WASM
+    hooks/                  # useGameCommand, etc.
+    audio/                  # AudioManager (Web Audio API)
+    context/                # React context providers (UI state only)
+    components/
+      atoms/                # Button, Text, Icon, Badge, ProgressBar
+      molecules/            # ResourceCount, WeaponCard, CompanionPortrait
+      organisms/            # CombatHUD, TowerEditor, ChapterMap
+      pages/                # Prep, Combat, Map, Menu
+docs/foundation/            # design docs (see doc hierarchy above)
+```
+
+### Dev commands
+
+```bash
+# Unified (Makefile)
+make check                  # fmt-check + lint + test — run before every PR
+make fmt                    # auto-format Rust + TypeScript
+make lint                   # clippy + eslint + tsc + prettier check
+make test                   # cargo test
+make build                  # cargo build + vite build
+
+# Rust
+cargo fmt --all             # format
+cargo fmt --all --check     # verify format
+cargo clippy --all-targets -- -D warnings  # lint (warnings = errors)
+cargo test                  # test
+
+# Frontend (from web/)
+npm run check               # typecheck + lint + format:check
+npm run lint                # eslint
+npm run format              # prettier write
+npm run typecheck           # tsc --noEmit
+npm run lint:css            # stylelint
+```
+
+### Tooling
+
+- **Rust:** rustfmt (config: `rustfmt.toml`), clippy (workspace lints in `Cargo.toml`)
+- **TypeScript:** ESLint 9 + typescript-eslint + react-hooks plugin (`web/eslint.config.js`)
+- **Formatting:** Prettier (`web/.prettierrc`)
+- **CSS:** Stylelint (`web/.stylelintrc.json`)
+- **Design tokens:** CSS custom properties in `web/src/styles/tokens.css`, sourced from `docs/foundation/design-system.md`
+
 ---
 
 ## II. Software Engineering Best Practices
@@ -53,6 +123,7 @@ Rust owns all game state and simulation (30hz fixed tick). React owns UI, input 
 - **Validate at the command boundary.** `GameCommand` processing validates legality (enough ticks? valid floor? correct phase?). Reject bad commands with errors. Don't silently ignore them.
 - **Panic on impossible states.** If the simulation reaches a state that should be structurally impossible (negative HP, missing floor, orphaned runner), panic with a descriptive message. These are bugs, not edge cases.
 - **Degrade gracefully in presentation.** If the renderer gets unexpected data, render a fallback — don't crash. If audio gets an unknown SoundEvent, skip it. The simulation is authoritative; presentation layers are resilient.
+- **Bridge issues have a dedicated guide.** For serialization mismatches, snapshot drift, tick/accumulator problems, or WASM loading failures, follow the decision tree in `docs/debugging-bridge.md`.
 
 ### Performance discipline
 

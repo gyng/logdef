@@ -132,7 +132,7 @@ The simulation runs all systems in fixed order. Budget per system:
 | WASM heap (Rust) | 32MB | GameState (~1MB), system working memory, snapshot buffer |
 | Audio buffers (JS) | 16MB | Pre-decoded audio assets (~100 sounds × ~150KB avg) |
 | Texture atlas (GPU) | 16MB | Sprite sheets, UI textures. Source art is SVG (vector), but runtime assets are rasterized PNG atlases (see Section V Asset Pipeline). Atlas size stays small because the art style uses flat colors and limited detail. |
-| React DOM | 8MB | UI components, Zustand store, cached snapshots |
+| React DOM | 8MB | UI components, React context, cached snapshots |
 | **Total** | **~72MB** | Comfortable for any modern browser |
 
 ### Worst-case scenario
@@ -510,7 +510,7 @@ Single command to start both: `./scripts/dev.sh` (runs both in parallel, kills b
 | What changed | Reload behavior |
 |--------------|-----------------|
 | React component | HMR, instant. State preserved. |
-| Zustand store | HMR, state reset. |
+| React context | HMR, state reset. |
 | Rust simulation logic | WASM rebuild (~5s), page auto-reloads. Game state lost. |
 | Rust renderer | WASM rebuild (~5s), page auto-reloads. |
 | Game balance values (Rust constants) | WASM rebuild. Consider extracting to JSON config loaded at runtime for faster iteration. |

@@ -216,4 +216,4 @@ Gold is overloaded (currency + legendary rarity). Resolution: gold currency in t
 
 React is not the source of truth for game state — Rust is. The React layer only needs to cache compact snapshots from the bridge and track transient UI state (selections, panel open/closed, hover targets). This is a small amount of state that React's built-in `useState` and `useContext` handle well without a third-party store.
 
-Other docs reference Zustand in diagrams and code examples. Those references describe the *role* (UI state cache) correctly — the implementation is React context instead of a Zustand store. The role and data flow are identical; only the library is different.
+All docs have been updated to reference React context/state instead of Zustand.
