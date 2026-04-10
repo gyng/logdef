@@ -79,8 +79,6 @@ impl Bridge {
 
     /// Load a previously saved GameState.
     pub fn load(&mut self, data: &str) -> Result<(), JsValue> {
-        self.engine
-            .load(data)
-            .map_err(|e| JsValue::from_str(&e))
+        self.engine.load(data).map_err(|e| JsValue::from_str(&e))
     }
 }

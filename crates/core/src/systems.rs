@@ -1,3 +1,6 @@
+pub mod combat;
+pub mod companion_ai;
+pub mod economy;
 /// Simulation systems, executed in fixed order each tick.
 /// Order matters for determinism — do not reorder.
 ///
@@ -8,11 +11,8 @@
 /// 5. combat      — enemy AI, damage, deaths
 /// 6. economy     — gold collection, operating costs
 pub mod production;
-pub mod transport;
-pub mod companion_ai;
 pub mod projectiles;
-pub mod combat;
-pub mod economy;
+pub mod transport;
 
 use crate::snapshot::SoundEvent;
 use crate::state::GameState;

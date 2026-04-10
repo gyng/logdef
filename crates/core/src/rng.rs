@@ -15,7 +15,10 @@ impl DeterministicRng {
     /// Derive a child RNG for a specific scope (chapter, encounter, etc.)
     /// without advancing the parent state unpredictably.
     pub fn derive(&mut self, scope: u64) -> Self {
-        let child_seed = self.state.wrapping_mul(6364136223846793005).wrapping_add(scope);
+        let child_seed = self
+            .state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(scope);
         Self { state: child_seed }
     }
 

@@ -88,17 +88,38 @@ pub enum WarningSeverity {
 /// Sound events produced by the simulation for the JS AudioManager.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SoundEvent {
-    WeaponFire { weapon_type: WeaponBaseType, position: Vec2 },
-    ProjectileHit { weapon_type: WeaponBaseType, position: Vec2 },
-    ProjectileMiss { position: Vec2 },
-    EnemyDeath { archetype: EnemyArchetype, position: Vec2 },
-    EnemySpawn { archetype: EnemyArchetype },
-    PanelHit { floor: usize },
-    PanelBreach { floor: usize },
-    BuildingProduce { building_type: BuildingType },
+    WeaponFire {
+        weapon_type: WeaponBaseType,
+        position: Vec2,
+    },
+    ProjectileHit {
+        weapon_type: WeaponBaseType,
+        position: Vec2,
+    },
+    ProjectileMiss {
+        position: Vec2,
+    },
+    EnemyDeath {
+        archetype: EnemyArchetype,
+        position: Vec2,
+    },
+    EnemySpawn {
+        archetype: EnemyArchetype,
+    },
+    PanelHit {
+        floor: usize,
+    },
+    PanelBreach {
+        floor: usize,
+    },
+    BuildingProduce {
+        building_type: BuildingType,
+    },
     RunnerPickup,
     RunnerDeliver,
-    WaveStart { wave_number: usize },
+    WaveStart {
+        wave_number: usize,
+    },
     WaveComplete,
     EncounterVictory,
     EncounterDefeat,

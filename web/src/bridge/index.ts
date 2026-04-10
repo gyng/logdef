@@ -19,6 +19,7 @@ export interface GameBridge {
   load(data: string): void;
 }
 
+// eslint-disable-next-line prefer-const -- will be assigned in initBridge once wasm-pack is wired up
 let bridge: GameBridge | null = null;
 
 export function getBridge(): GameBridge {
@@ -28,10 +29,7 @@ export function getBridge(): GameBridge {
   return bridge;
 }
 
-export async function initBridge(
-  _seed: number,
-  _heroClass: string,
-): Promise<GameBridge> {
+export async function initBridge(_seed: number, _heroClass: string): Promise<GameBridge> {
   // TODO: load wasm-pack output, construct Bridge instance
   // const wasm = await import("../../pkg/supply_line_bridge");
   // bridge = new wasm.Bridge(seed, heroClass);

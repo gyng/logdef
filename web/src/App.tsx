@@ -10,9 +10,7 @@ export function App() {
       <canvas id="game-canvas" />
 
       {/* React UI overlay */}
-      <div id="ui-overlay">
-        {phase === "MainMenu" && <MainMenu />}
-      </div>
+      <div id="ui-overlay">{phase === "MainMenu" && <MainMenu />}</div>
     </div>
   );
 }

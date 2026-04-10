@@ -259,11 +259,27 @@ pub struct Runner {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RunnerState {
-    Idle { at_floor: usize },
-    Moving { from: usize, to: usize, progress: Scalar, via: TransportId },
-    Loading { at_floor: usize, timer: Scalar },
-    Unloading { at_floor: usize, timer: Scalar },
-    Queued { at_transport: TransportId, position_in_queue: usize },
+    Idle {
+        at_floor: usize,
+    },
+    Moving {
+        from: usize,
+        to: usize,
+        progress: Scalar,
+        via: TransportId,
+    },
+    Loading {
+        at_floor: usize,
+        timer: Scalar,
+    },
+    Unloading {
+        at_floor: usize,
+        timer: Scalar,
+    },
+    Queued {
+        at_transport: TransportId,
+        position_in_queue: usize,
+    },
 }
 
 // ---------------------------------------------------------------------------

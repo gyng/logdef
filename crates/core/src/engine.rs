@@ -62,7 +62,7 @@ impl GameEngine {
         let encounter = state.encounter.as_ref();
 
         HudSnapshot {
-            ammo_primary: 0,  // TODO: read from hero's rack
+            ammo_primary: 0, // TODO: read from hero's rack
             ammo_secondary: 0,
             personal_ammo: state.tower.hero.personal_ammo,
             weapon_ability_cooldown: state.tower.hero.weapon_ability_cooldown,
@@ -70,8 +70,7 @@ impl GameEngine {
             active_weapon: state.tower.hero.active_weapon,
             current_wave: encounter.map_or(0, |e| e.current_wave),
             total_waves: encounter.map_or(0, |e| e.waves.len()),
-            wave_state: encounter
-                .map_or(WaveState::Lull { timer: 0.0 }, |e| e.wave_state.clone()),
+            wave_state: encounter.map_or(WaveState::Lull { timer: 0.0 }, |e| e.wave_state.clone()),
             gold: state.economy.gold,
             companion_statuses: state
                 .tower
@@ -84,7 +83,7 @@ impl GameEngine {
                     displaced: c.position.is_none(),
                 })
                 .collect(),
-            hero_hp_fraction: 1.0, // TODO
+            hero_hp_fraction: 1.0,  // TODO
             tower_hp_fraction: 1.0, // TODO
             enemies_remaining: encounter.map_or(0, |e| {
                 e.enemies
