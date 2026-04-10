@@ -17,6 +17,7 @@ export interface GameBridge {
   get_economy_state(): string;
   get_gold(): number;
   get_hero_state(): string;
+  get_merchant_state(): string;
   get_encounter_state(): string;
   get_validation_warnings(): string;
   get_perf_state(): string;
@@ -49,6 +50,7 @@ function createBridgePerfSnapshot(): BridgePerfSnapshot {
     get_economy_state: createPerfMetric(),
     get_gold: createPerfMetric(),
     get_hero_state: createPerfMetric(),
+    get_merchant_state: createPerfMetric(),
     get_encounter_state: createPerfMetric(),
     get_validation_warnings: createPerfMetric(),
     get_perf_state: createPerfMetric(),
@@ -117,6 +119,7 @@ interface WasmBridgeModule {
   get_economy_state(): string;
   get_gold(): number;
   get_hero_state(): string;
+  get_merchant_state(): string;
   get_encounter_state(): string;
   get_validation_warnings(): string;
   get_perf_state(): string;
@@ -148,6 +151,7 @@ export async function initBridge(seed: number, heroClass: string): Promise<GameB
     get_economy_state: () => timeCall("get_economy_state", () => wasm.get_economy_state()),
     get_gold: () => timeCall("get_gold", () => wasm.get_gold()),
     get_hero_state: () => timeCall("get_hero_state", () => wasm.get_hero_state()),
+    get_merchant_state: () => timeCall("get_merchant_state", () => wasm.get_merchant_state()),
     get_encounter_state: () => timeCall("get_encounter_state", () => wasm.get_encounter_state()),
     get_validation_warnings: () =>
       timeCall("get_validation_warnings", () => wasm.get_validation_warnings()),

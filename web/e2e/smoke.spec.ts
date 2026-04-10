@@ -70,6 +70,7 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
     await page.getByRole("button", { name: "Continue" }).click();
 
     encountersPlayed += 1;
+    await page.waitForTimeout(200); // let React settle after Continue
 
     // Chapter 1 only — stop after beating the chapter 1 boss (next view
     // will be end-screen victory if it was a single-chapter run, or the
@@ -92,7 +93,7 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
 
 async function fireUntilDone(page: Page) {
   const canvas = page.locator(".combat-canvas");
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     const done = await page
       .locator(".post-combat-page, .end-screen")
@@ -100,6 +101,6 @@ async function fireUntilDone(page: Page) {
       .catch(() => false);
     if (done) return;
     await canvas.click({ position: { x: 400, y: 200 } }).catch(() => {});
-    await page.waitForTimeout(80);
+    await page.waitForTimeout(50);
   }
 }

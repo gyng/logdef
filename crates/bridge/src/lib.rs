@@ -89,6 +89,11 @@ pub fn get_hero_state() -> String {
 }
 
 #[wasm_bindgen]
+pub fn get_merchant_state() -> String {
+    with_engine(|e| serde_json::to_string(&e.get_merchant_state()).unwrap_or_default())
+}
+
+#[wasm_bindgen]
 pub fn get_encounter_state() -> String {
     with_engine(|e| serde_json::to_string(&e.get_encounter_state()).unwrap_or_default())
 }

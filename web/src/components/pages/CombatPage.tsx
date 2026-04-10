@@ -69,6 +69,12 @@ export function CombatPage({ sendCommand, refreshPhase }: Props) {
       if (e.key === "Tab") {
         e.preventDefault();
         sendCommand("SwitchWeapon");
+      } else if (e.key === "q" || e.key === "Q") {
+        e.preventDefault();
+        sendCommand("UseWeaponAbility");
+      } else if (e.key === "e" || e.key === "E") {
+        e.preventDefault();
+        sendCommand("UseHeroSkill");
       }
     },
     [sendCommand],
@@ -99,6 +105,14 @@ export function CombatPage({ sendCommand, refreshPhase }: Props) {
             {hud.active_weapon === "Primary"
               ? t("combat.weapon.primary")
               : t("combat.weapon.secondary")}{" "}
+            |{" "}
+          </span>
+          <span>
+            Q:{" "}
+            {hud.weapon_ability_cooldown > 0
+              ? `${hud.weapon_ability_cooldown.toFixed(1)}s`
+              : "ready"}{" "}
+            | E: {hud.hero_skill_cooldown > 0 ? `${hud.hero_skill_cooldown.toFixed(1)}s` : "ready"}{" "}
             |{" "}
           </span>
           <span>{t("combat.gold", { gold: hud.gold })} | </span>

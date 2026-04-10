@@ -121,6 +121,19 @@ export interface ValidationWarning {
   message: string;
 }
 
+export interface MerchantItem {
+  index: number;
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+}
+
+export interface MerchantSnapshot {
+  items: MerchantItem[];
+  gold: number;
+}
+
 export interface PerfMetricSnapshot {
   calls: number;
   last_ms: number;
@@ -153,6 +166,7 @@ export interface BridgePerfSnapshot {
   get_economy_state: PerfMetricSnapshot;
   get_gold: PerfMetricSnapshot;
   get_hero_state: PerfMetricSnapshot;
+  get_merchant_state: PerfMetricSnapshot;
   get_encounter_state: PerfMetricSnapshot;
   get_validation_warnings: PerfMetricSnapshot;
   get_perf_state: PerfMetricSnapshot;

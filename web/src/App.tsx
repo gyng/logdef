@@ -4,6 +4,7 @@ import type { GamePhase } from "./bridge/types";
 import { MapPage } from "./components/pages/MapPage";
 import { CombatPage } from "./components/pages/CombatPage";
 import { PostCombatPage } from "./components/pages/PostCombatPage";
+import { MerchantPage } from "./components/pages/MerchantPage";
 import { t } from "./i18n";
 
 type AppState = "loading" | "error" | "ready";
@@ -67,6 +68,9 @@ export function App() {
         <CombatPage sendCommand={sendCommand} refreshPhase={refreshPhase} />
       )}
       {phase === "PostCombat" && <PostCombatPage sendCommand={sendCommand} />}
+      {phase === "Merchant" && (
+        <MerchantPage sendCommand={sendCommand} refreshPhase={refreshPhase} />
+      )}
       {phase === "GameOver" && <GameOverPage />}
       {phase === "Victory" && <VictoryPage />}
     </div>

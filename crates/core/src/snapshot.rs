@@ -78,6 +78,22 @@ pub struct HeroSnapshot {
     pub trinket: Option<Trinket>,
 }
 
+/// Merchant stock for the Merchant screen.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MerchantSnapshot {
+    pub items: Vec<MerchantItem>,
+    pub gold: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MerchantItem {
+    pub index: usize,
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub price: u32,
+}
+
 /// Validation warnings shown before marching.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationWarning {

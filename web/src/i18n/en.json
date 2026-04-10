@@ -39,5 +39,10 @@
   "post.title": "Encounter Complete",
   "post.gold": "Gold: {gold}",
   "post.tower_hp": "Tower HP: {hp}%",
-  "post.continue": "Continue"
+  "post.continue": "Continue",
+  "merchant.title": "Merchant",
+  "merchant.gold": "Gold: {gold}",
+  "merchant.price": "Price: {gold}g",
+  "merchant.buy": "Buy",
+  "merchant.leave": "Leave"
 }

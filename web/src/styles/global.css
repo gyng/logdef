@@ -302,3 +302,51 @@ button:disabled {
   height: 100vh;
   gap: var(--space-4);
 }
+
+/* ── Merchant ────────────────────────────────────────────── */
+
+.merchant-page {
+  padding: var(--space-6);
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.merchant-page h2 {
+  margin-bottom: var(--space-2);
+}
+
+.merchant-page .gold {
+  font-size: var(--text-lg);
+  color: var(--resource-gold);
+  margin-bottom: var(--space-4);
+}
+
+.merchant-stock {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.merchant-item {
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+}
+
+.merchant-item h3 {
+  font-size: var(--text-md);
+  margin-bottom: var(--space-2);
+  color: var(--rarity-uncommon);
+}
+
+.merchant-item p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+.merchant-item .price {
+  color: var(--resource-gold);
+  font-family: var(--font-mono);
+}

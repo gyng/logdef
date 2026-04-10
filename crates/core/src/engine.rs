@@ -360,11 +360,18 @@ impl GameEngine {
                 if !reachable {
                     return Err(CommandError::InvalidTarget);
                 }
+                // Look up the selected node's type before we move.
+                let node_type = chapter
+                    .nodes
+                    .iter()
+                    .find(|n| n.id == node)
+                    .map(|n| n.node_type)
+                    .unwrap_or(NodeType::Combat);
+
                 self.state.journey.current_node = node;
-                self.state.phase = GamePhase::Travel;
                 // Reset tick budget for this stop
                 let chapter_index = self.state.journey.current_chapter.saturating_sub(1);
-                self.state.economy.ticks_remaining = self
+                let base_ticks = self
                     .registry
                     .balance
                     .economy
@@ -380,6 +387,31 @@ impl GameEngine {
                             .last()
                             .unwrap_or(&0)
                     });
+                self.state.economy.ticks_remaining = base_ticks;
+
+                // Dispatch on node type
+                match node_type {
+                    NodeType::Combat | NodeType::EliteCombat | NodeType::Boss => {
+                        self.state.phase = GamePhase::Travel;
+                    }
+                    NodeType::Merchant => {
+                        self.enter_merchant();
+                    }
+                    NodeType::Rest => {
+                        // Grant bonus ticks (already applied above +2)
+                        self.state.economy.ticks_remaining = base_ticks + 2;
+                        // Full-repair all panels
+                        for floor in &mut self.state.tower.floors {
+                            floor.panel.current_hp = floor.panel.max_hp;
+                            floor.panel.is_breached = false;
+                        }
+                        self.state.phase = GamePhase::Travel;
+                    }
+                    NodeType::Mystery => {
+                        self.apply_mystery_event();
+                        self.state.phase = GamePhase::Travel;
+                    }
+                }
                 Ok(())
             }
 
@@ -508,7 +540,13 @@ impl GameEngine {
 
             // ── Post-combat ─────────────────────────────────────
             GameCommand::ContinueJourney => {
-                self.require_phase(GamePhase::PostCombat)?;
+                let phase = self.state.phase;
+                if phase != GamePhase::PostCombat && phase != GamePhase::Merchant {
+                    return Err(CommandError::WrongPhase {
+                        expected: "PostCombat or Merchant".into(),
+                        actual: format!("{phase:?}"),
+                    });
+                }
                 let current = self.state.journey.current_node;
                 self.state.journey.visited_nodes.push(current);
                 self.state.encounter = None;
@@ -530,6 +568,29 @@ impl GameEngine {
                 } else {
                     self.state.phase = GamePhase::MapView;
                 }
+                Ok(())
+            }
+
+            GameCommand::BuyItem { item_index } => {
+                self.require_phase(GamePhase::Merchant)?;
+                // MVP merchant sells the first 3 trinkets from the registry
+                // at a fixed 20 gold each.
+                let stock: Vec<_> = self.registry.trinkets.values().take(3).cloned().collect();
+                let Some(trinket_def) = stock.get(item_index) else {
+                    return Err(CommandError::InvalidTarget);
+                };
+                const PRICE: u32 = 20;
+                if self.state.economy.gold < PRICE {
+                    return Err(CommandError::InsufficientGold {
+                        needed: PRICE,
+                        available: self.state.economy.gold,
+                    });
+                }
+                self.state.economy.gold -= PRICE;
+                self.state.tower.hero.trinket = Some(Trinket {
+                    id: trinket_def.id.0.clone(),
+                    name: trinket_def.name.clone(),
+                });
                 Ok(())
             }
 
@@ -770,6 +831,57 @@ impl GameEngine {
         }
     }
 
+    // ── Merchant / Mystery ──────────────────────────────────
+
+    fn enter_merchant(&mut self) {
+        // Simple stock: first 3 weapons and first 2 trinkets from registry.
+        // Deterministic via BTreeMap iteration order.
+        self.state.phase = GamePhase::Merchant;
+        // (merchant state is displayed by reading registry directly in the
+        //  frontend; we don't persist a snapshot here for MVP)
+    }
+
+    fn apply_mystery_event(&mut self) {
+        // Small event pool — roll a d6 on the deterministic RNG.
+        let roll = self.state.rng.range(1, 6);
+        match roll {
+            1 => {
+                // Stumble upon gold
+                self.state.economy.gold += 15;
+            }
+            2 => {
+                // Supplies
+                for mat in self.state.economy.materials.iter_mut() {
+                    if mat.resource == ResourceType::Wood || mat.resource == ResourceType::Stone {
+                        mat.current += 3;
+                    }
+                }
+            }
+            3 => {
+                // Refresh cooldowns
+                self.state.tower.hero.weapon_ability_cooldown = 0.0;
+                self.state.tower.hero.hero_skill_cooldown = 0.0;
+            }
+            4 => {
+                // Heal all panels
+                for floor in &mut self.state.tower.floors {
+                    floor.panel.current_hp = floor.panel.max_hp;
+                    floor.panel.is_breached = false;
+                }
+            }
+            5 => {
+                // Boost companion accuracy
+                for companion in self.state.tower.companions.iter_mut() {
+                    companion.accuracy = (companion.accuracy + 0.1).min(0.95);
+                }
+            }
+            _ => {
+                // A small tax (tradeoff variety)
+                self.state.economy.gold = self.state.economy.gold.saturating_sub(5);
+            }
+        }
+    }
+
     // ── Material helpers ────────────────────────────────────
 
     fn get_material(&self, resource: ResourceType) -> u32 {
@@ -930,6 +1042,27 @@ impl GameEngine {
 
     pub fn get_gold(&self) -> u32 {
         self.state.economy.gold
+    }
+
+    pub fn get_merchant_state(&self) -> MerchantSnapshot {
+        let items = self
+            .registry
+            .trinkets
+            .values()
+            .take(3)
+            .enumerate()
+            .map(|(index, def)| MerchantItem {
+                index,
+                id: def.id.0.clone(),
+                name: def.name.clone(),
+                description: def.description.clone(),
+                price: 20,
+            })
+            .collect();
+        MerchantSnapshot {
+            items,
+            gold: self.state.economy.gold,
+        }
     }
 
     pub fn get_hero_state(&self) -> HeroSnapshot {
