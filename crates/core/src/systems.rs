@@ -1,22 +1,34 @@
 //! Simulation systems, run in a fixed order every tick.
 //!
-//! The order is load-bearing for determinism and for feel. Reordering
-//! it invalidates every golden replay, so don't — extend at the ends,
-//! or split a system in place.
+//! The order is load-bearing twice over. It is load-bearing for
+//! determinism — reordering invalidates every golden replay, so don't;
+//! extend at the ends, or split a system in place. And it is
+//! load-bearing for *charge priority*: consumers draw from a shared
+//! pool as they run, so who runs first is who gets served when the pool
+//! is thin (`state/power.rs`).
 //!
-//! 1. **stride** — the tower walks; terrain streams in ahead and is
-//!    pruned behind.
-//! 2. **intake** — intake rooms harvest the band underfoot.
-//! 3. **production** — crafting rooms advance, consume, and emit.
-//! 4. **haul** — crew advance their legs, then idle crew claim work.
+//! 1. **clock** — advance the day.
+//! 2. **power income** — recompute capacity; collect from sails and burners.
+//! 3. **transport** — cars move. First claim on charge: a car freezing
+//!    mid-shaft should be the last thing that happens, not the first.
+//! 4. **intake** — intake rooms harvest the band underfoot.
+//! 5. **production** — crafting rooms advance, consume, and emit.
+//! 6. **haul** — crew advance their legs, then idle crew claim work.
+//! 7. **lighting** — lamps, after dark.
+//! 8. **stride** — the tower walks, if it can still afford to, and
+//!    terrain streams in ahead of it.
 //!
-//! Haul runs last so the crew react to the buffers this tick actually
-//! produced rather than last tick's.
+//! Haul runs after production so crew react to the buffers this tick
+//! actually produced, and after transport so they see cars where those
+//! cars really are. Stride runs last because walking is the first thing
+//! a tower short of charge gives up.
 
 pub mod haul;
 pub mod intake;
+pub mod power;
 pub mod production;
 pub mod stride;
+pub mod transport;
 
 use crate::content::Content;
 use crate::state::GameState;
@@ -32,17 +44,25 @@ pub enum SoundEvent {
     Craft,
     /// A crew member picked up a load.
     Pickup,
-    /// A crew member set a load down.
+    /// A crew member or a dumbwaiter set a load down.
     Deliver,
+    /// A car opened its doors and somebody moved.
+    CarStop,
+    /// A burner consumed a load of fuel.
+    Burn,
     /// The tower crossed into a new terrain band.
     BandChange,
 }
 
 /// Run exactly one simulation tick.
 pub fn tick(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
-    stride::run(state, content, sounds);
+    state.clock.advance(content);
+    power::income(state, content, sounds);
+    transport::run(state, content, sounds);
     intake::run(state, content, sounds);
     production::run(state, content, sounds);
     haul::run(state, content, sounds);
+    power::lighting(state, content);
+    stride::run(state, content, sounds);
     state.tick += 1;
 }

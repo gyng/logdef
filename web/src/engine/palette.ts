@@ -98,7 +98,28 @@ export const palette = {
   sunlight: hex("#fff3c4"),
   lamplight: hex("#ffc978"),
   vignette: hex("#08150e"),
+
+  // Night. The sky does not just darken, it shifts hue — a blue-black
+  // that makes the tower's own warm light the only warmth on screen.
+  nightHigh: hex("#0a1622"),
+  nightMid: hex("#12283a"),
+  nightLow: hex("#1d3a3c"),
+  moonlight: hex("#cfe0f0"),
+
+  // Charge.
+  charge: hex("#7fe0c4"),
+  chargeLow: hex("#e0b455"),
+  chargeEmpty: hex("#e0714f"),
 } as const;
+
+/**
+ * Blend a colour toward night by `darkness` (0 = full day, 1 = full
+ * night). Everything outdoors goes through this, so dusk reads as one
+ * coherent change rather than a set of independently fading elements.
+ */
+export function atNight(color: Color, darkness: number): Color {
+  return mix(color, mix(palette.nightMid, color, 0.18), darkness);
+}
 
 /** Far and near colours for a terrain band, by catalog terrain id. */
 export function terrainColors(terrainId: string): { far: Color; near: Color } {

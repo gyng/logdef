@@ -1,96 +1,52 @@
-# Supply Line
+# Understory
 
-A walking-fortress roguelike where you build the supply chain inside the tower and defend its exterior in real time.
+A walking garden-tower roguelike: SimTower's cross-section, Factorio's production chains,
+and tower defence's waves, fused into one tower that walks through a solarpunk jungle. You
+build the supply chain that feeds and lights the tower and defend it in real time while that
+same chain keeps running — there is no separate build phase and no separate combat phase.
 
-The project is browser-first: a Rust/WASM game core with a React/TypeScript frontend and a Rust-rendered game canvas. Desktop packaging is intended via Tauri later, but the architecture is optimized around the web runtime.
+v1 ("Supply Line" — a walking-fortress ARPG with a hero, weapons, and a prep/combat phase
+split) is archived on `main`. This is v2, in active development on the `v2` branch. v1
+vocabulary (hero, weapons, companions, encounters, chapters) does not carry over; it
+describes a different game.
 
-## Status
+## Stack
 
-This repo is in active implementation. The design and architecture docs are relatively mature and are intended to drive the first playable version.
+- **Simulation core:** Rust, compiled to WASM, deterministic — fixed 30 Hz tick, fixed-point
+  math (no floats in game state), ordered iteration (no `HashMap`). See `docs/DECISIONS.md`
+  for the rules and what breaks if they're violated.
+- **Frontend:** React/TypeScript for UI chrome, with a custom WebGL2 renderer (not React,
+  not wgpu) drawing the tower cross-section and streaming terrain every frame, independent
+  of React's render cycle.
 
-If you're starting work here, do not begin with the broad vision docs. Start with the canonical implementation docs:
+## Build and run
 
-1. [implementation-decisions.md](docs/foundation/implementation-decisions.md)
-2. [v1-scope.md](docs/foundation/v1-scope.md)
-3. [registries.md](docs/foundation/registries.md)
-4. [balance-config.md](docs/foundation/balance-config.md)
-
-Those files override the rest of the foundation set when there is any disagreement.
-
-## Quick Start
-
-Prerequisites:
-
-- Rust toolchain
-- Node.js 20+
-- `wasm-pack`
+Prerequisites: a Rust toolchain, Node.js, and `wasm-pack`.
 
 ```bash
-# Install frontend dependencies
-cd web && npm install && cd ..
-
-# Run the standard checks
-make check
-
-# Capture timing baselines for the pipeline
-make bench-pipeline
-
-# Generate Cargo compile timing reports
-make timings-all
+make check     # fmt-check + lint + test — run before every PR
+make dev       # build WASM (dev, fast) + start the Vite dev server
+make e2e       # stop any stale dev server, rebuild WASM, run the Playwright smoke test
+make build     # wasm-pack (optimized) + native cargo build + vite build
 ```
 
-## Common Commands
-
-```bash
-make check   # format check + lint + test
-make fmt     # format Rust + TypeScript
-make lint    # clippy + frontend typecheck + eslint
-make test    # cargo test
-make build   # fast local build: wasm-pack + native cargo build + vite build
-make build-fast     # fastest local build path: dev wasm + vite only
-make build-checked  # build + explicit frontend typecheck
-make bench-core     # lightweight engine microbenchmarks
-make bench-scenario # representative combat scenario benchmark
-make bench-pipeline # wall-clock timings for test/check/build + core bench
-make timings-build  # cargo build --timings HTML report
-make timings-test   # cargo test --timings HTML report
-```
-
-See [Makefile](Makefile) for the current command set.
-
-## Project Structure
-
-```text
-crates/
-  core/        GameState, commands, systems, deterministic simulation
-  bridge/      wasm-bindgen bridge between Rust and the web app
-  renderer/    Rust-side wgpu renderer for the game canvas
-web/           React/TypeScript frontend
-docs/
-  foundation/  Product, design, architecture, and balance source docs
-  plans/       Implementation and migration plans
-.agents/       Project-local agent configuration/skills
-```
-
-## Architecture
-
-- Rust owns the authoritative game state and fixed-timestep simulation.
-- Rust also owns the game canvas renderer.
-- React owns prep UI, overlays, input collection, and frame orchestration in the browser.
-- The full `RenderSnapshot` stays in Rust; compact typed accessors cross the WASM bridge to React.
-- Audio is handled in the JS layer via Web Audio API.
-
-For the detailed version, read [software-architecture.md](docs/foundation/software-architecture.md) and [tech-performance.md](docs/foundation/tech-performance.md) after the canonical files above.
+See `Makefile` for the full target list (`fmt`, `lint`, `test`, `wasm`, `wasm-dev`,
+`build-fast`, `build-checked`, `bench-core`, `bench-scenario`, `golden`, `mutants`, ...).
 
 ## Documentation
 
-Start with [docs/foundation/README.md](docs/foundation/README.md) for the main document map.
+Start with `docs/v2-plan.md` for the whole-game plan. The doc set, in override order when
+two of them disagree:
 
-Other useful docs:
+1. `docs/DECISIONS.md` — cross-cutting engineering rules (determinism, RNG streams, the
+   command pattern, the replay format, content packs, balance provenance, tone, frontend
+   stack) — overrides everything else
+2. `docs/SYSTEMS.md` — what's actually built, grown one milestone at a time
+3. `docs/v2-plan.md` — the locked whole-game plan: milestones, scope, what's coming and when
+4. `docs/DESIGN.md` — the design argument behind the plan; useful for *why*, not a spec
 
-- [docs/plans/plan-001-data-driven-config.md](docs/plans/plan-001-data-driven-config.md) — migration plan for data-driven balance/content
-- [docs/foundation/debugging-bridge.md](docs/foundation/debugging-bridge.md) — guide for Rust/WASM bridge debugging
+`docs/BALANCE.md` grades every tuning constant `DESIGNED` or `PLAYTESTED`.
 
 ## Contributing
 
-Project-specific working norms for coding agents and collaborators live in [AGENTS.md](AGENTS.md).
+Working norms for coding agents and human collaborators live in `AGENTS.md`.

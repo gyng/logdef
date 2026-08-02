@@ -21,7 +21,7 @@ use ron::de::from_bytes;
 use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh3::Xxh3;
 
-use crate::ids::{ItemIdx, RoomIdx, TerrainIdx};
+use crate::ids::{DaypartIdx, ItemIdx, RoomIdx, ShaftIdx, TerrainIdx};
 
 static EMBEDDED_DATA: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../assets/data");
 
@@ -53,6 +53,8 @@ pub enum RoomCategory {
     /// Holds items on shelves. The tower's stock, and what construction
     /// draws from.
     Storage,
+    /// Makes, burns for, or stores charge.
+    Energy,
     /// The Heartseed. Unique, pre-placed, and the loss condition.
     Heart,
 }
@@ -102,6 +104,34 @@ pub struct StorageDef {
     pub per_shelf: i64,
 }
 
+/// Canopy sails: charge from sunlight, scaled by how much of it reaches
+/// this stretch of jungle.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SolarDef {
+    /// Charge per 100 ticks at 100% exposure.
+    pub charge_per_100_ticks: i64,
+}
+
+/// The burner: the dirty fallback. Turns the contested material into
+/// power, and from M2 its smoke raises provocation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BurnerDef {
+    pub fuel: String,
+    pub fuel_per_burn: i64,
+    pub charge_per_burn: i64,
+    pub burn_ticks: u32,
+}
+
+/// A cell bank. Storage is infrastructure: capacity is something you
+/// build, not something you find.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BankDef {
+    pub capacity: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoomDef {
@@ -117,15 +147,81 @@ pub struct RoomDef {
     /// ground, so cutter arms live low.
     #[serde(default)]
     pub max_floor: Option<u8>,
+    /// Only works on the tower's top floor. Building above it puts it
+    /// in shade — which is the price of height, made concrete.
+    #[serde(default)]
+    pub top_floor_only: bool,
     /// Only one may exist in a tower.
     #[serde(default)]
     pub unique: bool,
+    /// Charge drawn per tick while this room is working.
+    #[serde(default)]
+    pub power_draw: i64,
     #[serde(default)]
     pub recipe: Option<RecipeDef>,
     #[serde(default)]
     pub intake: Option<IntakeDef>,
     #[serde(default)]
     pub storage: Option<StorageDef>,
+    #[serde(default)]
+    pub solar: Option<SolarDef>,
+    #[serde(default)]
+    pub burner: Option<BurnerDef>,
+    #[serde(default)]
+    pub bank: Option<BankDef>,
+}
+
+/// Which mechanism moves things up and down a shaft.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShaftKind {
+    /// Free, always present, slow, crew-only, one body at a time.
+    Stairs,
+    /// Item-only and autonomous. The inserter.
+    Dumbwaiter,
+    /// The machine: cars, queues, dwell, and a programmable schedule.
+    Elevator,
+}
+
+/// A kind of vertical transport, as authored. Making these content
+/// rather than an enum arm apiece is what lets M5 add the chute and the
+/// pneumatic tube without touching the simulation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShaftDef {
+    pub id: String,
+    pub name: String,
+    pub short: String,
+    pub kind: ShaftKind,
+    #[serde(default)]
+    pub build_cost: Vec<CostEntryDef>,
+    /// Floors spanned, inclusive of both ends. `max_span` of 0 means
+    /// "as tall as the tower".
+    pub min_span: u8,
+    pub max_span: u8,
+    /// Stairs: crew on the flight at once. Elevator: car capacity in
+    /// units, where a crew member is one and a carried load is another.
+    pub capacity: u8,
+    pub ticks_per_floor: u32,
+    #[serde(default)]
+    pub charge_per_floor: i64,
+    /// Cars in the shaft. Zero for stairs.
+    #[serde(default)]
+    pub cars: u8,
+    /// Items a dumbwaiter moves per trip.
+    #[serde(default)]
+    pub batch: i64,
+}
+
+/// A named stretch of the day. The simulation only uses the index; the
+/// name is for the player, and the boundaries are what the elevator's
+/// per-daypart programs key off.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DaypartDef {
+    pub id: String,
+    pub name: String,
+    /// Per-mille of the day at which this daypart begins.
+    pub start_permille: i64,
 }
 
 /// A stretch of terrain with one character. In M0 a band's only
@@ -137,6 +233,13 @@ pub struct TerrainDef {
     pub name: String,
     /// Percent multiplier applied to intake in this band.
     pub yield_pct: i64,
+    /// Percent multiplier applied to sunlight reaching the sails.
+    ///
+    /// Deliberately opposed to `yield_pct`: shade is biomass-rich and
+    /// sun-poor, open ruin-field is the reverse. That opposition is the
+    /// whole of "your route is your power mix", and it only works if
+    /// no band is good at both.
+    pub sun_pct: i64,
     /// Relative weight when the generator picks the next band.
     pub weight: i64,
     /// Decorative features scattered per 100 paces of this band.
@@ -155,6 +258,50 @@ pub struct Balance {
     pub world: WorldBalance,
     pub tower: TowerBalance,
     pub crew: CrewBalance,
+    pub clock: ClockBalance,
+    pub power: PowerBalance,
+    pub transport: TransportBalance,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClockBalance {
+    pub ticks_per_day: u32,
+    /// `(permille_of_day, sun_pct)` anchors, linearly interpolated in
+    /// integers. A curve rather than a staircase: a step change in
+    /// charge income at a daypart boundary reads as a bug.
+    pub sun_curve: Vec<(i64, i64)>,
+    /// Below this exposure the tower needs lamps lit.
+    pub night_light_threshold: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PowerBalance {
+    pub starting_charge: i64,
+    /// Charge the legs draw per 100 ticks of walking.
+    pub stride_charge_per_100_ticks: i64,
+    /// Lamps, per floor, per 100 ticks, after dark.
+    pub light_charge_per_100_ticks_per_floor: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransportBalance {
+    /// Ticks a stop costs before anyone has moved.
+    pub dwell_base_ticks: u32,
+    /// Extra ticks per unit boarding or alighting.
+    pub dwell_per_unit_ticks: u32,
+    /// An idle car waits for this many callers before departing.
+    pub dispatch_threshold: u8,
+    /// …unless someone has been waiting this long, whichever is first.
+    pub dispatch_max_wait_ticks: u32,
+    /// Ticks added to a stairs estimate when the flight is full, so
+    /// crew route around a congested staircase.
+    pub queue_penalty_ticks: u32,
+    /// Ticks a crew member is assumed to wait for a car, before the
+    /// car's actual position is taken into account.
+    pub elevator_base_wait_ticks: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,13 +356,18 @@ pub struct Content {
     pub items: Vec<ItemDef>,
     /// Sorted by `id`; `RoomIdx` indexes this.
     pub rooms: Vec<RoomDef>,
+    /// Sorted by `id`; `ShaftIdx` indexes this.
+    pub shafts: Vec<ShaftDef>,
     /// Sorted by `id`; `TerrainIdx` indexes this.
     pub terrain: Vec<TerrainDef>,
+    /// Sorted by time of day, not by id; `DaypartIdx` indexes this.
+    pub dayparts: Vec<DaypartDef>,
     /// XXH3 of every pack byte, path-ordered. Stamped into replays.
     pub content_hash: u64,
     /// Pre-resolved room recipes and costs, so no system ever touches a
     /// string during a tick.
     pub room_runtime: Vec<RoomRuntime>,
+    pub shaft_runtime: Vec<ShaftRuntime>,
     pub terrain_runtime: Vec<TerrainRuntime>,
 }
 
@@ -231,12 +383,23 @@ pub struct RoomRuntime {
     pub intake_buffer_max: i64,
     pub shelves: u8,
     pub per_shelf: i64,
+    /// Fuel item and inbox size for a burner. Sized from the recipe
+    /// rather than authored: six burns of runway is enough to ride out
+    /// a delayed haul without hiding a persistent shortfall.
+    pub burner_fuel: Option<(ItemIdx, i64)>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TerrainRuntime {
     pub yield_pct: i64,
+    pub sun_pct: i64,
     pub weight: i64,
+}
+
+/// A shaft definition with its costs resolved to indices.
+#[derive(Debug, Clone)]
+pub struct ShaftRuntime {
+    pub build_cost: Vec<(ItemIdx, i64)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -304,7 +467,9 @@ impl Content {
         let balance = parse_one::<Balance>(source, "balance.ron", &mut errors, &mut hasher);
         let mut items = parse_dir::<ItemDef>(source, "items", &mut errors, &mut hasher);
         let mut rooms = parse_dir::<RoomDef>(source, "rooms", &mut errors, &mut hasher);
+        let mut shafts = parse_dir::<ShaftDef>(source, "shafts", &mut errors, &mut hasher);
         let mut terrain = parse_dir::<TerrainDef>(source, "terrain", &mut errors, &mut hasher);
+        let mut dayparts = parse_dir::<DaypartDef>(source, "dayparts", &mut errors, &mut hasher);
 
         if !errors.is_empty() {
             return Err(errors);
@@ -314,7 +479,11 @@ impl Content {
         // and never of directory-walk order.
         items.sort_by(|a, b| a.id.cmp(&b.id));
         rooms.sort_by(|a, b| a.id.cmp(&b.id));
+        shafts.sort_by(|a, b| a.id.cmp(&b.id));
         terrain.sort_by(|a, b| a.id.cmp(&b.id));
+        // Dayparts are the exception: they index by time of day, not by
+        // name, so the day would run out of order if sorted by id.
+        dayparts.sort_by_key(|part| part.start_permille);
 
         let Some(balance) = balance else {
             return Err(vec![LoadError {
@@ -327,9 +496,12 @@ impl Content {
             balance,
             items,
             rooms,
+            shafts,
             terrain,
+            dayparts,
             content_hash: hasher.digest(),
             room_runtime: Vec::new(),
+            shaft_runtime: Vec::new(),
             terrain_runtime: Vec::new(),
         };
 
@@ -361,11 +533,68 @@ impl Content {
     }
 
     #[must_use]
+    pub fn shaft_idx(&self, id: &str) -> Option<ShaftIdx> {
+        self.shafts
+            .binary_search_by(|probe| probe.id.as_str().cmp(id))
+            .ok()
+            .map(|i| ShaftIdx(i as u16))
+    }
+
+    #[must_use]
     pub fn terrain_idx(&self, id: &str) -> Option<TerrainIdx> {
         self.terrain
             .binary_search_by(|probe| probe.id.as_str().cmp(id))
             .ok()
             .map(|i| TerrainIdx(i as u16))
+    }
+
+    #[must_use]
+    pub fn shaft(&self, idx: ShaftIdx) -> &ShaftDef {
+        &self.shafts[idx.get()]
+    }
+
+    #[must_use]
+    pub fn shaft_rt(&self, idx: ShaftIdx) -> &ShaftRuntime {
+        &self.shaft_runtime[idx.get()]
+    }
+
+    #[must_use]
+    pub fn daypart(&self, idx: DaypartIdx) -> &DaypartDef {
+        &self.dayparts[idx.get()]
+    }
+
+    /// Which daypart a per-mille of the day falls in.
+    #[must_use]
+    pub fn daypart_at(&self, permille: i64) -> DaypartIdx {
+        let mut found = 0u16;
+        for (i, part) in self.dayparts.iter().enumerate() {
+            if part.start_permille <= permille {
+                found = i as u16;
+            }
+        }
+        DaypartIdx(found)
+    }
+
+    /// Sunlight as a percentage, interpolated between the anchors in
+    /// `balance.clock.sun_curve`. Integer maths throughout.
+    #[must_use]
+    pub fn sun_pct_at(&self, permille: i64) -> i64 {
+        let curve = &self.balance.clock.sun_curve;
+        let Some(first) = curve.first() else {
+            return 0;
+        };
+        if permille <= first.0 {
+            return first.1;
+        }
+        for pair in curve.windows(2) {
+            let (x0, y0) = pair[0];
+            let (x1, y1) = pair[1];
+            if permille < x1 {
+                let span = (x1 - x0).max(1);
+                return y0 + (y1 - y0) * (permille - x0) / span;
+            }
+        }
+        curve.last().map_or(0, |last| last.1)
     }
 
     #[must_use]
@@ -441,6 +670,13 @@ impl Content {
                 None => (0, 0),
             };
 
+            let burner_fuel = room.burner.as_ref().map(|burner| {
+                (
+                    lookup(&burner.fuel, "burner fuel"),
+                    burner.fuel_per_burn * 6,
+                )
+            });
+
             room_runtime.push(RoomRuntime {
                 build_cost,
                 recipe_inputs,
@@ -451,15 +687,37 @@ impl Content {
                 intake_buffer_max,
                 shelves,
                 per_shelf,
+                burner_fuel,
             });
         }
         self.room_runtime = room_runtime;
+
+        let mut shaft_runtime = Vec::with_capacity(self.shafts.len());
+        for shaft in &self.shafts {
+            let build_cost = shaft
+                .build_cost
+                .iter()
+                .map(|cost| match self.item_idx(&cost.item) {
+                    Some(idx) => (idx, cost.amount),
+                    None => {
+                        errors.push(LoadError {
+                            path: shaft.id.clone(),
+                            message: format!("build_cost references unknown item {}", cost.item),
+                        });
+                        (ItemIdx(0), cost.amount)
+                    }
+                })
+                .collect();
+            shaft_runtime.push(ShaftRuntime { build_cost });
+        }
+        self.shaft_runtime = shaft_runtime;
 
         self.terrain_runtime = self
             .terrain
             .iter()
             .map(|band| TerrainRuntime {
                 yield_pct: band.yield_pct,
+                sun_pct: band.sun_pct,
                 weight: band.weight,
             })
             .collect();
@@ -549,12 +807,37 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
                 message: "intake ticks_per_item must be positive".into(),
             });
         }
+        if let Some(burner) = &def.burner {
+            if content.item_idx(&burner.fuel).is_none() {
+                errors.push(LoadError {
+                    path: path.clone(),
+                    message: format!("burner fuel references unknown item {}", burner.fuel),
+                });
+            }
+            if burner.burn_ticks == 0 || burner.charge_per_burn <= 0 || burner.fuel_per_burn <= 0 {
+                errors.push(LoadError {
+                    path: path.clone(),
+                    message: "a burner must consume fuel and produce charge over time".into(),
+                });
+            }
+        }
+        if let Some(bank) = &def.bank
+            && bank.capacity <= 0
+        {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "a cell bank must hold something".into(),
+            });
+        }
         // Every category must actually be wired to a system, or it is
         // content with no consumer — the v1 failure mode.
         let wired = match def.category {
             RoomCategory::Intake => def.intake.is_some(),
             RoomCategory::Production => def.recipe.is_some(),
             RoomCategory::Storage => def.storage.is_some(),
+            RoomCategory::Energy => {
+                def.solar.is_some() || def.burner.is_some() || def.bank.is_some()
+            }
             RoomCategory::Heart => true,
         };
         if !wired {
@@ -609,6 +892,126 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
         errors.push(LoadError {
             path: "balance.ron".into(),
             message: "crew movement rates must be positive".into(),
+        });
+    }
+
+    validate_shafts(content, errors);
+    validate_clock(content, errors);
+}
+
+fn validate_shafts(content: &Content, errors: &mut Vec<LoadError>) {
+    if content.shafts.is_empty() {
+        errors.push(LoadError {
+            path: "shafts".into(),
+            message: "pack defines no vertical transport".into(),
+        });
+    }
+    // Stairs are the baseline everything else is measured against, and
+    // the starting tower assumes one exists.
+    if !content
+        .shafts
+        .iter()
+        .any(|shaft| shaft.kind == ShaftKind::Stairs)
+    {
+        errors.push(LoadError {
+            path: "shafts".into(),
+            message: "pack defines no stairs".into(),
+        });
+    }
+
+    for shaft in &content.shafts {
+        let path = shaft.id.clone();
+        if shaft.ticks_per_floor == 0 {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "ticks_per_floor must be positive".into(),
+            });
+        }
+        if shaft.min_span < 1 {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "min_span must be at least 1".into(),
+            });
+        }
+        if shaft.max_span != 0 && shaft.max_span < shaft.min_span {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "max_span is below min_span".into(),
+            });
+        }
+        if shaft.capacity == 0 {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "capacity must be positive".into(),
+            });
+        }
+        match shaft.kind {
+            ShaftKind::Elevator if shaft.cars == 0 => errors.push(LoadError {
+                path,
+                message: "an elevator with no cars cannot carry anyone".into(),
+            }),
+            ShaftKind::Dumbwaiter if shaft.cars == 0 || shaft.batch <= 0 => {
+                errors.push(LoadError {
+                    path,
+                    message: "a dumbwaiter needs a car and a batch size".into(),
+                });
+            }
+            _ => {}
+        }
+    }
+}
+
+fn validate_clock(content: &Content, errors: &mut Vec<LoadError>) {
+    let clock = &content.balance.clock;
+    if clock.ticks_per_day == 0 {
+        errors.push(LoadError {
+            path: "balance.ron".into(),
+            message: "ticks_per_day must be positive".into(),
+        });
+    }
+    if clock.sun_curve.len() < 2 {
+        errors.push(LoadError {
+            path: "balance.ron".into(),
+            message: "sun_curve needs at least two anchors to interpolate".into(),
+        });
+    }
+    if clock
+        .sun_curve
+        .windows(2)
+        .any(|pair| pair[0].0 >= pair[1].0)
+    {
+        errors.push(LoadError {
+            path: "balance.ron".into(),
+            message: "sun_curve anchors must be strictly increasing in time".into(),
+        });
+    }
+
+    if content.dayparts.is_empty() {
+        errors.push(LoadError {
+            path: "dayparts".into(),
+            message: "pack defines no dayparts".into(),
+        });
+    }
+    // The first daypart has to start at the top of the day, or there is
+    // a stretch of time that belongs to nothing.
+    if content
+        .dayparts
+        .first()
+        .is_some_and(|part| part.start_permille != 0)
+    {
+        errors.push(LoadError {
+            path: "dayparts".into(),
+            message: "the first daypart must start at permille 0".into(),
+        });
+    }
+    if content
+        .dayparts
+        .windows(2)
+        .any(|pair| pair[0].start_permille == pair[1].start_permille)
+    {
+        errors.push(LoadError {
+            path: "dayparts".into(),
+            message: "two dayparts start at the same moment".into(),
         });
     }
 }

@@ -4,7 +4,9 @@
 //! itself, and the crew inside it. Everything here serialises, contains
 //! no floating point, and iterates in a fixed order.
 
+pub mod clock;
 pub mod crew;
+pub mod power;
 pub mod tower;
 pub mod world;
 
@@ -14,8 +16,12 @@ use crate::content::Content;
 use crate::ids::{CrewId, ItemIdx, RoomId, ShaftId};
 use crate::rng::RngStreams;
 
-pub use crew::{Crew, CrewState, HaulDestination, HaulTask};
-pub use tower::{Floor, Room, Shaft, ShaftKind, Shelf, Stack, Tower};
+pub use clock::Clock;
+pub use crew::{Crew, CrewState, HaulDestination, HaulPickup, HaulTask};
+pub use power::Power;
+pub use tower::{
+    Car, CarDir, CarState, Floor, Room, Shaft, ShaftPriority, ShaftProgram, Shelf, Stack, Tower,
+};
 pub use world::{Feature, TerrainBand, World};
 
 /// How fast wall-clock time maps to simulation ticks. Has no effect on
@@ -55,9 +61,15 @@ pub struct GameState {
     pub seed: u64,
     pub speed: SimSpeed,
     pub rng: RngStreams,
+    pub clock: Clock,
+    pub power: Power,
     pub world: World,
     pub tower: Tower,
     pub crew: Vec<Crew>,
+    /// Whether the legs are running. Halting banks the charge striding
+    /// would have burned — the bank-or-burn decision in its simplest
+    /// form. M3 turns this into a continuous throttle.
+    pub walking: bool,
     pub stats: RunStats,
     /// Monotonic allocators. Never reuse an ID, even after removal —
     /// a stale reference should fail to resolve, not silently alias.
@@ -78,14 +90,17 @@ impl GameState {
             tick: 0,
             seed,
             speed: SimSpeed::Paused,
+            clock: Clock::new(),
+            power: Power::new(balance.power.starting_charge),
             world: World::new(&mut rng.world, content),
             tower: Tower::new(content),
             crew: Vec::new(),
+            walking: true,
             stats: RunStats::default(),
             rng,
             next_room_id: 1,
             next_crew_id: 1,
-            next_shaft_id: 1,
+            next_shaft_id: 2,
         };
 
         state.place_starting_rooms(content);
@@ -98,13 +113,16 @@ impl GameState {
 
     /// The opening tower, laid out so the very first haul is a climb:
     /// the cutter arm is on the ground and the mill it feeds is two
-    /// floors up.
+    /// floors up. Sails go on the roof, where they will keep needing to
+    /// be moved every time the tower grows.
     fn place_starting_rooms(&mut self, content: &Content) {
-        const LAYOUT: [(&str, u8, u8); 4] = [
+        const LAYOUT: [(&str, u8, u8); 6] = [
             ("room.heartseed", 0, 1),
             ("room.cutter_arm", 0, 4),
             ("room.storeroom", 1, 3),
+            ("room.cell_bank", 1, 5),
             ("room.mill", 2, 3),
+            ("room.canopy_sails", 3, 3),
         ];
         for (room_id, floor, slot) in LAYOUT {
             let Some(idx) = content.room_idx(room_id) else {

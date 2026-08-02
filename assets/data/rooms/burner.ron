@@ -1,0 +1,23 @@
+// The dirty fallback. Turns the contested building material into
+// power — burn your poles or build with them. Available at night when
+// the sails give nothing; from M2 its smoke raises provocation, which
+// is what stops it being a free answer.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.burner",
+    name: "Burner",
+    short: "BRN",
+    category: Energy,
+    width: 2,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
+    burner: BurnerDef(
+        fuel: "item.bamboo",
+        // 100 charge per 100 ticks sustained — close to a sail room's
+        // full-day average in good sun, but paid for in bamboo at
+        // roughly 2.4x the mill's own appetite for the same stalks. A
+        // genuine option, not a trap and not a free win.
+        fuel_per_burn: 2,
+        charge_per_burn: 100,
+        burn_ticks: 100,
+    ),
+)

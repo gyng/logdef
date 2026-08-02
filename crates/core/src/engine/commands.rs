@@ -6,10 +6,10 @@
 //! run exactly.
 
 use crate::command::{CommandError, GameCommand};
-use crate::content::{Content, RoomCategory};
-use crate::ids::{FloorIdx, ItemIdx, SlotIdx};
+use crate::content::{Content, RoomCategory, ShaftKind};
+use crate::ids::{FloorIdx, ItemIdx, ShaftId, SlotIdx};
 use crate::state::tower::{Floor, Room};
-use crate::state::{GameState, Tower};
+use crate::state::{Car, GameState, Shaft, ShaftProgram, Tower};
 
 pub fn apply(
     state: &mut GameState,
@@ -26,7 +26,181 @@ pub fn apply(
             place_room(state, content, room, *floor, *slot)
         }
         GameCommand::RemoveRoom { floor, slot } => remove_room(state, content, *floor, *slot),
+        GameCommand::SetRoomActive {
+            floor,
+            slot,
+            active,
+        } => set_room_active(state, *floor, *slot, *active),
+        GameCommand::BuildShaft {
+            shaft,
+            low,
+            high,
+            slot,
+        } => build_shaft(state, content, shaft, *low, *high, *slot),
+        GameCommand::RemoveShaft { id } => remove_shaft(state, *id),
+        GameCommand::SetShaftProgram {
+            id,
+            daypart,
+            served,
+            priority,
+        } => set_shaft_program(state, content, *id, *daypart, served, *priority),
+        GameCommand::SetStriding { walking } => {
+            state.walking = *walking;
+            Ok(())
+        }
     }
+}
+
+fn set_room_active(
+    state: &mut GameState,
+    floor: FloorIdx,
+    slot: SlotIdx,
+    active: bool,
+) -> Result<(), CommandError> {
+    let Some(target) = state.tower.floor_mut(floor) else {
+        return Err(CommandError::NoSuchFloor { floor });
+    };
+    let Some(room) = target.rooms.iter_mut().find(|room| room.covers(slot)) else {
+        return Err(CommandError::NoRoomThere { floor, slot });
+    };
+    room.active = active;
+    Ok(())
+}
+
+fn build_shaft(
+    state: &mut GameState,
+    content: &Content,
+    shaft_id: &str,
+    low: FloorIdx,
+    high: FloorIdx,
+    slot: SlotIdx,
+) -> Result<(), CommandError> {
+    let Some(def_idx) = content.shaft_idx(shaft_id) else {
+        return Err(CommandError::UnknownShaft {
+            shaft: shaft_id.to_string(),
+        });
+    };
+    let def = content.shaft(def_idx);
+
+    if high <= low {
+        return Err(CommandError::BadSpan {
+            low,
+            high,
+            min_span: def.min_span,
+            max_span: def.max_span,
+        });
+    }
+    let top = state.tower.top_floor();
+    if high > top {
+        return Err(CommandError::NoSuchFloor { floor: high });
+    }
+
+    // Span counts both ends, so a two-floor shaft spans floors n and
+    // n+1 — which is what a player means by "two floors".
+    let span = high - low + 1;
+    if span < def.min_span || (def.max_span != 0 && span > def.max_span) {
+        return Err(CommandError::BadSpan {
+            low,
+            high,
+            min_span: def.min_span,
+            max_span: def.max_span,
+        });
+    }
+
+    // The column has to be clear on every floor it passes through.
+    for floor in low..=high {
+        if state.tower.slot_range_blocked(floor, slot, 1) {
+            return Err(CommandError::SlotOccupied { floor, slot });
+        }
+    }
+
+    let cost = content.shaft_rt(def_idx).build_cost.clone();
+    check_stock(state, content, &cost)?;
+    spend(state, &cost);
+
+    let id = state.alloc_shaft_id();
+    let dayparts = content.dayparts.len().max(1);
+    let floors = content.balance.tower.max_floors as usize;
+    let cars = (0..def.cars)
+        .map(|_| {
+            let mut car = Car::new();
+            car.pos = crate::fx::Fx::from_int(i32::from(low));
+            car
+        })
+        .collect();
+
+    state.tower.shafts.push(Shaft {
+        id,
+        def: def_idx,
+        kind: def.kind,
+        low,
+        high,
+        slot,
+        capacity: def.capacity,
+        riders: 0,
+        cars,
+        programs: vec![ShaftProgram::all_floors(floors); dayparts],
+    });
+    Ok(())
+}
+
+fn remove_shaft(state: &mut GameState, id: ShaftId) -> Result<(), CommandError> {
+    let Some(position) = state.tower.shafts.iter().position(|shaft| shaft.id == id) else {
+        return Err(CommandError::NoSuchShaft { id });
+    };
+    // The built-in stairs are the baseline every route falls back to.
+    // Without them a crew member could be stranded on a floor with no
+    // way down, which is not a decision, just a soft lock.
+    if state.tower.shafts[position].kind == ShaftKind::Stairs {
+        return Err(CommandError::Undemolishable {
+            room: "the stairs".into(),
+        });
+    }
+
+    state.tower.shafts.remove(position);
+
+    // Anyone waiting for, or riding, that shaft is put back on their
+    // own two feet where they stand. Nothing they carry is lost.
+    for member in &mut state.crew {
+        let affected = match member.state {
+            crate::state::CrewState::Boarding { shaft, .. }
+            | crate::state::CrewState::Climbing { shaft, .. }
+            | crate::state::CrewState::Riding { shaft, .. } => shaft == id,
+            _ => false,
+        };
+        if affected {
+            let (floor, slot) = (member.floor(), member.slot());
+            member.snap_to(floor, slot);
+            member.state = crate::state::CrewState::Idle;
+        }
+    }
+    Ok(())
+}
+
+fn set_shaft_program(
+    state: &mut GameState,
+    content: &Content,
+    id: ShaftId,
+    daypart: u16,
+    served: &[bool],
+    priority: crate::state::ShaftPriority,
+) -> Result<(), CommandError> {
+    if daypart as usize >= content.dayparts.len() {
+        return Err(CommandError::NoSuchDaypart { daypart });
+    }
+    let Some(shaft) = state.tower.shaft_mut(id) else {
+        return Err(CommandError::NoSuchShaft { id });
+    };
+    let Some(program) = shaft.programs.get_mut(daypart as usize) else {
+        return Err(CommandError::NoSuchDaypart { daypart });
+    };
+    // Keep the stored length: a program is indexed by floor, and the
+    // tower can grow after the player last edited it.
+    for (index, slot) in program.served.iter_mut().enumerate() {
+        *slot = served.get(index).copied().unwrap_or(true);
+    }
+    program.priority = priority;
+    Ok(())
 }
 
 fn build_floor(state: &mut GameState, content: &Content) -> Result<(), CommandError> {

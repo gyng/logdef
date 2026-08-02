@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Pinned to an exact stable release (not the floating `stable` channel)
+# so a new Rust release can't silently change what CI enforces. Bump
+# deliberately; edition 2024 (Cargo.toml) needs 1.85+.
+env:
+  RUST_TOOLCHAIN: 1.97.1
+
+jobs:
+  # Native leg of the determinism/parity gate: `cargo test` replays the
+  # embedded golden fixture (assets/replays/m0-golden.json) on the host
+  # platform. See docs/DECISIONS.md §5 and the `frontend` job below for
+  # the other half of the same guarantee.
+  rust:
+    name: Rust (fmt, clippy, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt --all --check
+        run: cargo fmt --all --check
+
+      - name: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
+
+      # This is half of the native/wasm parity gate (docs/DECISIONS.md §5):
+      # `cargo test` includes `verify_golden_replay()`, which replays
+      # assets/replays/m0-golden.json (embedded via include_str!) natively
+      # and checks every checkpointed state hash. The `frontend` job's
+      # Playwright smoke test replays the exact same embedded bytes inside
+      # the wasm build running in a real browser. Neither leg proves
+      # native/wasm parity on its own — only both passing together does,
+      # so this job must never gain a `needs:` on the other or vice versa.
+      - name: cargo test
+        run: cargo test
+
+  # Wasm leg of the same parity gate, plus frontend code quality. Builds
+  # the WASM bridge and runs the app for real in a browser via Playwright.
+  frontend:
+    name: Frontend (typecheck, lint, format, e2e)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      # wasm-pack installed via the official install script rather than
+      # jetli/wasm-pack-action: the script is maintained by the wasm-pack
+      # project itself (not a third-party action wrapper), fetches a
+      # prebuilt binary (no from-source cargo install compile time), and
+      # keeps one less third-party Action in the trust chain.
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      # Same invocation as `make wasm` (Makefile) — optimized build, output
+      # straight into web/pkg where the frontend imports it from.
+      - name: Build WASM bridge
+        run: wasm-pack build crates/bridge --target web --out-dir ../../web/pkg
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci
+        working-directory: web
+        run: npm ci
+
+      - name: npm run typecheck
+        working-directory: web
+        run: npm run typecheck
+
+      - name: npm run lint
+        working-directory: web
+        run: npm run lint
+
+      - name: npm run format:check
+        working-directory: web
+        run: npm run format:check
+
+      - name: Install Playwright's Chromium + OS deps
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      # Only e2e/smoke.spec.ts. playwright.config.ts's testDir (./e2e)
+      # picks up every *.spec.ts file including e2e/capture.spec.ts, which
+      # is a screenshot harness, not a test (see its own file header) —
+      # it writes stills for a human to look at and has no assertions.
+      # Pointing the runner at the one real spec file is the least
+      # surprising way to exclude it without editing playwright.config.ts
+      # (out of scope for this change) to add a testIgnore pattern.
+      #
+      # This is the wasm half of the native/wasm parity gate described in
+      # the `rust` job above: smoke.spec.ts's "wasm and native agree on
+      # every state hash" test calls verifyGolden() against the same
+      # embedded fixture the native `cargo test` run just verified. Both
+      # legs passing, in two independent jobs, is the actual guarantee.
+      - name: Playwright smoke test
+        working-directory: web
+        run: npx playwright test e2e/smoke.spec.ts --reporter=list,html
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore

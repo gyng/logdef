@@ -31,7 +31,12 @@ Balance(
         starting_stock: [CostEntryDef(item: "item.poles", amount: 10)],
     ),
     crew: CrewBalance(
-        starting_crew: 2,
+        // Three, not two. Two crew on a one-body staircase queue, but
+        // only just — measured throughput barely moved when a second
+        // shaft was added, which made M1's whole sprint question
+        // unanswerable. Three puts real pressure on the stairs and
+        // makes relieving them worth the poles.
+        starting_crew: 3,
         // 0.4s per slot: crossing an 8-wide floor costs about 3
         // seconds, enough that where you put things matters.
         walk_ticks_per_slot: 12,
@@ -43,5 +48,79 @@ Balance(
         carry_capacity: 3,
         // Two seconds blocked and the cross-section tints them red.
         stress_ticks: 60,
+    ),
+    clock: ClockBalance(
+        // 8 minutes at 1x, 2 minutes at 4x — about 20 day cycles
+        // across a 3-hour run, enough for the sun/route tension to
+        // repeat many times without a single day feeling like the
+        // whole session.
+        ticks_per_day: 14400,
+        // (permille_of_day, sun_pct) anchors, linearly interpolated.
+        // Dark for the first tenth of the day, rising through the
+        // morning, peak at midday, falling away by dusk, dark again
+        // for the last fifteenth. A curve, not a staircase, so no
+        // daypart boundary reads as a lighting bug.
+        sun_curve: [
+            (0, 0),
+            (100, 0),
+            (200, 40),
+            (400, 90),
+            (500, 100),
+            (700, 60),
+            (850, 10),
+            (1000, 0),
+        ],
+        // Below 20% exposure the tower needs lamps lit. Against the
+        // curve above, that's roughly the last third of the day —
+        // long enough that unlit floors are a real cost, short enough
+        // that a competent tower shrugs it off most nights.
+        night_light_threshold: 20,
+    ),
+    power: PowerBalance(
+        // Enough to outlast the dark stretch at the top of a fresh
+        // run (tick 0 is predawn) — a starting tower's base draw
+        // (stride + lighting four floors) is ~0.28 charge/tick, so
+        // 800 covers the ~2,200 ticks until real daylight with room
+        // to spare, but nowhere near enough to also run a thornwright
+        // unattended.
+        starting_charge: 800,
+        // Continuous striding costs 2,880 charge across a full day —
+        // real money next to a two-sail day's ~20,000 income, but not
+        // so much that walking is unaffordable. Visible and ongoing,
+        // which is what makes stopping to bank a genuine choice.
+        stride_charge_per_100_ticks: 20,
+        // Small per floor, but multiplies with height: an 8-floor
+        // tower lit through a full night spends ~760 charge, enough
+        // that a brown-out reads as "the tower outgrew what it can
+        // light."
+        light_charge_per_100_ticks_per_floor: 2,
+    ),
+    transport: TransportBalance(
+        // A third of a second of doors-and-landing overhead before
+        // anyone moves — enough to read as a stop, not enough to make
+        // every trip feel like a wait.
+        dwell_base_ticks: 10,
+        // Cheaper than a full load_ticks/unload_ticks (15) — boarding
+        // a car is simpler than working a shelf — but a full 4-unit
+        // car still adds 24 ticks to a stop, visibly slower than an
+        // empty one.
+        dwell_per_unit_ticks: 6,
+        // Matches starting_crew: with two crew, a car that leaves for
+        // the first caller would never show contention at all, which
+        // is the exact thing M1's sprint question is testing.
+        dispatch_threshold: 2,
+        // 3 seconds. A lone caller on a quiet floor still gets
+        // served — batching creates the queue, it shouldn't strand
+        // anyone.
+        dispatch_max_wait_ticks: 90,
+        // 2 seconds added to a stairs estimate at capacity — enough
+        // to make crew prefer a second shaft once one exists, without
+        // making one occupied staircase look catastrophic.
+        queue_penalty_ticks: 60,
+        // 1.5 seconds, a rough midpoint between "the car is right
+        // here" and "the car is at the far end of its run" — the
+        // estimate crew use before the car's actual position
+        // sharpens it.
+        elevator_base_wait_ticks: 45,
     ),
 )

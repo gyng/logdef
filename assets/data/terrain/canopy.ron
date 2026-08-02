@@ -5,6 +5,9 @@ TerrainDef(
     id: "terrain.canopy",
     name: "Dense Canopy",
     yield_pct: 140,
+    // Poorest sun of the three bands — richest for biomass, weakest for
+    // charge. No band gets to be good at both.
+    sun_pct: 35,
     weight: 40,
     features_per_100_paces: 22,
     feature_kinds: ["tree", "tree", "fern", "vine"],

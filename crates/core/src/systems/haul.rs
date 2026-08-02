@@ -15,9 +15,9 @@
 //! * **Two crew never chase the same crate.** Assignment subtracts what
 //!   other crew have already committed to, at both ends of the trip.
 
-use crate::content::Content;
+use crate::content::{Content, ShaftKind};
 use crate::fx::Fx;
-use crate::ids::{FloorIdx, ItemIdx, RoomId, ShaftId, SlotIdx};
+use crate::ids::{DaypartIdx, FloorIdx, ItemIdx, RoomId, ShaftId, SlotIdx};
 use crate::state::crew::HaulPickup;
 use crate::state::{Crew, CrewState, GameState, HaulDestination, HaulTask, Tower};
 
@@ -28,12 +28,22 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     // is also borrowed mutably. `take` on a Vec is a pointer move.
     let mut crew = std::mem::take(&mut state.crew);
     let mut hauls = 0u64;
+    let daypart = state.clock.daypart(content);
+    let queues = shaft_queues(&crew, &state.tower);
 
     for member in &mut crew {
-        advance(member, &mut state.tower, content, sounds, &mut hauls);
+        advance(
+            member,
+            &mut state.tower,
+            content,
+            &queues,
+            daypart,
+            sounds,
+            &mut hauls,
+        );
     }
 
-    assign_idle(&mut crew, &state.tower, content);
+    assign_idle(&mut crew, &state.tower, content, &queues, daypart);
 
     state.crew = crew;
     state.stats.hauls_completed += hauls;
@@ -47,6 +57,8 @@ fn advance(
     crew: &mut Crew,
     tower: &mut Tower,
     content: &Content,
+    queues: &[u32],
+    daypart: DaypartIdx,
     sounds: &mut Vec<SoundEvent>,
     hauls: &mut u64,
 ) {
@@ -56,6 +68,12 @@ fn advance(
         CrewState::Idle => {
             // Assignment happens in a second pass so every crew member
             // sees the same picture of demand.
+        }
+
+        CrewState::Riding { .. } => {
+            // Cargo. The transport system moves them and opens the
+            // doors; there is nothing for the crew member to do.
+            crew.wait_ticks = 0;
         }
 
         CrewState::Walking { to_slot } => {
@@ -71,20 +89,31 @@ fn advance(
             };
             if arrived {
                 crew.slot_fx = target;
-                crew.state = next_leg(crew, tower, content);
+                crew.state = next_leg(crew, tower, content, queues, daypart);
             }
         }
 
         CrewState::Boarding { shaft, to_floor } => {
+            let kind = tower.shaft(shaft).map(|s| s.kind);
             if crew.task.is_none() {
                 // The room they were headed for was demolished while
                 // they queued. Step out of the line.
                 crew.state = CrewState::Idle;
-            } else if claim_shaft(tower, shaft) {
-                crew.wait_ticks = 0;
-                crew.state = CrewState::Climbing { shaft, to_floor };
+            } else if kind == Some(ShaftKind::Stairs) {
+                if claim_shaft(tower, shaft) {
+                    crew.wait_ticks = 0;
+                    crew.state = CrewState::Climbing { shaft, to_floor };
+                } else {
+                    // The bottleneck, made visible. No dashboard needed.
+                    crew.wait_ticks = crew.wait_ticks.saturating_add(1);
+                }
+            } else if kind.is_none() {
+                // The shaft was demolished out from under them.
+                crew.state = CrewState::Idle;
             } else {
-                // The bottleneck, made visible. No dashboard needed.
+                // Waiting for a car. Boarding is the transport system's
+                // job; all that happens here is the wait accumulating,
+                // which is what tints them red.
                 crew.wait_ticks = crew.wait_ticks.saturating_add(1);
             }
         }
@@ -103,7 +132,7 @@ fn advance(
             if arrived {
                 crew.floor_fx = target;
                 release_shaft(tower, shaft);
-                crew.state = next_leg(crew, tower, content);
+                crew.state = next_leg(crew, tower, content, queues, daypart);
             }
         }
 
@@ -117,7 +146,7 @@ fn advance(
             }
             if collect(crew, tower) {
                 sounds.push(SoundEvent::Pickup);
-                crew.state = next_leg(crew, tower, content);
+                crew.state = next_leg(crew, tower, content, queues, daypart);
             } else {
                 // Somebody else got there first, or the room emptied.
                 crew.task = None;
@@ -147,7 +176,13 @@ fn advance(
 }
 
 /// Decide the next leg for a crew member who just finished one.
-fn next_leg(crew: &Crew, tower: &Tower, content: &Content) -> CrewState {
+fn next_leg(
+    crew: &Crew,
+    tower: &Tower,
+    content: &Content,
+    queues: &[u32],
+    daypart: DaypartIdx,
+) -> CrewState {
     let balance = &content.balance.crew;
     let Some(task) = &crew.task else {
         return CrewState::Idle;
@@ -182,7 +217,7 @@ fn next_leg(crew: &Crew, tower: &Tower, content: &Content) -> CrewState {
         };
     }
 
-    let Some(shaft) = best_shaft(tower, floor, target_floor) else {
+    let Some(shaft) = best_shaft(tower, content, queues, daypart, floor, target_floor) else {
         // Nothing spans this trip. The assignment pass filters for
         // reachability, so this is belt and braces.
         return CrewState::Idle;
@@ -197,15 +232,56 @@ fn next_leg(crew: &Crew, tower: &Tower, content: &Content) -> CrewState {
     }
 }
 
-/// Fastest shaft covering the trip. Stairs are all there is in M0, so
-/// this just picks the first that spans it; M1's dumbwaiters and
-/// elevators sort by speed here.
-fn best_shaft(tower: &Tower, from: FloorIdx, to: FloorIdx) -> Option<ShaftId> {
+/// Pick the shaft that gets this crew member up fastest.
+///
+/// The estimate does not have to be right — it has to be deterministic
+/// and roughly sensible, so that a player who builds an elevator sees
+/// the crew start using it, and a player whose staircase is jammed sees
+/// them route around it.
+fn best_shaft(
+    tower: &Tower,
+    content: &Content,
+    queues: &[u32],
+    daypart: DaypartIdx,
+    from: FloorIdx,
+    to: FloorIdx,
+) -> Option<ShaftId> {
     tower
         .shafts
         .iter()
-        .find(|shaft| shaft.covers_trip(from, to))
-        .map(|shaft| shaft.id)
+        .enumerate()
+        // Crew cannot ride a dumbwaiter, however convenient it looks.
+        .filter(|(_, shaft)| shaft.kind != ShaftKind::Dumbwaiter)
+        .filter(|(_, shaft)| shaft.serves_trip(from, to, daypart))
+        .min_by_key(|(index, shaft)| {
+            let queued = queues.get(*index).copied().unwrap_or(0);
+            (
+                super::transport::estimated_trip_ticks(shaft, content, from, to, queued),
+                // Stable tie-break, so two equal shafts don't flap.
+                shaft.id.0,
+            )
+        })
+        .map(|(_, shaft)| shaft.id)
+}
+
+/// How many crew are queued at each shaft, parallel to `tower.shafts`.
+///
+/// Computed once at the top of the tick and handed down, because a crew
+/// member choosing a route needs to see the whole queue picture while
+/// the borrow checker only lets them see themselves. Last tick's
+/// picture is fine — and deterministic, which matters more.
+fn shaft_queues(crew: &[Crew], tower: &Tower) -> Vec<u32> {
+    tower
+        .shafts
+        .iter()
+        .map(|shaft| {
+            crew.iter()
+                .filter(|member| {
+                    matches!(member.state, CrewState::Boarding { shaft: at, .. } if at == shaft.id)
+                })
+                .count() as u32
+        })
+        .collect()
 }
 
 fn claim_shaft(tower: &mut Tower, id: ShaftId) -> bool {
@@ -321,9 +397,25 @@ const PRIORITY_INBOX: i64 = 3;
 /// Priority of putting something on a shelf.
 const PRIORITY_SHELF: i64 = 2;
 
-fn assign_idle(crew: &mut [Crew], tower: &Tower, content: &Content) {
+fn assign_idle(
+    crew: &mut [Crew],
+    tower: &Tower,
+    content: &Content,
+    queues: &[u32],
+    daypart: DaypartIdx,
+) {
     for i in 0..crew.len() {
         if !matches!(crew[i].state, CrewState::Idle) {
+            continue;
+        }
+
+        // Idle but still committed: they have just stepped off a car
+        // part-way through a journey. Pick the trip back up rather than
+        // re-deciding it, or a crew member could ride an elevator and
+        // then immediately choose a different errand.
+        if crew[i].task.is_some() {
+            let next = next_leg(&crew[i], tower, content, queues, daypart);
+            crew[i].state = next;
             continue;
         }
 
@@ -341,16 +433,22 @@ fn assign_idle(crew: &mut [Crew], tower: &Tower, content: &Content) {
                 },
             )
         } else {
-            pick_task(tower, content, crew, i)
+            pick_task(tower, content, crew, i, queues, daypart)
         };
 
         let Some(task) = task else {
-            crew[i].wait_ticks = crew[i].wait_ticks.saturating_add(1);
+            // Nothing to do is not stress. `wait_ticks` drives the red
+            // tint, and a crew member standing around because the
+            // tower has no work is telling the player something quite
+            // different from one stuck at the foot of a jammed
+            // staircase — conflating them makes the only bottleneck
+            // instrument in the game lie.
+            crew[i].wait_ticks = 0;
             continue;
         };
         crew[i].wait_ticks = 0;
         crew[i].task = Some(task);
-        let next = next_leg(&crew[i], tower, content);
+        let next = next_leg(&crew[i], tower, content, queues, daypart);
         crew[i].state = next;
     }
 }
@@ -358,7 +456,14 @@ fn assign_idle(crew: &mut [Crew], tower: &Tower, content: &Content) {
 /// Score every collectable pile against every valid destination and
 /// take the best. Ties break on the lowest (pickup, dropoff) position
 /// so the choice is a pure function of state.
-fn pick_task(tower: &Tower, content: &Content, crew: &[Crew], me: usize) -> Option<HaulTask> {
+fn pick_task(
+    tower: &Tower,
+    content: &Content,
+    crew: &[Crew],
+    me: usize,
+    queues: &[u32],
+    daypart: DaypartIdx,
+) -> Option<HaulTask> {
     let capacity = content.balance.crew.carry_capacity.max(1);
     let from_floor = crew[me].floor();
     let from_slot = crew[me].slot();
@@ -373,7 +478,9 @@ fn pick_task(tower: &Tower, content: &Content, crew: &[Crew], me: usize) -> Opti
                 if available <= 0 {
                     continue;
                 }
-                if best_shaft(tower, from_floor, floor.index).is_none() && from_floor != floor.index
+                if from_floor != floor.index
+                    && best_shaft(tower, content, queues, daypart, from_floor, floor.index)
+                        .is_none()
                 {
                     continue;
                 }
@@ -388,7 +495,9 @@ fn pick_task(tower: &Tower, content: &Content, crew: &[Crew], me: usize) -> Opti
                 ) else {
                     continue;
                 };
-                if best_shaft(tower, floor.index, to_floor).is_none() && floor.index != to_floor {
+                if floor.index != to_floor
+                    && best_shaft(tower, content, queues, daypart, floor.index, to_floor).is_none()
+                {
                     continue;
                 }
 

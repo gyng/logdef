@@ -1,0 +1,20 @@
+// Free, always present, slow, crew-only, one body at a time. The
+// baseline every other shaft is measured against. `ticks_per_floor` and
+// `capacity` deliberately mirror `balance.ron`'s existing
+// `climb_ticks_per_floor` (30) and `stairs_capacity` (1) — the shaft
+// content doesn't get to quietly redefine a number balance.ron already
+// owns.
+#![enable(implicit_some)]
+ShaftDef(
+    id: "shaft.stairs",
+    name: "Stairs",
+    short: "STA",
+    kind: Stairs,
+    min_span: 1,
+    // Unlimited — a staircase spans the whole tower, always.
+    max_span: 0,
+    capacity: 1,
+    // A full second a floor. Vertical is expensive on foot, which is
+    // the pressure the dumbwaiter and elevator exist to relieve.
+    ticks_per_floor: 30,
+)

@@ -17,10 +17,14 @@ use super::SoundEvent;
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     let mut crafts = 0u64;
 
+    // Charge is drawn as rooms advance, and production sits second in
+    // the priority order — after the cars, before the lamps.
+    let mut power = std::mem::replace(&mut state.power, crate::state::Power::new(0));
+
     for floor in &mut state.tower.floors {
         for room in &mut floor.rooms {
             let rt = content.room_rt(room.def);
-            if rt.craft_ticks == 0 {
+            if rt.craft_ticks == 0 || !room.active {
                 continue;
             }
 
@@ -41,6 +45,14 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             // progress where it is. Partial work survives the gap, and
             // the room simply goes quiet.
             if !inputs_ready || !outputs_ready {
+                continue;
+            }
+
+            // A powered room that cannot buy its charge this tick holds
+            // progress too. Indistinguishable from starving, from the
+            // outside — which is correct: it is starving, for power.
+            let draw = content.room(room.def).power_draw;
+            if !power.draw(draw) {
                 continue;
             }
 
@@ -65,5 +77,6 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         }
     }
 
+    std::mem::swap(&mut state.power, &mut power);
     state.stats.crafts_completed += crafts;
 }

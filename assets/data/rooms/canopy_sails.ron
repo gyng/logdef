@@ -1,0 +1,21 @@
+// The tower's main charge income. Top-floor only: build above them and
+// they go dark, which is the literal cost of height — a placement
+// decision the player has to keep re-making as the tower grows
+// (SYSTEMS.md §1.2, v2-plan.md §6.3).
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.canopy_sails",
+    name: "Canopy Sails",
+    short: "SAI",
+    category: Energy,
+    width: 2,
+    top_floor_only: true,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 6)],
+    solar: SolarDef(
+        // Sized against a full day's arithmetic (BALANCE.md): two sail
+        // rooms over a "good sun" day net roughly what striding, night
+        // lighting, and one continuous thornwright cost together, with
+        // a modest surplus left to bank.
+        charge_per_100_ticks: 150,
+    ),
+)

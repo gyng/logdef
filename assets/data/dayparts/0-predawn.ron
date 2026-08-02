@@ -1,0 +1,8 @@
+// The first daypart must start at permille 0, or a stretch of the day
+// belongs to nothing (content.rs `validate_clock`).
+#![enable(implicit_some)]
+DaypartDef(
+    id: "daypart.predawn",
+    name: "Predawn",
+    start_permille: 0,
+)

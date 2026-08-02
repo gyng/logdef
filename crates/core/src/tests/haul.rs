@@ -323,6 +323,7 @@ fn the_view_reports_the_same_states_the_simulation_is_in() {
             CrewState::Walking { .. } => CrewStateTag::Walk,
             CrewState::Boarding { .. } => CrewStateTag::Board,
             CrewState::Climbing { .. } => CrewStateTag::Climb,
+            CrewState::Riding { .. } => CrewStateTag::Ride,
             CrewState::Loading { .. } => CrewStateTag::Load,
             CrewState::Unloading { .. } => CrewStateTag::Unload,
         };

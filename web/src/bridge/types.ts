@@ -9,9 +9,17 @@
 
 export type SimSpeed = "Paused" | "X1" | "X2" | "X4";
 
-export type RoomCategory = "Intake" | "Production" | "Storage" | "Heart";
+export type RoomCategory = "Intake" | "Production" | "Storage" | "Energy" | "Heart";
 
-export type CrewStateTag = "idle" | "walk" | "board" | "climb" | "load" | "unload";
+export type CrewStateTag = "idle" | "walk" | "board" | "climb" | "ride" | "load" | "unload";
+
+export type ShaftKind = "Stairs" | "Dumbwaiter" | "Elevator";
+
+export type ShaftPriority = "Balanced" | "FreightFirst" | "CrewFirst";
+
+export type CarDirTag = "idle" | "up" | "down";
+
+export type CarStateTag = "idle" | "moving" | "dwelling";
 
 // ---------------------------------------------------------------------------
 // Per-frame view
@@ -22,11 +30,40 @@ export interface ViewSnapshot {
   speed: SimSpeed;
   /** Fraction of a tick elapsed. For render interpolation. */
   alpha: number;
+  clock: ClockView;
+  power: PowerView;
   world: WorldView;
   tower: TowerView;
   crew: CrewView[];
   stock: StockView[];
   stats: RunStats;
+}
+
+export interface ClockView {
+  day: number;
+  /** How far through the day, in per-mille. Drives the sky. */
+  permille: number;
+  /** Indexes `catalog.dayparts`. */
+  daypart: number;
+  /** Sunlight before terrain. */
+  sun_pct: number;
+  /** Sunlight after terrain — what the sails actually receive. */
+  exposure_pct: number;
+}
+
+export interface PowerView {
+  charge: number;
+  capacity: number;
+  /** Stored fraction in per-mille, so the gauge needs no division. */
+  fill_permille: number;
+  income_last: number;
+  spent_last: number;
+  /** Something went unpowered this tick. The tower dims. */
+  brownout: boolean;
+  /** Lamps are on — daylight, or the tower can afford them. */
+  lit: boolean;
+  /** The legs are running. */
+  walking: boolean;
 }
 
 export interface WorldView {
@@ -77,8 +114,12 @@ export interface RoomView {
   inputs: StackView[];
   outputs: StackView[];
   shelves: ShelfView[];
-  /** Starved or backed up. Drawn quiet rather than flagged. */
+  /** Starved, backed up, shaded, dry, or switched off. Drawn quiet. */
   stalled: boolean;
+  /** Switched on by the player. */
+  active: boolean;
+  /** A sail no longer on the roof. The price of building higher. */
+  shaded: boolean;
 }
 
 export interface StackView {
@@ -95,12 +136,30 @@ export interface ShelfView {
 
 export interface ShaftView {
   id: number;
-  kind: string;
+  /** Indexes `catalog.shafts`. */
+  def: number;
+  kind: ShaftKind;
   low: number;
   high: number;
   slot: number;
   capacity: number;
+  /** Crew on the stairs. Zero for shafts with cars. */
   riders: number;
+  cars: CarView[];
+  /** Crew queued at this shaft right now, across all its floors. */
+  queued: number;
+}
+
+export interface CarView {
+  /** Fractional floor position, for smooth travel. */
+  floor: number;
+  dir: CarDirTag;
+  state: CarStateTag;
+  /** Units aboard, against the shaft's capacity. */
+  load: number;
+  stops: number[];
+  /** Items aboard. Dumbwaiters only. */
+  freight: StockView[];
 }
 
 export interface CrewView {
@@ -137,11 +196,35 @@ export interface CatalogSnapshot {
   content_hash: string;
   items: ItemInfo[];
   rooms: RoomInfo[];
+  shafts: ShaftInfo[];
   terrain: TerrainInfo[];
+  dayparts: DaypartInfo[];
   floor_cost: CostInfo[];
   max_floors: number;
   floor_slots: number;
   stress_ticks: number;
+  ticks_per_day: number;
+}
+
+export interface ShaftInfo {
+  id: string;
+  name: string;
+  short: string;
+  kind: ShaftKind;
+  build_cost: CostInfo[];
+  min_span: number;
+  /** Zero means "as tall as the tower". */
+  max_span: number;
+  capacity: number;
+  ticks_per_floor: number;
+  charge_per_floor: number;
+  cars: number;
+}
+
+export interface DaypartInfo {
+  id: string;
+  name: string;
+  start_permille: number;
 }
 
 export interface ItemInfo {
@@ -165,6 +248,16 @@ export interface RoomInfo {
   outputs: CostInfo[];
   intake_item: number | null;
   shelves: number;
+  /** Only works on the roof. Growing taller shades it. */
+  top_floor_only: boolean;
+  /** Charge drawn per tick while working. */
+  power_draw: number;
+  /** Makes charge from sunlight. */
+  solar: boolean;
+  /** Burns an item for charge, and can be switched off. */
+  burner: boolean;
+  /** Charge capacity this room adds. */
+  bank_capacity: number;
 }
 
 export interface CostInfo {
@@ -187,7 +280,19 @@ export type GameCommand =
   | { SetSpeed: { speed: SimSpeed } }
   | "BuildFloor"
   | { PlaceRoom: { room: string; floor: number; slot: number } }
-  | { RemoveRoom: { floor: number; slot: number } };
+  | { RemoveRoom: { floor: number; slot: number } }
+  | { SetRoomActive: { floor: number; slot: number; active: boolean } }
+  | { BuildShaft: { shaft: string; low: number; high: number; slot: number } }
+  | { RemoveShaft: { id: number } }
+  | {
+      SetShaftProgram: {
+        id: number;
+        daypart: number;
+        served: boolean[];
+        priority: ShaftPriority;
+      };
+    }
+  | { SetStriding: { walking: boolean } };
 
 /** Rust's `CommandResult`: `"Ok"` or `{ Error: … }`. */
 export type CommandResult = "Ok" | { Error: unknown };
@@ -200,4 +305,11 @@ export interface ReplayReport {
   message: string;
 }
 
-export type SoundEvent = "Harvest" | "Craft" | "Pickup" | "Deliver" | "BandChange";
+export type SoundEvent =
+  | "Harvest"
+  | "Craft"
+  | "Pickup"
+  | "Deliver"
+  | "CarStop"
+  | "Burn"
+  | "BandChange";

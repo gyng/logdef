@@ -9,9 +9,11 @@ mod balance_doc;
 mod commands;
 mod determinism;
 mod haul;
+mod power;
 mod production;
 mod replay;
 mod snapshot;
+mod transport;
 mod world;
 
 use std::sync::Arc;

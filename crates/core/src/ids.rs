@@ -45,7 +45,9 @@ macro_rules! runtime_id {
 
 index_type!(ItemIdx, "item");
 index_type!(RoomIdx, "room");
+index_type!(ShaftIdx, "shaft");
 index_type!(TerrainIdx, "terrain band");
+index_type!(DaypartIdx, "daypart");
 
 runtime_id!(RoomId, "room");
 runtime_id!(CrewId, "crew member");

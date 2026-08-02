@@ -88,12 +88,12 @@ crates/
       replay.rs                  # Replay, Recorder, hash_state, embedded golden fixture
       tests.rs, tests/            # tests grouped by topic (determinism, haul, replay, ...)
     examples/
-      record_golden.rs            # regenerate assets/replays/m0-golden.json
+      record_golden.rs            # regenerate assets/replays/golden.json
   bridge/                         # understory-bridge: wasm-bindgen entry points (cdylib)
     src/lib.rs
 assets/
   data/                           # RON content pack: balance.ron, items/, rooms/, terrain/
-  replays/m0-golden.json          # the embedded native/wasm parity fixture
+  replays/golden.json          # the embedded native/wasm parity fixture
 web/                              # React/TypeScript frontend (Vite)
   src/
   e2e/smoke.spec.ts               # Playwright smoke test

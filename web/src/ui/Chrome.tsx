@@ -12,7 +12,7 @@
 import { useEffect } from "react";
 
 import type { Game, UiState } from "../engine/Game";
-import type { RoomInfo, SimSpeed } from "../bridge/types";
+import type { RoomInfo, ShaftInfo, SimSpeed } from "../bridge/types";
 
 const SPEEDS: { value: SimSpeed; label: string; key: string }[] = [
   { value: "Paused", label: "❚❚", key: "Space" },
@@ -53,12 +53,25 @@ function TopBar({ game, ui }: Props) {
     <header className="topbar panel">
       <span className="brand">Understory</span>
       <dl className="readouts">
+        <Readout label="Day" value={`${ui.day + 1} · ${ui.daypart}`} />
         <Readout label="Distance" value={`${ui.distance} paces`} />
         <Readout label="Terrain" value={ui.terrain} />
         <Readout label="Yield" value={`${ui.yieldPct}%`} warn={ui.yieldPct < 100} />
+        <Readout label="Sun" value={`${ui.exposurePct}%`} warn={ui.exposurePct < 30} />
         <Readout label="Floors" value={`${ui.floors} / ${catalog.max_floors}`} />
         <Readout label="Queued" value={String(ui.waiting)} warn={ui.waiting > 0} />
       </dl>
+      <ChargeGauge ui={ui} />
+      <button
+        type="button"
+        className={ui.walking ? "stride-toggle walking" : "stride-toggle"}
+        aria-pressed={ui.walking}
+        title="Halting the legs banks the charge they would burn (W)"
+        data-testid="stride-toggle"
+        onClick={() => game.setStriding(!ui.walking)}
+      >
+        {ui.walking ? "Striding" : "Halted"}
+      </button>
       <div className="speeds" role="group" aria-label="Simulation speed">
         {SPEEDS.map((speed) => (
           <button
@@ -74,6 +87,37 @@ function TopBar({ game, ui }: Props) {
         ))}
       </div>
     </header>
+  );
+}
+
+/**
+ * The charge gauge. A bar first and a number second: how full the banks
+ * are is a glance question, and only the net flow needs digits.
+ */
+function ChargeGauge({ ui }: { ui: UiState }) {
+  const fill = Math.max(0, Math.min(100, ui.chargeFill / 10));
+  const net = ui.chargeIncome - ui.chargeSpend;
+  const level = ui.brownout ? "empty" : fill < 25 ? "low" : "ok";
+  return (
+    <div className={`charge charge-${level}`} data-testid="charge">
+      <div
+        className="charge-bar"
+        role="meter"
+        aria-label="Charge"
+        aria-valuenow={Math.round(fill)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div className="charge-fill" style={{ width: `${fill}%` }} />
+      </div>
+      <span className="charge-figures">
+        {ui.charge}/{ui.chargeCapacity}
+        <span className={net < 0 ? "charge-net down" : "charge-net up"}>
+          {net >= 0 ? "+" : ""}
+          {net}
+        </span>
+      </span>
+    </div>
   );
 }
 
@@ -139,19 +183,46 @@ function Sidebar({ game, ui }: Props) {
         </ul>
       </section>
 
+      <section>
+        <h2 className="section-title">Transport</h2>
+        <ul className="build-list">
+          {catalog.shafts
+            // The stairs are built in and cannot be added or removed.
+            .filter((shaft) => shaft.kind !== "Stairs")
+            .map((shaft) => (
+              <li key={shaft.id}>
+                <ShaftCard game={game} ui={ui} shaft={shaft} />
+              </li>
+            ))}
+        </ul>
+      </section>
+
       {ui.selected && (
         <section className="selection" data-testid="selection">
           <h3>{ui.selected.info.name}</h3>
           <p>{describeRoom(game, ui.selected.info)}</p>
-          <button
-            type="button"
-            className="danger"
-            disabled={!ui.selected.removable}
-            data-testid="remove-room"
-            onClick={() => game.removeSelected()}
-          >
-            {ui.selected.removable ? "Tear down" : "Cannot be removed"}
-          </button>
+          <div className="selection-actions">
+            {(ui.selected.info.burner || ui.selected.info.power_draw > 0) && (
+              <button
+                type="button"
+                className="toggle"
+                aria-pressed={ui.selectedActive}
+                data-testid="toggle-room"
+                onClick={() => game.toggleSelectedRoom()}
+              >
+                {ui.selectedActive ? "Running" : "Shut down"}
+              </button>
+            )}
+            <button
+              type="button"
+              className="danger"
+              disabled={!ui.selected.removable}
+              data-testid="remove-room"
+              onClick={() => game.removeSelected()}
+            >
+              {ui.selected.removable ? "Tear down" : "Cannot be removed"}
+            </button>
+          </div>
         </section>
       )}
     </aside>
@@ -186,6 +257,33 @@ function RoomCard({ game, ui, room }: Props & { room: RoomInfo }) {
   );
 }
 
+function ShaftCard({ game, ui, shaft }: Props & { shaft: ShaftInfo }) {
+  const affordable = game.canAffordShaft(shaft);
+  const perFloor = (shaft.ticks_per_floor / 30).toFixed(1);
+  const hint = affordable
+    ? shaft.kind === "Dumbwaiter"
+      ? `items only · ${shaft.min_span}–${shaft.max_span} floors · ${perFloor}s a floor`
+      : `${shaft.capacity} aboard · ${perFloor}s a floor · ${shaft.charge_per_floor}⚡ a floor`
+    : "not enough on the shelves";
+
+  return (
+    <button
+      type="button"
+      className="build-card"
+      aria-pressed={ui.placing === shaft.id}
+      disabled={!affordable}
+      data-testid={`build-${shaft.id}`}
+      onClick={() => game.beginPlacingShaft(ui.placing === shaft.id ? null : shaft.id)}
+    >
+      <span className="build-name">
+        {shaft.name}
+        <span className="build-hint">{hint}</span>
+      </span>
+      <Cost game={game} costs={shaft.build_cost} />
+    </button>
+  );
+}
+
 function Cost({ game, costs }: { game: Game; costs: { item: number; amount: number }[] }) {
   const catalog = game.getCatalog();
   if (costs.length === 0) return <span className="build-cost">free</span>;
@@ -202,10 +300,17 @@ function costHint(room: RoomInfo): string {
       return room.max_floor === null
         ? "harvests as you walk"
         : `harvests as you walk · up to floor ${room.max_floor}`;
-    case "Production":
-      return `${(room.craft_ticks / 30).toFixed(0)}s a craft`;
+    case "Production": {
+      const craft = `${(room.craft_ticks / 30).toFixed(0)}s a craft`;
+      return room.power_draw > 0 ? `${craft} · ${room.power_draw}⚡ a tick` : craft;
+    }
     case "Storage":
       return `${room.shelves} shelves`;
+    case "Energy":
+      if (room.solar) return "roof only · charge from sun";
+      if (room.burner) return "burns bamboo for charge";
+      if (room.bank_capacity > 0) return `holds ${room.bank_capacity}⚡`;
+      return "";
     default:
       return "";
   }
@@ -215,6 +320,15 @@ function describeRoom(game: Game, info: RoomInfo): string {
   const catalog = game.getCatalog();
   const name = (index: number) => catalog.items[index]?.name ?? "something";
 
+  if (info.solar) {
+    return "Drinks sunlight, but only from the roof. Build a floor above it and it goes dark.";
+  }
+  if (info.burner) {
+    return "Burns bamboo for charge. The dirty fallback — every stalk burned is a stalk not built with.";
+  }
+  if (info.bank_capacity > 0) {
+    return `Holds ${info.bank_capacity} charge. Storage is something you build, not something you find.`;
+  }
   if (info.intake_item !== null) {
     return `Strips ${name(info.intake_item).toLowerCase()} from the terrain the tower is walking through.`;
   }
@@ -236,10 +350,12 @@ function describeRoom(game: Game, info: RoomInfo): string {
 function useKeyboardShortcuts(game: Game, ui: UiState): void {
   const speed = ui.speed;
   const placing = ui.placing;
+  const walking = ui.walking;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
       switch (event.key) {
         case " ":
           event.preventDefault();
@@ -254,6 +370,10 @@ function useKeyboardShortcuts(game: Game, ui: UiState): void {
         case "4":
           game.setSpeed("X4");
           break;
+        case "w":
+        case "W":
+          game.setStriding(!walking);
+          break;
         case "Escape":
           if (placing) game.beginPlacing(null);
           break;
@@ -263,5 +383,5 @@ function useKeyboardShortcuts(game: Game, ui: UiState): void {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [game, speed, placing]);
+  }, [game, speed, placing, walking]);
 }

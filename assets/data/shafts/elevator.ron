@@ -1,0 +1,25 @@
+// The machine: cars, queues, dwell, and a programmable schedule
+// (SYSTEMS.md §1.3). Clearly the fastest way up and by far the
+// largest charge draw of any shaft — and expensive to build, so it's a
+// mid-game investment rather than an opening move.
+#![enable(implicit_some)]
+ShaftDef(
+    id: "shaft.elevator",
+    name: "Elevator",
+    short: "ELV",
+    kind: Elevator,
+    // Three times a floor's own cost (6 poles) — this is a decision the
+    // player saves for.
+    build_cost: [CostEntryDef(item: "item.poles", amount: 18)],
+    min_span: 2,
+    // Unlimited — the elevator is chosen floors, not a fixed hop.
+    max_span: 0,
+    // In units: a crew member is 1, a carried load adds another. 4
+    // seats roughly two laden crew, the "small crowd" scale the
+    // elevator earns its slot column for.
+    capacity: 4,
+    // Nearly 4x the stairs' pace per floor.
+    ticks_per_floor: 8,
+    charge_per_floor: 5,
+    cars: 1,
+)

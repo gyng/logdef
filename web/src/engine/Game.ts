@@ -21,6 +21,7 @@ import type {
   CatalogSnapshot,
   GameCommand,
   RoomInfo,
+  ShaftInfo,
   SimSpeed,
   StockView,
   ViewSnapshot,
@@ -41,7 +42,22 @@ export interface UiState {
   /** Crew currently blocked at a shaft — the bottleneck at a glance. */
   waiting: number;
   selected: SelectedRoom | null;
+  /** Whether the selected room is switched on. */
+  selectedActive: boolean;
   placing: string | null;
+  day: number;
+  daypart: string;
+  sunPct: number;
+  /** Sun after terrain — what the sails actually get. */
+  exposurePct: number;
+  charge: number;
+  chargeCapacity: number;
+  /** Stored fraction in per-mille. */
+  chargeFill: number;
+  chargeIncome: number;
+  chargeSpend: number;
+  brownout: boolean;
+  walking: boolean;
   fps: number;
   quads: number;
   lastError: string | null;
@@ -150,14 +166,62 @@ export class Game {
     const info = this.catalog.rooms.find((room) => room.id === roomId);
     if (!info) return;
     this.placeMode = {
-      roomId,
+      kind: "room",
+      id: roomId,
       width: info.width,
       maxFloor: info.max_floor,
+      span: 1,
       hover: null,
     };
     this.selected = null;
     this.lastError = null;
     this.publish(true);
+  }
+
+  /**
+   * Enter placement for a shaft. The span defaults to as tall as the
+   * definition and the tower both allow — a player who wants a short
+   * elevator can build a short one, but the common case is "all the way
+   * up", and making that the default saves a fiddly control.
+   */
+  beginPlacingShaft(shaftId: string | null): void {
+    if (shaftId === null) {
+      this.placeMode = null;
+      this.publish(true);
+      return;
+    }
+    const info = this.catalog.shafts.find((shaft) => shaft.id === shaftId);
+    if (!info) return;
+    const floors = this.latest?.tower.floors.length ?? 1;
+    const ceiling = info.max_span === 0 ? floors : info.max_span;
+    this.placeMode = {
+      kind: "shaft",
+      id: shaftId,
+      width: 1,
+      maxFloor: null,
+      span: Math.max(info.min_span, Math.min(ceiling, floors)),
+      hover: null,
+    };
+    this.selected = null;
+    this.lastError = null;
+    this.publish(true);
+  }
+
+  setStriding(walking: boolean): void {
+    this.send({ SetStriding: { walking } });
+  }
+
+  /** Switch the selected room off or on. */
+  toggleSelectedRoom(): void {
+    const selected = this.selected;
+    if (!selected) return;
+    const room = this.latest?.tower.floors[selected.floor]?.rooms.find(
+      (candidate) => candidate.id === selected.id,
+    );
+    if (!room) return;
+    this.send({
+      SetRoomActive: { floor: selected.floor, slot: selected.slot, active: !room.active },
+    });
   }
 
   handlePointerMove(clientX: number, clientY: number): void {
@@ -180,10 +244,20 @@ export class Game {
     // Stay in place mode either way: on success so a player can lay
     // down a row of rooms without re-picking from the menu, and on
     // failure so the rejection message lands next to another attempt.
-    if (this.placeMode) {
-      this.send({
-        PlaceRoom: { room: this.placeMode.roomId, floor: hit.floor, slot: hit.slot },
-      });
+    const placing = this.placeMode;
+    if (placing) {
+      if (placing.kind === "room") {
+        this.send({ PlaceRoom: { room: placing.id, floor: hit.floor, slot: hit.slot } });
+      } else {
+        this.send({
+          BuildShaft: {
+            shaft: placing.id,
+            low: hit.floor,
+            high: hit.floor + placing.span - 1,
+            slot: hit.slot,
+          },
+        });
+      }
       return;
     }
 
@@ -282,11 +356,37 @@ export class Game {
       hauled: view?.stats.hauls_completed ?? 0,
       waiting: view?.crew.filter((member) => member.state === "board").length ?? 0,
       selected: this.selected,
-      placing: this.placeMode?.roomId ?? null,
+      selectedActive: this.selectedRoomActive(),
+      placing: this.placeMode?.id ?? null,
+      day: view?.clock.day ?? 0,
+      daypart: view === null ? "—" : (this.catalog.dayparts[view.clock.daypart]?.name ?? "—"),
+      sunPct: view?.clock.sun_pct ?? 0,
+      exposurePct: view?.clock.exposure_pct ?? 0,
+      charge: view?.power.charge ?? 0,
+      chargeCapacity: view?.power.capacity ?? 0,
+      chargeFill: view?.power.fill_permille ?? 0,
+      chargeIncome: view?.power.income_last ?? 0,
+      chargeSpend: view?.power.spent_last ?? 0,
+      brownout: view?.power.brownout ?? false,
+      walking: view?.power.walking ?? true,
       fps: Math.round(this.fps),
       quads: this.renderer.quadCount,
       lastError: this.lastError,
     };
+  }
+
+  /** Can the player afford this shaft, and is there anywhere to put it? */
+  canAffordShaft(info: ShaftInfo): boolean {
+    return info.build_cost.every((cost) => this.stockOf(cost.item) >= cost.amount);
+  }
+
+  private selectedRoomActive(): boolean {
+    const selected = this.selected;
+    if (!selected) return true;
+    return (
+      this.latest?.tower.floors[selected.floor]?.rooms.find((room) => room.id === selected.id)
+        ?.active ?? true
+    );
   }
 
   private stockOf(item: number): number {

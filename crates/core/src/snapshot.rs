@@ -28,12 +28,43 @@ pub struct ViewSnapshot {
     pub speed: SimSpeed,
     /// Fraction of a tick elapsed, for render interpolation.
     pub alpha: f32,
+    pub clock: ClockView,
+    pub power: PowerView,
     pub world: WorldView,
     pub tower: TowerView,
     pub crew: Vec<CrewView>,
     /// Summed across every storeroom shelf — what construction spends.
     pub stock: Vec<StockView>,
     pub stats: RunStats,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClockView {
+    pub day: u32,
+    /// How far through the day, in per-mille. Drives the sky.
+    pub permille: i64,
+    /// Index into `catalog.dayparts`.
+    pub daypart: u16,
+    /// Sunlight before terrain.
+    pub sun_pct: i64,
+    /// Sunlight after terrain — what the sails actually receive.
+    pub exposure_pct: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PowerView {
+    pub charge: i64,
+    pub capacity: i64,
+    /// Stored fraction in per-mille, so the gauge needs no division.
+    pub fill_permille: i64,
+    pub income_last: i64,
+    pub spent_last: i64,
+    /// Something went unpowered this tick. The tower dims.
+    pub brownout: bool,
+    /// Lamps are on — either it is daylight, or the tower can afford them.
+    pub lit: bool,
+    /// The legs are running.
+    pub walking: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +123,11 @@ pub struct RoomView {
     /// Waiting on an input, or backed up on its output. A stalled room
     /// is drawn quiet — that silence is the warning.
     pub stalled: bool,
+    /// Switched on by the player.
+    pub active: bool,
+    /// A sail that is no longer on the top floor. Shaded rooms draw
+    /// stalled, and this is why.
+    pub shaded: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,12 +147,33 @@ pub struct ShelfView {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShaftView {
     pub id: u32,
+    /// Indexes `catalog.shafts`.
+    pub def: u16,
     pub kind: String,
     pub low: u8,
     pub high: u8,
     pub slot: u8,
     pub capacity: u8,
+    /// Crew on the stairs. Zero for shafts with cars.
     pub riders: u8,
+    pub cars: Vec<CarView>,
+    /// Crew queued at this shaft right now, across all its floors.
+    pub queued: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CarView {
+    /// Fractional floor position, for smooth travel.
+    pub floor: f32,
+    /// One of: idle, up, down.
+    pub dir: String,
+    /// One of: idle, moving, dwelling.
+    pub state: String,
+    /// Units aboard, against the shaft's capacity.
+    pub load: u8,
+    pub stops: Vec<u8>,
+    /// Items aboard. Dumbwaiters only.
+    pub freight: Vec<StockView>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,9 +199,12 @@ pub struct CrewView {
 pub enum CrewStateTag {
     Idle,
     Walk,
-    /// Queued at a shaft column, waiting for capacity.
+    /// Queued at a shaft column: waiting for room on the stairs, or for
+    /// a car going their way.
     Board,
     Climb,
+    /// Aboard a car.
+    Ride,
     Load,
     Unload,
 }
@@ -166,11 +226,38 @@ pub struct CatalogSnapshot {
     pub content_hash: String,
     pub items: Vec<ItemInfo>,
     pub rooms: Vec<RoomInfo>,
+    pub shafts: Vec<ShaftInfo>,
     pub terrain: Vec<TerrainInfo>,
+    pub dayparts: Vec<DaypartInfo>,
     pub floor_cost: Vec<CostInfo>,
     pub max_floors: u8,
     pub floor_slots: u8,
     pub stress_ticks: u32,
+    pub ticks_per_day: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShaftInfo {
+    pub id: String,
+    pub name: String,
+    pub short: String,
+    /// One of: Stairs, Dumbwaiter, Elevator.
+    pub kind: String,
+    pub build_cost: Vec<CostInfo>,
+    pub min_span: u8,
+    /// Zero means "as tall as the tower".
+    pub max_span: u8,
+    pub capacity: u8,
+    pub ticks_per_floor: u32,
+    pub charge_per_floor: i64,
+    pub cars: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DaypartInfo {
+    pub id: String,
+    pub name: String,
+    pub start_permille: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -196,6 +283,16 @@ pub struct RoomInfo {
     pub outputs: Vec<CostInfo>,
     pub intake_item: Option<u16>,
     pub shelves: u8,
+    /// Only works on the roof. Growing taller shades it.
+    pub top_floor_only: bool,
+    /// Charge drawn per tick while working.
+    pub power_draw: i64,
+    /// Makes charge from sunlight.
+    pub solar: bool,
+    /// Burns an item for charge, and can be switched off.
+    pub burner: bool,
+    /// Charge capacity this room adds.
+    pub bank_capacity: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -227,11 +324,36 @@ pub fn build_view(state: &GameState, content: &Content, alpha: f32) -> ViewSnaps
         tick: state.tick,
         speed: state.speed,
         alpha,
+        clock: build_clock(state, content),
+        power: build_power(state),
         world: build_world(state, content),
         tower: build_tower(state, content),
         crew: build_crew(state, content),
         stock: build_stock(state),
         stats: state.stats.clone(),
+    }
+}
+
+fn build_clock(state: &GameState, content: &Content) -> ClockView {
+    ClockView {
+        day: state.clock.day,
+        permille: state.clock.permille(content),
+        daypart: state.clock.daypart(content).0,
+        sun_pct: state.clock.sun_pct(content),
+        exposure_pct: crate::systems::power::exposure_pct(state, content),
+    }
+}
+
+fn build_power(state: &GameState) -> PowerView {
+    PowerView {
+        charge: state.power.charge,
+        capacity: state.power.capacity,
+        fill_permille: state.power.fill_permille(),
+        income_last: state.power.income_last,
+        spent_last: state.power.spent_last,
+        brownout: state.power.brownout,
+        lit: state.power.lit,
+        walking: state.walking,
     }
 }
 
@@ -279,6 +401,7 @@ fn build_world(state: &GameState, content: &Content) -> WorldView {
 }
 
 fn build_tower(state: &GameState, content: &Content) -> TowerView {
+    let top = state.tower.top_floor();
     let floors = state
         .tower
         .floors
@@ -299,6 +422,16 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                             room.inputs.get(i).is_none_or(|s| s.count < *amount)
                         });
                     let backed_up = room.outputs.iter().any(crate::state::Stack::is_full);
+                    let def = content.room(room.def);
+                    // A sail below the roof is in the tower's own
+                    // shadow. Growing taller has a cost, and this is
+                    // where the player is shown it.
+                    let shaded = def.top_floor_only && floor.index != top;
+                    let burner_dry = def.burner.as_ref().is_some_and(|burner| {
+                        room.inputs
+                            .last()
+                            .is_none_or(|fuel| fuel.count < burner.fuel_per_burn)
+                    });
                     let has_work = rt.craft_ticks > 0 || rt.intake_item.is_some();
 
                     RoomView {
@@ -318,7 +451,12 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                                 max: shelf.max,
                             })
                             .collect(),
-                        stalled: has_work && (starved || backed_up),
+                        stalled: (has_work && (starved || backed_up))
+                            || shaded
+                            || burner_dry
+                            || !room.active,
+                        active: room.active,
+                        shaded,
                     }
                 })
                 .collect(),
@@ -331,12 +469,52 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
         .iter()
         .map(|shaft| ShaftView {
             id: shaft.id.0,
+            def: shaft.def.0,
             kind: format!("{:?}", shaft.kind),
             low: shaft.low,
             high: shaft.high,
             slot: shaft.slot,
             capacity: shaft.capacity,
             riders: shaft.riders,
+            cars: shaft
+                .cars
+                .iter()
+                .enumerate()
+                .map(|(index, car)| CarView {
+                    floor: car.pos.to_f32(),
+                    dir: match car.dir {
+                        crate::state::CarDir::Idle => "idle",
+                        crate::state::CarDir::Up => "up",
+                        crate::state::CarDir::Down => "down",
+                    }
+                    .into(),
+                    state: match car.state {
+                        crate::state::CarState::Idle => "idle",
+                        crate::state::CarState::Moving => "moving",
+                        crate::state::CarState::Dwelling { .. } => "dwelling",
+                    }
+                    .into(),
+                    load: shaft.car_load(index, &state.crew),
+                    stops: car.stops.clone(),
+                    freight: car
+                        .freight
+                        .iter()
+                        .map(|stack| StockView {
+                            item: stack.item.0,
+                            count: stack.count,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            queued: state
+                .crew
+                .iter()
+                .filter(|member| {
+                    matches!(member.state, crate::state::CrewState::Boarding { shaft: at, .. }
+                        if at == shaft.id)
+                })
+                .count()
+                .min(255) as u8,
         })
         .collect();
 
@@ -366,6 +544,7 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
                 crate::state::CrewState::Walking { .. } => CrewStateTag::Walk,
                 crate::state::CrewState::Boarding { .. } => CrewStateTag::Board,
                 crate::state::CrewState::Climbing { .. } => CrewStateTag::Climb,
+                crate::state::CrewState::Riding { .. } => CrewStateTag::Ride,
                 crate::state::CrewState::Loading { .. } => CrewStateTag::Load,
                 crate::state::CrewState::Unloading { .. } => CrewStateTag::Unload,
             },
@@ -458,7 +637,39 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                     outputs: io(&rt.recipe_outputs),
                     intake_item: rt.intake_item.map(|i| i.0),
                     shelves: rt.shelves,
+                    top_floor_only: room.top_floor_only,
+                    power_draw: room.power_draw,
+                    solar: room.solar.is_some(),
+                    burner: room.burner.is_some(),
+                    bank_capacity: room.bank.as_ref().map_or(0, |bank| bank.capacity),
                 }
+            })
+            .collect(),
+        shafts: content
+            .shafts
+            .iter()
+            .enumerate()
+            .map(|(i, shaft)| ShaftInfo {
+                id: shaft.id.clone(),
+                name: shaft.name.clone(),
+                short: shaft.short.clone(),
+                kind: format!("{:?}", shaft.kind),
+                build_cost: cost(&content.shaft_runtime[i].build_cost),
+                min_span: shaft.min_span,
+                max_span: shaft.max_span,
+                capacity: shaft.capacity,
+                ticks_per_floor: shaft.ticks_per_floor,
+                charge_per_floor: shaft.charge_per_floor,
+                cars: shaft.cars,
+            })
+            .collect(),
+        dayparts: content
+            .dayparts
+            .iter()
+            .map(|part| DaypartInfo {
+                id: part.id.clone(),
+                name: part.name.clone(),
+                start_permille: part.start_permille,
             })
             .collect(),
         terrain: content
@@ -486,5 +697,6 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
         max_floors: content.balance.tower.max_floors,
         floor_slots: content.balance.tower.floor_slots,
         stress_ticks: content.balance.crew.stress_ticks,
+        ticks_per_day: content.balance.clock.ticks_per_day,
     }
 }

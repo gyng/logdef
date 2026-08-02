@@ -1,0 +1,25 @@
+// Item-only and autonomous — the inserter. Spans a short stretch of the
+// tower, moves in small batches, and sips charge rather than drawing it
+// by the trip.
+#![enable(implicit_some)]
+ShaftDef(
+    id: "shaft.dumbwaiter",
+    name: "Dumbwaiter",
+    short: "DUM",
+    kind: Dumbwaiter,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 8)],
+    min_span: 2,
+    max_span: 3,
+    // Not a crew capacity — a dumbwaiter never carries a body. Kept at
+    // the schema minimum; `batch` is what actually governs its
+    // throughput.
+    capacity: 1,
+    // Half the stairs' time per floor: fast enough to be worth its slot
+    // column, without matching the elevator.
+    ticks_per_floor: 15,
+    charge_per_floor: 1,
+    cars: 1,
+    // A little more than one crew member's carry_capacity (3), so it
+    // beats a hauler on volume without trivializing the trip.
+    batch: 4,
+)

@@ -1,0 +1,6 @@
+#![enable(implicit_some)]
+DaypartDef(
+    id: "daypart.dusk",
+    name: "Dusk",
+    start_permille: 760,
+)

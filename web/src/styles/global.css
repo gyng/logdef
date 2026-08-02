@@ -214,6 +214,79 @@ button {
   color: var(--status-warn);
 }
 
+/* Charge --------------------------------------------------- */
+
+.charge {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 132px;
+}
+
+.charge-bar {
+  height: 8px;
+  overflow: hidden;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+
+.charge-fill {
+  height: 100%;
+  background: var(--accent-verdigris);
+  border-radius: var(--radius-full);
+  transition: width var(--duration-normal) var(--ease-smooth);
+}
+
+.charge-low .charge-fill {
+  background: var(--status-warn);
+}
+
+.charge-empty .charge-fill {
+  background: var(--status-bad);
+}
+
+.charge-empty .charge-bar {
+  border-color: var(--status-bad);
+}
+
+.charge-figures {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.charge-net.up {
+  color: var(--status-good);
+}
+
+.charge-net.down {
+  color: var(--status-warn);
+}
+
+/* Stride --------------------------------------------------- */
+
+.stride-toggle {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  transition:
+    color var(--duration-fast) var(--ease-smooth),
+    border-color var(--duration-fast) var(--ease-smooth);
+}
+
+.stride-toggle.walking {
+  color: var(--accent-leaf);
+  border-color: var(--accent-leaf);
+}
+
 /* Speed --------------------------------------------------- */
 
 .speeds {
@@ -369,6 +442,24 @@ button {
   margin: var(--space-1) 0 var(--space-2);
   font-size: var(--text-xs);
   color: var(--text-secondary);
+}
+
+.selection-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.toggle {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.toggle[aria-pressed="true"] {
+  color: var(--accent-leaf);
+  border-color: var(--accent-leaf);
 }
 
 .danger {

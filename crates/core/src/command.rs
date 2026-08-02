@@ -8,8 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::{FloorIdx, SlotIdx};
-use crate::state::SimSpeed;
+use crate::ids::{FloorIdx, ShaftId, SlotIdx};
+use crate::state::{ShaftPriority, SimSpeed};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GameCommand {
@@ -32,6 +32,41 @@ pub enum GameCommand {
     /// Remove whatever room covers this slot. No refund — you committed
     /// the materials when you built it.
     RemoveRoom { floor: FloorIdx, slot: SlotIdx },
+
+    /// Switch a room off or back on. Mostly the burner: "should this be
+    /// running right now" is a real decision every night.
+    SetRoomActive {
+        floor: FloorIdx,
+        slot: SlotIdx,
+        active: bool,
+    },
+
+    /// Build vertical transport. The column costs a slot on every floor
+    /// it spans, which is the whole price of circulation.
+    BuildShaft {
+        /// Authored string ID, e.g. `"shaft.elevator"`.
+        shaft: String,
+        low: FloorIdx,
+        high: FloorIdx,
+        slot: SlotIdx,
+    },
+
+    /// Tear out a shaft. The built-in stairs cannot go.
+    RemoveShaft { id: ShaftId },
+
+    /// Reprogram a shaft for one daypart: which floors its cars serve,
+    /// and who boards first when both crew and freight are waiting.
+    SetShaftProgram {
+        id: ShaftId,
+        /// Index into the content pack's dayparts.
+        daypart: u16,
+        served: Vec<bool>,
+        priority: ShaftPriority,
+    },
+
+    /// Halt the legs to bank the charge they would have burned, or set
+    /// them running again. The bank-or-burn decision, at its simplest.
+    SetStriding { walking: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +112,19 @@ pub enum CommandError {
     NoRoomThere { floor: FloorIdx, slot: SlotIdx },
     /// The Heartseed cannot be torn out.
     Undemolishable { room: String },
+    /// The content pack has no shaft with that ID.
+    UnknownShaft { shaft: String },
+    /// No shaft with that runtime ID is standing.
+    NoSuchShaft { id: ShaftId },
+    /// The span is inverted, too short, or too tall for this kind.
+    BadSpan {
+        low: FloorIdx,
+        high: FloorIdx,
+        min_span: u8,
+        max_span: u8,
+    },
+    /// The content pack has no daypart at that index.
+    NoSuchDaypart { daypart: u16 },
 }
 
 impl std::fmt::Display for CommandError {
@@ -112,6 +160,25 @@ impl std::fmt::Display for CommandError {
                 write!(f, "nothing at floor {floor} slot {slot}")
             }
             CommandError::Undemolishable { room } => write!(f, "{room} cannot be removed"),
+            CommandError::UnknownShaft { shaft } => write!(f, "no such shaft: {shaft}"),
+            CommandError::NoSuchShaft { id } => write!(f, "no shaft {}", id.0),
+            CommandError::BadSpan {
+                low,
+                high,
+                min_span,
+                max_span,
+            } => {
+                let ceiling = if *max_span == 0 {
+                    "the whole tower".to_string()
+                } else {
+                    max_span.to_string()
+                };
+                write!(
+                    f,
+                    "floors {low}..{high} is not a valid span; needs {min_span} to {ceiling}"
+                )
+            }
+            CommandError::NoSuchDaypart { daypart } => write!(f, "no daypart {daypart}"),
         }
     }
 }

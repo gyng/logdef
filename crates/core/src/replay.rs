@@ -10,7 +10,7 @@
 //! comparing hashes tick by tick catches a determinism break at the
 //! moment it happens rather than at the end, and reports the tick.
 //!
-//! `assets/replays/m0-golden.json` is embedded here with `include_str!`
+//! `assets/replays/golden.json` is embedded here with `include_str!`
 //! so the native test suite and the browser verify **the same bytes**.
 //! That is the native/wasm parity gate.
 
@@ -180,4 +180,4 @@ impl ReplayReport {
 /// The golden fixture, embedded so native and wasm verify identical
 /// bytes. Regenerate with
 /// `cargo run -p understory-core --example record_golden`.
-pub const GOLDEN_REPLAY: &str = include_str!("../../../assets/replays/m0-golden.json");
+pub const GOLDEN_REPLAY: &str = include_str!("../../../assets/replays/golden.json");

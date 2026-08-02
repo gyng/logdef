@@ -1,0 +1,19 @@
+// Charge capacity is built, not found. A tower with no cell bank has
+// nowhere to put a day's surplus and browns out the moment the sun
+// goes down; a tower that has spent the floor space to bank enough
+// rides the night out (SYSTEMS.md §1.2 exit criteria).
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.cell_bank",
+    name: "Cell Bank",
+    short: "BNK",
+    category: Energy,
+    width: 2,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 8)],
+    bank: BankDef(
+        // A full night's worst case (striding, lights, one continuous
+        // thornwright, no sun) costs on the order of 6,000 charge —
+        // about four of these. Real floor space for real security.
+        capacity: 1500,
+    ),
+)

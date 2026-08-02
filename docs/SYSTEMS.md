@@ -64,6 +64,10 @@ renderer at spawn — which is enough to prove the separation holds.
 
 ### 0.3 Tick order
 
+> **Superseded by §1.6.** M1 inserted the clock, power, and transport systems and moved
+> stride to the end. The four systems below still run in this relative order; the current
+> full order is in the M1 section.
+
 Fixed, and load-bearing for determinism. Do not reorder without a migration of every
 golden replay.
 
@@ -268,7 +272,7 @@ Verification replays into a fresh engine with the same seed and compares every c
 reporting the first divergence by tick. A content-hash mismatch fails loudly rather than
 replaying against different data.
 
-`assets/replays/m0-golden.json` is embedded in the binary with `include_str!`, so the
+`assets/replays/golden.json` is embedded in the binary with `include_str!`, so the
 native test and the browser both verify **the same bytes**. That is the native/wasm hash
 parity gate; it runs in `cargo test` and again in the Playwright smoke test. Regenerate it
 with `cargo run -p understory-core --example record_golden`.
@@ -280,3 +284,189 @@ with `cargo run -p understory-core --example record_golden`.
       against the same embedded fixture.
 - [x] The tower strides over streaming terrain at pause/1×/2×/4×, and one crew member
       hauls bamboo up the stairs to the mill without intervention.
+
+---
+
+## M1 — The Chain *(the whole bet)*
+
+**Sprint question:** is elevator contention actually fun? Everything downstream assumes yes.
+
+**Scope:** the three systems that make the rest of the game possible — a real chain
+(bamboo → poles → darts), a real energy economy (charge), and real vertical transport (the
+elevator car simulation, plus the dumbwaiter). This is the milestone the project is a bet
+on. The elevator ships before the eleventh anything.
+
+**Non-goals (M2+):** no enemies, no crew needs or shifts, no regions or route forks, no
+T2 chains, no art pass.
+
+---
+
+### 1.1 The clock
+
+A day is `ticks_per_day` long and repeats forever. Two things read it: the sun, and the
+elevator's per-daypart programs.
+
+**Dayparts** are content (`assets/data/dayparts/*.ron`): an id, a display name, and the
+per-mille of the day at which it starts. Seven of them, from `predawn` to `night`. They
+exist so a player can say "run the freight program at night" and so the UI has something to
+name; the simulation only uses the index.
+
+**The sun curve** is separate, and is balance rather than content: a list of
+`(permille_of_day, sun_pct)` anchors, linearly interpolated in integers. Sun is a curve, not
+a staircase, because a step change in charge income at a daypart boundary would read as a
+bug.
+
+```
+sun_pct(tick)  = lerp over the anchor table at (tick_of_day * 1000 / ticks_per_day)
+exposure_pct   = sun_pct * terrain.sun_pct / 100
+```
+
+### 1.2 Charge
+
+**Charge is a stored flux, not a crate.** One pool, capacity summed from the cell banks in
+the tower. It is never hauled, never sits in a stack, and never appears on a shelf.
+
+**Income**
+
+| Source | Rate |
+|---|---|
+| Canopy sails | `sail_charge_per_100_ticks × exposure_pct / 100`, **top floor only** |
+| Burner | `burner_charge_per_100_ticks`, consuming `burner_bamboo_per_charge`; player-toggled |
+
+Sails only generate on the top floor. Build a floor above them and they go dark — that is
+the literal cost of height promised in `v2-plan.md` §6.3, and it is a placement decision the
+player has to keep re-making as the tower grows. A shaded sail renders stalled like any
+other quiet room; there is no warning popup.
+
+The burner is the dirty fallback: it turns the contested material into power. From M2 its
+smoke raises provocation, which is what stops it being a free answer.
+
+**Draw**, in this fixed order each tick:
+
+| Sink | When | Notes |
+|---|---|---|
+| Transport | a car moves a floor | `charge_per_floor`, per car |
+| Production | a powered room advances a craft | `power_draw` per tick |
+| Lighting | `exposure_pct` is below `night_light_threshold` | per floor |
+| Striding | the tower is walking | `stride_charge_per_100_ticks` |
+
+The order is the priority order: when the pool cannot cover everything, the sinks at the
+bottom fail first. Striding is cut before the chain stalls, and the elevator freezing
+mid-shaft only happens when things are genuinely dire — which is what makes it land as an
+emergency rather than as noise.
+
+A failed draw does not go into debt. The consumer simply does not act this tick: the car
+holds position, the room holds its progress, the floor goes dark, the tower stands still.
+`Power.brownout` is set whenever any draw failed, and it is what the cross-section reads to
+dim the tower.
+
+`SetStriding { walking }` lets the player halt to bank charge. The full stride throttle —
+speed as a continuous economic dial — is M3; this is the boolean subset M1 needs for the
+bank-or-burn decision to exist at all.
+
+### 1.3 Vertical transport
+
+Three kinds now, with `ShaftKind` deciding which of the mechanisms below applies.
+
+| Kind | Carries | Autonomous | Charge | Span |
+|---|---|---|---|---|
+| Stairs | crew | — | free | whole tower |
+| Dumbwaiter | items | yes | per trip | 2–3 floors |
+| Elevator | crew (and what they carry) | no | per floor travelled | chosen floors |
+
+**The elevator is the machine.** The dispatch model is ported from the trace-verified
+SimTower behaviour in `phulin/tower-together` rather than invented (`v2-plan.md` §12), because
+"how does an elevator decide where to go" is a solved problem with a specific, recognisable
+feel, and getting it wrong would make the milestone's design question unanswerable.
+
+```
+Car { pos: Fx (fractional floor), dir: Up|Down|Idle, state, riders, stops }
+CarState = Idle | Moving | Dwelling { ticks_left }
+```
+
+* **Fixed floor queues.** Each served floor holds a queue of crew waiting to travel, with
+  the direction each wants. A queue is a fact about the floor, not about the car — which is
+  what lets several cars share one shaft later without rewriting anything.
+* **Bidirectional sweep.** A moving car continues in its current direction serving every
+  stop and every same-direction call ahead of it, reverses when nothing remains ahead, and
+  idles when nothing remains at all. This is the behaviour players recognise as "an
+  elevator", including the part where it sails past you going the wrong way.
+* **Dispatch threshold.** An idle car does not depart for a single caller immediately. It
+  waits until either `dispatch_threshold` people are queued or the oldest call has waited
+  `dispatch_max_wait` ticks. Batching is what creates the queue the player can see, and
+  removing it would quietly remove the contention this milestone is testing.
+* **Dwell.** A stop costs `dwell_base + dwell_per_unit × (boarding + alighting)` ticks.
+  Loading is not free, and a busy floor is slow to leave.
+* **Capacity, in units.** A crew member is one unit; carrying a load makes them two. That
+  is the freight extension — crates board like passengers, at a different weight.
+* **Programs, per daypart.** A `ShaftProgram` names the floors a car will serve and a
+  priority (`Balanced`, `FreightFirst`, `CrewFirst`). One program per daypart, so a player
+  can run a different pattern on the night shift.
+
+**The dumbwaiter** is the inserter: item-only, autonomous, no crew involved. When idle it
+looks across its spanned floors for the best (source, destination) pair using the same
+priority the crew use — a hungry recipe outranks a shelf — loads a batch, travels, and
+unloads. It serves any room on a floor it spans regardless of horizontal slot, which is
+exactly why it is worth its slot column and its charge.
+
+**Choosing a shaft.** Crew no longer take the first shaft that spans the trip; they
+estimate. Stairs cost `climb_ticks_per_floor × floors`, plus a penalty when the shaft is at
+capacity. An elevator costs an expected wait derived from where its car is and which way it
+is pointing, plus travel and dwell. Add the horizontal walk to each column and take the
+cheapest. The estimate does not have to be right — it has to be *deterministic* and roughly
+sensible, so that a player who adds a shaft sees the crew start using it.
+
+### 1.4 The chain
+
+`bamboo → poles → darts`, across at least three floors.
+
+| Room | Recipe | Notes |
+|---|---|---|
+| Cutter arm | terrain → bamboo | ground floors only |
+| Mill | bamboo → poles | |
+| Thornwright | poles → darts | **powered** — the first charge sink in production |
+| Canopy sails | exposure → charge | top floor only |
+| Burner | bamboo → charge | player-toggled |
+| Cell bank | — | adds charge capacity |
+| Storeroom | — | shelves |
+
+Darts have no consumer until the dart batteries arrive in M2. That is a deliberate,
+recorded exception to the rule in `DECISIONS.md` §9.1: the plan's M1 scope names the chain
+explicitly, the storeroom does consume them as stock, and M2 is where they get eaten. If M2
+slips, darts get cut rather than left sitting.
+
+### 1.5 What is readable, and how
+
+No new dashboards. Everything below is a change to what the cross-section already draws.
+
+| State | Signal |
+|---|---|
+| Starved room | draws quiet — already true in M0 |
+| Backed-up outbox | fill bar at maximum, room quiet |
+| Queue at a shaft | crew tint toward red as `wait_ticks` climbs |
+| Shaded sails | the sail room draws stalled |
+| Brown-out | the tower's interior lighting drops out |
+| Night | the sky darkens and lit floors glow |
+
+### 1.6 Tick order, current
+
+Charge priority *is* tick order: consumers draw from a shared pool as they run, so who runs
+first is who gets served when it is thin.
+
+1. **clock** — advance the day.
+2. **power income** — recompute capacity from the banks; collect from sails and burners.
+3. **transport** — cars move. First claim on charge, because a car freezing mid-shaft
+   should be the last thing that happens, not the first.
+4. **intake** — harvest the band underfoot.
+5. **production** — recipes advance, consume, emit. Powered rooms pay here.
+6. **haul** — crew advance their legs, then idle crew claim work.
+7. **lighting** — lamps, after dark.
+8. **stride** — the tower walks if it can still afford to, and terrain streams in.
+
+### 1.7 Exit criteria
+
+- [ ] A deliberately under-built tower visibly bottlenecks at the shaft, and adding a shaft
+      visibly fixes throughput.
+- [ ] A night with no banked charge browns out; a night with banked charge does not.
+- [ ] Golden replay regenerated and verified natively and in wasm; hash-parity runs in CI.
+- [ ] `make check` and the smoke suite green.

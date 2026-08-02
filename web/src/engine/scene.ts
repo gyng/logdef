@@ -13,15 +13,32 @@
 
 import type { QuadBatch } from "./QuadBatch";
 import type { Color } from "./QuadBatch";
-import { fade, mix, palette, roomColor, terrainColors } from "./palette";
+import { atNight, fade, mix, palette, roomColor, terrainColors } from "./palette";
 import { floorY, slotX, worldX, type Layout } from "./layout";
-import type { CatalogSnapshot, CrewView, RoomView, ViewSnapshot } from "../bridge/types";
+import type {
+  CarView,
+  CatalogSnapshot,
+  CrewView,
+  RoomView,
+  ShaftView,
+  ViewSnapshot,
+} from "../bridge/types";
 
-/** A pending placement the player is aiming at a slot. */
+/**
+ * A pending placement the player is aiming at a slot.
+ *
+ * Rooms and shafts share this because they share the interaction: pick
+ * a thing, hover the tower, see where it fits, click. The only real
+ * difference is that a shaft is one slot wide and many floors tall.
+ */
 export interface PlaceMode {
-  roomId: string;
+  kind: "room" | "shaft";
+  /** Content id of the room or shaft being placed. */
+  id: string;
   width: number;
   maxFloor: number | null;
+  /** Floors a shaft will span upward from the clicked floor. */
+  span: number;
   /** Slot the cursor is currently over, if it is over the tower. */
   hover: { floor: number; slot: number } | null;
 }
@@ -33,6 +50,18 @@ export interface SceneContext {
   placeMode: PlaceMode | null;
   /** Wall-clock seconds since load. Cosmetic wobble only. */
   clock: number;
+}
+
+/**
+ * How dark it is outside, 0 to 1, from the sun before terrain.
+ *
+ * Deliberately the raw sun rather than exposure: standing under thick
+ * canopy costs you charge, but it does not make it night. Conflating
+ * the two would have the sky go black every time the tower walks into
+ * shade.
+ */
+function darkness(view: ViewSnapshot): number {
+  return Math.max(0, Math.min(1, 1 - view.clock.sun_pct / 100));
 }
 
 export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
@@ -50,27 +79,54 @@ export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
 // Sky and terrain
 // ---------------------------------------------------------------------------
 
-function drawSky(batch: QuadBatch, { layout }: SceneContext): void {
+function drawSky(batch: QuadBatch, ctx: SceneContext): void {
+  const { layout, view } = ctx;
   const { width } = layout.viewport;
   const horizon = layout.horizonY;
+  const dark = darkness(view);
 
   // Two stops rather than one: humid teal overhead falling to a warm
   // haze at the treeline. A single gradient across the whole frame
   // washes out, which is exactly what the first pass looked like.
-  batch.push(0, 0, width, horizon * 0.62, palette.skyHigh, { colorBottom: palette.skyMid });
-  batch.push(0, horizon * 0.62 - 1, width, horizon - horizon * 0.62 + 2, palette.skyMid, {
-    colorBottom: palette.skyLow,
+  const high = mix(palette.skyHigh, palette.nightHigh, dark);
+  const mid = mix(palette.skyMid, palette.nightMid, dark);
+  const low = mix(palette.skyLow, palette.nightLow, dark);
+
+  batch.push(0, 0, width, horizon * 0.62, high, { colorBottom: mid });
+  batch.push(0, horizon * 0.62 - 1, width, horizon - horizon * 0.62 + 2, mid, {
+    colorBottom: low,
   });
 
-  // A soft sun high on the right. Atmospheric for now; M1's charge
-  // system gives it a job.
-  const sunX = width * 0.76;
-  const sunY = horizon * 0.28;
+  // The sun tracks the actual time of day, so the light source and the
+  // charge income are visibly the same fact.
+  const dayFraction = view.clock.permille / 1000;
   const radius = Math.min(width, layout.viewport.height) * 0.075;
-  batch.push(sunX - radius, sunY - radius, radius * 2, radius * 2, fade(palette.sunlight, 0.55), {
-    radius,
-    softness: radius * 1.1,
-  });
+  const arc = Math.sin(Math.max(0, Math.min(1, (dayFraction - 0.08) / 0.78)) * Math.PI);
+  const sunX = width * (0.12 + dayFraction * 0.78);
+  const sunY = horizon * (1.05 - arc * 0.85);
+
+  if (view.clock.sun_pct > 0) {
+    const brightness = 0.25 + (view.clock.sun_pct / 100) * 0.4;
+    batch.push(
+      sunX - radius,
+      sunY - radius,
+      radius * 2,
+      radius * 2,
+      fade(palette.sunlight, brightness),
+      { radius, softness: radius * 1.1 },
+    );
+  } else {
+    // A moon on the opposite arc, so a night sky is not simply empty.
+    const moonX = width * (0.9 - dayFraction * 0.78);
+    batch.push(
+      moonX - radius * 0.5,
+      horizon * 0.3 - radius * 0.5,
+      radius,
+      radius,
+      fade(palette.moonlight, 0.5),
+      { radius: radius * 0.5, softness: radius * 0.6 },
+    );
+  }
 }
 
 function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
@@ -79,6 +135,7 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
   const distance = view.world.distance;
   const horizon = layout.horizonY;
   const depth = layout.groundY - horizon;
+  const dark = darkness(view);
 
   // The ground plane, running from the horizon to the bottom of the
   // frame, coloured by the band it belongs to. Perspective is faked
@@ -90,15 +147,21 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
     const x1 = worldX(layout, band.start, distance, 1);
     const x2 = worldX(layout, band.end, distance, 1);
     if (x2 < -60 || x1 > width + 60) continue;
-    batch.push(x1, horizon, x2 - x1, height - horizon, mix(colors.far, palette.haze, 0.45), {
-      colorBottom: mix(colors.near, palette.ground, 0.75),
-    });
+    batch.push(
+      x1,
+      horizon,
+      x2 - x1,
+      height - horizon,
+      atNight(mix(colors.far, palette.haze, 0.45), dark),
+      { colorBottom: atNight(mix(colors.near, palette.ground, 0.75), dark) },
+    );
   }
 
   // Mist pooling where the canopy meets the sky. Sells the distance
   // more cheaply than any amount of extra geometry.
-  batch.push(0, horizon - depth * 0.14, width, depth * 0.3, fade(palette.haze, 0.55), {
-    colorBottom: fade(palette.haze, 0),
+  const mist = atNight(palette.haze, dark);
+  batch.push(0, horizon - depth * 0.14, width, depth * 0.3, fade(mist, 0.55), {
+    colorBottom: fade(mist, 0),
     softness: 2,
   });
 
@@ -135,7 +198,7 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
       const kind = terrain.feature_kinds[feature.kind] ?? "tree";
       const colors = terrainColors(terrain.id);
       const base = layerIndex === 0 ? colors.far : colors.near;
-      const tint = mix(base, layer.tint, layer.blend);
+      const tint = atNight(mix(base, layer.tint, layer.blend), dark);
       const size = depth * layer.scale * (0.45 + (feature.scale / 255) * 0.7);
       drawFeature(batch, kind, x, layer.base, size, tint, ctx.clock, feature.at);
     }
@@ -143,10 +206,11 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
 
   // The strip of ground the tower actually stands on, so its feet have
   // somewhere to land rather than floating over the parallax.
-  batch.push(0, layout.groundY, width, height - layout.groundY, fade(palette.ground, 0.55), {
-    colorBottom: palette.ground,
+  const ground = atNight(palette.ground, dark);
+  batch.push(0, layout.groundY, width, height - layout.groundY, fade(ground, 0.55), {
+    colorBottom: ground,
   });
-  batch.push(0, layout.groundY - 2, width, 4, fade(palette.groundLip, 0.7));
+  batch.push(0, layout.groundY - 2, width, 4, fade(atNight(palette.groundLip, dark), 0.7));
 }
 
 function drawFeature(
@@ -400,14 +464,18 @@ function drawTower(batch: QuadBatch, ctx: SceneContext): void {
     batch.push(layout.originX, y, spanX, layout.floorH, palette.floorPlate, {
       colorBottom: palette.floorLit,
     });
-    // Lamplight pooling along the deck the crew walk on.
+    // Lamplight pooling along the deck the crew walk on. It gets
+    // brighter as the sky darkens — and goes out entirely in a
+    // brown-out, which is the whole point of tracking `lit`. There is
+    // no warning banner; the tower simply goes dark.
+    const lamp = ctx.view.power.lit ? 0.07 + darkness(ctx.view) * 0.3 : 0;
     batch.push(
       layout.originX,
-      y + layout.floorH * 0.62,
+      y + layout.floorH * 0.55,
       spanX,
-      layout.floorH * 0.38,
+      layout.floorH * 0.45,
       fade(palette.lamplight, 0),
-      { colorBottom: fade(palette.lamplight, 0.09) },
+      { colorBottom: fade(palette.lamplight, lamp) },
     );
     // Back-wall battens. Empty floors are common early on, and without
     // some interior texture the tower reads as an empty cabinet.
@@ -576,24 +644,92 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
   }
 }
 
-function drawShafts(batch: QuadBatch, { view, layout }: SceneContext): void {
+function drawShafts(batch: QuadBatch, ctx: SceneContext): void {
+  const { view, layout } = ctx;
   for (const shaft of view.tower.shafts) {
     const x = slotX(layout, shaft.slot);
     const top = floorY(layout, shaft.high);
     const bottom = floorY(layout, shaft.low) + layout.floorH;
     batch.push(x + 2, top, layout.slotW - 4, bottom - top, palette.shaft, { radius: 3 });
 
-    // Treads, so stairs read as stairs at a glance.
-    const treads = Math.max(1, Math.round((bottom - top) / 9));
-    const busy = shaft.riders >= shaft.capacity;
+    // A shaft with people queueing on it glows. The queue is the
+    // bottleneck instrument, so it has to be visible from the shaft as
+    // well as from the crew standing at it.
+    const busy = shaft.riders >= shaft.capacity || shaft.queued > 0;
     const rail = busy ? palette.shaftBusy : palette.shaftRail;
-    for (let i = 0; i < treads; i += 1) {
-      const ty = top + ((i + 0.5) * (bottom - top)) / treads;
-      batch.push(x + 4, ty, layout.slotW - 8, 1.5, fade(rail, busy ? 0.75 : 0.4));
+
+    if (shaft.kind === "Stairs") {
+      // Treads, so stairs read as stairs at a glance.
+      const treads = Math.max(1, Math.round((bottom - top) / 9));
+      for (let i = 0; i < treads; i += 1) {
+        const ty = top + ((i + 0.5) * (bottom - top)) / treads;
+        batch.push(x + 4, ty, layout.slotW - 8, 1.5, fade(rail, busy ? 0.75 : 0.4));
+      }
+    } else {
+      // Guide rails rather than treads, and a counterweight cable, so
+      // a shaft with a car in it never gets mistaken for a staircase.
+      batch.push(x + layout.slotW / 2 - 0.5, top, 1, bottom - top, fade(rail, 0.35));
     }
+
     batch.push(x + 2, top, 2, bottom - top, fade(rail, 0.8));
     batch.push(x + layout.slotW - 4, top, 2, bottom - top, fade(rail, 0.8));
+
+    for (const car of shaft.cars) {
+      drawCar(batch, ctx, shaft, car, x);
+    }
   }
+}
+
+function drawCar(
+  batch: QuadBatch,
+  { layout, catalog }: SceneContext,
+  shaft: ShaftView,
+  car: CarView,
+  x: number,
+): void {
+  const w = layout.slotW - 8;
+  const h = layout.floorH * 0.6;
+  const y = layout.groundY - car.floor * layout.floorH - h - 4;
+  const dwelling = car.state === "dwelling";
+
+  batch.push(x + 4, y, w, h, mix(palette.towerShellLip, palette.shaftRail, 0.4), {
+    colorBottom: palette.towerShell,
+    radius: 3,
+  });
+  // Doors: shut while travelling, open at a stop. The clearest possible
+  // signal for what a car is doing right now.
+  const gap = dwelling ? w * 0.34 : w * 0.04;
+  batch.push(x + 4 + w * 0.06, y + h * 0.14, (w * 0.88 - gap) / 2, h * 0.72, palette.floorPlate, {
+    radius: 2,
+  });
+  batch.push(
+    x + 4 + w * 0.94 - (w * 0.88 - gap) / 2,
+    y + h * 0.14,
+    (w * 0.88 - gap) / 2,
+    h * 0.72,
+    palette.floorPlate,
+    { radius: 2 },
+  );
+
+  // Load, as pips along the car's floor. Reading "how full is it"
+  // should not need a number.
+  if (shaft.capacity > 0 && car.load > 0) {
+    const pip = Math.min(w / shaft.capacity - 1.5, 5);
+    for (let i = 0; i < car.load; i += 1) {
+      batch.push(x + 6 + i * (pip + 1.5), y + h - 5, pip, 3, palette.crewCarrying, { radius: 1.5 });
+    }
+  }
+
+  // Dumbwaiter cargo rides visibly rather than invisibly.
+  for (const [index, load] of car.freight.entries()) {
+    const glyphless = Math.min(w * 0.3, 8);
+    batch.push(x + 6 + index * (glyphless + 2), y + h * 0.3, glyphless, glyphless, palette.cargo, {
+      radius: 2,
+    });
+    void load;
+  }
+
+  void catalog;
 }
 
 function drawCrew(batch: QuadBatch, { view, layout, clock }: SceneContext): void {
@@ -662,54 +798,76 @@ export function crewPosition(layout: Layout, member: CrewView): { x: number; y: 
 function drawPlaceMode(batch: QuadBatch, ctx: SceneContext): void {
   const { placeMode, view, layout } = ctx;
   if (!placeMode) return;
-  const shape = towerShape(view);
 
-  // Every slot that would accept the room, so the player can see their
+  // Every position that would accept it, so the player can see their
   // options before committing rather than probing for a rejection.
   for (const floor of view.tower.floors) {
     if (placeMode.maxFloor !== null && floor.index > placeMode.maxFloor) continue;
     for (let slot = 0; slot + placeMode.width <= floor.slots; slot += 1) {
-      if (!slotRangeFree(view, floor.index, slot, placeMode.width)) continue;
-      const x = slotX(layout, slot);
-      const y = floorY(layout, floor.index);
-      batch.push(
-        x + 2,
-        y + 3,
-        placeMode.width * layout.slotW - 4,
-        layout.floorH - 9,
-        fade(palette.slotHint, 0.07),
-        { radius: 4 },
-      );
+      if (!placementFits(view, placeMode, floor.index, slot)) continue;
+      const { x, y, w, h } = ghostRect(layout, placeMode, floor.index, slot);
+      batch.push(x, y, w, h, fade(palette.slotHint, 0.07), { radius: 4 });
     }
   }
 
   const hover = placeMode.hover;
   if (!hover) return;
-  const free = slotRangeFree(view, hover.floor, hover.slot, placeMode.width);
-  const allowed =
-    free &&
-    hover.slot + placeMode.width <= shape.slots &&
-    (placeMode.maxFloor === null || hover.floor <= placeMode.maxFloor);
-
-  const x = slotX(layout, hover.slot);
-  const y = floorY(layout, hover.floor);
+  const allowed = placementFits(view, placeMode, hover.floor, hover.slot);
+  const { x, y, w, h } = ghostRect(layout, placeMode, hover.floor, hover.slot);
   const color = allowed ? palette.ghostValid : palette.ghostBlocked;
-  batch.push(
-    x + 2,
-    y + 3,
-    placeMode.width * layout.slotW - 4,
-    layout.floorH - 9,
-    fade(color, 0.4),
-    { radius: 4, softness: 2 },
-  );
+  batch.push(x, y, w, h, fade(color, 0.4), { radius: 4, softness: 2 });
 }
 
-function drawVignette(batch: QuadBatch, { layout }: SceneContext): void {
+/** The footprint a ghost would occupy: one floor for a room, several for a shaft. */
+function ghostRect(
+  layout: Layout,
+  placeMode: PlaceMode,
+  floor: number,
+  slot: number,
+): { x: number; y: number; w: number; h: number } {
+  const x = slotX(layout, slot) + 2;
+  const w = placeMode.width * layout.slotW - 4;
+  if (placeMode.kind === "room") {
+    return { x, y: floorY(layout, floor) + 3, w, h: layout.floorH - 9 };
+  }
+  const top = floorY(layout, floor + placeMode.span - 1);
+  const bottom = floorY(layout, floor) + layout.floorH;
+  return { x, y: top + 3, w, h: bottom - top - 6 };
+}
+
+/** Mirrors the command validation, so the highlight never lies. */
+export function placementFits(
+  view: ViewSnapshot,
+  placeMode: PlaceMode,
+  floor: number,
+  slot: number,
+): boolean {
+  if (placeMode.maxFloor !== null && floor > placeMode.maxFloor) return false;
+  if (placeMode.kind === "room") {
+    return slotRangeFree(view, floor, slot, placeMode.width);
+  }
+  const top = floor + placeMode.span - 1;
+  if (top >= view.tower.floors.length) return false;
+  for (let f = floor; f <= top; f += 1) {
+    if (!slotRangeFree(view, f, slot, 1)) return false;
+  }
+  return true;
+}
+
+function drawVignette(batch: QuadBatch, { layout, view }: SceneContext): void {
   const { width, height } = layout.viewport;
   const band = height * 0.18;
   batch.push(0, height - band, width, band, fade(palette.vignette, 0), {
     colorBottom: fade(palette.vignette, 0.55),
   });
+
+  // A brown-out dims the whole frame, briefly and unmistakably. This is
+  // the one place the renderer editorialises, and it earns it: losing
+  // power is the emergency the charge economy exists to threaten.
+  if (view.power.brownout) {
+    const pulse = 0.1 + Math.abs(Math.sin(view.tick * 0.06)) * 0.12;
+    batch.push(0, 0, width, height, fade(palette.vignette, pulse));
+  }
 }
 
 // ---------------------------------------------------------------------------

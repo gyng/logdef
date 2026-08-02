@@ -12,9 +12,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::content::{Content, RoomCategory};
+use crate::content::{Content, RoomCategory, ShaftKind};
 use crate::fx::Fx;
-use crate::ids::{FloorIdx, ItemIdx, RoomId, RoomIdx, ShaftId, SlotIdx};
+use crate::ids::{
+    CrewId, DaypartIdx, FloorIdx, ItemIdx, RoomId, RoomIdx, ShaftId, ShaftIdx, SlotIdx,
+};
 
 /// A typed pile of one item with a ceiling.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,6 +125,10 @@ pub struct Room {
     pub progress: u32,
     /// Sub-item intake accumulation, Q8.8.
     pub intake_acc: Fx,
+    /// Switched on. Mostly matters for the burner, where "should this
+    /// be running right now" is a real decision every night — but any
+    /// room can be shut down to stop it eating charge or inputs.
+    pub active: bool,
 }
 
 impl Room {
@@ -131,11 +137,17 @@ impl Room {
         let room_def = content.room(def);
         let rt = content.room_rt(def);
 
-        let inputs = rt
+        let mut inputs: Vec<Stack> = rt
             .recipe_inputs
             .iter()
             .map(|(item, _, buffer_max)| Stack::new(*item, *buffer_max))
             .collect();
+        // A burner eats from an inbox like any other room, so the crew
+        // have to keep it fed — which is what makes lighting it compete
+        // with the mill for exactly the same bamboo.
+        if let Some((item, buffer_max)) = rt.burner_fuel {
+            inputs.push(Stack::new(item, buffer_max));
+        }
 
         let mut outputs: Vec<Stack> = rt
             .recipe_outputs
@@ -160,6 +172,7 @@ impl Room {
             shelves,
             progress: 0,
             intake_acc: Fx::ZERO,
+            active: true,
         }
     }
 
@@ -209,24 +222,180 @@ impl Room {
     }
 }
 
+/// Which way a car is sweeping. `Idle` means it is parked and has no
+/// direction yet — not that it is between floors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ShaftKind {
-    /// Free, always present, slow, one body at a time.
-    Stairs,
+pub enum CarDir {
+    Idle,
+    Up,
+    Down,
 }
 
-/// Vertical transport. In M0 there is only one kind; the dumbwaiter and
-/// the elevator car simulation arrive in M1 and slot in here.
+impl CarDir {
+    #[must_use]
+    pub const fn toward(from: FloorIdx, to: FloorIdx) -> Self {
+        if to > from {
+            CarDir::Up
+        } else if to < from {
+            CarDir::Down
+        } else {
+            CarDir::Idle
+        }
+    }
+
+    #[must_use]
+    pub const fn reversed(self) -> Self {
+        match self {
+            CarDir::Up => CarDir::Down,
+            CarDir::Down => CarDir::Up,
+            CarDir::Idle => CarDir::Idle,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CarState {
+    /// Parked, waiting for enough demand to be worth departing.
+    Idle,
+    Moving,
+    /// Stopped at a floor with the doors open.
+    Dwelling {
+        ticks_left: u32,
+    },
+}
+
+/// One elevator or dumbwaiter car.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Car {
+    /// Fractional floor position, so the renderer gets smooth travel.
+    pub pos: Fx,
+    pub dir: CarDir,
+    pub state: CarState,
+    /// Crew aboard. Their position is driven by the car while riding.
+    pub riders: Vec<CrewId>,
+    /// Items aboard. Dumbwaiters only — elevator freight rides in the
+    /// hands of the crew carrying it.
+    pub freight: Vec<Stack>,
+    /// Floors someone aboard wants. Kept sorted and deduplicated.
+    pub stops: Vec<FloorIdx>,
+    /// Where a dumbwaiter is taking its load.
+    pub target: Option<FloorIdx>,
+    /// Ticks parked with demand outstanding. Feeds the dispatch
+    /// threshold: a car does not leave for a single caller instantly.
+    pub idle_ticks: u32,
+}
+
+impl Car {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            pos: Fx::ZERO,
+            dir: CarDir::Idle,
+            state: CarState::Idle,
+            riders: Vec::new(),
+            freight: Vec::new(),
+            stops: Vec::new(),
+            target: None,
+            idle_ticks: 0,
+        }
+    }
+
+    #[must_use]
+    pub fn floor(&self) -> FloorIdx {
+        self.pos.floor_int().max(0) as FloorIdx
+    }
+
+    /// Exactly at a floor, rather than between two.
+    #[must_use]
+    pub fn at_floor(&self) -> bool {
+        self.pos.frac_raw() == 0
+    }
+
+    pub fn add_stop(&mut self, floor: FloorIdx) {
+        if let Err(at) = self.stops.binary_search(&floor) {
+            self.stops.insert(at, floor);
+        }
+    }
+
+    pub fn clear_stop(&mut self, floor: FloorIdx) {
+        self.stops.retain(|stop| *stop != floor);
+    }
+
+    /// Is there a reason to keep going this way?
+    #[must_use]
+    pub fn has_stop_beyond(&self, floor: FloorIdx, dir: CarDir) -> bool {
+        match dir {
+            CarDir::Up => self.stops.iter().any(|stop| *stop > floor),
+            CarDir::Down => self.stops.iter().any(|stop| *stop < floor),
+            CarDir::Idle => false,
+        }
+    }
+}
+
+impl Default for Car {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Whose calls a car answers first when both are waiting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShaftPriority {
+    Balanced,
+    /// Crew carrying a load board first. The freight lane.
+    FreightFirst,
+    /// Empty-handed crew board first — commutes over cargo.
+    CrewFirst,
+}
+
+/// What a shaft does during one daypart.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShaftProgram {
+    /// Indexed by floor. A floor the car does not serve is one it will
+    /// not stop at, however loudly someone is calling.
+    pub served: Vec<bool>,
+    pub priority: ShaftPriority,
+}
+
+impl ShaftProgram {
+    #[must_use]
+    pub fn all_floors(count: usize) -> Self {
+        Self {
+            served: vec![true; count],
+            priority: ShaftPriority::Balanced,
+        }
+    }
+
+    #[must_use]
+    pub fn serves(&self, floor: FloorIdx) -> bool {
+        self.served.get(floor as usize).copied().unwrap_or(false)
+    }
+}
+
+/// Vertical transport: stairs, a dumbwaiter, or an elevator.
+///
+/// A shaft occupies one slot column on **every** floor it spans. That
+/// is the price of circulation, and it is what stops "add another
+/// shaft" from being a free answer to every bottleneck.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Shaft {
     pub id: ShaftId,
+    pub def: ShaftIdx,
+    /// Cached from the definition so the hot path never indexes content
+    /// to answer "is this an elevator".
     pub kind: ShaftKind,
     pub low: FloorIdx,
     pub high: FloorIdx,
     pub slot: SlotIdx,
+    /// Stairs: bodies on the flight at once. Elevator: car capacity in
+    /// units.
     pub capacity: u8,
-    /// Crew currently on the shaft.
+    /// Crew on the stairs right now.
     pub riders: u8,
+    pub cars: Vec<Car>,
+    /// One program per daypart, so the night shift can run a different
+    /// pattern from the day.
+    pub programs: Vec<ShaftProgram>,
 }
 
 impl Shaft {
@@ -245,6 +414,45 @@ impl Shaft {
     #[must_use]
     pub const fn has_room(&self) -> bool {
         self.riders < self.capacity
+    }
+
+    #[must_use]
+    pub fn program(&self, daypart: DaypartIdx) -> &ShaftProgram {
+        self.programs
+            .get(daypart.get())
+            .or_else(|| self.programs.first())
+            .expect("a shaft always has at least one program")
+    }
+
+    /// Does this shaft serve both ends of the trip during `daypart`?
+    #[must_use]
+    pub fn serves_trip(&self, from: FloorIdx, to: FloorIdx, daypart: DaypartIdx) -> bool {
+        if !self.covers_trip(from, to) {
+            return false;
+        }
+        match self.kind {
+            // Stairs go everywhere they span; there is nothing to
+            // program on a staircase.
+            ShaftKind::Stairs => true,
+            _ => {
+                let program = self.program(daypart);
+                program.serves(from) && program.serves(to)
+            }
+        }
+    }
+
+    /// Units currently aboard a car: one per crew member, one more for
+    /// anything they are carrying.
+    #[must_use]
+    pub fn car_load(&self, car: usize, crew: &[crate::state::Crew]) -> u8 {
+        let Some(car) = self.cars.get(car) else {
+            return 0;
+        };
+        car.riders
+            .iter()
+            .filter_map(|id| crew.iter().find(|member| member.id == *id))
+            .map(|member| if member.is_carrying() { 2u8 } else { 1u8 })
+            .sum()
     }
 }
 
@@ -287,15 +495,29 @@ impl Tower {
             .collect();
 
         // Built-in stairs at the left edge, spanning everything. One
-        // rider at a time, so two crew already make a visible queue.
+        // body at a time, so two crew already make a visible queue.
+        let stairs_def = content
+            .shafts
+            .iter()
+            .position(|def| def.kind == ShaftKind::Stairs)
+            .map_or(ShaftIdx(0), |i| ShaftIdx(i as u16));
+
         let shafts = vec![Shaft {
             id: ShaftId(1),
+            def: stairs_def,
             kind: ShaftKind::Stairs,
             low: 0,
             high: balance.starting_floors.saturating_sub(1),
             slot: 0,
             capacity: balance.stairs_capacity,
             riders: 0,
+            cars: Vec::new(),
+            // Sized for the tallest the tower can get, so growing does
+            // not need every program rewritten.
+            programs: vec![
+                ShaftProgram::all_floors(balance.max_floors as usize);
+                content.dayparts.len().max(1)
+            ],
         }];
 
         Self { floors, shafts }

@@ -57,14 +57,23 @@ pub enum CrewState {
     Walking {
         to_slot: SlotIdx,
     },
-    /// Standing at a shaft column waiting for capacity.
+    /// Standing at a shaft column waiting for a way up: either capacity
+    /// on the stairs, or a car going their way. This is the state the
+    /// stress tint reads, and the one that makes a bottleneck visible.
     Boarding {
         shaft: ShaftId,
         to_floor: FloorIdx,
     },
-    /// On the shaft, moving between floors.
+    /// Climbing stairs under their own power.
     Climbing {
         shaft: ShaftId,
+        to_floor: FloorIdx,
+    },
+    /// Aboard a car. Position is driven by the car, not by the crew
+    /// member — they are cargo until the doors open.
+    Riding {
+        shaft: ShaftId,
+        car: u8,
         to_floor: FloorIdx,
     },
     Loading {

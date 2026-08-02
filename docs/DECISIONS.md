@@ -134,7 +134,7 @@ One format serves four jobs: the save file, the regression fixture, the seed-sha
 format, and — if it's ever needed — netcode. There is deliberately no second format for any
 of these.
 
-`assets/replays/m0-golden.json` is embedded into the binary with `include_str!`
+`assets/replays/golden.json` is embedded into the binary with `include_str!`
 (`replay::GOLDEN_REPLAY`), so the native `cargo test` run and the browser's Playwright smoke
 test verify literally the same bytes. That identity — not "an equivalent replay," the same
 JSON — is the native/wasm parity gate: if `verify_golden_replay()` passes both places, wasm

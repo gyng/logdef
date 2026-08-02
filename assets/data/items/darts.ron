@@ -1,0 +1,11 @@
+// The ammo staple. Poles become darts at the thornwright; darts have no
+// consumer of their own until the dart batteries arrive in M2, so for
+// now they just accumulate as stock — a deliberate, recorded exception
+// (SYSTEMS.md §1.4).
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.darts",
+    name: "Darts",
+    glyph: "🎯",
+    order: 30,
+)

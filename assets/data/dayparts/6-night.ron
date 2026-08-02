@@ -1,0 +1,9 @@
+// Loader note: dayparts are sorted by `start_permille`, not by
+// filename — the `N-name.ron` numbering is for humans browsing the
+// directory, and has no mechanical effect.
+#![enable(implicit_some)]
+DaypartDef(
+    id: "daypart.night",
+    name: "Night",
+    start_permille: 860,
+)

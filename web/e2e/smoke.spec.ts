@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import type { CatalogSnapshot, ReplayReport, ViewSnapshot } from "../src/bridge/types";
+
 /**
  * The M0 smoke path.
  *
@@ -14,20 +16,19 @@ import { expect, test, type Page } from "@playwright/test";
 
 const SEED = 4242;
 
+/**
+ * The hooks the app installs on `window` for tests to drive it.
+ *
+ * The payload types are imported rather than restated: a hand-written
+ * copy silently rots every time the snapshot gains a field, and then
+ * the tests are asserting against a shape the game stopped having.
+ */
 interface TestHooks {
-  view(): {
-    tick: number;
-    speed: string;
-    world: { distance: number; bands: unknown[]; features: unknown[] };
-    tower: { floors: { rooms: unknown[] }[]; shafts: unknown[] };
-    crew: { name: string; state: string }[];
-    stock: { item: number; count: number }[];
-    stats: { hauls_completed: number; crafts_completed: number; items_harvested: number };
-  };
-  catalog(): { content_hash: string; items: unknown[]; rooms: unknown[]; terrain: unknown[] };
+  view(): ViewSnapshot;
+  catalog(): CatalogSnapshot;
   stateHash(): string;
   step(ticks: number): void;
-  verifyGolden(): { ok: boolean; checked: number; final_tick: number; message: string };
+  verifyGolden(): ReplayReport;
   exportReplay(): string;
   /** Centre of a slot in client coordinates, from the live layout. */
   slotPoint(floor: number, slot: number): { x: number; y: number } | null;
