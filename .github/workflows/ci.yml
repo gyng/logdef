@@ -5,14 +5,14 @@ on:
   pull_request:
 
 # Pinned to an exact stable release (not the floating `stable` channel)
-# so a new Rust release can't silently change what CI enforces. Bump
-# deliberately; edition 2024 (Cargo.toml) needs 1.85+.
-env:
-  RUST_TOOLCHAIN: 1.97.1
+# so a new Rust release can't silently change what CI enforces. This is
+# the version the code is actually developed and verified against —
+# bump it deliberately, after checking locally, rather than reaching for
+# the newest number. Edition 2024 (Cargo.toml) needs 1.85+.
 
 jobs:
   # Native leg of the determinism/parity gate: `cargo test` replays the
-  # embedded golden fixture (assets/replays/m0-golden.json) on the host
+  # embedded golden fixture (assets/replays/golden.json) on the host
   # platform. See docs/DECISIONS.md §5 and the `frontend` job below for
   # the other half of the same guarantee.
   rust:
@@ -21,8 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
-        uses: dtolnay/rust-toolchain@1.97.1
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: rustfmt, clippy
 
@@ -36,7 +36,7 @@ jobs:
 
       # This is half of the native/wasm parity gate (docs/DECISIONS.md §5):
       # `cargo test` includes `verify_golden_replay()`, which replays
-      # assets/replays/m0-golden.json (embedded via include_str!) natively
+      # assets/replays/golden.json (embedded via include_str!) natively
       # and checks every checkpointed state hash. The `frontend` job's
       # Playwright smoke test replays the exact same embedded bytes inside
       # the wasm build running in a real browser. Neither leg proves
@@ -53,8 +53,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
-        uses: dtolnay/rust-toolchain@1.97.1
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
 
