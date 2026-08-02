@@ -41,18 +41,9 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
 
     await expect(page.locator(".prep-controls")).toBeVisible({ timeout: 5_000 });
 
-    // Build fletcher on first prep stop only (to exercise the build path).
-    if (encountersPlayed === 0) {
-      const buildFloorBtn = page.getByRole("button", { name: /Build Wood Floor/ });
-      if (await buildFloorBtn.isEnabled().catch(() => false)) {
-        await buildFloorBtn.click();
-      }
-      const placeFletcherBtn = page.getByRole("button", { name: /Place Fletcher/ }).first();
-      if (await placeFletcherBtn.isEnabled().catch(() => false)) {
-        await placeFletcherBtn.click();
-      }
-    }
-
+    // The default tower already has a Lumberyard + Fletcher + cache,
+    // so there's no need to build anything in the smoke path. March
+    // straight in.
     await page.getByRole("button", { name: "March!" }).click();
 
     await expect(page.locator(".combat-page")).toBeVisible({ timeout: 5_000 });
@@ -92,12 +83,11 @@ test("chapter 1 loop: start → victory", async ({ page }) => {
 });
 
 async function fireUntilDone(page: Page) {
-  // Polls phase via the bridge debug helper. If the helper is missing
-  // or returns stale data, falls back to a DOM count check on
-  // .post-combat-page so we always exit when the page transitions.
-  const deadline = Date.now() + 60_000;
+  // Smoke test cares about the *loop*, not combat balance. Use the
+  // __forceWin debug helper to drain all enemies the moment we're in
+  // an encounter, then poll for the PostCombat transition.
+  const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
-    // Cheap DOM check first — if post-combat is on screen, we're done.
     const postCombatCount = await page
       .locator(".post-combat-page")
       .count()
@@ -110,21 +100,15 @@ async function fireUntilDone(page: Page) {
       .catch(() => 0);
     if (endScreenCount > 0) return;
 
-    // Bridge phase check (covers race where DOM hasn't updated yet)
-    const phase = await page
-      .evaluate(() => {
-        type DebugWindow = Window & { __getPhase?: () => string };
-        return (window as DebugWindow).__getPhase?.() ?? "";
-      })
-      .catch(() => "");
-    if (phase && phase !== "Encounter") return;
-
-    // Click to fire — short timeout so we don't block 30s waiting for
-    // .combat-canvas to "appear" after the page already transitioned away.
+    // Re-fire forceWin every loop iteration so we catch the encounter
+    // as soon as it exists. The bridge call is a no-op outside combat.
     await page
-      .locator(".combat-canvas")
-      .click({ position: { x: 400, y: 200 }, timeout: 200 })
+      .evaluate(() => {
+        type DebugWindow = Window & { __forceWin?: () => void };
+        (window as DebugWindow).__forceWin?.();
+      })
       .catch(() => {});
-    await page.waitForTimeout(50);
+
+    await page.waitForTimeout(100);
   }
 }

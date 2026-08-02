@@ -292,6 +292,21 @@ pub enum ModifierEffect {
     },
 }
 
+fn default_building_width_slots() -> u8 {
+    2
+}
+
+/// One input requirement on a crafting building. Each production
+/// cycle consumes `amount_per_craft` of `resource` from a buffer of
+/// size `buffer_max`. Raw producers leave this list empty.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BuildingInputDef {
+    pub resource: ResourceType,
+    pub amount_per_craft: u32,
+    pub buffer_max: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildingDef {
@@ -302,6 +317,15 @@ pub struct BuildingDef {
     pub production_rate: Scalar,
     pub operating_cost: u32,
     pub output_buffer_max: u32,
+    /// Number of slots the building occupies horizontally on its floor.
+    /// T1 buildings ship at 2 slots, T2 at 3 slots.
+    #[serde(default = "default_building_width_slots")]
+    pub width_slots: u8,
+    /// Inputs the building consumes per production cycle. Empty for
+    /// raw producers (Lumberyard, Quarry); populated for crafters
+    /// (Fletcher consumes wood, Forge consumes stone, etc.).
+    #[serde(default)]
+    pub inputs: Vec<BuildingInputDef>,
     pub build_tick_cost: u32,
     pub build_resource: ResourceType,
     pub build_resource_cost: u32,

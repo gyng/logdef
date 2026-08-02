@@ -125,6 +125,18 @@ impl GameEngine {
         }
     }
 
+    /// Construct an engine with an empty starting tower (no floors,
+    /// no Fletcher, no cache). Used by unit tests that exercise the
+    /// build path or the cache-bottleneck behaviour from a clean slate.
+    #[cfg(test)]
+    pub fn new_blank(seed: u64, class: HeroClass) -> Self {
+        let mut engine = Self::new(seed, class);
+        engine.state.tower.floors.clear();
+        engine.state.tower.balconies.clear();
+        engine.state.tower.hero.position = BalconyId(0);
+        engine
+    }
+
     #[allow(dead_code)] // Will be used for companion assignment
     fn next_entity_id(&mut self) -> EntityId {
         let id = EntityId(self.next_id);
@@ -227,7 +239,19 @@ impl GameEngine {
                     transport_segments: Vec::new(),
                     floor_width_used: 0.0,
                     floor_width_max: 1.0,
+                    slots: 8,
                 });
+
+                // Extend the built-in stairs to cover the new floor.
+                if let Some(stairs) = self
+                    .state
+                    .tower
+                    .transports
+                    .iter_mut()
+                    .find(|t| t.kind == TransportKind::Stairs)
+                {
+                    stairs.high_floor = floor_idx;
+                }
 
                 let balcony_id = BalconyId(floor_idx as u32);
                 let rack_resource = weapon_resource(self.state.tower.hero.weapon_primary.base_type)
@@ -251,6 +275,7 @@ impl GameEngine {
 
             GameCommand::PlaceBuilding {
                 floor,
+                slot,
                 building_type,
             } => {
                 self.require_phase(GamePhase::Travel)?;
@@ -275,6 +300,18 @@ impl GameEngine {
                 let output_buffer_max = building_def.output_buffer_max;
                 let production_rate = building_def.production_rate;
                 let operating_cost = building_def.operating_cost;
+                let width_slots = building_def.width_slots;
+                let input_buffers: Vec<ResourceBuffer> = building_def
+                    .inputs
+                    .iter()
+                    .map(|inp| ResourceBuffer {
+                        resource: inp.resource,
+                        current: 0,
+                        max: inp.buffer_max,
+                    })
+                    .collect();
+
+                self.validate_slot_range(floor, slot, width_slots)?;
 
                 let eco = &self.state.economy;
                 if eco.ticks_remaining < build_tick_cost {
@@ -303,16 +340,19 @@ impl GameEngine {
                         current: 0,
                         max: output_buffer_max,
                     },
-                    input_buffers: Vec::new(),
+                    input_buffers,
                     production_rate,
                     operating_cost,
                     is_active: true,
+                    production_progress: 0.0,
+                    slot,
+                    width_slots,
                 });
 
                 Ok(())
             }
 
-            GameCommand::PlaceCache { floor } => {
+            GameCommand::PlaceCache { floor, slot } => {
                 self.require_phase(GamePhase::Travel)?;
 
                 if floor >= self.state.tower.floors.len() {
@@ -321,6 +361,7 @@ impl GameEngine {
                 if self.state.tower.floors[floor].cache.is_some() {
                     return Err(CommandError::FloorOccupied { index: floor });
                 }
+                self.validate_slot_range(floor, slot, 1)?;
 
                 let build_tick_cost = self.registry.balance.construction.building_tick_cost;
                 if self.state.economy.ticks_remaining < build_tick_cost {
@@ -344,6 +385,7 @@ impl GameEngine {
                         current: 0,
                         max: self.registry.balance.hero.ammo_rack_max * 2,
                     }],
+                    slot,
                 });
 
                 Ok(())
@@ -448,6 +490,12 @@ impl GameEngine {
                 Ok(())
             }
 
+            GameCommand::SetDrawPower { power } => {
+                self.require_phase(GamePhase::Encounter)?;
+                self.state.tower.hero.draw_power = power.clamp(0.0, 1.0);
+                Ok(())
+            }
+
             GameCommand::Fire => {
                 self.require_phase(GamePhase::Encounter)?;
 
@@ -464,12 +512,37 @@ impl GameEngine {
                         reason: format!("Unknown weapon definition for {}", weapon.sub_type),
                     })?;
                 let base_type = weapon.base_type;
-                let damage = weapon.damage;
                 let needs_ammo = base_type != WeaponBaseType::Melee;
                 let hero_id = hero.id;
-                let speed = weapon_def.projectile_speed.unwrap_or(0.0);
+                let base_speed = weapon_def.projectile_speed.unwrap_or(0.0);
                 let melee_range = weapon_def.range;
                 let battlefield_width = self.registry.balance.combat.battlefield_width;
+                // Bow draw — partial draws still fire well, full draws
+                // are noticeably stronger. Tap shots are 70% effective,
+                // full draws are 130% — playtesters who don't know to
+                // hold can still play, while patience pays off.
+                let draw = hero.draw_power.clamp(0.0, 1.0);
+                let power_mul = if base_type == WeaponBaseType::Bow {
+                    0.7 + draw * 0.6
+                } else {
+                    1.0
+                };
+                let speed = base_speed * power_mul;
+                let damage = weapon.damage * power_mul;
+                // Hero fires from the top of their balcony floor — that
+                // height feeds the visible parabolic arc in the renderer
+                // and naturally limits effective range under gravity.
+                let hero_position = hero.position;
+                let hero_floor = self
+                    .state
+                    .tower
+                    .balconies
+                    .iter()
+                    .find(|b| b.id == hero_position)
+                    .map_or(0, |b| b.floor);
+                let spawn_y = (hero_floor as Scalar + 1.0) * crate::systems::FLOOR_HEIGHT_PX;
+                let gravity = projectile_gravity(base_type);
+                let aim = hero.aim_direction;
 
                 if needs_ammo && self.state.tower.hero.personal_ammo == 0 {
                     return Err(CommandError::InsufficientMaterials {
@@ -509,16 +582,28 @@ impl GameEngine {
                         enemy.hp -= damage;
                     }
                 } else {
-                    // Ranged: create projectile
+                    // Ranged: create projectile that arcs from the
+                    // hero's balcony height to the ground under gravity.
+                    // Initial velocity respects aim_direction so the
+                    // player can aim with the mouse — vertical aim
+                    // adds initial vy on top of the horizontal speed.
+                    let aim_len = (aim.x * aim.x + aim.y * aim.y).sqrt().max(0.001);
+                    let aim_x = aim.x / aim_len;
+                    let aim_y = aim.y / aim_len;
+                    let vx = speed * aim_x.max(0.05);
+                    // Negative aim_y means click was above hero (mouse
+                    // above the spawn point) — translate to upward
+                    // initial velocity in our y-up sim convention.
+                    let vy = -speed * aim_y * 0.8;
                     let proj_id = self.next_projectile_id();
                     if let Some(encounter) = &mut self.state.encounter {
                         encounter.projectiles.push(Projectile {
                             id: proj_id,
                             source: hero_id,
                             weapon_type: base_type,
-                            position: Vec2::new(0.0, 0.0),
-                            velocity: Vec2::new(speed, 0.0),
-                            gravity: 0.0,
+                            position: Vec2::new(0.0, spawn_y),
+                            velocity: Vec2::new(vx, vy),
+                            gravity,
                             damage,
                             modifier: None,
                             state: ProjectileState::Flying,
@@ -736,6 +821,100 @@ impl GameEngine {
                 Ok(())
             }
 
+            GameCommand::BuildLadder { low_floor, slot } => {
+                self.require_phase(GamePhase::Travel)?;
+                self.build_transport(
+                    low_floor,
+                    slot,
+                    TransportKind::Ladder,
+                    0.7,
+                    1,
+                    1,
+                    ResourceType::Wood,
+                    1,
+                )
+            }
+
+            GameCommand::BuildDumbwaiter { low_floor, slot } => {
+                self.require_phase(GamePhase::Travel)?;
+                self.build_transport(
+                    low_floor,
+                    slot,
+                    TransportKind::Dumbwaiter,
+                    0.8,
+                    1,
+                    2,
+                    ResourceType::Wood,
+                    2,
+                )
+            }
+
+            GameCommand::RunDrill { seconds } => {
+                self.require_phase(GamePhase::Travel)?;
+                if self.state.drill.is_some() {
+                    return Err(CommandError::InvalidCommand {
+                        reason: "A drill is already running".into(),
+                    });
+                }
+                if self.state.economy.ticks_remaining < 1 {
+                    return Err(CommandError::InsufficientTicks {
+                        needed: 1,
+                        available: self.state.economy.ticks_remaining,
+                    });
+                }
+                self.state.economy.ticks_remaining -= 1;
+                let secs = seconds.clamp(5, 120) as Scalar;
+                self.state.drill = Some(DrillState {
+                    seconds_remaining: secs,
+                    seconds_total: secs,
+                    deliveries_at_start: self.state.deliveries_completed,
+                    demand_accumulator: 0.0,
+                });
+                Ok(())
+            }
+
+            GameCommand::HireRunner => {
+                self.require_phase(GamePhase::Travel)?;
+                let Some(quarters_idx) = self.state.tower.runner_quarters.iter().position(|q| {
+                    let assigned = self
+                        .state
+                        .tower
+                        .runners
+                        .iter()
+                        .filter(|r| r.quarters_id.0 as usize == 0)
+                        .count();
+                    (assigned as u8) < q.capacity
+                }) else {
+                    return Err(CommandError::InvalidCommand {
+                        reason: "All runner quarters at capacity. Build more first.".into(),
+                    });
+                };
+                const HIRE_COST: u32 = 10;
+                if self.state.economy.gold < HIRE_COST {
+                    return Err(CommandError::InsufficientGold {
+                        needed: HIRE_COST,
+                        available: self.state.economy.gold,
+                    });
+                }
+                self.state.economy.gold -= HIRE_COST;
+                let next_id = (self.state.tower.runners.len() as u32) + 1;
+                let quarters_floor = self.state.tower.runner_quarters[quarters_idx].floor;
+                self.state.tower.runners.push(Runner {
+                    id: RunnerId(next_id),
+                    quarters_id: QuartersId(quarters_idx as u32),
+                    current_floor: quarters_floor,
+                    state: RunnerState::Idle {
+                        at_floor: quarters_floor,
+                    },
+                    carried: None,
+                    speed: 50.0,
+                    carry_capacity: 1,
+                    task: None,
+                    current_slot: 0,
+                });
+                Ok(())
+            }
+
             // ── Unimplemented (MVP) ─────────────────────────────
             _ => Err(CommandError::InvalidCommand {
                 reason: "Command not implemented in MVP".into(),
@@ -830,7 +1009,11 @@ impl GameEngine {
                 stuck_arrows: Vec::new(),
             });
             remaining_budget = remaining_budget.saturating_sub(threat);
-            spawn_x += 40.0; // Stagger spawn positions
+            // Very wide stagger so enemies arrive in waves over ~60s,
+            // giving the supply chain real time to feed the racks
+            // multiple times during a single encounter. SimTower-style
+            // network optimisation only matters if combat lasts.
+            spawn_x += 250.0;
         }
 
         // For boss encounters, spawn a real boss instead of a tough grunt.
@@ -948,6 +1131,117 @@ impl GameEngine {
         }
     }
 
+    /// Shared logic for placing a transport segment between two
+    /// adjacent floors. Validates that the floors exist, charges the
+    /// build cost, and pushes a new TransportInstance onto the tower.
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
+    fn build_transport(
+        &mut self,
+        low_floor: usize,
+        slot: u8,
+        kind: TransportKind,
+        speed_mul: Scalar,
+        capacity: u8,
+        ticks_cost: u32,
+        resource: ResourceType,
+        resource_cost: u32,
+    ) -> Result<(), CommandError> {
+        let high_floor = low_floor + 1;
+        if high_floor >= self.state.tower.floors.len() {
+            return Err(CommandError::InvalidFloor { index: high_floor });
+        }
+        // Transport columns occupy their slot on every floor in the
+        // span. Reject if any of those floors already has something
+        // in that slot.
+        for f in low_floor..=high_floor {
+            self.validate_slot_range(f, slot, 1)?;
+        }
+        if self.state.economy.ticks_remaining < ticks_cost {
+            return Err(CommandError::InsufficientTicks {
+                needed: ticks_cost,
+                available: self.state.economy.ticks_remaining,
+            });
+        }
+        let available = self.get_material(resource);
+        if available < resource_cost {
+            return Err(CommandError::InsufficientMaterials {
+                resource,
+                needed: resource_cost,
+                available,
+            });
+        }
+        self.state.economy.ticks_remaining -= ticks_cost;
+        self.deduct_material(resource, resource_cost);
+        let next_id = (self.state.tower.transports.len() as u32) + 10;
+        self.state.tower.transports.push(TransportInstance {
+            id: TransportId(next_id),
+            kind,
+            low_floor,
+            high_floor,
+            speed_mul,
+            capacity,
+            occupancy: 0,
+            direction: TransportDirection::Both,
+            slot,
+        });
+        Ok(())
+    }
+
+    /// Verify that `[slot, slot+width)` is in range on `floor` and not
+    /// occupied by any existing building, cache, or transport column.
+    /// Used by every placement command.
+    fn validate_slot_range(&self, floor: usize, slot: u8, width: u8) -> Result<(), CommandError> {
+        let Some(floor_state) = self.state.tower.floors.get(floor) else {
+            return Err(CommandError::InvalidFloor { index: floor });
+        };
+        let end = slot.saturating_add(width);
+        if end > floor_state.slots {
+            return Err(CommandError::InvalidCommand {
+                reason: format!(
+                    "Slot range {slot}..{end} exceeds floor width {}",
+                    floor_state.slots
+                ),
+            });
+        }
+        // Existing building footprint
+        if let Some(b) = floor_state.building.as_ref() {
+            let b_end = b.slot.saturating_add(b.width_slots);
+            if slot < b_end && b.slot < end {
+                return Err(CommandError::InvalidCommand {
+                    reason: format!(
+                        "Slot {slot}..{end} overlaps existing {:?} at {}..{}",
+                        b.building_type, b.slot, b_end
+                    ),
+                });
+            }
+        }
+        // Existing cache
+        if let Some(c) = floor_state.cache.as_ref()
+            && c.slot < end
+            && slot < c.slot + 1
+        {
+            return Err(CommandError::InvalidCommand {
+                reason: format!("Slot {slot}..{end} overlaps cache at {}", c.slot),
+            });
+        }
+        // Existing transport columns crossing this floor
+        for t in &self.state.tower.transports {
+            if t.low_floor <= floor && t.high_floor >= floor {
+                let t_end = t.slot + 1;
+                if slot < t_end && t.slot < end {
+                    return Err(CommandError::InvalidCommand {
+                        reason: format!(
+                            "Slot {slot}..{end} overlaps {:?} column at {}",
+                            t.kind, t.slot
+                        ),
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
     // ── Simulation tick ─────────────────────────────────────
 
     /// Advance the simulation by real_dt seconds.
@@ -1056,10 +1350,15 @@ impl GameEngine {
                         1.0
                     },
                     material: f.material,
+                    slots: f.slots,
                 })
                 .collect(),
             warehouse: tower.warehouse.clone(),
             runners: tower.runners.clone(),
+            balconies: tower.balconies.clone(),
+            runner_quarters: tower.runner_quarters.clone(),
+            companions: tower.companions.clone(),
+            transports: tower.transports.clone(),
             width: tower.width,
         }
     }
@@ -1072,6 +1371,19 @@ impl GameEngine {
             current_node: j.current_node,
             visited_nodes: j.visited_nodes.clone(),
         }
+    }
+
+    /// Live drill status for the prep UI. None when no drill running.
+    pub fn get_drill_state(&self) -> Option<DrillSnapshot> {
+        let drill = self.state.drill.as_ref()?;
+        Some(DrillSnapshot {
+            seconds_remaining: drill.seconds_remaining.max(0.0),
+            seconds_total: drill.seconds_total,
+            deliveries_during_drill: self
+                .state
+                .deliveries_completed
+                .saturating_sub(drill.deliveries_at_start),
+        })
     }
 
     pub fn get_economy_state(&self) -> EconomySnapshot {
@@ -1119,6 +1431,7 @@ impl GameEngine {
             weapon_primary: h.weapon_primary.clone(),
             weapon_secondary: h.weapon_secondary.clone(),
             trinket: h.trinket.clone(),
+            position: h.position,
         }
     }
 
@@ -1218,6 +1531,19 @@ impl GameEngine {
         serde_json::to_string(&self.state).expect("GameState must be serializable")
     }
 
+    /// Test/debug: instantly drain every alive enemy. Used by the
+    /// Playwright smoke test to fast-forward through combat without
+    /// playing it out. The next tick will detect no live enemies and
+    /// advance the encounter to PostCombat.
+    pub fn debug_force_win(&mut self) {
+        if let Some(encounter) = self.state.encounter.as_mut() {
+            for enemy in &mut encounter.enemies {
+                enemy.hp = 0.0;
+                enemy.state = EnemyState::Dead;
+            }
+        }
+    }
+
     pub fn load(&mut self, data: &str) -> Result<(), String> {
         let state: GameState =
             serde_json::from_str(data).map_err(|e| format!("Failed to load save: {e}"))?;
@@ -1254,10 +1580,145 @@ impl GameState {
             .and_then(|chapter| chapter.nodes.first())
             .map_or(NodeId(0), |node| node.id);
 
+        // Build the default starting tower: 3 wood floors with balconies,
+        // hero on the top balcony so projectiles arc down with gravity, a
+        // Fletcher on floor 0 producing arrows, and a cache on the top
+        // floor so the supply chain is wired end-to-end out of the box.
+        // Playtesters land in a working tower instead of an empty plot.
+        let hero_resource =
+            weapon_resource(primary_weapon_def.base_type).unwrap_or(ResourceType::Arrows);
+        let panel_hp = registry.balance.construction.wood_panel_hp;
+        let rack_max = registry.balance.hero.ammo_rack_max;
+        let mut floors = Vec::with_capacity(3);
+        let mut balconies = Vec::with_capacity(3);
+        for idx in 0..3 {
+            floors.push(Floor {
+                index: idx,
+                building: None,
+                cache: None,
+                panel: WallPanel {
+                    current_hp: panel_hp,
+                    max_hp: panel_hp,
+                    is_breached: false,
+                },
+                material: FloorMaterial::Wood,
+                transport_segments: Vec::new(),
+                floor_width_used: 0.0,
+                floor_width_max: 1.0,
+                slots: 8,
+            });
+            balconies.push(Balcony {
+                id: BalconyId(idx as u32),
+                floor: idx,
+                rack: AmmoRack {
+                    resource: hero_resource,
+                    current: 0,
+                    max: rack_max,
+                    destroyed: false,
+                },
+                cover_level: CoverLevel::Exposed,
+                occupant: None,
+            });
+        }
+        // Default starting tower is a real production chain so
+        // playtesters can SEE the supply line working from t=0:
+        //
+        //   F0  Lumberyard ──[wood]──┐
+        //                            │
+        //   F1  Fletcher ◄───────────┘
+        //         └──[arrows]──┐
+        //                      ▼
+        //   F2  Cache ──► Rack ──► Hero
+        //
+        // Each stage is pre-stocked so the chain has visible motion on
+        // every link the moment combat begins, instead of waiting for
+        // a 10-second production cycle to fire.
+        // Default layout (slot grid is 8 wide):
+        //   slot 0: built-in stairs column
+        //   slots 1-2: production / cache (placed at slot 1)
+        //   slots 3-7: empty for player to expand
+        let lumberyard_def = registry.building_by_type(BuildingType::Lumberyard);
+        let fletcher_def = registry.building_by_type(BuildingType::Fletcher);
+        if let Some(def) = lumberyard_def {
+            floors[0].building = Some(Building {
+                building_type: BuildingType::Lumberyard,
+                tier: def.tier,
+                output_buffer: ResourceBuffer {
+                    resource: def.output_resource,
+                    current: def.output_buffer_max,
+                    max: def.output_buffer_max,
+                },
+                input_buffers: def
+                    .inputs
+                    .iter()
+                    .map(|inp| ResourceBuffer {
+                        resource: inp.resource,
+                        current: 0,
+                        max: inp.buffer_max,
+                    })
+                    .collect(),
+                production_rate: def.production_rate,
+                operating_cost: def.operating_cost,
+                is_active: true,
+                production_progress: 0.0,
+                slot: 1,
+                width_slots: def.width_slots,
+            });
+        }
+        if let Some(def) = fletcher_def
+            && floors.len() > 1
+        {
+            floors[1].building = Some(Building {
+                building_type: BuildingType::Fletcher,
+                tier: def.tier,
+                output_buffer: ResourceBuffer {
+                    resource: def.output_resource,
+                    current: def.output_buffer_max,
+                    max: def.output_buffer_max,
+                },
+                input_buffers: def
+                    .inputs
+                    .iter()
+                    .map(|inp| ResourceBuffer {
+                        resource: inp.resource,
+                        current: inp.buffer_max,
+                        max: inp.buffer_max,
+                    })
+                    .collect(),
+                production_rate: def.production_rate,
+                operating_cost: def.operating_cost,
+                is_active: true,
+                production_progress: 0.0,
+                slot: 1,
+                width_slots: def.width_slots,
+            });
+        }
+        // Cache on the top floor (where the hero stands) so runners have
+        // somewhere to deliver and the rack feeds the hero immediately.
+        // Pre-stock the cache + rack so the hero never starts starving.
+        let top_floor = floors.len() - 1;
+        let cache_max = rack_max * 2;
+        floors[top_floor].cache = Some(DepotCache {
+            slots: vec![ResourceBuffer {
+                resource: hero_resource,
+                current: cache_max,
+                max: cache_max,
+            }],
+            slot: 1,
+        });
+        if let Some(top) = balconies.get_mut(top_floor) {
+            top.rack.current = top.rack.max;
+        }
+        // Hero stands on the top balcony.
+        let hero_balcony = BalconyId(top_floor as u32);
+        if let Some(top_balcony) = balconies.iter_mut().find(|b| b.id == hero_balcony) {
+            top_balcony.occupant = Some(EntityId(0));
+        }
+
         Self {
             phase: GamePhase::MapView,
             tower: Tower {
-                floors: Vec::new(),
+                floors,
                 foundation: Foundation {
                     leg_type: LegType::Chicken,
                     current_hp: registry.balance.construction.foundation_hp,
@@ -1269,13 +1730,56 @@ impl GameState {
                     slots: Vec::new(),
                     capacity_per_slot: 20,
                 },
-                runner_quarters: Vec::new(),
-                runners: Vec::new(),
+                runner_quarters: vec![RunnerQuarters {
+                    floor: 0,
+                    capacity: 4,
+                    salary_per_runner: registry.balance.economy.runner_salary,
+                }],
+                runners: vec![
+                    Runner {
+                        id: RunnerId(1),
+                        quarters_id: QuartersId(0),
+                        current_floor: 0,
+                        state: RunnerState::Idle { at_floor: 0 },
+                        carried: None,
+                        speed: 50.0,
+                        carry_capacity: 1,
+                        task: None,
+                        current_slot: 0,
+                    },
+                    Runner {
+                        id: RunnerId(2),
+                        quarters_id: QuartersId(0),
+                        current_floor: 0,
+                        state: RunnerState::Idle { at_floor: 0 },
+                        carried: None,
+                        speed: 50.0,
+                        carry_capacity: 1,
+                        task: None,
+                        current_slot: 0,
+                    },
+                ],
                 width: TowerWidth::Standard,
-                balconies: Vec::new(),
+                balconies,
+                // Built-in stairs occupy slot 0 (left edge) on every
+                // floor at base speed. Capacity 1 means two runners
+                // both wanting to climb will visibly queue — the
+                // bottleneck the player builds dumbwaiters / ladders
+                // to relieve at other slot columns.
+                transports: vec![TransportInstance {
+                    id: TransportId(1),
+                    kind: TransportKind::Stairs,
+                    low_floor: 0,
+                    high_floor: 2,
+                    speed_mul: 1.0,
+                    capacity: 1,
+                    occupancy: 0,
+                    direction: TransportDirection::Both,
+                    slot: 0,
+                }],
                 hero: Hero {
                     id: EntityId(0),
-                    position: BalconyId(0),
+                    position: hero_balcony,
                     class,
                     stats: hero_def.starting_stats.clone(),
                     level: 1,
@@ -1290,6 +1794,7 @@ impl GameState {
                     weapon_ability_cooldown: 0.0,
                     hero_skill_cooldown: 0.0,
                     hero_skill: hero_def.skill,
+                    draw_power: 1.0,
                 },
                 companions: starting_companions(registry),
             },
@@ -1342,6 +1847,8 @@ impl GameState {
             rng: DeterministicRng::new(seed),
             tick: 0,
             elapsed: 0.0,
+            drill: None,
+            deliveries_completed: 0,
         }
     }
 }
@@ -1366,6 +1873,21 @@ pub(crate) fn weapon_resource(base_type: WeaponBaseType) -> Option<ResourceType>
     }
 }
 
+/// Per-weapon gravity in pixels/sec². Negative pulls the projectile
+/// down toward the ground (sim convention: y up is positive). Bows and
+/// thrown weapons arc; crossbows fly nearly flat; staves are magical
+/// and ignore gravity entirely. Tuned so a hero shooting from a 3-floor
+/// tower (sim height 240) can reach ~mid-battlefield at base speed.
+pub(crate) fn projectile_gravity(base_type: WeaponBaseType) -> Scalar {
+    match base_type {
+        WeaponBaseType::Bow => -140.0,
+        WeaponBaseType::Crossbow => -50.0,
+        WeaponBaseType::Staff => 0.0,
+        WeaponBaseType::Thrown => -260.0,
+        WeaponBaseType::Melee => 0.0,
+    }
+}
+
 /// Build the starting companion roster for a new run.
 /// MVP: hero starts with Ren (Mark) and Drift (Pinning) auto-assigned
 /// to the first balcony. Companion roster management moves to the prep
@@ -1383,6 +1905,9 @@ fn starting_companions(registry: &Registry) -> Vec<Companion> {
         modifiers: Vec::new(),
     });
 
+    // Spread the two starting companions across the lower two balconies
+    // so they're individually visible in the tower viz alongside the
+    // hero on the top floor.
     vec![
         Companion {
             id: EntityId(1000),
@@ -1402,7 +1927,7 @@ fn starting_companions(registry: &Registry) -> Vec<Companion> {
         Companion {
             id: EntityId(1001),
             name: "Drift".into(),
-            position: Some(BalconyId(0)),
+            position: Some(BalconyId(1)),
             passive: CompanionPassive::PinningShots,
             accuracy: 0.4,
             combat_xp: 0,

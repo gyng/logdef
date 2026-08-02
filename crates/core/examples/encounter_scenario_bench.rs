@@ -20,10 +20,21 @@ fn make_floor(registry: &Registry, index: usize) -> Floor {
                 current: 8,
                 max: building_def.output_buffer_max,
             },
-            input_buffers: Vec::new(),
+            input_buffers: building_def
+                .inputs
+                .iter()
+                .map(|inp| ResourceBuffer {
+                    resource: inp.resource,
+                    current: inp.buffer_max,
+                    max: inp.buffer_max,
+                })
+                .collect(),
             production_rate: building_def.production_rate,
             operating_cost: building_def.operating_cost,
             is_active: true,
+            production_progress: 0.0,
+            slot: 1,
+            width_slots: building_def.width_slots,
         }),
         cache: None,
         panel: WallPanel {
@@ -35,6 +46,7 @@ fn make_floor(registry: &Registry, index: usize) -> Floor {
         transport_segments: Vec::new(),
         floor_width_used: 0.5,
         floor_width_max: 1.0,
+        slots: 8,
     }
 }
 

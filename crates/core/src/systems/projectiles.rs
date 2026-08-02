@@ -16,15 +16,26 @@ pub fn run(state: &mut GameState, registry: &Registry, dt: Scalar, sounds: &mut 
     let projectile_max_range = battlefield_width * 2.0;
 
     // ── Move projectiles ────────────────────────────────────
+    // Sim convention: y positive is up (height above ground). Hero
+    // shoots from y > 0 on the top balcony; gravity (negative) pulls
+    // projectiles back toward y = 0 in a parabolic arc. Collision is
+    // still 1D on x — projectiles hit any enemy whose x they cross
+    // before they hit the ground or fly off the battlefield.
     for proj in &mut encounter.projectiles {
         if !matches!(proj.state, ProjectileState::Flying) {
             continue;
         }
+        proj.velocity.y += proj.gravity * dt;
         proj.position.x += proj.velocity.x * dt;
         proj.position.y += proj.velocity.y * dt;
 
-        // Out of bounds → remove
-        if proj.position.x > projectile_max_range || proj.position.x < -50.0 {
+        // Out of bounds: walked off either side, or fell below the
+        // ground. Strictly `< 0` so projectiles that spawn at y=0
+        // (companions firing from balcony level with gravity=0) stay
+        // in flight until they cross the boundary.
+        let out_of_x = proj.position.x > projectile_max_range || proj.position.x < -50.0;
+        let hit_ground = proj.position.y < 0.0;
+        if out_of_x || hit_ground {
             proj.state = ProjectileState::OnGround;
             sounds.push(SoundEvent::ProjectileMiss {
                 position: proj.position,

@@ -8,6 +8,11 @@ use std::time::Instant;
 pub mod combat;
 pub mod companion_ai;
 pub mod economy;
+
+/// Vertical pixel height of one tower floor. Shared between the
+/// transport AI (runner travel time) and engine (hero spawn y for
+/// projectiles) so the visible floor height matches the simulated one.
+pub const FLOOR_HEIGHT_PX: crate::types::Scalar = 80.0;
 /// Simulation systems, executed in fixed order each tick.
 /// Order matters for determinism — do not reorder.
 ///
@@ -77,7 +82,10 @@ pub fn tick(state: &mut GameState, registry: &Registry, dt: Scalar) -> TickResul
     let mut sounds = Vec::new();
     let mut profile = TickProfile::default();
 
-    if state.encounter.is_some() {
+    let in_encounter = state.encounter.is_some();
+    let in_drill = state.drill.is_some();
+
+    if in_encounter || in_drill {
         let start = start_timer();
         production::run(state, registry, dt, &mut sounds);
         profile.production = finish_timer(start);
@@ -85,7 +93,9 @@ pub fn tick(state: &mut GameState, registry: &Registry, dt: Scalar) -> TickResul
         let start = start_timer();
         transport::run(state, registry, dt, &mut sounds);
         profile.transport = finish_timer(start);
+    }
 
+    if in_encounter {
         let start = start_timer();
         companion_ai::run(state, registry, dt, &mut sounds);
         profile.companion_ai = finish_timer(start);
@@ -103,9 +113,49 @@ pub fn tick(state: &mut GameState, registry: &Registry, dt: Scalar) -> TickResul
         profile.economy = finish_timer(start);
     }
 
+    if in_drill {
+        advance_drill(state, dt, &mut sounds);
+    }
+
     state.tick += 1;
     state.elapsed += dt;
     profile.total = finish_timer(tick_start);
 
     TickResult { sounds, profile }
+}
+
+/// Drive synthetic demand for the drill: every full second drain one
+/// crate from the hero balcony rack to model continuous combat use.
+/// When the timer hits zero, end the drill and pay XP based on how
+/// many crates the chain delivered.
+fn advance_drill(state: &mut GameState, dt: Scalar, _sounds: &mut [SoundEvent]) {
+    let Some(drill) = state.drill.as_mut() else {
+        return;
+    };
+    drill.seconds_remaining -= dt;
+    drill.demand_accumulator += dt;
+    while drill.demand_accumulator >= 1.0 {
+        drill.demand_accumulator -= 1.0;
+        let hero_balcony = state.tower.hero.position;
+        if let Some(b) = state
+            .tower
+            .balconies
+            .iter_mut()
+            .find(|b| b.id == hero_balcony)
+            && b.rack.current > 0
+        {
+            b.rack.current -= 1;
+        }
+    }
+
+    if drill.seconds_remaining <= 0.0 {
+        let deliveries = state
+            .deliveries_completed
+            .saturating_sub(drill.deliveries_at_start);
+        // Award 5 xp per crate delivered during the drill — small but
+        // makes optimisation pay off across multiple drills.
+        let xp = deliveries * 5;
+        state.tower.hero.xp += xp;
+        state.drill = None;
+    }
 }

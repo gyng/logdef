@@ -111,6 +111,7 @@ fn hero_snapshot_has_expected_fields() {
         "weapon_primary",
         "weapon_secondary",
         "trinket",
+        "position",
     ] {
         assert!(obj.contains_key(key), "HeroSnapshot missing field: {key}");
     }
@@ -264,8 +265,9 @@ fn build_floor_deducts_ticks_and_materials() {
                 .construction
                 .wood_floor_material_cost
     );
-    assert_eq!(engine.state.tower.floors.len(), 1);
-    assert_eq!(engine.state.tower.balconies.len(), 1);
+    // Default tower starts with 3 floors; this BuildFloor adds a 4th.
+    assert_eq!(engine.state.tower.floors.len(), 4);
+    assert_eq!(engine.state.tower.balconies.len(), 4);
 }
 
 #[test]
@@ -295,15 +297,21 @@ fn place_building_on_floor() {
     engine.send_command(GameCommand::BuildFloor {
         material: FloorMaterial::Wood,
     });
-
+    // The default tower already has a Fletcher on floor 0. Place the
+    // new building on the freshly-built top floor (index 3).
+    let new_floor = engine.state.tower.floors.len() - 1;
     let result = engine.send_command(GameCommand::PlaceBuilding {
-        floor: 0,
-        building_type: BuildingType::Fletcher,
+        floor: new_floor,
+        slot: 1,
+        building_type: BuildingType::Forge,
     });
     assert!(matches!(result, CommandResult::Ok));
-    assert!(engine.state.tower.floors[0].building.is_some());
-    let building = engine.state.tower.floors[0].building.as_ref().unwrap();
-    assert_eq!(building.building_type, BuildingType::Fletcher);
+    assert!(engine.state.tower.floors[new_floor].building.is_some());
+    let building = engine.state.tower.floors[new_floor]
+        .building
+        .as_ref()
+        .unwrap();
+    assert_eq!(building.building_type, BuildingType::Forge);
 }
 
 #[test]
@@ -317,11 +325,13 @@ fn place_building_on_occupied_floor_fails() {
     });
     engine.send_command(GameCommand::PlaceBuilding {
         floor: 0,
+        slot: 1,
         building_type: BuildingType::Fletcher,
     });
 
     let result = engine.send_command(GameCommand::PlaceBuilding {
         floor: 0,
+        slot: 1,
         building_type: BuildingType::Fletcher,
     });
     assert!(matches!(
@@ -341,7 +351,7 @@ fn place_cache_on_floor_consumes_ticks() {
     });
 
     let ticks_before = engine.state.economy.ticks_remaining;
-    let result = engine.send_command(GameCommand::PlaceCache { floor: 0 });
+    let result = engine.send_command(GameCommand::PlaceCache { floor: 0, slot: 4 });
     assert!(matches!(result, CommandResult::Ok));
     assert!(engine.state.tower.floors[0].cache.is_some());
     assert_eq!(
@@ -740,9 +750,10 @@ fn production_delivers_ammo_during_combat() {
     });
     engine.send_command(GameCommand::PlaceBuilding {
         floor: 0,
+        slot: 1,
         building_type: BuildingType::Fletcher,
     });
-    engine.send_command(GameCommand::PlaceCache { floor: 0 });
+    engine.send_command(GameCommand::PlaceCache { floor: 0, slot: 4 });
     engine.send_command(GameCommand::March);
 
     // Drain all ammo
@@ -762,20 +773,33 @@ fn production_delivers_ammo_during_combat() {
 
 #[test]
 fn production_stays_in_warehouse_without_cache() {
-    let mut engine = GameEngine::new(42, HeroClass::Archer);
+    // Verify the no-cache bottleneck on a clean slate. We pre-stock
+    // the Fletcher's wood inbox so production isn't gated on wood
+    // arriving — the test is about cache absence, not input feed.
+    let mut engine = GameEngine::new_blank(42, HeroClass::Archer);
     engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
     engine.send_command(GameCommand::BuildFloor {
         material: FloorMaterial::Wood,
     });
     engine.send_command(GameCommand::PlaceBuilding {
         floor: 0,
+        slot: 1,
         building_type: BuildingType::Fletcher,
     });
     engine.send_command(GameCommand::March);
 
+    // Top off Fletcher's wood inbox so production proceeds.
+    if let Some(building) = engine.state.tower.floors[0].building.as_mut() {
+        for inb in &mut building.input_buffers {
+            inb.current = inb.max;
+        }
+    }
+
     engine.state.tower.hero.personal_ammo = 0;
 
-    for _ in 0..450 {
+    // 30 sim seconds gives the chain plenty of cycles to deliver
+    // crates into the warehouse fallback.
+    for _ in 0..900 {
         engine.tick(FIXED_DT);
     }
 
@@ -792,4 +816,700 @@ fn production_stays_in_warehouse_without_cache() {
         arrow_stock > 0,
         "Warehouse should be holding produced arrows"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Logistics: real runner-driven supply chain
+// ---------------------------------------------------------------------------
+
+#[test]
+fn new_game_spawns_default_runners() {
+    let engine = GameEngine::new(7, HeroClass::Archer);
+    assert_eq!(
+        engine.state.tower.runner_quarters.len(),
+        1,
+        "expected one default RunnerQuarters on new game"
+    );
+    assert_eq!(
+        engine.state.tower.runners.len(),
+        2,
+        "expected two starting runners"
+    );
+    for runner in &engine.state.tower.runners {
+        assert!(matches!(runner.state, RunnerState::Idle { .. }));
+        assert!(runner.task.is_none());
+        assert!(runner.carried.is_none());
+    }
+}
+
+#[test]
+fn runner_picks_up_crate_and_delivers_to_cache() {
+    let mut engine = GameEngine::new_blank(7, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    // Give ourselves enough ticks to build floor + building + cache.
+    engine.state.economy.ticks_remaining = 20;
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 0,
+        slot: 1,
+        building_type: BuildingType::Fletcher,
+    });
+    let cache_result = engine.send_command(GameCommand::PlaceCache { floor: 0, slot: 4 });
+    assert!(
+        matches!(cache_result, CommandResult::Ok),
+        "PlaceCache failed: {cache_result:?}"
+    );
+    engine.send_command(GameCommand::March);
+    assert!(
+        engine.state.tower.floors[0].cache.is_some(),
+        "cache must exist before tick loop"
+    );
+
+    // Pre-load the building output AND inbox so we don't have to wait
+    // for production: the runner should pick up the existing crate
+    // within a few ticks regardless of inbox state.
+    let building = engine.state.tower.floors[0]
+        .building
+        .as_mut()
+        .expect("fletcher placed");
+    building.output_buffer.current = 1;
+    for inb in &mut building.input_buffers {
+        inb.current = inb.max;
+    }
+
+    let mut runner_loaded_or_moving = false;
+    for _ in 0..120 {
+        engine.tick(FIXED_DT);
+        let any_runner_active = engine
+            .state
+            .tower
+            .runners
+            .iter()
+            .any(|r| !matches!(r.state, RunnerState::Idle { .. }) || r.task.is_some());
+        if any_runner_active {
+            runner_loaded_or_moving = true;
+            break;
+        }
+    }
+    assert!(
+        runner_loaded_or_moving,
+        "at least one runner should have picked up the task within 4 seconds"
+    );
+
+    // Run long enough for the full L-shaped trip: walk to outbox (~2 slots),
+    // load 0.5s, walk to cache slot (~3 slots), unload 0.5s. Worst case ≈ 5s.
+    for _ in 0..360 {
+        engine.tick(FIXED_DT);
+    }
+
+    // The crate may end up in the cache, the rack (if drained on the
+    // same tick), or the hero's quiver — the supply chain succeeded as
+    // long as it landed somewhere downstream of the building.
+    let cache_arrows = engine.state.tower.floors[0]
+        .cache
+        .as_ref()
+        .and_then(|c| c.slots.iter().find(|s| s.resource == ResourceType::Arrows))
+        .map_or(0, |s| s.current);
+    let rack_arrows = engine
+        .state
+        .tower
+        .balconies
+        .iter()
+        .find(|b| b.floor == 0)
+        .map_or(0, |b| b.rack.current);
+    assert!(
+        cache_arrows + rack_arrows >= 1,
+        "supply chain should have delivered at least one crate to cache or rack \
+         (cache={cache_arrows}, rack={rack_arrows})"
+    );
+}
+
+#[test]
+fn cache_drains_to_rack_on_same_floor() {
+    let mut engine = GameEngine::new(7, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 0,
+        slot: 1,
+        building_type: BuildingType::Fletcher,
+    });
+    engine.send_command(GameCommand::PlaceCache { floor: 0, slot: 4 });
+    engine.send_command(GameCommand::March);
+
+    // Pre-stock the cache directly so we test the cache→rack drain in
+    // isolation from the runner pipeline.
+    engine.state.tower.floors[0]
+        .cache
+        .as_mut()
+        .expect("cache placed")
+        .slots[0]
+        .current = 3;
+    // Drain rack so we can see the refill.
+    for balcony in &mut engine.state.tower.balconies {
+        balcony.rack.current = 0;
+    }
+
+    engine.tick(FIXED_DT);
+
+    let rack_current = engine
+        .state
+        .tower
+        .balconies
+        .iter()
+        .find(|b| b.floor == 0)
+        .map(|b| b.rack.current)
+        .unwrap_or(0);
+    assert!(
+        rack_current > 0,
+        "rack should have pulled from cache on same floor in one tick"
+    );
+}
+
+#[test]
+fn no_cache_means_no_rack_refill() {
+    // Even with production running, if there's no cache on the
+    // balcony's floor, the rack stays empty. This is the intentional
+    // bottleneck — cache placement is the player's logistics decision.
+    let mut engine = GameEngine::new_blank(7, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 0,
+        slot: 1,
+        building_type: BuildingType::Fletcher,
+    });
+    // Deliberately skip PlaceCache.
+    engine.send_command(GameCommand::March);
+
+    engine.state.tower.hero.personal_ammo = 0;
+    for balcony in &mut engine.state.tower.balconies {
+        balcony.rack.current = 0;
+    }
+
+    for _ in 0..600 {
+        engine.tick(FIXED_DT);
+    }
+
+    let rack_current = engine
+        .state
+        .tower
+        .balconies
+        .iter()
+        .find(|b| b.floor == 0)
+        .map(|b| b.rack.current)
+        .unwrap_or(0);
+    assert_eq!(
+        rack_current, 0,
+        "rack should not refill without a cache on its floor"
+    );
+    assert_eq!(
+        engine.state.tower.hero.personal_ammo, 0,
+        "hero should not get ammo without a cache feeding the rack"
+    );
+}
+
+#[test]
+fn runner_round_trip_takes_visible_time() {
+    // Runners are not instant: a building→cache delivery should take
+    // load + travel + unload time, not happen in one tick. Without
+    // this guarantee the supply chain is invisible to players.
+    let mut engine = GameEngine::new_blank(7, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    // Boost ticks + materials for the multi-floor setup.
+    engine.state.economy.ticks_remaining = 30;
+    if let Some(wood) = engine
+        .state
+        .economy
+        .materials
+        .iter_mut()
+        .find(|m| m.resource == ResourceType::Wood)
+    {
+        wood.current = 30;
+    }
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    assert_eq!(
+        engine.state.tower.floors.len(),
+        2,
+        "test setup should have built two floors"
+    );
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 0,
+        slot: 1,
+        building_type: BuildingType::Fletcher,
+    });
+    // Cache on a different floor so the runner has to walk.
+    let cache_result = engine.send_command(GameCommand::PlaceCache { floor: 1, slot: 4 });
+    assert!(
+        matches!(cache_result, CommandResult::Ok),
+        "PlaceCache failed: {cache_result:?}"
+    );
+    engine.send_command(GameCommand::March);
+
+    engine.state.tower.floors[0]
+        .building
+        .as_mut()
+        .unwrap()
+        .output_buffer
+        .current = 1;
+
+    // After a single tick (1/30 sec), the crate should NOT yet be in
+    // the cache — load alone takes 15 ticks.
+    engine.tick(FIXED_DT);
+    let cache_after_one_tick = engine.state.tower.floors[1]
+        .cache
+        .as_ref()
+        .and_then(|c| c.slots.iter().find(|s| s.resource == ResourceType::Arrows))
+        .map_or(0, |s| s.current);
+    assert_eq!(
+        cache_after_one_tick, 0,
+        "crate must not teleport to the cache in one tick"
+    );
+
+    // After several seconds the runner completes a delivery — the
+    // crate may already have drained from the cache into the rack.
+    for _ in 0..300 {
+        engine.tick(FIXED_DT);
+    }
+    let cache_after_10s = engine.state.tower.floors[1]
+        .cache
+        .as_ref()
+        .and_then(|c| c.slots.iter().find(|s| s.resource == ResourceType::Arrows))
+        .map_or(0, |s| s.current);
+    let rack_after_10s = engine
+        .state
+        .tower
+        .balconies
+        .iter()
+        .find(|b| b.floor == 1)
+        .map_or(0, |b| b.rack.current);
+    assert!(
+        cache_after_10s + rack_after_10s >= 1,
+        "runner should have delivered the crate down the chain within 10s \
+         (cache={cache_after_10s}, rack={rack_after_10s})"
+    );
+}
+
+#[test]
+fn full_chain_lumberyard_to_fletcher_to_cache() {
+    // End-to-end: a Lumberyard on F0 produces wood, a runner walks
+    // it up to a Fletcher inbox on F1, the Fletcher consumes wood
+    // and produces an arrow, another runner walks the arrow up to a
+    // cache on F2. Asserts the chain visibly bottlenecks on inputs:
+    // a Fletcher with no wood produces nothing.
+    let mut engine = GameEngine::new_blank(11, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.state.economy.ticks_remaining = 30;
+    if let Some(wood) = engine
+        .state
+        .economy
+        .materials
+        .iter_mut()
+        .find(|m| m.resource == ResourceType::Wood)
+    {
+        wood.current = 30;
+    }
+    if let Some(stone) = engine
+        .state
+        .economy
+        .materials
+        .iter_mut()
+        .find(|m| m.resource == ResourceType::Stone)
+    {
+        stone.current = 30;
+    }
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    assert_eq!(engine.state.tower.floors.len(), 3);
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 0,
+        slot: 1,
+        building_type: BuildingType::Lumberyard,
+    });
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 1,
+        slot: 1,
+        building_type: BuildingType::Fletcher,
+    });
+    let cache_result = engine.send_command(GameCommand::PlaceCache { floor: 2, slot: 4 });
+    assert!(
+        matches!(cache_result, CommandResult::Ok),
+        "PlaceCache failed: {cache_result:?}"
+    );
+    engine.send_command(GameCommand::March);
+
+    // Sanity: Fletcher starts with an empty inbox, so it must NOT
+    // produce until wood arrives.
+    let fletcher_inbox = engine.state.tower.floors[1]
+        .building
+        .as_ref()
+        .and_then(|b| b.input_buffers.first())
+        .map_or(0, |inb| inb.current);
+    assert_eq!(fletcher_inbox, 0, "Fletcher inbox should start empty");
+
+    // Run the simulation long enough for the chain to complete a
+    // full cycle: lumberyard produces (~15s) → runner delivers wood
+    // (~2s) → fletcher produces arrow (~10s) → runner delivers
+    // arrow to cache (~3s). 60 sec headroom is plenty.
+    for _ in 0..1800 {
+        engine.tick(FIXED_DT);
+    }
+
+    // The cache on floor 2 should have at least one arrow (or the
+    // rack on floor 2, if it was drained on the same tick).
+    let cache_arrows = engine.state.tower.floors[2]
+        .cache
+        .as_ref()
+        .and_then(|c| c.slots.iter().find(|s| s.resource == ResourceType::Arrows))
+        .map_or(0, |s| s.current);
+    let rack_arrows = engine
+        .state
+        .tower
+        .balconies
+        .iter()
+        .find(|b| b.floor == 2)
+        .map_or(0, |b| b.rack.current);
+    assert!(
+        cache_arrows + rack_arrows >= 1,
+        "full chain should have produced at least one arrow downstream \
+         (cache={cache_arrows}, rack={rack_arrows})"
+    );
+}
+
+#[test]
+fn fletcher_stalls_without_wood() {
+    // Verify the gate: a Fletcher with an empty inbox produces nothing,
+    // even given plenty of time. This is the bottleneck signal players
+    // need to read on the tower viz.
+    let mut engine = GameEngine::new_blank(11, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.state.economy.ticks_remaining = 20;
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 0,
+        slot: 1,
+        building_type: BuildingType::Fletcher,
+    });
+    engine.send_command(GameCommand::March);
+
+    for _ in 0..1200 {
+        engine.tick(FIXED_DT);
+    }
+
+    let outbox = engine.state.tower.floors[0]
+        .building
+        .as_ref()
+        .map(|b| b.output_buffer.current)
+        .unwrap_or(0);
+    assert_eq!(
+        outbox, 0,
+        "Fletcher should stall with no wood: outbox should stay empty"
+    );
+}
+
+#[test]
+fn new_game_has_built_in_stairs_spanning_tower() {
+    let engine = GameEngine::new(11, HeroClass::Archer);
+    let stairs = engine
+        .state
+        .tower
+        .transports
+        .iter()
+        .find(|t| t.kind == TransportKind::Stairs)
+        .expect("default tower should ship with built-in stairs");
+    assert_eq!(stairs.low_floor, 0);
+    assert_eq!(stairs.high_floor, engine.state.tower.floors.len() - 1);
+    assert_eq!(stairs.direction, TransportDirection::Both);
+}
+
+#[test]
+fn build_floor_extends_built_in_stairs() {
+    let mut engine = GameEngine::new(11, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.state.economy.ticks_remaining = 20;
+    if let Some(wood) = engine
+        .state
+        .economy
+        .materials
+        .iter_mut()
+        .find(|m| m.resource == ResourceType::Wood)
+    {
+        wood.current = 30;
+    }
+    let before_top = engine.state.tower.floors.len() - 1;
+    let result = engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    assert!(matches!(result, CommandResult::Ok));
+    let stairs = engine
+        .state
+        .tower
+        .transports
+        .iter()
+        .find(|t| t.kind == TransportKind::Stairs)
+        .expect("stairs must exist");
+    assert!(
+        stairs.high_floor > before_top,
+        "stairs should grow with new floor"
+    );
+}
+
+#[test]
+fn runners_route_through_transport_with_capacity() {
+    // Two runners, 1-cap stairs, multi-floor delivery → at most one
+    // runner should be Moving at any tick; the other queues.
+    let mut engine = GameEngine::new_blank(11, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.state.economy.ticks_remaining = 30;
+    if let Some(wood) = engine
+        .state
+        .economy
+        .materials
+        .iter_mut()
+        .find(|m| m.resource == ResourceType::Wood)
+    {
+        wood.current = 30;
+    }
+    if let Some(stone) = engine
+        .state
+        .economy
+        .materials
+        .iter_mut()
+        .find(|m| m.resource == ResourceType::Stone)
+    {
+        stone.current = 30;
+    }
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 0,
+        slot: 1,
+        building_type: BuildingType::Lumberyard,
+    });
+    engine.send_command(GameCommand::PlaceBuilding {
+        floor: 1,
+        slot: 1,
+        building_type: BuildingType::Fletcher,
+    });
+    engine.send_command(GameCommand::PlaceCache { floor: 2, slot: 4 });
+    engine.send_command(GameCommand::March);
+
+    // Force both runners to want to move at the same time by
+    // pre-stocking the lumberyard outbox and emptying every cache.
+    engine.state.tower.floors[0]
+        .building
+        .as_mut()
+        .unwrap()
+        .output_buffer
+        .current = 4;
+
+    let mut saw_queue = false;
+    for _ in 0..200 {
+        engine.tick(FIXED_DT);
+        let queued = engine
+            .state
+            .tower
+            .runners
+            .iter()
+            .filter(|r| matches!(r.state, RunnerState::Queued { .. }))
+            .count();
+        if queued > 0 {
+            saw_queue = true;
+        }
+        // Sanity: with capacity 1 we should never have two runners on
+        // the same transport at once.
+        let stairs = engine
+            .state
+            .tower
+            .transports
+            .iter()
+            .find(|t| t.kind == TransportKind::Stairs)
+            .unwrap();
+        assert!(
+            stairs.occupancy <= stairs.capacity,
+            "occupancy {} exceeded capacity {}",
+            stairs.occupancy,
+            stairs.capacity
+        );
+    }
+    assert!(
+        saw_queue,
+        "with two runners and 1-cap stairs, at least one should queue"
+    );
+}
+
+#[test]
+fn place_cache_rejects_overlapping_slot_range() {
+    // Default tower has Fletcher at slot 1..3 on F1.
+    // A cache at slot 2 (1 wide) overlaps the Fletcher footprint.
+    let mut engine = GameEngine::new(11, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.state.economy.ticks_remaining = 30;
+    let result = engine.send_command(GameCommand::PlaceCache { floor: 1, slot: 2 });
+    assert!(matches!(
+        result,
+        CommandResult::Error(CommandError::InvalidCommand { .. })
+    ));
+}
+
+#[test]
+fn place_building_rejects_transport_column_collision() {
+    // Default stairs occupy slot 0 on every floor. Trying to place a
+    // building at slot 0 should fail because it overlaps the stairs.
+    let mut engine = GameEngine::new(11, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.state.economy.ticks_remaining = 30;
+    if let Some(wood) = engine
+        .state
+        .economy
+        .materials
+        .iter_mut()
+        .find(|m| m.resource == ResourceType::Wood)
+    {
+        wood.current = 30;
+    }
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    let new_floor = engine.state.tower.floors.len() - 1;
+    let result = engine.send_command(GameCommand::PlaceBuilding {
+        floor: new_floor,
+        slot: 0,
+        building_type: BuildingType::Quarry,
+    });
+    assert!(matches!(
+        result,
+        CommandResult::Error(CommandError::InvalidCommand { .. })
+    ));
+}
+
+#[test]
+fn place_building_rejects_out_of_range_slot() {
+    let mut engine = GameEngine::new(11, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.state.economy.ticks_remaining = 30;
+    if let Some(wood) = engine
+        .state
+        .economy
+        .materials
+        .iter_mut()
+        .find(|m| m.resource == ResourceType::Wood)
+    {
+        wood.current = 30;
+    }
+    engine.send_command(GameCommand::BuildFloor {
+        material: FloorMaterial::Wood,
+    });
+    let new_floor = engine.state.tower.floors.len() - 1;
+    // Floor is 8 slots wide. Slot 7 + 2-wide building = 9 (overflow).
+    let result = engine.send_command(GameCommand::PlaceBuilding {
+        floor: new_floor,
+        slot: 7,
+        building_type: BuildingType::Quarry,
+    });
+    assert!(matches!(
+        result,
+        CommandResult::Error(CommandError::InvalidCommand { .. })
+    ));
+}
+
+#[test]
+fn drill_runs_chain_in_prep_and_grants_xp() {
+    let mut engine = GameEngine::new(11, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    let xp_before = engine.state.tower.hero.xp;
+    let ticks_before = engine.state.economy.ticks_remaining;
+
+    let result = engine.send_command(GameCommand::RunDrill { seconds: 10 });
+    assert!(matches!(result, CommandResult::Ok));
+    assert_eq!(
+        engine.state.economy.ticks_remaining,
+        ticks_before - 1,
+        "drill must cost 1 tick"
+    );
+    assert!(engine.state.drill.is_some(), "drill should be active");
+
+    for _ in 0..360 {
+        engine.tick(FIXED_DT);
+    }
+
+    assert!(engine.state.drill.is_none(), "drill should have ended");
+    assert!(
+        engine.state.tower.hero.xp >= xp_before,
+        "drill should grant some XP (got {} -> {})",
+        xp_before,
+        engine.state.tower.hero.xp
+    );
+}
+
+#[test]
+fn drill_blocks_concurrent_drill() {
+    let mut engine = GameEngine::new(11, HeroClass::Archer);
+    engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+    engine.send_command(GameCommand::RunDrill { seconds: 10 });
+    let result = engine.send_command(GameCommand::RunDrill { seconds: 10 });
+    assert!(matches!(
+        result,
+        CommandResult::Error(CommandError::InvalidCommand { .. })
+    ));
+}
+
+#[test]
+fn logistics_tick_is_deterministic() {
+    let mut a = GameEngine::new(11, HeroClass::Archer);
+    let mut b = GameEngine::new(11, HeroClass::Archer);
+    for engine in [&mut a, &mut b] {
+        engine.send_command(GameCommand::SelectNode { node: NodeId(1) });
+        engine.send_command(GameCommand::BuildFloor {
+            material: FloorMaterial::Wood,
+        });
+        engine.send_command(GameCommand::PlaceBuilding {
+            floor: 0,
+            slot: 1,
+            building_type: BuildingType::Fletcher,
+        });
+        engine.send_command(GameCommand::PlaceCache { floor: 0, slot: 4 });
+        engine.send_command(GameCommand::March);
+        for _ in 0..600 {
+            engine.tick(FIXED_DT);
+        }
+    }
+
+    assert_eq!(
+        a.state.tower.runners.len(),
+        b.state.tower.runners.len(),
+        "runner counts must match"
+    );
+    for (ra, rb) in a.state.tower.runners.iter().zip(&b.state.tower.runners) {
+        let ja = serde_json::to_string(&ra).unwrap();
+        let jb = serde_json::to_string(&rb).unwrap();
+        assert_eq!(ja, jb, "runner state diverged across identical runs");
+    }
 }

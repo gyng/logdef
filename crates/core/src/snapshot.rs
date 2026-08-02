@@ -37,6 +37,10 @@ pub struct TowerSnapshot {
     pub floors: Vec<FloorSnapshot>,
     pub warehouse: Warehouse,
     pub runners: Vec<Runner>,
+    pub balconies: Vec<Balcony>,
+    pub runner_quarters: Vec<RunnerQuarters>,
+    pub companions: Vec<Companion>,
+    pub transports: Vec<TransportInstance>,
     pub width: TowerWidth,
 }
 
@@ -47,6 +51,7 @@ pub struct FloorSnapshot {
     pub cache: Option<DepotCache>,
     pub panel_hp_fraction: Scalar,
     pub material: FloorMaterial,
+    pub slots: u8,
 }
 
 /// Journey/map state sent to React.
@@ -65,6 +70,15 @@ pub struct EconomySnapshot {
     pub ticks_remaining: u32,
 }
 
+/// Live drill status for the prep UI: countdown + delta-deliveries
+/// since drill start so the player can watch their network throughput.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrillSnapshot {
+    pub seconds_remaining: Scalar,
+    pub seconds_total: Scalar,
+    pub deliveries_during_drill: u32,
+}
+
 /// Hero state sent to React.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeroSnapshot {
@@ -76,6 +90,10 @@ pub struct HeroSnapshot {
     pub weapon_primary: Weapon,
     pub weapon_secondary: Weapon,
     pub trinket: Option<Trinket>,
+    /// Balcony the hero is currently standing on. Determines which
+    /// floor the tower viz draws the hero icon on, and which rack
+    /// the auto-pull refills from in combat.
+    pub position: BalconyId,
 }
 
 /// Merchant stock for the Merchant screen.

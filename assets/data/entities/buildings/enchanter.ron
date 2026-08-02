@@ -12,4 +12,5 @@ BuildingDef(
     build_tick_cost: 4,
     build_resource: Wood,
     build_resource_cost: 3,
+    width_slots: 3,
 )

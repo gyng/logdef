@@ -30,6 +30,7 @@ pub enum GameCommand {
     },
     PlaceBuilding {
         floor: usize,
+        slot: u8,
         building_type: BuildingType,
     },
     RemoveBuilding {
@@ -37,6 +38,7 @@ pub enum GameCommand {
     },
     PlaceCache {
         floor: usize,
+        slot: u8,
     },
     RemoveCache {
         floor: usize,
@@ -47,7 +49,25 @@ pub enum GameCommand {
     RemoveTransport {
         id: TransportId,
     },
+    /// Build a ladder spanning two adjacent floors at a specific slot
+    /// column. Faster to install than dumbwaiters but slower per ride.
+    BuildLadder {
+        low_floor: usize,
+        slot: u8,
+    },
+    /// Build an autonomous dumbwaiter at a slot column spanning two
+    /// adjacent floors.
+    BuildDumbwaiter {
+        low_floor: usize,
+        slot: u8,
+    },
     HireRunner,
+    /// Spend 1 tick to run a synthetic logistics drill in prep mode.
+    /// Production + transport tick for `seconds`, with the hero rack
+    /// draining every second to model combat demand. XP reward at end.
+    RunDrill {
+        seconds: u32,
+    },
     AssignCompanion {
         companion: EntityId,
         balcony: BalconyId,
@@ -79,6 +99,9 @@ pub enum GameCommand {
     // -- Combat input --
     AimAt {
         direction: Vec2,
+    },
+    SetDrawPower {
+        power: Scalar,
     },
     Fire,
     SwitchWeapon,

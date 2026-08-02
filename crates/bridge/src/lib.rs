@@ -117,3 +117,17 @@ pub fn save() -> String {
 pub fn load(data: &str) -> Result<(), JsValue> {
     with_engine_mut(|e| e.load(data).map_err(|err| JsValue::from_str(&err)))
 }
+
+/// Test/debug hook: instantly drain every enemy in the current
+/// encounter so the next tick advances to PostCombat. Used by the
+/// Playwright smoke test to skip the play-out of long encounters
+/// without disabling the rest of the loop. No-op if not in combat.
+#[wasm_bindgen]
+pub fn debug_force_win() {
+    with_engine_mut(GameEngine::debug_force_win);
+}
+
+#[wasm_bindgen]
+pub fn get_drill_state() -> String {
+    with_engine(|e| serde_json::to_string(&e.get_drill_state()).unwrap_or_default())
+}

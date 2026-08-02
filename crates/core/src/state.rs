@@ -18,6 +18,25 @@ pub struct GameState {
     pub rng: DeterministicRng,
     pub tick: u64,
     pub elapsed: Scalar,
+    /// Active "logistics drill" — runs the chain in prep against
+    /// synthetic demand so the player can stress-test their network
+    /// without burning an encounter. XP is awarded at end based on
+    /// how many crates the chain delivered.
+    #[serde(default)]
+    pub drill: Option<DrillState>,
+    /// Total crates delivered by runners across the run. Drill mode
+    /// snapshots this at start to count its own throughput.
+    #[serde(default)]
+    pub deliveries_completed: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DrillState {
+    pub seconds_remaining: Scalar,
+    pub seconds_total: Scalar,
+    pub deliveries_at_start: u32,
+    /// Accumulator for synthetic demand (every 1s drain hero rack).
+    pub demand_accumulator: Scalar,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,6 +67,12 @@ pub struct Tower {
     pub balconies: Vec<Balcony>,
     pub hero: Hero,
     pub companions: Vec<Companion>,
+    /// All transport infrastructure (stairs, ladders, dumbwaiters, chutes).
+    /// Runners can only travel between floors via one of these — there is
+    /// no teleporting between adjacent floors. Built-in stairs are always
+    /// present and span every floor.
+    #[serde(default)]
+    pub transports: Vec<TransportInstance>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +92,15 @@ pub struct Floor {
     pub transport_segments: Vec<TransportId>,
     pub floor_width_used: Scalar,
     pub floor_width_max: Scalar,
+    /// Number of horizontal slots on this floor. Buildings/caches
+    /// occupy contiguous slot ranges; transport columns occupy a
+    /// single slot on every floor they span. Standard width = 8.
+    #[serde(default = "default_floor_slots")]
+    pub slots: u8,
+}
+
+fn default_floor_slots() -> u8 {
+    8
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,6 +119,21 @@ pub struct Building {
     pub production_rate: Scalar,
     pub operating_cost: u32,
     pub is_active: bool,
+    /// Per-craft production progress in [0, 1]. Advances each tick
+    /// only while inputs are present (raw producers always advance).
+    /// Reaches 1.0 → consume inputs, push crate to outbox, reset.
+    #[serde(default)]
+    pub production_progress: Scalar,
+    /// Leftmost slot the building occupies on its floor.
+    #[serde(default)]
+    pub slot: u8,
+    /// Number of slots the building occupies horizontally.
+    #[serde(default = "default_building_width")]
+    pub width_slots: u8,
+}
+
+fn default_building_width() -> u8 {
+    2
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -127,6 +176,11 @@ pub enum ResourceType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DepotCache {
     pub slots: Vec<ResourceBuffer>,
+    /// Slot on the floor where the cache lives. Caches always occupy
+    /// exactly one slot. (Field name distinct from `slots` above which
+    /// holds resource buffers — different concept.)
+    #[serde(default)]
+    pub slot: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,6 +256,49 @@ pub struct Crate {
     pub resource: ResourceType,
 }
 
+/// Runtime instance of a transport segment connecting two floors.
+/// Pathfinding picks the best instance whose `[low_floor, high_floor]`
+/// range covers a runner's trip; capacity limits how many runners can
+/// occupy the segment at once.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransportInstance {
+    pub id: TransportId,
+    pub kind: TransportKind,
+    pub low_floor: usize,
+    pub high_floor: usize,
+    /// Speed multiplier vs base stairs (1.0). Higher = faster traversal.
+    pub speed_mul: Scalar,
+    /// Max simultaneous runners on the segment.
+    pub capacity: u8,
+    /// Currently riding runners.
+    pub occupancy: u8,
+    /// Direction this segment supports.
+    pub direction: TransportDirection,
+    /// Slot column the transport occupies on every floor it spans.
+    /// Built-in stairs default to slot 0 (left edge).
+    #[serde(default)]
+    pub slot: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransportKind {
+    /// Built-in stairs — always present, free, both directions.
+    Stairs,
+    /// Player-built ladder spanning two floors.
+    Ladder,
+    /// Player-built autonomous dumbwaiter (no runner needed to ride).
+    Dumbwaiter,
+    /// Down-only chute, fastest. Unlocked after Ch1 boss.
+    Chute,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransportDirection {
+    Both,
+    DownOnly,
+    UpOnly,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DumbwaiterState {
     Idle,
@@ -259,6 +356,47 @@ pub struct Runner {
     pub carried: Option<Crate>,
     pub speed: Scalar,
     pub carry_capacity: u8,
+    /// Active delivery the runner is executing. `None` while idle.
+    #[serde(default)]
+    pub task: Option<RunnerTask>,
+    /// Horizontal slot the runner is currently standing at on its
+    /// floor. Updated as legs of a multi-leg path complete.
+    #[serde(default)]
+    pub current_slot: u8,
+}
+
+/// One end-to-end delivery a runner is committed to: pick up a crate of
+/// `resource` from `pickup_floor` and drop it at `destination`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunnerTask {
+    pub pickup_floor: usize,
+    pub dropoff_floor: usize,
+    pub resource: ResourceType,
+    pub destination: DeliveryDestination,
+    /// Horizontal slot of the source outbox.
+    #[serde(default)]
+    pub pickup_slot: u8,
+    /// Horizontal slot of the destination facility.
+    #[serde(default)]
+    pub dropoff_slot: u8,
+}
+
+/// Where a runner is delivering a crate. Used for both demand scoring
+/// (which destinations are starving) and final deposit routing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DeliveryDestination {
+    /// A crafter's input buffer (e.g. wood → Fletcher inbox). Highest
+    /// priority — feeding active production trumps stockpiling.
+    Inbox {
+        floor: usize,
+    },
+    Rack {
+        balcony: BalconyId,
+    },
+    Cache {
+        floor: usize,
+    },
+    Warehouse,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,11 +404,19 @@ pub enum RunnerState {
     Idle {
         at_floor: usize,
     },
+    /// One leg of an L-shaped path. If `from == to`, this is a
+    /// horizontal walk on a single floor between `from_slot` and
+    /// `to_slot`. Otherwise it's a vertical climb on the transport
+    /// `via`, with `from_slot == to_slot == transport.slot`.
     Moving {
         from: usize,
         to: usize,
         progress: Scalar,
         via: TransportId,
+        #[serde(default)]
+        from_slot: u8,
+        #[serde(default)]
+        to_slot: u8,
     },
     Loading {
         at_floor: usize,
@@ -308,6 +454,15 @@ pub struct Hero {
     pub weapon_ability_cooldown: Scalar,
     pub hero_skill_cooldown: Scalar,
     pub hero_skill: HeroSkill,
+    /// Bow draw power as a [0,1] fraction. The frontend updates this on
+    /// mouse-down → mouse-up; Fire reads it to scale projectile speed
+    /// (and therefore range) and damage. Reset to 0 after each shot.
+    #[serde(default = "default_draw_power")]
+    pub draw_power: Scalar,
+}
+
+fn default_draw_power() -> Scalar {
+    1.0
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

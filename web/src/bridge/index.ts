@@ -23,6 +23,10 @@ export interface GameBridge {
   get_perf_state(): string;
   save(): string;
   load(data: string): void;
+  /** Test/debug: instantly resolve the current encounter as a win. */
+  debug_force_win(): void;
+  /** Active drill state, or "null" if no drill is running. */
+  get_drill_state(): string;
 }
 
 let bridge: GameBridge | null = null;
@@ -100,6 +104,7 @@ function installDebugHelpers(activeBridge: GameBridge): void {
     __getEncounter?: () => string;
     __getHud?: () => string;
     __tick?: (dt: number) => string;
+    __forceWin?: () => void;
   };
 
   const debugWindow = window as DebugWindow;
@@ -113,6 +118,7 @@ function installDebugHelpers(activeBridge: GameBridge): void {
   debugWindow.__getEncounter = () => activeBridge.get_encounter_state();
   debugWindow.__getHud = () => activeBridge.get_hud_state();
   debugWindow.__tick = (dt: number) => activeBridge.tick(dt);
+  debugWindow.__forceWin = () => activeBridge.debug_force_win();
 }
 
 interface WasmBridgeModule {
@@ -134,6 +140,8 @@ interface WasmBridgeModule {
   get_perf_state(): string;
   save(): string;
   load(data: string): void;
+  debug_force_win(): void;
+  get_drill_state(): string;
 }
 
 export function getBridge(): GameBridge {
@@ -167,6 +175,8 @@ export async function initBridge(seed: number, heroClass: string): Promise<GameB
     get_perf_state: () => timeCall("get_perf_state", () => wasm.get_perf_state()),
     save: () => timeCall("save", () => wasm.save()),
     load: (data: string) => timeCall("load", () => wasm.load(data)),
+    debug_force_win: () => wasm.debug_force_win(),
+    get_drill_state: () => wasm.get_drill_state(),
   };
 
   installDebugHelpers(bridge);

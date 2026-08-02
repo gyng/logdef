@@ -81,6 +81,8 @@ make build-checked          # build + explicit frontend typecheck
 make wasm                   # build WASM bridge only (wasm-pack)
 make wasm-dev               # quick dev WASM build (no wasm-opt)
 make dev                    # build WASM + start Vite dev server
+make dev-stop               # kill any stale vite holding port 3000
+make e2e                    # stop stale vite, rebuild wasm, run smoke
 make bench-core             # lightweight engine microbenchmarks
 make bench-scenario         # representative combat scenario benchmark
 make bench-pipeline         # wall-clock timings for test/check/build + core bench
@@ -124,6 +126,7 @@ npm run test:e2e -- --grep smoke  # smoke test after changes that touch web, WAS
 - **Determinism is testable.** Same seed + same commands = same result. If a test is flaky, determinism is broken — treat as a P0 bug.
 - **Snapshot tests for bridge outputs.** The typed accessors (`get_hud_state()`, etc.) return compact structs. Snapshot-test their shape to catch unintentional bridge changes.
 - **Always run a smoke test before wrapping up.** If a change touches React, WASM, the bridge, or phase flow, run the smoke path as part of verification, not just unit tests. Browser-only failures count as regressions even when `cargo test` passes.
+- **Run the smoke test with `make e2e`, in the foreground.** `make e2e` stops any stale vite, rebuilds WASM, and lets playwright own the dev server for the duration of the run. Do NOT run `npx playwright test` in a background shell wrapper — if the wrapper dies (timeout, ctrl-c, tool abandonment), the vite child it spawned survives as a zombie on port 3000, which then poisons the next run. The smoke test runs in ~2s with `__forceWin`, so there's no reason to background it. If you ever need to stop a rogue dev server, run `make dev-stop`.
 
 ### Code organization
 

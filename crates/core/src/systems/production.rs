@@ -1,48 +1,77 @@
+//! Building production.
+//!
+//! Each tick, every active building advances `production_progress`
+//! toward 1.0 at a rate of `dt / seconds_per_craft`. When it crosses
+//! 1.0 we consume one unit from every input buffer and push one crate
+//! to the output buffer.
+//!
+//! Raw producers (Lumberyard, Quarry — empty `input_buffers`) advance
+//! unconditionally. Crafters (Fletcher needs wood, Forge needs stone,
+//! …) stall whenever any input buffer is below the per-craft amount,
+//! making the chain visibly bottleneck on missing materials.
+//!
+//! A full output buffer also stalls production — the building visibly
+//! stops producing until a runner clears space, surfacing logistics
+//! pressure to the player.
+
 use crate::registry::Registry;
 use crate::snapshot::SoundEvent;
-use crate::state::GameState;
+use crate::state::*;
 use crate::types::Scalar;
 
-pub fn run(state: &mut GameState, _registry: &Registry, _dt: Scalar, sounds: &mut Vec<SoundEvent>) {
-    if state.encounter.is_none() {
+/// Each input slot consumes 1 unit per craft for v1. Future cycles can
+/// promote this to a per-input amount on the registry.
+const INPUT_PER_CRAFT: u32 = 1;
+
+pub fn run(state: &mut GameState, _registry: &Registry, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
+    if state.encounter.is_none() && state.drill.is_none() {
         return;
     }
 
     for floor in &mut state.tower.floors {
-        let building = match &mut floor.building {
-            Some(b) if b.is_active => b,
-            _ => continue,
+        let Some(building) = floor.building.as_mut() else {
+            continue;
         };
+        if !building.is_active {
+            continue;
+        }
 
-        // Accumulate fractional production in a simple way:
-        // Add to a "progress" counter using the existing buffer current as integer.
-        // We track fractional progress by checking if accumulated production crosses 1.0.
-        // Use output_buffer.max as threshold — produce only if buffer not full.
-        if building.output_buffer.current < building.output_buffer.max {
-            // We need a fractional accumulator. Since Building doesn't have one,
-            // we'll use a trick: check if (rate * elapsed_time) would have produced
-            // by now. Simpler: just probabilistically produce based on dt.
-            // Actually, let's use a deterministic approach:
-            // At 6 crates/min = 0.1 crates/sec = 0.00333 crates/tick at 30hz.
-            // After 300 ticks (10 sec), we'd have accumulated 1.0 crate.
-            // We'll track this via a static counter approximation:
-            // production_progress += production_this_tick, and when >= 1.0, produce.
-            //
-            // Problem: Building struct has no progress field. Let's repurpose
-            // production_rate as both rate config AND accumulate progress in a
-            // separate field. For MVP, add it to output_buffer.current using
-            // fractional math: if we reach the next integer, emit a crate.
+        // Output buffer full: stall (visible silent building).
+        if building.output_buffer.current >= building.output_buffer.max {
+            continue;
+        }
 
-            // MVP simplified: check if enough time has passed based on tick count
-            // production_rate crates/min → one crate every (60/rate) seconds
-            // At 30hz: one crate every (60/rate * 30) ticks
-            let ticks_per_crate = (60.0 / building.production_rate * 30.0) as u64;
-            if ticks_per_crate > 0 && state.tick % ticks_per_crate == 0 {
-                building.output_buffer.current += 1;
-                sounds.push(SoundEvent::BuildingProduce {
-                    building_type: building.building_type,
-                });
+        // Inputs gate: every input buffer must hold >= INPUT_PER_CRAFT.
+        // Raw producers (no inputs) skip this check entirely.
+        let has_inputs = !building.input_buffers.is_empty();
+        if has_inputs {
+            let all_satisfied = building
+                .input_buffers
+                .iter()
+                .all(|inb| inb.current >= INPUT_PER_CRAFT);
+            if !all_satisfied {
+                // Stall until a runner refills the inbox. Don't reset
+                // existing progress — partial work survives the gap.
+                continue;
             }
+        }
+
+        // Advance the in-progress craft.
+        let rate = building.production_rate.max(0.01);
+        let seconds_per_craft = 60.0 / rate;
+        building.production_progress += dt / seconds_per_craft;
+
+        if building.production_progress >= 1.0 {
+            // Consume one unit from each input buffer.
+            for inb in &mut building.input_buffers {
+                inb.current = inb.current.saturating_sub(INPUT_PER_CRAFT);
+            }
+            // Push a crate to the outbox.
+            building.output_buffer.current += 1;
+            building.production_progress = 0.0;
+            sounds.push(SoundEvent::BuildingProduce {
+                building_type: building.building_type,
+            });
         }
     }
 }

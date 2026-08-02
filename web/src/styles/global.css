@@ -140,8 +140,10 @@ button:disabled {
 
 .map-page {
   padding: var(--space-6);
-  max-width: 900px;
+  padding-bottom: 96px; /* leave room for the sticky march button */
+  max-width: 1100px;
   margin: 0 auto;
+  min-height: 100vh;
 }
 
 .map-header {
@@ -224,6 +226,834 @@ button:disabled {
   padding: var(--space-1) 0;
 }
 
+.floor-row-detailed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-bottom: 1px dashed var(--border-default);
+}
+
+.floor-row-summary {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+}
+
+.floor-row-summary .floor-index {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.floor-row-logistics {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.logistics-pip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-raised, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border-default);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-primary);
+}
+
+.cache-pip {
+  border-color: var(--status-healthy, #4a8);
+}
+
+.rack-pip {
+  border-color: var(--interactive-focus, #c84);
+}
+
+.rack-pip.destroyed {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.cache-place-btn {
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.cache-place-btn:hover {
+  background: var(--surface-raised, rgba(255, 255, 255, 0.08));
+  color: var(--text-primary);
+}
+
+.logistics-panel {
+  margin: var(--space-4) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--surface-raised, rgba(255, 255, 255, 0.02));
+}
+
+.logistics-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.logistics-header h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.hire-runner-btn {
+  padding: 2px 8px;
+  font-size: var(--text-xs);
+}
+
+.runner-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.runner-row {
+  display: flex;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.runner-row .runner-id {
+  color: var(--text-primary);
+  font-weight: 600;
+  min-width: 24px;
+}
+
+.runner-row .runner-floor {
+  min-width: 24px;
+}
+
+.runner-row .runner-state {
+  flex: 1;
+}
+
+/* ── Tower viz (SVG cross-section, used in prep + combat) ── */
+
+.tower-viz {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.tower-viz-title {
+  font-family: var(--font-display, var(--font-mono));
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+
+.tower-viz svg .floor-wall {
+  fill: #2a221b;
+  stroke: #5a4a3a;
+  stroke-width: 1;
+}
+
+.tower-viz svg .floor-wall-stone {
+  fill: #393238;
+}
+
+.tower-viz svg .floor-wall-iron {
+  fill: #2b2f33;
+}
+
+.tower-viz svg .floor-wall-hp {
+  fill: #3daa5e;
+}
+
+.tower-viz svg .building-icon {
+  fill: #8a5a2b;
+  stroke: #d49255;
+  stroke-width: 1;
+}
+
+.tower-viz svg .building-label {
+  fill: #f5e6cf;
+  font-size: 9px;
+  font-family: var(--font-mono);
+}
+
+.tower-viz svg .building-buffer {
+  fill: #d4922a;
+  font-size: 8px;
+  font-family: var(--font-mono);
+}
+
+/* Inbox / body / outbox split for crafters */
+.tower-viz svg .inbox-rect {
+  fill: rgba(74, 143, 212, 0.1);
+  stroke: #4a8fd4;
+  stroke-width: 1;
+}
+.tower-viz svg .inbox-fill {
+  fill: rgba(74, 143, 212, 0.6);
+}
+.tower-viz svg .inbox-none {
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: rgba(255, 255, 255, 0.15);
+  stroke-dasharray: 2 2;
+  stroke-width: 1;
+}
+.tower-viz svg .inbox-label {
+  fill: #cce0f5;
+  font-size: 9px;
+  font-family: var(--font-mono);
+}
+.tower-viz svg .building-body {
+  fill: #4a3d30;
+  stroke: #d49255;
+  stroke-width: 1;
+}
+.tower-viz svg .building-body.stalled {
+  stroke: #c9433a;
+  fill: #3a2a1f;
+}
+.tower-viz svg .building-name {
+  fill: #f5e6cf;
+  font-size: 11px;
+  font-family: var(--font-display, var(--font-mono));
+  font-weight: 700;
+}
+.tower-viz svg .building-substatus {
+  fill: var(--text-secondary, #aaa);
+  font-size: 8px;
+  font-family: var(--font-mono);
+}
+.tower-viz svg .progress-track {
+  fill: rgba(0, 0, 0, 0.4);
+  stroke: rgba(255, 255, 255, 0.15);
+  stroke-width: 1;
+}
+.tower-viz svg .progress-fill {
+  fill: #3daa5e;
+}
+.tower-viz svg .progress-fill.stalled {
+  fill: #c9433a;
+}
+.tower-viz svg .outbox-rect {
+  fill: rgba(212, 146, 42, 0.1);
+  stroke: #d4922a;
+  stroke-width: 1;
+}
+.tower-viz svg .outbox-fill {
+  fill: rgba(212, 146, 42, 0.65);
+}
+.tower-viz svg .outbox-label {
+  fill: #f5e6cf;
+  font-size: 9px;
+  font-family: var(--font-mono);
+}
+
+.tower-viz svg .cache-icon {
+  fill: #2f5a3a;
+  stroke: #4cb068;
+  stroke-width: 1;
+}
+
+.tower-viz svg .cache-label {
+  fill: #cce6cf;
+  font-size: 9px;
+  font-family: var(--font-mono);
+}
+
+.tower-viz svg .balcony-rect {
+  fill: #1a1612;
+  stroke: #5a4a3a;
+  stroke-width: 1;
+}
+
+.tower-viz svg .balcony-rect.destroyed {
+  fill: #2a1212;
+  stroke: #c9433a;
+}
+
+.tower-viz svg .rack-fill {
+  fill: #d4922a;
+}
+
+.tower-viz svg .rack-label {
+  fill: #f5e6cf;
+  font-size: 9px;
+  font-family: var(--font-mono);
+}
+
+.tower-viz svg .hero-icon {
+  fill: #ffd770;
+  stroke: #5a3d12;
+  stroke-width: 1;
+}
+
+.tower-viz svg .hero-label {
+  fill: #ffd770;
+  font-size: 9px;
+  font-family: var(--font-mono);
+}
+
+.tower-viz svg .floor-num {
+  fill: #888;
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.tower-viz svg .foundation-rect {
+  fill: #1a1612;
+  stroke: #5a4a3a;
+}
+
+.tower-viz svg .foundation-label {
+  fill: #666;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-style: italic;
+}
+
+.tower-viz svg .depot-label {
+  fill: #aaa;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tower-viz svg .depot-slot {
+  fill: #d4922a;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.tower-viz svg .depot-empty {
+  fill: #555;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-style: italic;
+}
+
+/* Slot grid (place mode) — drawn over top of facilities so the
+   player can clearly see every clickable slot at high contrast. */
+.tower-viz svg .slot-cell {
+  fill: rgba(0, 0, 0, 0.25);
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+.tower-viz svg .slot-cell.fits {
+  fill: rgba(61, 170, 94, 0.35);
+  stroke: #3daa5e;
+  stroke-width: 2;
+  stroke-dasharray: none;
+}
+.tower-viz svg .slot-cell.fits:hover {
+  fill: rgba(255, 215, 112, 0.55);
+  stroke: #ffd770;
+}
+.tower-viz svg .slot-cell.occupied {
+  fill: rgba(201, 67, 58, 0.35);
+  stroke: rgba(201, 67, 58, 0.7);
+  stroke-width: 1.5;
+}
+
+/* Pending placement ghost + popup */
+.tower-viz svg .placement-ghost {
+  fill: rgba(212, 146, 42, 0.35);
+  stroke: #ffd770;
+  stroke-width: 2;
+  stroke-dasharray: 4 2;
+}
+.tower-viz svg .placement-ghost-label {
+  fill: #ffd770;
+  font-size: 11px;
+  font-family: var(--font-display, var(--font-mono));
+  font-weight: 700;
+}
+.placement-popup {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.placement-ok,
+.placement-cancel {
+  padding: 4px 8px;
+  border-radius: 3px;
+  border: 1px solid #d4922a;
+  background: rgba(0, 0, 0, 0.7);
+  color: #ffd770;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+.placement-ok:hover {
+  background: rgba(212, 146, 42, 0.3);
+}
+.placement-cancel {
+  border-color: #888;
+  color: #ccc;
+}
+.placement-cancel:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tower-viz svg .transport-strip {
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 1;
+}
+.tower-viz svg .transport-strip.transport-stairs {
+  fill: rgba(212, 146, 42, 0.06);
+  stroke: rgba(212, 146, 42, 0.5);
+}
+.tower-viz svg .transport-strip.transport-ladder {
+  fill: rgba(122, 99, 67, 0.1);
+  stroke: rgba(122, 99, 67, 0.6);
+}
+.tower-viz svg .transport-strip.transport-dumbwaiter {
+  fill: rgba(74, 143, 212, 0.08);
+  stroke: rgba(74, 143, 212, 0.6);
+}
+.tower-viz svg .transport-strip.transport-chute {
+  fill: rgba(61, 170, 94, 0.08);
+  stroke: rgba(61, 170, 94, 0.6);
+}
+.tower-viz svg .transport-dot {
+  fill: rgba(255, 255, 255, 0.08);
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 1;
+}
+.tower-viz svg .transport-dot.filled {
+  fill: #d4922a;
+  stroke: #f5e6cf;
+}
+.tower-viz svg .transport-label {
+  fill: var(--text-secondary, #888);
+  font-size: 7px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.transport-pair {
+  display: inline-flex;
+  flex-direction: row;
+  gap: 4px;
+  margin-right: var(--space-2);
+}
+
+.tower-viz svg .runner-dot {
+  stroke: #f5e6cf;
+  stroke-width: 1.5;
+  fill: #4a8fd4;
+}
+
+.tower-viz svg .runner-dot.carrying {
+  fill: #d4922a;
+  stroke: #ffd770;
+}
+
+.tower-viz svg .runner-dot-label {
+  fill: #f5e6cf;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.tower-viz svg .runner-dot-state {
+  fill: #cccccc;
+  font-size: 8px;
+  font-family: var(--font-mono);
+}
+
+.tower-viz svg .runner-lane {
+  fill: rgba(74, 143, 212, 0.06);
+  stroke: rgba(74, 143, 212, 0.25);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.tower-viz svg .runner-lane-label {
+  fill: rgba(74, 143, 212, 0.5);
+  font-size: 7px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tower-viz svg .companion-icon {
+  fill: #4a8fd4;
+  stroke: #f5e6cf;
+  stroke-width: 1;
+}
+
+.tower-viz svg .companion-icon.injured {
+  fill: #c9433a;
+}
+
+.tower-viz svg .companion-label {
+  fill: #cce0f5;
+  font-size: 8px;
+  font-family: var(--font-mono);
+}
+
+.prep-tower-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.prep-tower-row .tower-viz {
+  flex: 0 0 auto;
+}
+
+.prep-tower-row .floor-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.floor-controls-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.floor-controls-label {
+  min-width: 24px;
+  color: var(--text-secondary);
+}
+
+.floor-controls-btn {
+  padding: 2px 6px;
+  font-size: var(--text-xs);
+}
+
+.combat-stage {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+/* ── Build menu (organism) ───────────────────────────── */
+
+.build-menu {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.build-menu-top,
+.cache-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.cache-row-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-right: var(--space-2);
+}
+
+.build-action {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.build-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--interactive-focus, #d4922a);
+}
+
+.build-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.build-action .cost {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.build-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.build-catalog-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.build-catalog-hint {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary, #888);
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.build-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-2);
+}
+
+.build-card {
+  /* Reset button defaults so the <button> wrapper looks like the
+     old <div> card but stays keyboard- and click-accessible. */
+  appearance: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition:
+    background 0.1s,
+    border-color 0.1s,
+    transform 0.1s;
+}
+
+.build-card:hover:not(:disabled) {
+  background: rgba(212, 146, 42, 0.1);
+  border-color: #d4922a;
+  transform: translateY(-1px);
+}
+
+.build-card:focus-visible {
+  outline: 2px solid #ffd770;
+  outline-offset: 2px;
+}
+
+.build-card:disabled {
+  cursor: not-allowed;
+}
+
+.build-card.tier-t1 {
+  border-left: 3px solid #d4922a;
+}
+
+.build-card.tier-t2 {
+  border-left: 3px solid #4a8fd4;
+}
+
+.build-card.unaffordable {
+  opacity: 0.55;
+}
+
+.build-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.build-card-name {
+  font-family: var(--font-display, var(--font-mono));
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.build-card-tier {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.build-card-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.build-card-input {
+  color: #4a8fd4;
+}
+
+.build-card-arrow {
+  color: var(--text-secondary);
+}
+
+.build-card-output {
+  color: #d4922a;
+}
+
+.build-card-weapon {
+  color: #4a8fd4;
+}
+
+.build-card-stats,
+.build-card-cost {
+  display: flex;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.build-card-cost {
+  color: var(--text-primary);
+}
+
+.build-card-desc {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.build-card-place {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.build-card-place-empty {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary, #888);
+  font-style: italic;
+}
+
+.build-card-floor-btn {
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.build-card-floor-btn:hover:not(:disabled) {
+  background: rgba(212, 146, 42, 0.2);
+  border-color: #d4922a;
+}
+
+.build-card-floor-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.prep-budget {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin: var(--space-2) 0;
+}
+
+.drill-banner {
+  margin: var(--space-2) 0;
+  padding: var(--space-3);
+  border: 1px solid #d4922a;
+  border-radius: 6px;
+  background: rgba(212, 146, 42, 0.08);
+  box-shadow: 0 0 12px rgba(212, 146, 42, 0.2);
+}
+
+.drill-banner-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+
+.drill-banner-title {
+  color: #ffd770;
+  font-weight: 700;
+}
+
+.drill-banner-time {
+  color: var(--text-primary);
+}
+
+.drill-banner-deliveries {
+  color: #d4922a;
+  margin-left: auto;
+}
+
+.drill-banner-bar {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.drill-banner-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #d4922a, #ffd770);
+  transition: width 0.1s linear;
+}
+
+.build-action.drill-button {
+  border-color: #d4922a;
+  color: #ffd770;
+}
+
+.build-action.drill-button:hover:not(:disabled) {
+  background: rgba(212, 146, 42, 0.15);
+}
+
 .prep-actions {
   display: flex;
   flex-wrap: wrap;
@@ -232,6 +1062,8 @@ button:disabled {
 }
 
 .march-button {
+  position: sticky;
+  bottom: var(--space-4);
   width: 100%;
   padding: var(--space-3) var(--space-6);
   font-size: var(--text-xl);
@@ -239,6 +1071,8 @@ button:disabled {
   background: var(--status-healthy);
   color: var(--text-inverse);
   border-color: var(--status-healthy);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  z-index: 5;
 }
 
 .march-button:hover {

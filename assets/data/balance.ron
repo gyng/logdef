@@ -36,7 +36,10 @@ Balance(
         battlefield_width: 800.0,
         wave_delay: 5.0,
         breach_duration: 15.0,
-        difficulty_budgets: (4, 8, 12),
+        // Encounters are sized to put real pressure on the supply
+        // chain — large enough that the player visibly needs more
+        // runners and faster transport to keep racks topped up.
+        difficulty_budgets: (16, 24, 32),
     ),
     hero: HeroBalance(
         personal_ammo: 99,
