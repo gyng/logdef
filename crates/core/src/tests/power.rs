@@ -395,3 +395,123 @@ fn a_powered_room_stalls_without_charge() {
         "the thornwright stayed dead after the power came back"
     );
 }
+
+#[test]
+fn a_burn_consumes_exactly_its_fuel_and_yields_exactly_its_charge() {
+    // The end-to-end burner test only asks "did charge go up", which
+    // leaves every number in the burn loop free to drift. This pins
+    // them: one burn, on the tick it lands, costs exactly
+    // `fuel_per_burn` and pays exactly `charge_per_burn`.
+    let content = content();
+    let bamboo = item(&content, "item.bamboo");
+    let burner = content
+        .rooms
+        .iter()
+        .find(|room| room.id == "room.burner")
+        .and_then(|room| room.burner.as_ref())
+        .expect("the pack defines a burner");
+
+    let mut game = engine(711);
+    game.step(3000);
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.burner".into(),
+        floor: 1,
+        slot: 1,
+    })
+    .expect("affordable");
+
+    // Isolate it: no crew to move fuel around, night so the sails add
+    // nothing, halted so the legs draw nothing, and plenty of headroom
+    // in the banks so nothing is clipped.
+    {
+        let state = game.state_mut_for_test();
+        state.crew.clear();
+        state.clock.tick_of_day = 0;
+        state.walking = false;
+        state.power.charge = 0;
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                if let Some(fuel) = room.inputs.iter_mut().find(|s| s.item == bamboo) {
+                    let space = fuel.space();
+                    fuel.deposit(space);
+                }
+            }
+        }
+    }
+
+    let fuel_before = burner_fuel(&game, bamboo);
+    let mut burns = 0;
+    let mut saw_exact_income = false;
+
+    // Two burns' worth of ticks, plus slack for the tick the burn
+    // lands on.
+    for _ in 0..(burner.burn_ticks * 2 + 2) {
+        game.step(1);
+        let income = game.state().power.income_last;
+        if income > 0 {
+            burns += 1;
+            assert_eq!(
+                income, burner.charge_per_burn,
+                "a burn paid {income} rather than {}",
+                burner.charge_per_burn
+            );
+            saw_exact_income = true;
+        }
+    }
+
+    assert!(saw_exact_income, "the burner never produced anything");
+    assert_eq!(burns, 2, "expected exactly two burns, saw {burns}");
+    assert_eq!(
+        fuel_before - burner_fuel(&game, bamboo),
+        burner.fuel_per_burn * 2,
+        "two burns did not eat exactly two burns' worth of fuel"
+    );
+}
+
+fn burner_fuel(game: &crate::engine::GameEngine, fuel: crate::ids::ItemIdx) -> i64 {
+    game.state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .filter(|room| game.content().room(room.def).burner.is_some())
+        .flat_map(|room| room.inputs.iter())
+        .filter(|stack| stack.item == fuel)
+        .map(|stack| stack.count)
+        .sum()
+}
+
+#[test]
+fn sail_income_scales_with_exposure_rather_than_being_on_or_off() {
+    // Two identical towers at the same moment of the day, one under
+    // canopy and one in a ruin-field, must bank measurably different
+    // amounts. A sail that ignored terrain would still pass the
+    // "sails produce something" test.
+    let content = content();
+    let canopy = content.terrain_idx("terrain.canopy").unwrap();
+    let ruins = content.terrain_idx("terrain.ruin_field").unwrap();
+    let noon = content.balance.clock.ticks_per_day / 2;
+
+    let bank = |kind| {
+        let mut game = engine(712);
+        {
+            let state = game.state_mut_for_test();
+            for band in &mut state.world.bands {
+                band.kind = kind;
+            }
+            state.clock.tick_of_day = noon;
+            state.power.charge = 0;
+            state.walking = false;
+            state.crew.clear();
+        }
+        game.step(900);
+        game.state().power.charge
+    };
+
+    let shaded = bank(canopy);
+    let open = bank(ruins);
+    assert!(
+        open > shaded,
+        "sails banked {open} in the open against {shaded} under canopy — terrain is not reaching them"
+    );
+}
