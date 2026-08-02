@@ -144,3 +144,120 @@ impl Power {
         self.brownout = false;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pool(charge: i64, capacity: i64) -> Power {
+        let mut power = Power::new(charge);
+        power.capacity = capacity;
+        power
+    }
+
+    #[test]
+    fn a_draw_within_budget_succeeds_and_is_counted() {
+        let mut power = pool(100, 100);
+        assert!(power.draw(30));
+        assert_eq!(power.charge, 70);
+        assert_eq!(power.spent_last, 30);
+        assert!(!power.brownout);
+    }
+
+    #[test]
+    fn a_draw_over_budget_takes_nothing_and_raises_brownout() {
+        // Partial payment would be worse than refusal: half a floor of
+        // elevator travel is not a thing, and a consumer that spent
+        // charge without acting is charge that vanished.
+        let mut power = pool(10, 100);
+        assert!(!power.draw(11));
+        assert_eq!(power.charge, 10);
+        assert_eq!(power.spent_last, 0);
+        assert!(power.brownout);
+    }
+
+    #[test]
+    fn drawing_exactly_the_balance_is_allowed() {
+        let mut power = pool(10, 100);
+        assert!(power.draw(10));
+        assert_eq!(power.charge, 0);
+        assert!(!power.brownout);
+    }
+
+    #[test]
+    fn a_zero_draw_is_free_and_never_browns_out() {
+        let mut power = pool(0, 100);
+        assert!(power.draw(0));
+        assert!(!power.brownout);
+        assert_eq!(power.spent_last, 0);
+    }
+
+    #[test]
+    fn income_is_capped_at_capacity_and_the_overflow_is_lost() {
+        // Losing the overflow is the design: it is the signal that the
+        // tower needs another cell bank.
+        let mut power = pool(90, 100);
+        power.add(50);
+        assert_eq!(power.charge, 100);
+        assert_eq!(power.income_last, 10);
+    }
+
+    #[test]
+    fn income_into_a_full_pool_counts_nothing() {
+        let mut power = pool(100, 100);
+        power.add(25);
+        assert_eq!(power.charge, 100);
+        assert_eq!(power.income_last, 0);
+    }
+
+    #[test]
+    fn fill_reads_zero_rather_than_dividing_by_zero() {
+        assert_eq!(pool(0, 0).fill_permille(), 0);
+        assert_eq!(pool(50, 100).fill_permille(), 500);
+        assert_eq!(pool(100, 100).fill_permille(), 1000);
+    }
+
+    #[test]
+    fn a_block_is_bought_once_and_then_spent_a_tick_at_a_time() {
+        // The whole reason blocks exist: a rate of 20 per 100 ticks
+        // must actually cost 20, not round to nothing eighty times.
+        let mut power = pool(100, 100);
+        assert!(power.buy_block(20, Credit::Stride));
+        assert_eq!(power.charge, 80, "the first tick pays for the block");
+
+        for _ in 0..99 {
+            assert!(power.buy_block(20, Credit::Stride));
+        }
+        assert_eq!(power.charge, 80, "the next 99 ticks ride on the credit");
+
+        assert!(power.buy_block(20, Credit::Stride));
+        assert_eq!(power.charge, 60, "tick 101 buys the next block");
+    }
+
+    #[test]
+    fn an_unaffordable_block_stops_the_consumer_dead() {
+        let mut power = pool(5, 100);
+        assert!(!power.buy_block(20, Credit::Stride));
+        assert_eq!(power.charge, 5);
+        assert!(power.brownout);
+    }
+
+    #[test]
+    fn the_two_meters_are_independent() {
+        // Striding and lighting must not spend each other's credit, or
+        // halting the legs would silently buy free lamps.
+        let mut power = pool(100, 100);
+        assert!(power.buy_block(20, Credit::Stride));
+        assert!(power.buy_block(10, Credit::Light));
+        assert_eq!(power.charge, 70);
+        assert_eq!(power.stride_credit, 99);
+        assert_eq!(power.light_credit, 99);
+    }
+
+    #[test]
+    fn a_free_rate_needs_no_purchase() {
+        let mut power = pool(0, 0);
+        assert!(power.buy_block(0, Credit::Light));
+        assert!(!power.brownout);
+    }
+}

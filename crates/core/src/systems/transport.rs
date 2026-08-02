@@ -723,21 +723,25 @@ pub fn estimated_trip_ticks(
         }
         ShaftKind::Elevator => {
             // How far the car has to come, plus the standing assumption
-            // that you never catch it at the door. Queueing costs a
-            // dwell each, not a whole trip — that is the point of a car.
+            // that you never catch it at the door.
             let approach = shaft
                 .cars
                 .iter()
                 .map(|car| u32::from(car.floor().abs_diff(from)) * def.ticks_per_floor)
                 .min()
                 .unwrap_or(0);
-            let boarding =
-                queued.saturating_sub(u32::from(shaft.capacity)) * balance.dwell_per_unit_ticks;
-            balance.elevator_base_wait_ticks
-                + approach
-                + floors * def.ticks_per_floor
-                + balance.dwell_base_ticks * 2
-                + boarding
+            let trip = floors * def.ticks_per_floor + balance.dwell_base_ticks * 2;
+
+            // A queue costs two different things and both matter. Every
+            // person ahead of you lengthens the dwell whether or not
+            // they fit; everyone beyond a carload makes you wait for the
+            // car to come back. Without that second term a single
+            // elevator would look infinitely scalable, and subtracting
+            // capacity first — as this did — made a queue that exactly
+            // filled the car cost nothing at all.
+            let dwell = queued * balance.dwell_per_unit_ticks;
+            let carloads_ahead = queued / u32::from(shaft.capacity.max(1));
+            balance.elevator_base_wait_ticks + approach + trip + dwell + carloads_ahead * trip
         }
         // Crew cannot ride a dumbwaiter.
         ShaftKind::Dumbwaiter => u32::MAX,

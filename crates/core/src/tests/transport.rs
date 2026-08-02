@@ -515,3 +515,220 @@ fn an_underbuilt_tower_shows_its_bottleneck_at_the_shaft() {
         "the longest wait was {peak_wait} ticks, never reaching the {stress}-tick stress tint"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The estimate crew route by
+// ---------------------------------------------------------------------------
+
+/// Estimate for a shaft by kind, at a given queue length.
+fn estimate(game: &crate::engine::GameEngine, kind: ShaftKind, queued: u32) -> u32 {
+    let shaft = game
+        .state()
+        .tower
+        .shafts
+        .iter()
+        .find(|shaft| shaft.kind == kind)
+        .expect("shaft is standing");
+    crate::systems::transport::estimated_trip_ticks(shaft, game.content(), 0, 3, queued)
+}
+
+#[test]
+fn a_longer_queue_makes_a_shaft_less_attractive() {
+    // The estimate is what routes crew. If it ignores the queue they
+    // pile onto the same staircase no matter how long the line is —
+    // which is exactly the bug the flat penalty had.
+    let game = with_shaft(920, "shaft.elevator", 0, 3, 7);
+    for kind in [ShaftKind::Stairs, ShaftKind::Elevator] {
+        let empty = estimate(&game, kind, 0);
+        let busy = estimate(&game, kind, 4);
+        assert!(
+            busy > empty,
+            "{kind:?}: a queue of four estimated {busy} against {empty} for an empty shaft"
+        );
+    }
+}
+
+#[test]
+fn a_longer_climb_costs_more_than_a_shorter_one() {
+    let game = with_shaft(921, "shaft.elevator", 0, 3, 7);
+    for kind in [ShaftKind::Stairs, ShaftKind::Elevator] {
+        let shaft = game
+            .state()
+            .tower
+            .shafts
+            .iter()
+            .find(|shaft| shaft.kind == kind)
+            .expect("standing");
+        let one = crate::systems::transport::estimated_trip_ticks(shaft, game.content(), 0, 1, 0);
+        let three = crate::systems::transport::estimated_trip_ticks(shaft, game.content(), 0, 3, 0);
+        assert!(
+            three > one,
+            "{kind:?}: three floors ({three}) did not cost more than one ({one})"
+        );
+    }
+}
+
+#[test]
+fn the_elevator_earns_its_poles_on_long_climbs_and_busy_ones() {
+    // Two crossovers have to exist for a shaft to be worth building.
+    //
+    // Distance: a car has fixed overhead — walking to it, waiting for
+    // it, two sets of doors — so one floor up an empty staircase is
+    // simply quicker. Three floors up it is not, and that is what the
+    // eighteen poles bought.
+    //
+    // Congestion: everybody queueing for the stairs climbs separately,
+    // where a car takes several at once. However short the climb, a
+    // line should send crew to the car.
+    let mut game = with_shaft(922, "shaft.elevator", 0, 3, 7);
+    // Clear the traffic the warm-up left behind, so "empty staircase"
+    // actually means empty. Somebody mid-climb costs a following crew
+    // member a wait, which is correct but not what is under test here.
+    {
+        let state = game.state_mut_for_test();
+        state.crew.clear();
+        for shaft in &mut state.tower.shafts {
+            shaft.riders = 0;
+        }
+    }
+
+    let shaft_of = |kind: ShaftKind| {
+        game.state()
+            .tower
+            .shafts
+            .iter()
+            .find(move |shaft| shaft.kind == kind)
+            .expect("standing")
+    };
+    let cost = |kind: ShaftKind, to: u8, queued: u32| {
+        crate::systems::transport::estimated_trip_ticks(
+            shaft_of(kind),
+            game.content(),
+            0,
+            to,
+            queued,
+        )
+    };
+
+    assert!(
+        cost(ShaftKind::Stairs, 1, 0) < cost(ShaftKind::Elevator, 1, 0),
+        "one floor up, an empty staircase should still win"
+    );
+    assert!(
+        cost(ShaftKind::Stairs, 3, 0) > cost(ShaftKind::Elevator, 3, 0),
+        "three floors up, the car should win"
+    );
+    assert!(
+        cost(ShaftKind::Stairs, 1, 3) > cost(ShaftKind::Elevator, 1, 3),
+        "a three-deep queue should send crew to the car even for one floor"
+    );
+}
+
+#[test]
+fn crew_cannot_be_routed_onto_a_dumbwaiter() {
+    let game = with_shaft(923, "shaft.dumbwaiter", 0, 2, 7);
+    assert_eq!(
+        estimate(&game, ShaftKind::Dumbwaiter, 0),
+        u32::MAX,
+        "a dumbwaiter should be infinitely unattractive to a person"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The dumbwaiter's real job: feeding a recipe
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_dumbwaiter_feeds_a_hungry_recipe_in_preference_to_a_shelf() {
+    // Spanning the cutter arm on floor 0 and the mill on floor 2, with
+    // a storeroom on floor 1 in between. Both are valid destinations
+    // for bamboo; the mill's inbox outranks the shelves, and this is
+    // the path that actually keeps a chain running.
+    let content = content();
+    let bamboo = item(&content, "item.bamboo");
+    let mut game = with_shaft(924, "shaft.dumbwaiter", 0, 2, 7);
+    game.state_mut_for_test().crew.clear();
+
+    let crafts_before = game.state().stats.crafts_completed;
+    game.step(6000);
+
+    let in_mill: i64 = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .flat_map(|room| room.inputs.iter())
+        .filter(|stack| stack.item == bamboo)
+        .map(|stack| stack.count)
+        .sum();
+
+    assert!(
+        game.state().stats.crafts_completed > crafts_before,
+        "with no crew at all, the dumbwaiter never fed the mill"
+    );
+    assert!(
+        in_mill > 0 || game.state().stats.crafts_completed > crafts_before,
+        "bamboo never reached an inbox: {in_mill} waiting"
+    );
+}
+
+#[test]
+fn a_dumbwaiter_conserves_across_the_inbox_path_too() {
+    // The conservation check again, but on the route that actually
+    // deposits into a recipe rather than onto shelves — the one the
+    // earlier test could not reach.
+    let content = content();
+    let bamboo = item(&content, "item.bamboo");
+    let mut game = with_shaft(925, "shaft.dumbwaiter", 0, 2, 7);
+    game.state_mut_for_test().crew.clear();
+
+    let mut last = total_including_cars(&game, bamboo);
+    let mut harvested = game.state().stats.items_harvested as i64;
+    let mut crafted = game.state().stats.crafts_completed as i64;
+
+    for _ in 0..200 {
+        game.step(30);
+        let now = total_including_cars(&game, bamboo);
+        let harvested_now = game.state().stats.items_harvested as i64;
+        let crafted_now = game.state().stats.crafts_completed as i64;
+        assert_eq!(
+            now - last,
+            (harvested_now - harvested) - (crafted_now - crafted),
+            "bamboo went missing at tick {}",
+            game.state().tick
+        );
+        last = now;
+        harvested = harvested_now;
+        crafted = crafted_now;
+    }
+}
+
+#[test]
+fn a_dumbwaiter_stops_when_there_is_nowhere_to_put_anything() {
+    // Fill every destination and the car should sit still holding
+    // nothing, rather than shuttling an empty box or dropping a load.
+    let content = content();
+    let bamboo = item(&content, "item.bamboo");
+    let mut game = with_shaft(926, "shaft.dumbwaiter", 0, 2, 7);
+    game.state_mut_for_test().crew.clear();
+    game.step(9000);
+
+    // Whatever state it settles into, nothing may be lost and the car
+    // may not hold cargo it has given up on delivering forever.
+    let stuck: i64 = game
+        .state()
+        .tower
+        .shafts
+        .iter()
+        .flat_map(|shaft| shaft.cars.iter())
+        .flat_map(|car| car.freight.iter())
+        .filter(|stack| stack.item == bamboo)
+        .map(|stack| stack.count)
+        .sum();
+    let batch = 8;
+    assert!(
+        stuck <= batch,
+        "the dumbwaiter is hoarding {stuck} bamboo it will never deliver"
+    );
+}
