@@ -1,0 +1,38 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // "react" is oxlint's plugin for both JSX correctness and the
+  // react-hooks rules (rules-of-hooks, exhaustive-deps) — oxlint does
+  // not ship a separate "react-hooks" plugin, unlike eslint.
+  "plugins": ["typescript", "unicorn", "oxc", "react"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+  "rules": {
+    // Not covered by the categories above but critical for hooks
+    // safety, so enabled explicitly.
+    "react/rules-of-hooks": "error",
+    // This project uses the automatic JSX runtime (tsconfig
+    // jsx: "react-jsx", @vitejs/plugin-react default), so React
+    // does not need to be in scope for JSX to work. This rule
+    // assumes the classic runtime and would be a permanent false
+    // positive on every component file.
+    "react/react-in-jsx-scope": "off",
+    // Double-underscore marks the two things that are deliberately
+    // outside the module system: Vite's compile-time `define`
+    // constants, and the single test hook the Playwright suite drives
+    // the engine through. The prefix is the signal that they are not
+    // ordinary API, so allowlist them by name rather than switching
+    // the rule off and losing it everywhere else.
+    "no-underscore-dangle": [
+      "error",
+      {
+        "allow": ["__BUILD_TIME__", "__BUILD_COMMIT__", "__BUILD_DIRTY__", "__understory"]
+      }
+    ]
+  },
+  "env": {
+    "builtin": true,
+    "browser": true
+  }
+}

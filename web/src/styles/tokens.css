@@ -1,70 +1,47 @@
 /*
- * Design tokens — canonical source: docs/foundation/design-system.md
- * Color hierarchy (§17): resource > status > rarity > UI accent
+ * Design tokens.
+ *
+ * The palette is solarpunk-tropical: verdigris and deep jungle green
+ * with warm brass and lamplight for anything the tower makes. Nothing
+ * here is gunmetal — the tower is a home, not a war machine
+ * (DECISIONS.md §8).
+ *
+ * The renderer keeps its own copy of the scene colours in
+ * `src/engine/palette.ts`, because a shader needs floats, not strings.
+ * These are the UI chrome's colours. When one changes, check the other.
  */
 
 :root {
-  /* ── Backgrounds ───────────────────────────────────────── */
-  --bg-base: #141210;
-  --bg-surface: #1e1a16;
-  --bg-elevated: #2a2420;
-  --bg-overlay: rgb(16 12 10 / 85%);
+  /* Surfaces — dark, warm, slightly green. Interior at dusk. */
+  --bg-base: #101a15;
+  --bg-panel: rgb(18 32 26 / 88%);
+  --bg-raised: rgb(30 48 39 / 92%);
+  --bg-sunken: rgb(9 16 13 / 70%);
 
-  /* ── Text ──────────────────────────────────────────────── */
-  --text-primary: #e8e0d4;
-  --text-secondary: #a89880;
-  --text-muted: #5c5244;
-  --text-inverse: #141210;
-  --text-accent: #e6a23c;
+  /* Text */
+  --text-primary: #e9f0e2;
+  --text-secondary: #9db39c;
+  --text-muted: #6a8073;
+  --text-inverse: #0d1712;
 
-  /* ── Interactive ────────────────────────────────────────── */
-  --interactive-default: #4a3d30;
-  --interactive-hover: #5c4d3e;
-  --interactive-active: #6e5d4c;
-  --interactive-focus: #c49040;
-  --interactive-disabled: #2a2420;
+  /* Accents */
+  --accent-brass: #d9ad5e;
+  --accent-leaf: #8fc46a;
+  --accent-verdigris: #59b6a3;
+  --accent-heart: #d97a9a;
 
-  /* ── Resource types (sacred — these never mean anything else) ── */
-  --resource-arrows: #c87941;
-  --resource-bolts: #7a8fa3;
-  --resource-mana: #7c5cbf;
-  --resource-wood: #8b6914;
-  --resource-stone: #8a8a8a;
-  --resource-planks: #c4a35a;
-  --resource-fire-oil: #d45722;
-  --resource-potions: #2ea88a;
-  --resource-gunpowder: #3a3a3a;
-  --resource-gold: #f0c240;
+  /* Status — used sparingly; the cross-section carries most of this. */
+  --status-good: #7fc46a;
+  --status-warn: #e0b055;
+  --status-bad: #e0714f;
+  --status-quiet: #55705f;
 
-  /* ── Status ────────────────────────────────────────────── */
-  --status-healthy: #3daa5e;
-  --status-producing: #5bb87a;
-  --status-warning: #d4922a;
-  --status-critical: #c9433a;
-  --status-starved: #6b5a8a;
-  --status-empty: #444c56;
+  /* Borders */
+  --border-subtle: rgb(143 196 106 / 12%);
+  --border-default: rgb(143 196 106 / 22%);
+  --border-strong: rgb(217 173 94 / 45%);
 
-  /* ── Rarity (distinct from resource + status hues) ─────── */
-  --rarity-common: #a0a8b4;
-  --rarity-uncommon: #48b066;
-  --rarity-rare: #4a8fd4;
-  --rarity-legendary: #e8a830;
-
-  /* ── Terrain (map) ─────────────────────────────────────── */
-  --terrain-plains: #c4b078;
-  --terrain-forest: #3a7a4a;
-  --terrain-mountain: #7088a0;
-  --terrain-swamp: #6a7a3a;
-  --terrain-desert: #c8b888;
-  --terrain-storm: #4a5568;
-
-  /* ── Borders ───────────────────────────────────────────── */
-  --border-subtle: #2a2420;
-  --border-default: #3a3028;
-  --border-strong: #4a3d30;
-
-  /* ── Spacing (4px base) ────────────────────────────────── */
-  --space-0: 0;
+  /* Spacing, 4px base */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -72,75 +49,47 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
-  --space-10: 40px;
-  --space-12: 48px;
 
-  /* ── Typography — families ─────────────────────────────── */
-  --font-ui: "Lora", "Georgia", "Palatino", serif;
-  --font-mono: "JetBrains Mono", "Fira Code", monospace;
-  --font-display: "Cinzel", "Palatino", serif;
+  /* Type */
+  --font-ui: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
 
-  /* ── Typography — sizes ────────────────────────────────── */
   --text-xs: 10px;
   --text-sm: 12px;
   --text-md: 14px;
-  --text-lg: 16px;
-  --text-xl: 20px;
-  --text-2xl: 24px;
-  --text-3xl: 32px;
-  --text-4xl: 40px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+  --text-2xl: 30px;
 
-  /* ── Typography — weights ──────────────────────────────── */
   --weight-normal: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
-  --weight-bold: 700;
 
-  /* ── Typography — line heights ─────────────────────────── */
   --leading-tight: 1.2;
   --leading-normal: 1.5;
-  --leading-loose: 1.8;
 
-  /* ── Typography — letter spacing ───────────────────────── */
-  --tracking-tight: -0.01em;
-  --tracking-normal: 0;
-  --tracking-wide: 0.02em;
-  --tracking-wider: 0.05em;
+  --tracking-wide: 0.04em;
+  --tracking-wider: 0.1em;
 
-  /* ── Border radii ──────────────────────────────────────── */
-  --radius-none: 0;
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 8px;
+  /* Radii */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
   --radius-full: 9999px;
 
-  /* ── Shadows ───────────────────────────────────────────── */
-  --shadow-none: none;
-  --shadow-sm: 0 1px 3px rgb(0 0 0 / 30%);
-  --shadow-md: 0 4px 12px rgb(0 0 0 / 40%);
-  --shadow-lg: 0 8px 24px rgb(0 0 0 / 50%);
+  /* Shadows */
+  --shadow-panel: 0 12px 32px rgb(0 0 0 / 45%);
+  --shadow-raised: 0 2px 8px rgb(0 0 0 / 35%);
 
-  /* ── Animation — durations ─────────────────────────────── */
-  --duration-instant: 50ms;
-  --duration-fast: 120ms;
+  /* Motion */
+  --duration-fast: 110ms;
   --duration-normal: 200ms;
-  --duration-slow: 400ms;
-  --duration-glacial: 800ms;
-
-  /* ── Animation — easing ────────────────────────────────── */
-  --ease-snap: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-bounce: cubic-bezier(0.68, -0.15, 0.265, 1.15);
-  --ease-decel: cubic-bezier(0, 0, 0.2, 1);
-  --ease-accel: cubic-bezier(0.4, 0, 1, 1);
 
-  /* ── Z-index ───────────────────────────────────────────── */
+  /* Layers */
   --z-canvas: 0;
-  --z-hud: 10;
-  --z-panel: 20;
-  --z-dropdown: 30;
-  --z-tooltip: 40;
-  --z-dialog: 50;
-  --z-overlay: 60;
-  --z-toast: 70;
+  --z-labels: 10;
+  --z-chrome: 20;
+  --z-toast: 40;
 }

@@ -1,1943 +1,339 @@
+//! `GameEngine` — owns the state, applies commands, runs ticks.
+//!
+//! Deliberately thin. Command validation lives in `engine/commands.rs`
+//! and snapshot construction in `snapshot.rs`, so this file stays a
+//! readable description of the loop rather than the 1.9k-line drawer
+//! that the same file became in v1.
+
+mod commands;
+
 use std::sync::Arc;
-use std::time::Duration;
 
-// Perf instrumentation uses std::time::Instant, which panics on
-// wasm32-unknown-unknown. Gate on non-wasm + debug_assertions.
-#[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
-use std::time::Instant;
+use crate::command::{CommandError, CommandResult, GameCommand};
+use crate::content::Content;
+use crate::replay::{CHECKPOINT_INTERVAL, Divergence, Recorder, Replay, ReplayReport, hash_state};
+use crate::snapshot::{CatalogSnapshot, ViewSnapshot, build_catalog, build_view};
+use crate::state::{GameState, SimSpeed};
+use crate::systems::{self, SoundEvent};
 
-use crate::command::{CommandError, CommandResult, GameCommand, StatType};
-use crate::registry::Registry;
-use crate::snapshot::*;
-use crate::state::*;
-use crate::systems;
-use crate::types::*;
+/// Microseconds per simulation tick, at 30 Hz.
+///
+/// 33_333 rather than 33_333.33: the drift is 1 part in 100_000, which
+/// nobody will ever perceive, and it keeps the wall-clock accumulator
+/// in integers alongside everything else.
+pub const TICK_US: u64 = 33_333;
 
-/// The game engine: owns GameState, processes commands, runs simulation ticks.
-#[derive(Debug, Clone)]
+/// Ceiling on ticks per frame, so a backgrounded tab doesn't come back
+/// and try to simulate ten minutes in one go.
+pub const MAX_TICKS_PER_FRAME: u32 = 12;
+
 pub struct GameEngine {
-    pub registry: Arc<Registry>,
-    pub state: GameState,
-    accumulator: Scalar,
-    /// Counter for generating unique entity IDs.
-    next_id: u32,
-    perf: EnginePerfState,
-}
-
-#[derive(Debug, Clone, Default)]
-struct PerfMetricState {
-    calls: u64,
-    last_ms: f64,
-    avg_ms: f64,
-    max_ms: f64,
-}
-
-#[cfg_attr(any(not(debug_assertions), target_arch = "wasm32"), allow(dead_code))]
-impl PerfMetricState {
-    fn record(&mut self, duration: Duration) {
-        let millis = duration.as_secs_f64() * 1000.0;
-        self.calls += 1;
-        self.last_ms = millis;
-        if self.calls == 1 {
-            self.avg_ms = millis;
-            self.max_ms = millis;
-            return;
-        }
-        let prior_calls = (self.calls - 1) as f64;
-        self.avg_ms = ((self.avg_ms * prior_calls) + millis) / self.calls as f64;
-        self.max_ms = self.max_ms.max(millis);
-    }
-
-    fn snapshot(&self) -> PerfMetricSnapshot {
-        PerfMetricSnapshot {
-            calls: self.calls,
-            last_ms: self.last_ms,
-            avg_ms: self.avg_ms,
-            max_ms: self.max_ms,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-struct EnginePerfState {
-    ticks_last_frame: u32,
-    frame_sim: PerfMetricState,
-    tick_total: PerfMetricState,
-    production: PerfMetricState,
-    transport: PerfMetricState,
-    companion_ai: PerfMetricState,
-    projectiles: PerfMetricState,
-    combat: PerfMetricState,
-    economy: PerfMetricState,
-}
-
-#[cfg_attr(any(not(debug_assertions), target_arch = "wasm32"), allow(dead_code))]
-impl EnginePerfState {
-    fn record_tick(&mut self, profile: &systems::TickProfile) {
-        self.tick_total.record(profile.total);
-        self.production.record(profile.production);
-        self.transport.record(profile.transport);
-        self.companion_ai.record(profile.companion_ai);
-        self.projectiles.record(profile.projectiles);
-        self.combat.record(profile.combat);
-        self.economy.record(profile.economy);
-    }
-
-    fn record_frame(&mut self, ticks: u32, duration: Duration) {
-        self.ticks_last_frame = ticks;
-        self.frame_sim.record(duration);
-    }
-
-    fn snapshot(&self) -> SimPerfSnapshot {
-        SimPerfSnapshot {
-            ticks_last_frame: self.ticks_last_frame,
-            frame_sim: self.frame_sim.snapshot(),
-            tick_total: self.tick_total.snapshot(),
-            systems: SystemPerfSnapshot {
-                production: self.production.snapshot(),
-                transport: self.transport.snapshot(),
-                companion_ai: self.companion_ai.snapshot(),
-                projectiles: self.projectiles.snapshot(),
-                combat: self.combat.snapshot(),
-                economy: self.economy.snapshot(),
-            },
-        }
-    }
+    content: Arc<Content>,
+    state: GameState,
+    /// Wall-clock remainder, in microseconds. Engine-local: never part
+    /// of state, never affects the content of a tick.
+    accumulator_us: u64,
+    recorder: Recorder,
 }
 
 impl GameEngine {
-    pub fn new(seed: u64, class: HeroClass) -> Self {
-        let registry = Arc::new(Registry::load_embedded().unwrap_or_else(|errors| {
+    /// New run against the embedded content pack.
+    ///
+    /// # Panics
+    /// If the embedded pack fails to load or validate. That is a build
+    /// error, not a runtime condition — shipping a broken pack should
+    /// fail loudly and immediately.
+    #[must_use]
+    pub fn new(seed: u64) -> Self {
+        let content = Content::load_embedded().unwrap_or_else(|errors| {
             let rendered = errors
                 .iter()
-                .map(|err| format!("{}: {}", err.path, err.message))
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
-                .join("\n");
-            panic!("Failed to load embedded registry:\n{rendered}");
-        }));
-        let state = GameState::new(seed, class, &registry);
+                .join("\n  ");
+            panic!("embedded content pack is invalid:\n  {rendered}");
+        });
+        Self::with_content(seed, Arc::new(content))
+    }
+
+    #[must_use]
+    pub fn with_content(seed: u64, content: Arc<Content>) -> Self {
+        let state = GameState::new(seed, &content);
+        let mut recorder = Recorder::new(seed, content.content_hash);
+        recorder.record_checkpoint(0, hash_state(&state));
         Self {
-            registry,
+            content,
             state,
-            accumulator: 0.0,
-            next_id: 100,
-            perf: EnginePerfState::default(),
+            accumulator_us: 0,
+            recorder,
         }
     }
 
-    /// Construct an engine with an empty starting tower (no floors,
-    /// no Fletcher, no cache). Used by unit tests that exercise the
-    /// build path or the cache-bottleneck behaviour from a clean slate.
+    #[must_use]
+    pub fn content(&self) -> &Arc<Content> {
+        &self.content
+    }
+
+    #[must_use]
+    pub fn state(&self) -> &GameState {
+        &self.state
+    }
+
+    /// Direct state access for tests that need to construct a specific
+    /// situation (an empty tower, a single terrain band) that no
+    /// command can produce. Never exposed outside the crate: production
+    /// code mutates through commands only.
     #[cfg(test)]
-    pub fn new_blank(seed: u64, class: HeroClass) -> Self {
-        let mut engine = Self::new(seed, class);
-        engine.state.tower.floors.clear();
-        engine.state.tower.balconies.clear();
-        engine.state.tower.hero.position = BalconyId(0);
-        engine
+    pub(crate) fn state_mut_for_test(&mut self) -> &mut GameState {
+        &mut self.state
     }
 
-    #[allow(dead_code)] // Will be used for companion assignment
-    fn next_entity_id(&mut self) -> EntityId {
-        let id = EntityId(self.next_id);
-        self.next_id += 1;
-        id
-    }
-
-    fn next_projectile_id(&mut self) -> ProjectileId {
-        let id = ProjectileId(self.next_id);
-        self.next_id += 1;
-        id
-    }
-
-    fn next_enemy_id(&mut self) -> EnemyId {
-        let id = EnemyId(self.next_id);
-        self.next_id += 1;
-        id
-    }
-
-    /// Process a game command. Validates phase before applying.
-    pub fn send_command(&mut self, cmd: GameCommand) -> CommandResult {
-        match self.apply_command(cmd) {
-            Ok(()) => CommandResult::Ok,
-            Err(e) => CommandResult::Error(e),
+    /// Apply a command. Accepted commands are recorded into the replay
+    /// stamped with the current tick; rejected ones are not, because a
+    /// rejected command changed nothing.
+    pub fn send(&mut self, cmd: GameCommand) -> CommandResult {
+        match commands::apply(&mut self.state, &self.content, &cmd) {
+            Ok(()) => {
+                self.recorder.record_command(self.state.tick, cmd);
+                CommandResult::Ok
+            }
+            Err(error) => CommandResult::Error(error),
         }
     }
 
-    fn require_phase(&self, expected: GamePhase) -> Result<(), CommandError> {
-        if self.state.phase != expected {
-            return Err(CommandError::WrongPhase {
-                expected: format!("{expected:?}"),
-                actual: format!("{:?}", self.state.phase),
-            });
+    /// Advance by wall-clock time, honouring the current speed setting.
+    /// Returns the sound events produced by every tick that ran.
+    pub fn frame(&mut self, elapsed_us: u64) -> Vec<SoundEvent> {
+        let multiplier = u64::from(self.state.speed.multiplier());
+        if multiplier == 0 {
+            // Paused: don't bank real time, or unpausing lurches.
+            self.accumulator_us = 0;
+            return Vec::new();
         }
-        Ok(())
+
+        let budget = TICK_US * u64::from(MAX_TICKS_PER_FRAME);
+        self.accumulator_us = (self.accumulator_us + elapsed_us * multiplier).min(budget);
+
+        let mut ticks = 0;
+        while self.accumulator_us >= TICK_US && ticks < MAX_TICKS_PER_FRAME {
+            self.accumulator_us -= TICK_US;
+            ticks += 1;
+        }
+        self.step(ticks)
     }
 
-    #[allow(clippy::needless_pass_by_value)] // cmd is destructured in match arms
-    fn apply_command(&mut self, cmd: GameCommand) -> Result<(), CommandError> {
-        match cmd {
-            // ── Prep / tower building ───────────────────────────
-            GameCommand::BuildFloor { material } => {
-                self.require_phase(GamePhase::Travel)?;
-                let eco = &self.state.economy;
-                let floor_tick_cost = self.registry.balance.construction.floor_tick_cost;
-                if eco.ticks_remaining < floor_tick_cost {
-                    return Err(CommandError::InsufficientTicks {
-                        needed: floor_tick_cost,
-                        available: eco.ticks_remaining,
-                    });
-                }
-                let (mat_type, mat_cost, panel_hp) = match material {
-                    FloorMaterial::Wood => (
-                        ResourceType::Wood,
-                        self.registry.balance.construction.wood_floor_material_cost,
-                        self.registry.balance.construction.wood_panel_hp,
-                    ),
-                    FloorMaterial::Stone => (
-                        ResourceType::Stone,
-                        self.registry.balance.construction.stone_floor_material_cost,
-                        self.registry.balance.construction.stone_panel_hp,
-                    ),
-                    FloorMaterial::Iron => {
-                        return Err(CommandError::InvalidCommand {
-                            reason: "Iron floors not available in v1".into(),
-                        });
-                    }
-                };
-                let available = self.get_material(mat_type);
-                if available < mat_cost {
-                    return Err(CommandError::InsufficientMaterials {
-                        resource: mat_type,
-                        needed: mat_cost,
-                        available,
-                    });
-                }
-                if self.state.tower.floors.len() >= self.state.tower.foundation.max_floors {
-                    return Err(CommandError::InvalidCommand {
-                        reason: format!(
-                            "Max {} floors reached",
-                            self.state.tower.foundation.max_floors
-                        ),
-                    });
-                }
-
-                self.state.economy.ticks_remaining -= floor_tick_cost;
-                self.deduct_material(mat_type, mat_cost);
-
-                let floor_idx = self.state.tower.floors.len();
-                self.state.tower.floors.push(Floor {
-                    index: floor_idx,
-                    building: None,
-                    cache: None,
-                    panel: WallPanel {
-                        current_hp: panel_hp,
-                        max_hp: panel_hp,
-                        is_breached: false,
-                    },
-                    material,
-                    transport_segments: Vec::new(),
-                    floor_width_used: 0.0,
-                    floor_width_max: 1.0,
-                    slots: 8,
-                });
-
-                // Extend the built-in stairs to cover the new floor.
-                if let Some(stairs) = self
-                    .state
-                    .tower
-                    .transports
-                    .iter_mut()
-                    .find(|t| t.kind == TransportKind::Stairs)
-                {
-                    stairs.high_floor = floor_idx;
-                }
-
-                let balcony_id = BalconyId(floor_idx as u32);
-                let rack_resource = weapon_resource(self.state.tower.hero.weapon_primary.base_type)
-                    .unwrap_or(ResourceType::Arrows);
-                self.state.tower.balconies.push(Balcony {
-                    id: balcony_id,
-                    floor: floor_idx,
-                    rack: AmmoRack {
-                        resource: rack_resource,
-                        current: 0,
-                        max: self.registry.balance.hero.ammo_rack_max,
-                        destroyed: false,
-                    },
-                    cover_level: CoverLevel::Exposed,
-                    occupant: (self.state.tower.hero.position == balcony_id)
-                        .then_some(self.state.tower.hero.id),
-                });
-
-                Ok(())
+    /// Run exactly `ticks` ticks, ignoring the speed setting. Used by
+    /// replay, tests, and anything that wants determinism without a
+    /// clock in the way.
+    pub fn step(&mut self, ticks: u32) -> Vec<SoundEvent> {
+        let mut sounds = Vec::new();
+        for _ in 0..ticks {
+            systems::tick(&mut self.state, &self.content, &mut sounds);
+            if self.state.tick.is_multiple_of(CHECKPOINT_INTERVAL) {
+                let hash = hash_state(&self.state);
+                self.recorder.record_checkpoint(self.state.tick, hash);
             }
-
-            GameCommand::PlaceBuilding {
-                floor,
-                slot,
-                building_type,
-            } => {
-                self.require_phase(GamePhase::Travel)?;
-
-                if floor >= self.state.tower.floors.len() {
-                    return Err(CommandError::InvalidFloor { index: floor });
-                }
-                if self.state.tower.floors[floor].building.is_some() {
-                    return Err(CommandError::FloorOccupied { index: floor });
-                }
-
-                let Some(building_def) = self.registry.building_by_type(building_type) else {
-                    return Err(CommandError::InvalidCommand {
-                        reason: format!("{building_type:?} not available in MVP"),
-                    });
-                };
-                let build_tick_cost = building_def.build_tick_cost;
-                let build_resource = building_def.build_resource;
-                let build_resource_cost = building_def.build_resource_cost;
-                let tier = building_def.tier;
-                let output_resource = building_def.output_resource;
-                let output_buffer_max = building_def.output_buffer_max;
-                let production_rate = building_def.production_rate;
-                let operating_cost = building_def.operating_cost;
-                let width_slots = building_def.width_slots;
-                let input_buffers: Vec<ResourceBuffer> = building_def
-                    .inputs
-                    .iter()
-                    .map(|inp| ResourceBuffer {
-                        resource: inp.resource,
-                        current: 0,
-                        max: inp.buffer_max,
-                    })
-                    .collect();
-
-                self.validate_slot_range(floor, slot, width_slots)?;
-
-                let eco = &self.state.economy;
-                if eco.ticks_remaining < build_tick_cost {
-                    return Err(CommandError::InsufficientTicks {
-                        needed: build_tick_cost,
-                        available: eco.ticks_remaining,
-                    });
-                }
-                let available = self.get_material(build_resource);
-                if available < build_resource_cost {
-                    return Err(CommandError::InsufficientMaterials {
-                        resource: build_resource,
-                        needed: build_resource_cost,
-                        available,
-                    });
-                }
-
-                self.state.economy.ticks_remaining -= build_tick_cost;
-                self.deduct_material(build_resource, build_resource_cost);
-
-                self.state.tower.floors[floor].building = Some(Building {
-                    building_type,
-                    tier,
-                    output_buffer: ResourceBuffer {
-                        resource: output_resource,
-                        current: 0,
-                        max: output_buffer_max,
-                    },
-                    input_buffers,
-                    production_rate,
-                    operating_cost,
-                    is_active: true,
-                    production_progress: 0.0,
-                    slot,
-                    width_slots,
-                });
-
-                Ok(())
-            }
-
-            GameCommand::PlaceCache { floor, slot } => {
-                self.require_phase(GamePhase::Travel)?;
-
-                if floor >= self.state.tower.floors.len() {
-                    return Err(CommandError::InvalidFloor { index: floor });
-                }
-                if self.state.tower.floors[floor].cache.is_some() {
-                    return Err(CommandError::FloorOccupied { index: floor });
-                }
-                self.validate_slot_range(floor, slot, 1)?;
-
-                let build_tick_cost = self.registry.balance.construction.building_tick_cost;
-                if self.state.economy.ticks_remaining < build_tick_cost {
-                    return Err(CommandError::InsufficientTicks {
-                        needed: build_tick_cost,
-                        available: self.state.economy.ticks_remaining,
-                    });
-                }
-
-                self.state.economy.ticks_remaining -= build_tick_cost;
-                let cache_resource = self
-                    .state
-                    .tower
-                    .balconies
-                    .iter()
-                    .find(|balcony| balcony.floor == floor)
-                    .map_or(ResourceType::Arrows, |balcony| balcony.rack.resource);
-                self.state.tower.floors[floor].cache = Some(DepotCache {
-                    slots: vec![ResourceBuffer {
-                        resource: cache_resource,
-                        current: 0,
-                        max: self.registry.balance.hero.ammo_rack_max * 2,
-                    }],
-                    slot,
-                });
-
-                Ok(())
-            }
-
-            // ── Map navigation ──────────────────────────────────
-            GameCommand::SelectNode { node } => {
-                self.require_phase(GamePhase::MapView)?;
-                let chapter = &self.state.journey.chapters[self.state.journey.current_chapter - 1];
-                let reachable = chapter
-                    .edges
-                    .iter()
-                    .any(|e| e.from == self.state.journey.current_node && e.to == node);
-                if !reachable {
-                    return Err(CommandError::InvalidTarget);
-                }
-                // Look up the selected node's type before we move.
-                let node_type = chapter
-                    .nodes
-                    .iter()
-                    .find(|n| n.id == node)
-                    .map(|n| n.node_type)
-                    .unwrap_or(NodeType::Combat);
-
-                self.state.journey.current_node = node;
-                // Reset tick budget for this stop
-                let chapter_index = self.state.journey.current_chapter.saturating_sub(1);
-                let base_ticks = self
-                    .registry
-                    .balance
-                    .economy
-                    .chapter_ticks
-                    .get(chapter_index)
-                    .copied()
-                    .unwrap_or_else(|| {
-                        *self
-                            .registry
-                            .balance
-                            .economy
-                            .chapter_ticks
-                            .last()
-                            .unwrap_or(&0)
-                    });
-                self.state.economy.ticks_remaining = base_ticks;
-
-                // Dispatch on node type
-                match node_type {
-                    NodeType::Combat | NodeType::EliteCombat | NodeType::Boss => {
-                        self.state.phase = GamePhase::Travel;
-                    }
-                    NodeType::Merchant => {
-                        self.enter_merchant();
-                    }
-                    NodeType::Rest => {
-                        // Grant bonus ticks (already applied above +2)
-                        self.state.economy.ticks_remaining = base_ticks + 2;
-                        // Full-repair all panels
-                        for floor in &mut self.state.tower.floors {
-                            floor.panel.current_hp = floor.panel.max_hp;
-                            floor.panel.is_breached = false;
-                        }
-                        self.state.phase = GamePhase::Travel;
-                    }
-                    NodeType::Mystery => {
-                        self.apply_mystery_event();
-                        self.state.phase = GamePhase::Travel;
-                    }
-                }
-                Ok(())
-            }
-
-            GameCommand::March => {
-                self.require_phase(GamePhase::Travel)?;
-                // Convert unused ticks to gold
-                let unused = self.state.economy.ticks_remaining;
-                self.state.economy.gold += unused * self.registry.balance.economy.unused_tick_gold;
-                self.state.economy.ticks_remaining = 0;
-
-                // Determine difficulty from current node
-                let chapter = &self.state.journey.chapters[self.state.journey.current_chapter - 1];
-                let node = chapter
-                    .nodes
-                    .iter()
-                    .find(|n| n.id == self.state.journey.current_node);
-                let difficulty = node.and_then(|n| n.difficulty).unwrap_or(1);
-                let is_boss = node.is_some_and(|n| n.node_type == NodeType::Boss);
-
-                // Refill ammo from warehouse before combat
-                self.state.tower.hero.personal_ammo = self.registry.balance.hero.personal_ammo;
-
-                // Generate encounter
-                let encounter = self.generate_encounter(difficulty, is_boss);
-                self.state.encounter = Some(encounter);
-                self.state.phase = GamePhase::Encounter;
-                Ok(())
-            }
-
-            // ── Combat input ────────────────────────────────────
-            GameCommand::AimAt { direction } => {
-                self.require_phase(GamePhase::Encounter)?;
-                self.state.tower.hero.aim_direction = direction;
-                Ok(())
-            }
-
-            GameCommand::SetDrawPower { power } => {
-                self.require_phase(GamePhase::Encounter)?;
-                self.state.tower.hero.draw_power = power.clamp(0.0, 1.0);
-                Ok(())
-            }
-
-            GameCommand::Fire => {
-                self.require_phase(GamePhase::Encounter)?;
-
-                // Extract weapon properties before any mutable borrows
-                let hero = &self.state.tower.hero;
-                let weapon = match hero.active_weapon {
-                    WeaponSlot::Primary => &hero.weapon_primary,
-                    WeaponSlot::Secondary => &hero.weapon_secondary,
-                };
-                let weapon_def = self
-                    .registry
-                    .weapon_by_sub_type(&weapon.sub_type)
-                    .ok_or_else(|| CommandError::InvalidCommand {
-                        reason: format!("Unknown weapon definition for {}", weapon.sub_type),
-                    })?;
-                let base_type = weapon.base_type;
-                let needs_ammo = base_type != WeaponBaseType::Melee;
-                let hero_id = hero.id;
-                let base_speed = weapon_def.projectile_speed.unwrap_or(0.0);
-                let melee_range = weapon_def.range;
-                let battlefield_width = self.registry.balance.combat.battlefield_width;
-                // Bow draw — partial draws still fire well, full draws
-                // are noticeably stronger. Tap shots are 70% effective,
-                // full draws are 130% — playtesters who don't know to
-                // hold can still play, while patience pays off.
-                let draw = hero.draw_power.clamp(0.0, 1.0);
-                let power_mul = if base_type == WeaponBaseType::Bow {
-                    0.7 + draw * 0.6
-                } else {
-                    1.0
-                };
-                let speed = base_speed * power_mul;
-                let damage = weapon.damage * power_mul;
-                // Hero fires from the top of their balcony floor — that
-                // height feeds the visible parabolic arc in the renderer
-                // and naturally limits effective range under gravity.
-                let hero_position = hero.position;
-                let hero_floor = self
-                    .state
-                    .tower
-                    .balconies
-                    .iter()
-                    .find(|b| b.id == hero_position)
-                    .map_or(0, |b| b.floor);
-                let spawn_y = (hero_floor as Scalar + 1.0) * crate::systems::FLOOR_HEIGHT_PX;
-                let gravity = projectile_gravity(base_type);
-                let aim = hero.aim_direction;
-
-                if needs_ammo && self.state.tower.hero.personal_ammo == 0 {
-                    return Err(CommandError::InsufficientMaterials {
-                        resource: ResourceType::Arrows,
-                        needed: 1,
-                        available: 0,
-                    });
-                }
-
-                if needs_ammo {
-                    self.state.tower.hero.personal_ammo -= 1;
-                }
-
-                if base_type == WeaponBaseType::Melee {
-                    // Melee: instant damage to nearest enemy in range
-                    if let Some(encounter) = &mut self.state.encounter
-                        && let Some(enemy) = encounter
-                            .enemies
-                            .iter_mut()
-                            .filter(|e| e.state != EnemyState::Dead)
-                            .filter(|e| match &e.position {
-                                EnemyPosition::Ground { x } => *x <= melee_range,
-                                _ => false,
-                            })
-                            .min_by(|a, b| {
-                                let ax = match &a.position {
-                                    EnemyPosition::Ground { x } => *x,
-                                    _ => battlefield_width,
-                                };
-                                let bx = match &b.position {
-                                    EnemyPosition::Ground { x } => *x,
-                                    _ => battlefield_width,
-                                };
-                                ax.partial_cmp(&bx).unwrap()
-                            })
-                    {
-                        enemy.hp -= damage;
-                    }
-                } else {
-                    // Ranged: create projectile that arcs from the
-                    // hero's balcony height to the ground under gravity.
-                    // Initial velocity respects aim_direction so the
-                    // player can aim with the mouse — vertical aim
-                    // adds initial vy on top of the horizontal speed.
-                    let aim_len = (aim.x * aim.x + aim.y * aim.y).sqrt().max(0.001);
-                    let aim_x = aim.x / aim_len;
-                    let aim_y = aim.y / aim_len;
-                    let vx = speed * aim_x.max(0.05);
-                    // Negative aim_y means click was above hero (mouse
-                    // above the spawn point) — translate to upward
-                    // initial velocity in our y-up sim convention.
-                    let vy = -speed * aim_y * 0.8;
-                    let proj_id = self.next_projectile_id();
-                    if let Some(encounter) = &mut self.state.encounter {
-                        encounter.projectiles.push(Projectile {
-                            id: proj_id,
-                            source: hero_id,
-                            weapon_type: base_type,
-                            position: Vec2::new(0.0, spawn_y),
-                            velocity: Vec2::new(vx, vy),
-                            gravity,
-                            damage,
-                            modifier: None,
-                            state: ProjectileState::Flying,
-                        });
-                    }
-                }
-
-                Ok(())
-            }
-
-            GameCommand::SwitchWeapon => {
-                self.require_phase(GamePhase::Encounter)?;
-                self.state.tower.hero.active_weapon = match self.state.tower.hero.active_weapon {
-                    WeaponSlot::Primary => WeaponSlot::Secondary,
-                    WeaponSlot::Secondary => WeaponSlot::Primary,
-                };
-                Ok(())
-            }
-
-            // ── Post-combat ─────────────────────────────────────
-            GameCommand::ContinueJourney => {
-                let phase = self.state.phase;
-                if phase != GamePhase::PostCombat && phase != GamePhase::Merchant {
-                    return Err(CommandError::WrongPhase {
-                        expected: "PostCombat or Merchant".into(),
-                        actual: format!("{phase:?}"),
-                    });
-                }
-                let current = self.state.journey.current_node;
-                self.state.journey.visited_nodes.push(current);
-                self.state.encounter = None;
-
-                // Check if current node is boss (chapter complete → victory)
-                let chapter = &self.state.journey.chapters[self.state.journey.current_chapter - 1];
-                if chapter.boss_node == current {
-                    // Check if there are more chapters
-                    if self.state.journey.current_chapter >= self.state.journey.chapters.len() {
-                        self.state.phase = GamePhase::Victory;
-                    } else {
-                        self.state.journey.current_chapter += 1;
-                        self.state.journey.current_node = self.state.journey.chapters
-                            [self.state.journey.current_chapter - 1]
-                            .nodes[0]
-                            .id;
-                        self.state.phase = GamePhase::MapView;
-                    }
-                } else {
-                    self.state.phase = GamePhase::MapView;
-                }
-                Ok(())
-            }
-
-            GameCommand::EquipWeapon { slot, weapon } => {
-                // Allowed in any non-combat phase
-                if self.state.phase == GamePhase::Encounter {
-                    return Err(CommandError::WrongPhase {
-                        expected: "non-combat".into(),
-                        actual: format!("{:?}", self.state.phase),
-                    });
-                }
-                match slot {
-                    WeaponSlot::Primary => self.state.tower.hero.weapon_primary = weapon,
-                    WeaponSlot::Secondary => self.state.tower.hero.weapon_secondary = weapon,
-                }
-                Ok(())
-            }
-
-            GameCommand::AllocateStat { stat } => {
-                // Allowed in any non-combat phase
-                if self.state.tower.hero.stats.unspent_points == 0 {
-                    return Err(CommandError::InvalidCommand {
-                        reason: "No unspent stat points".into(),
-                    });
-                }
-                let stats = &mut self.state.tower.hero.stats;
-                stats.unspent_points -= 1;
-                match stat {
-                    StatType::Precision => stats.precision += 1,
-                    StatType::DrawPower => stats.draw_power += 1,
-                    StatType::Tempo => stats.tempo += 1,
-                    StatType::Grit => stats.grit += 1,
-                    StatType::Salvage => stats.salvage += 1,
-                }
-                Ok(())
-            }
-
-            GameCommand::BuyItem { item_index } => {
-                self.require_phase(GamePhase::Merchant)?;
-                // MVP merchant sells the first 3 trinkets from the registry
-                // at a fixed 20 gold each.
-                let stock: Vec<_> = self.registry.trinkets.values().take(3).cloned().collect();
-                let Some(trinket_def) = stock.get(item_index) else {
-                    return Err(CommandError::InvalidTarget);
-                };
-                const PRICE: u32 = 20;
-                if self.state.economy.gold < PRICE {
-                    return Err(CommandError::InsufficientGold {
-                        needed: PRICE,
-                        available: self.state.economy.gold,
-                    });
-                }
-                self.state.economy.gold -= PRICE;
-                self.state.tower.hero.trinket = Some(Trinket {
-                    id: trinket_def.id.0.clone(),
-                    name: trinket_def.name.clone(),
-                });
-                Ok(())
-            }
-
-            GameCommand::UseWeaponAbility => {
-                self.require_phase(GamePhase::Encounter)?;
-                if self.state.tower.hero.weapon_ability_cooldown > 0.0 {
-                    return Err(CommandError::InvalidCommand {
-                        reason: "Weapon ability on cooldown".into(),
-                    });
-                }
-                // Ability effect: fire a burst of 3 projectiles in a
-                // spread that all hit the frontmost enemy. This is the
-                // MVP "burst moment" for all weapons.
-                let hero = &self.state.tower.hero;
-                let weapon = match hero.active_weapon {
-                    WeaponSlot::Primary => &hero.weapon_primary,
-                    WeaponSlot::Secondary => &hero.weapon_secondary,
-                };
-                let base_type = weapon.base_type;
-                let damage = weapon.damage * 1.8;
-                let hero_id = hero.id;
-                let speed = match base_type {
-                    WeaponBaseType::Bow => 300.0,
-                    WeaponBaseType::Crossbow => 400.0,
-                    WeaponBaseType::Staff => 500.0,
-                    WeaponBaseType::Thrown => 250.0,
-                    WeaponBaseType::Melee => 0.0,
-                };
-
-                self.state.tower.hero.weapon_ability_cooldown = 12.0;
-                let ids = [
-                    self.next_projectile_id(),
-                    self.next_projectile_id(),
-                    self.next_projectile_id(),
-                ];
-                if let Some(encounter) = self.state.encounter.as_mut() {
-                    for (i, id) in ids.into_iter().enumerate() {
-                        encounter.projectiles.push(Projectile {
-                            id,
-                            source: hero_id,
-                            weapon_type: base_type,
-                            position: Vec2::new(0.0, (i as Scalar - 1.0) * 4.0),
-                            velocity: Vec2::new(speed, 0.0),
-                            gravity: 0.0,
-                            damage,
-                            modifier: None,
-                            state: ProjectileState::Flying,
-                        });
-                    }
-                }
-                Ok(())
-            }
-
-            GameCommand::UseHeroSkill => {
-                self.require_phase(GamePhase::Encounter)?;
-                if self.state.tower.hero.hero_skill_cooldown > 0.0 {
-                    return Err(CommandError::InvalidCommand {
-                        reason: "Hero skill on cooldown".into(),
-                    });
-                }
-                // Skills have class-specific effects. MVP implements
-                // one tangible benefit per class.
-                let skill = self.state.tower.hero.hero_skill;
-                let encounter = self.state.encounter.as_mut();
-                match (skill, encounter) {
-                    (HeroSkill::Focus, Some(enc)) => {
-                        // Focus: deal heavy damage to the nearest enemy.
-                        if let Some(target) = enc
-                            .enemies
-                            .iter_mut()
-                            .filter(|e| e.state != EnemyState::Dead)
-                            .min_by(|a, b| {
-                                let ax = match a.position {
-                                    EnemyPosition::Ground { x } => x,
-                                    _ => Scalar::INFINITY,
-                                };
-                                let bx = match b.position {
-                                    EnemyPosition::Ground { x } => x,
-                                    _ => Scalar::INFINITY,
-                                };
-                                ax.partial_cmp(&bx).unwrap()
-                            })
-                        {
-                            target.hp -= 60.0;
-                        }
-                    }
-                    (HeroSkill::Overclock, Some(enc)) => {
-                        // Overclock: damage all enemies in a spread
-                        // (lightning-like AoE).
-                        for enemy in enc
-                            .enemies
-                            .iter_mut()
-                            .filter(|e| e.state != EnemyState::Dead)
-                            .take(3)
-                        {
-                            enemy.hp -= 25.0;
-                        }
-                    }
-                    (HeroSkill::Rally, _) => {
-                        // Rally: boost companion accuracy temporarily.
-                        // MVP: permanent small boost (+0.05) up to 0.95.
-                        for companion in self.state.tower.companions.iter_mut() {
-                            companion.accuracy = (companion.accuracy + 0.05).min(0.95);
-                        }
-                    }
-                    _ => {}
-                }
-                self.state.tower.hero.hero_skill_cooldown = 20.0;
-                Ok(())
-            }
-
-            GameCommand::BuildLadder { low_floor, slot } => {
-                self.require_phase(GamePhase::Travel)?;
-                self.build_transport(
-                    low_floor,
-                    slot,
-                    TransportKind::Ladder,
-                    0.7,
-                    1,
-                    1,
-                    ResourceType::Wood,
-                    1,
-                )
-            }
-
-            GameCommand::BuildDumbwaiter { low_floor, slot } => {
-                self.require_phase(GamePhase::Travel)?;
-                self.build_transport(
-                    low_floor,
-                    slot,
-                    TransportKind::Dumbwaiter,
-                    0.8,
-                    1,
-                    2,
-                    ResourceType::Wood,
-                    2,
-                )
-            }
-
-            GameCommand::RunDrill { seconds } => {
-                self.require_phase(GamePhase::Travel)?;
-                if self.state.drill.is_some() {
-                    return Err(CommandError::InvalidCommand {
-                        reason: "A drill is already running".into(),
-                    });
-                }
-                if self.state.economy.ticks_remaining < 1 {
-                    return Err(CommandError::InsufficientTicks {
-                        needed: 1,
-                        available: self.state.economy.ticks_remaining,
-                    });
-                }
-                self.state.economy.ticks_remaining -= 1;
-                let secs = seconds.clamp(5, 120) as Scalar;
-                self.state.drill = Some(DrillState {
-                    seconds_remaining: secs,
-                    seconds_total: secs,
-                    deliveries_at_start: self.state.deliveries_completed,
-                    demand_accumulator: 0.0,
-                });
-                Ok(())
-            }
-
-            GameCommand::HireRunner => {
-                self.require_phase(GamePhase::Travel)?;
-                let Some(quarters_idx) = self.state.tower.runner_quarters.iter().position(|q| {
-                    let assigned = self
-                        .state
-                        .tower
-                        .runners
-                        .iter()
-                        .filter(|r| r.quarters_id.0 as usize == 0)
-                        .count();
-                    (assigned as u8) < q.capacity
-                }) else {
-                    return Err(CommandError::InvalidCommand {
-                        reason: "All runner quarters at capacity. Build more first.".into(),
-                    });
-                };
-                const HIRE_COST: u32 = 10;
-                if self.state.economy.gold < HIRE_COST {
-                    return Err(CommandError::InsufficientGold {
-                        needed: HIRE_COST,
-                        available: self.state.economy.gold,
-                    });
-                }
-                self.state.economy.gold -= HIRE_COST;
-                let next_id = (self.state.tower.runners.len() as u32) + 1;
-                let quarters_floor = self.state.tower.runner_quarters[quarters_idx].floor;
-                self.state.tower.runners.push(Runner {
-                    id: RunnerId(next_id),
-                    quarters_id: QuartersId(quarters_idx as u32),
-                    current_floor: quarters_floor,
-                    state: RunnerState::Idle {
-                        at_floor: quarters_floor,
-                    },
-                    carried: None,
-                    speed: 50.0,
-                    carry_capacity: 1,
-                    task: None,
-                    current_slot: 0,
-                });
-                Ok(())
-            }
-
-            // ── Unimplemented (MVP) ─────────────────────────────
-            _ => Err(CommandError::InvalidCommand {
-                reason: "Command not implemented in MVP".into(),
-            }),
         }
+        if ticks > 0 {
+            self.recorder.set_final_tick(self.state.tick);
+        }
+        sounds
     }
 
-    fn generate_encounter(&mut self, difficulty: u8, is_boss: bool) -> EncounterState {
-        let budget = self
-            .registry
-            .balance
-            .combat
-            .difficulty_budgets
-            .get(difficulty.saturating_sub(1) as usize)
-            .copied()
-            .unwrap_or_else(|| {
-                *self
-                    .registry
-                    .balance
-                    .combat
-                    .difficulty_budgets
-                    .last()
-                    .unwrap_or(&0)
-            });
-
-        let mut enemies = Vec::new();
-        let mut remaining_budget = budget;
-        let battlefield_width = self.registry.balance.combat.battlefield_width;
-        let chapter_index = self.state.journey.current_chapter.saturating_sub(1);
-        let runner_id = self
-            .registry
-            .enemy_by_archetype(EnemyArchetype::Runner)
-            .expect("registry must define runner")
-            .id
-            .clone();
-        let chapter_has_runner = self
-            .registry
-            .chapters
-            .get(chapter_index)
-            .or_else(|| self.registry.chapters.first())
-            .expect("registry must contain at least one chapter")
-            .enemy_pool
-            .iter()
-            .any(|id| id == &runner_id);
-        let grunt = self
-            .registry
-            .enemy_by_archetype(EnemyArchetype::Grunt)
-            .expect("registry must define grunt");
-        let grunt_archetype = grunt.archetype;
-        let grunt_hp = grunt.hp;
-        let grunt_speed = grunt.speed;
-        let grunt_threat = grunt.threat;
-        let runner = self
-            .registry
-            .enemy_by_archetype(EnemyArchetype::Runner)
-            .expect("registry must define runner");
-        let runner_archetype = runner.archetype;
-        let runner_hp = runner.hp;
-        let runner_speed = runner.speed;
-        let runner_threat = runner.threat;
-        let armored = self
-            .registry
-            .enemy_by_archetype(EnemyArchetype::Armored)
-            .expect("registry must define armored");
-        let armored_archetype = armored.archetype;
-        let armored_hp = armored.hp;
-        let armored_speed = armored.speed;
-
-        // Simple enemy generation: fill budget with grunts and runners
-        let mut spawn_x = battlefield_width;
-        while remaining_budget >= grunt_threat {
-            let (archetype, hp, speed, threat) = if chapter_has_runner
-                && remaining_budget >= runner_threat
-                && self.state.rng.next_f32() > 0.6
-            {
-                (runner_archetype, runner_hp, runner_speed, runner_threat)
-            } else {
-                (grunt_archetype, grunt_hp, grunt_speed, grunt_threat)
-            };
-
-            let id = self.next_enemy_id();
-            enemies.push(Enemy {
-                id,
-                archetype,
-                position: EnemyPosition::Ground {
-                    x: spawn_x + self.state.rng.next_f32() * 100.0,
-                },
-                hp,
-                max_hp: hp,
-                speed,
-                state: EnemyState::Approaching,
-                stuck_arrows: Vec::new(),
-            });
-            remaining_budget = remaining_budget.saturating_sub(threat);
-            // Very wide stagger so enemies arrive in waves over ~60s,
-            // giving the supply chain real time to feed the racks
-            // multiple times during a single encounter. SimTower-style
-            // network optimisation only matters if combat lasts.
-            spawn_x += 250.0;
-        }
-
-        // For boss encounters, spawn a real boss instead of a tough grunt.
-        // Falls back to Armored if no boss def is loaded.
-        let _ = (armored_archetype, armored_hp, armored_speed);
-        if is_boss {
-            let boss_data = self
-                .registry
-                .enemy_by_archetype(EnemyArchetype::BossGround)
-                .or_else(|| self.registry.enemy_by_archetype(EnemyArchetype::Armored))
-                .map(|def| (def.archetype, def.hp, def.speed));
-            if let Some((archetype, hp, speed)) = boss_data {
-                let id = self.next_enemy_id();
-                enemies.push(Enemy {
-                    id,
-                    archetype,
-                    position: EnemyPosition::Ground {
-                        x: battlefield_width + 200.0,
-                    },
-                    hp,
-                    max_hp: hp,
-                    speed,
-                    state: EnemyState::Approaching,
-                    stuck_arrows: Vec::new(),
-                });
-            }
-        }
-
-        EncounterState {
-            enemies,
-            projectiles: Vec::new(),
-            loot_on_ground: Vec::new(),
-            waves: vec![Wave {
-                enemies: Vec::new(),
-                spawn_delay: 0.0,
-            }],
-            current_wave: 0,
-            wave_state: WaveState::Active,
-            terrain_modifier: None,
-            interior_raiders: Vec::new(),
-        }
+    /// Fraction of a tick elapsed, for render interpolation.
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)]
+    pub fn alpha(&self) -> f32 {
+        self.accumulator_us as f32 / TICK_US as f32
     }
 
-    // ── Merchant / Mystery ──────────────────────────────────
-
-    fn enter_merchant(&mut self) {
-        // Simple stock: first 3 weapons and first 2 trinkets from registry.
-        // Deterministic via BTreeMap iteration order.
-        self.state.phase = GamePhase::Merchant;
-        // (merchant state is displayed by reading registry directly in the
-        //  frontend; we don't persist a snapshot here for MVP)
+    #[must_use]
+    pub fn view(&self) -> ViewSnapshot {
+        build_view(&self.state, &self.content, self.alpha())
     }
 
-    fn apply_mystery_event(&mut self) {
-        // Small event pool — roll a d6 on the deterministic RNG.
-        let roll = self.state.rng.range(1, 6);
-        match roll {
-            1 => {
-                // Stumble upon gold
-                self.state.economy.gold += 15;
-            }
-            2 => {
-                // Supplies
-                for mat in self.state.economy.materials.iter_mut() {
-                    if mat.resource == ResourceType::Wood || mat.resource == ResourceType::Stone {
-                        mat.current += 3;
-                    }
-                }
-            }
-            3 => {
-                // Refresh cooldowns
-                self.state.tower.hero.weapon_ability_cooldown = 0.0;
-                self.state.tower.hero.hero_skill_cooldown = 0.0;
-            }
-            4 => {
-                // Heal all panels
-                for floor in &mut self.state.tower.floors {
-                    floor.panel.current_hp = floor.panel.max_hp;
-                    floor.panel.is_breached = false;
-                }
-            }
-            5 => {
-                // Boost companion accuracy
-                for companion in self.state.tower.companions.iter_mut() {
-                    companion.accuracy = (companion.accuracy + 0.1).min(0.95);
-                }
-            }
-            _ => {
-                // A small tax (tradeoff variety)
-                self.state.economy.gold = self.state.economy.gold.saturating_sub(5);
-            }
-        }
+    #[must_use]
+    pub fn catalog(&self) -> CatalogSnapshot {
+        build_catalog(&self.content)
     }
 
-    // ── Material helpers ────────────────────────────────────
-
-    fn get_material(&self, resource: ResourceType) -> u32 {
-        self.state
-            .economy
-            .materials
-            .iter()
-            .find(|m| m.resource == resource)
-            .map_or(0, |m| m.current)
+    #[must_use]
+    pub fn state_hash(&self) -> u64 {
+        hash_state(&self.state)
     }
 
-    fn deduct_material(&mut self, resource: ResourceType, amount: u32) {
-        if let Some(mat) = self
-            .state
-            .economy
-            .materials
-            .iter_mut()
-            .find(|m| m.resource == resource)
-        {
-            mat.current = mat.current.saturating_sub(amount);
-        }
+    #[must_use]
+    pub fn export_replay(&self) -> Replay {
+        let mut replay = self.recorder.snapshot();
+        replay.final_tick = self.state.tick;
+        replay
     }
 
-    /// Shared logic for placing a transport segment between two
-    /// adjacent floors. Validates that the floors exist, charges the
-    /// build cost, and pushes a new TransportInstance onto the tower.
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
-    fn build_transport(
-        &mut self,
-        low_floor: usize,
-        slot: u8,
-        kind: TransportKind,
-        speed_mul: Scalar,
-        capacity: u8,
-        ticks_cost: u32,
-        resource: ResourceType,
-        resource_cost: u32,
-    ) -> Result<(), CommandError> {
-        let high_floor = low_floor + 1;
-        if high_floor >= self.state.tower.floors.len() {
-            return Err(CommandError::InvalidFloor { index: high_floor });
-        }
-        // Transport columns occupy their slot on every floor in the
-        // span. Reject if any of those floors already has something
-        // in that slot.
-        for f in low_floor..=high_floor {
-            self.validate_slot_range(f, slot, 1)?;
-        }
-        if self.state.economy.ticks_remaining < ticks_cost {
-            return Err(CommandError::InsufficientTicks {
-                needed: ticks_cost,
-                available: self.state.economy.ticks_remaining,
-            });
-        }
-        let available = self.get_material(resource);
-        if available < resource_cost {
-            return Err(CommandError::InsufficientMaterials {
-                resource,
-                needed: resource_cost,
-                available,
-            });
-        }
-        self.state.economy.ticks_remaining -= ticks_cost;
-        self.deduct_material(resource, resource_cost);
-        let next_id = (self.state.tower.transports.len() as u32) + 10;
-        self.state.tower.transports.push(TransportInstance {
-            id: TransportId(next_id),
-            kind,
-            low_floor,
-            high_floor,
-            speed_mul,
-            capacity,
-            occupancy: 0,
-            direction: TransportDirection::Both,
-            slot,
-        });
-        Ok(())
-    }
-
-    /// Verify that `[slot, slot+width)` is in range on `floor` and not
-    /// occupied by any existing building, cache, or transport column.
-    /// Used by every placement command.
-    fn validate_slot_range(&self, floor: usize, slot: u8, width: u8) -> Result<(), CommandError> {
-        let Some(floor_state) = self.state.tower.floors.get(floor) else {
-            return Err(CommandError::InvalidFloor { index: floor });
-        };
-        let end = slot.saturating_add(width);
-        if end > floor_state.slots {
-            return Err(CommandError::InvalidCommand {
-                reason: format!(
-                    "Slot range {slot}..{end} exceeds floor width {}",
-                    floor_state.slots
-                ),
-            });
-        }
-        // Existing building footprint
-        if let Some(b) = floor_state.building.as_ref() {
-            let b_end = b.slot.saturating_add(b.width_slots);
-            if slot < b_end && b.slot < end {
-                return Err(CommandError::InvalidCommand {
-                    reason: format!(
-                        "Slot {slot}..{end} overlaps existing {:?} at {}..{}",
-                        b.building_type, b.slot, b_end
-                    ),
-                });
-            }
-        }
-        // Existing cache
-        if let Some(c) = floor_state.cache.as_ref()
-            && c.slot < end
-            && slot < c.slot + 1
-        {
-            return Err(CommandError::InvalidCommand {
-                reason: format!("Slot {slot}..{end} overlaps cache at {}", c.slot),
-            });
-        }
-        // Existing transport columns crossing this floor
-        for t in &self.state.tower.transports {
-            if t.low_floor <= floor && t.high_floor >= floor {
-                let t_end = t.slot + 1;
-                if slot < t_end && t.slot < end {
-                    return Err(CommandError::InvalidCommand {
-                        reason: format!(
-                            "Slot {slot}..{end} overlaps {:?} column at {}",
-                            t.kind, t.slot
-                        ),
-                    });
-                }
-            }
-        }
-        Ok(())
-    }
-
-    // ── Simulation tick ─────────────────────────────────────
-
-    /// Advance the simulation by real_dt seconds.
-    /// Uses a fixed timestep accumulator. Capped to MAX_TICKS_PER_FRAME
-    /// to prevent spiral-of-death after long pauses (e.g., tab switch).
-    /// Returns sound events from any ticks that ran.
-    pub fn tick(&mut self, real_dt: Scalar) -> Vec<SoundEvent> {
-        let capped_dt = real_dt.min(FIXED_DT * MAX_TICKS_PER_FRAME as Scalar);
-        self.accumulator += capped_dt;
-        let mut all_sounds = Vec::new();
-        let mut ticks_this_frame = 0;
-
-        #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
-        let frame_start = Instant::now();
-
-        while self.accumulator >= FIXED_DT {
-            let result = systems::tick(&mut self.state, &self.registry, FIXED_DT);
-
-            #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
-            self.perf.record_tick(&result.profile);
-
-            all_sounds.extend(result.sounds);
-            self.accumulator -= FIXED_DT;
-            ticks_this_frame += 1;
-        }
-
-        #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
-        self.perf
-            .record_frame(ticks_this_frame, frame_start.elapsed());
-
-        #[cfg(any(not(debug_assertions), target_arch = "wasm32"))]
-        {
-            let _ = ticks_this_frame;
-        }
-
-        all_sounds
-    }
-
-    /// Fraction of a tick elapsed — used by the renderer for interpolation.
-    pub fn interpolation_alpha(&self) -> Scalar {
-        self.accumulator / FIXED_DT
-    }
-
-    // ── Typed accessors for React bridge ────────────────────
-
-    pub fn get_phase(&self) -> GamePhase {
-        self.state.phase
-    }
-
-    pub fn get_hud_state(&self) -> HudSnapshot {
-        let state = &self.state;
-        let encounter = state.encounter.as_ref();
-
-        HudSnapshot {
-            ammo_primary: state.tower.hero.personal_ammo,
-            ammo_secondary: 0,
-            personal_ammo: state.tower.hero.personal_ammo,
-            weapon_ability_cooldown: state.tower.hero.weapon_ability_cooldown,
-            hero_skill_cooldown: state.tower.hero.hero_skill_cooldown,
-            active_weapon: state.tower.hero.active_weapon,
-            current_wave: encounter.map_or(0, |e| e.current_wave),
-            total_waves: encounter.map_or(0, |e| e.waves.len()),
-            wave_state: encounter.map_or(WaveState::Lull { timer: 0.0 }, |e| e.wave_state.clone()),
-            gold: state.economy.gold,
-            companion_statuses: state
-                .tower
-                .companions
-                .iter()
-                .map(|c| CompanionHudStatus {
-                    name: c.name.clone(),
-                    ammo: 0,
-                    injured: c.injured,
-                    displaced: c.position.is_none(),
-                })
-                .collect(),
-            hero_hp_fraction: state.tower.foundation.current_hp / state.tower.foundation.max_hp,
-            tower_hp_fraction: if state.tower.floors.is_empty() {
-                1.0
-            } else {
-                let total: Scalar = state.tower.floors.iter().map(|f| f.panel.current_hp).sum();
-                let max: Scalar = state.tower.floors.iter().map(|f| f.panel.max_hp).sum();
-                if max > 0.0 { total / max } else { 1.0 }
-            },
-            enemies_remaining: encounter.map_or(0, |e| {
-                e.enemies
-                    .iter()
-                    .filter(|e| e.state != EnemyState::Dead)
-                    .count()
-            }),
-        }
-    }
-
-    pub fn get_tower_state(&self) -> TowerSnapshot {
-        let tower = &self.state.tower;
-        TowerSnapshot {
-            floors: tower
-                .floors
-                .iter()
-                .map(|f| FloorSnapshot {
-                    index: f.index,
-                    building: f.building.clone(),
-                    cache: f.cache.clone(),
-                    panel_hp_fraction: if f.panel.max_hp > 0.0 {
-                        f.panel.current_hp / f.panel.max_hp
-                    } else {
-                        1.0
-                    },
-                    material: f.material,
-                    slots: f.slots,
-                })
-                .collect(),
-            warehouse: tower.warehouse.clone(),
-            runners: tower.runners.clone(),
-            balconies: tower.balconies.clone(),
-            runner_quarters: tower.runner_quarters.clone(),
-            companions: tower.companions.clone(),
-            transports: tower.transports.clone(),
-            width: tower.width,
-        }
-    }
-
-    pub fn get_journey_state(&self) -> JourneySnapshot {
-        let j = &self.state.journey;
-        JourneySnapshot {
-            current_chapter: j.current_chapter,
-            chapters: j.chapters.clone(),
-            current_node: j.current_node,
-            visited_nodes: j.visited_nodes.clone(),
-        }
-    }
-
-    /// Live drill status for the prep UI. None when no drill running.
-    pub fn get_drill_state(&self) -> Option<DrillSnapshot> {
-        let drill = self.state.drill.as_ref()?;
-        Some(DrillSnapshot {
-            seconds_remaining: drill.seconds_remaining.max(0.0),
-            seconds_total: drill.seconds_total,
-            deliveries_during_drill: self
-                .state
-                .deliveries_completed
-                .saturating_sub(drill.deliveries_at_start),
-        })
-    }
-
-    pub fn get_economy_state(&self) -> EconomySnapshot {
-        let economy = &self.state.economy;
-        EconomySnapshot {
-            gold: economy.gold,
-            materials: economy.materials.clone(),
-            ticks_remaining: economy.ticks_remaining,
-        }
-    }
-
-    pub fn get_gold(&self) -> u32 {
-        self.state.economy.gold
-    }
-
-    pub fn get_merchant_state(&self) -> MerchantSnapshot {
-        let items = self
-            .registry
-            .trinkets
-            .values()
-            .take(3)
-            .enumerate()
-            .map(|(index, def)| MerchantItem {
-                index,
-                id: def.id.0.clone(),
-                name: def.name.clone(),
-                description: def.description.clone(),
-                price: 20,
-            })
-            .collect();
-        MerchantSnapshot {
-            items,
-            gold: self.state.economy.gold,
-        }
-    }
-
-    pub fn get_hero_state(&self) -> HeroSnapshot {
-        let h = &self.state.tower.hero;
-        HeroSnapshot {
-            class: h.class,
-            level: h.level,
-            xp: h.xp,
-            stats: h.stats.clone(),
-            perks: h.perks.clone(),
-            weapon_primary: h.weapon_primary.clone(),
-            weapon_secondary: h.weapon_secondary.clone(),
-            trinket: h.trinket.clone(),
-            position: h.position,
-        }
-    }
-
-    pub fn get_encounter_state(&self) -> Option<EncounterSnapshot> {
-        self.state.encounter.as_ref().map(|e| EncounterSnapshot {
-            enemies: e
-                .enemies
-                .iter()
-                .filter(|en| en.state != EnemyState::Dead)
-                .map(|en| EnemySnapshot {
-                    id: en.id,
-                    archetype: en.archetype,
-                    x: match &en.position {
-                        EnemyPosition::Ground { x } => *x,
-                        _ => 0.0,
-                    },
-                    hp_fraction: if en.max_hp > 0.0 {
-                        en.hp / en.max_hp
-                    } else {
-                        0.0
-                    },
-                })
-                .collect(),
-            projectiles: e
-                .projectiles
-                .iter()
-                .filter(|p| matches!(p.state, ProjectileState::Flying))
-                .map(|p| ProjectileSnapshot {
-                    id: p.id,
-                    x: p.position.x,
-                    y: p.position.y,
-                })
-                .collect(),
-            current_wave: e.current_wave,
-            total_waves: e.waves.len(),
-            enemies_remaining: e
-                .enemies
-                .iter()
-                .filter(|en| en.state != EnemyState::Dead)
-                .count(),
-        })
-    }
-
-    pub fn get_validation_warnings(&self) -> Vec<ValidationWarning> {
-        let mut warnings = Vec::new();
-
-        // No floors → tower has no defenses
-        if self.state.tower.floors.is_empty() {
-            warnings.push(ValidationWarning {
-                severity: WarningSeverity::Warning,
-                message: "Tower has no floors. Build at least one before marching.".into(),
-            });
-        }
-
-        // No production buildings → hero will run out of ammo if encounter is long
-        let has_production = self.state.tower.floors.iter().any(|f| f.building.is_some());
-        if !has_production
-            && self.state.tower.hero.weapon_primary.base_type != WeaponBaseType::Melee
-        {
-            warnings.push(ValidationWarning {
-                severity: WarningSeverity::Info,
-                message: "No production buildings. Ammo will not regenerate during combat.".into(),
-            });
-        }
-
-        // Damaged panels
-        let damaged = self
-            .state
-            .tower
-            .floors
-            .iter()
-            .filter(|f| f.panel.current_hp < f.panel.max_hp * 0.5)
-            .count();
-        if damaged > 0 {
-            warnings.push(ValidationWarning {
-                severity: WarningSeverity::Warning,
-                message: format!("{damaged} panel(s) below 50% HP. Consider a Rest node."),
-            });
-        }
-
-        // Foundation low
-        if self.state.tower.foundation.current_hp < self.state.tower.foundation.max_hp * 0.3 {
-            warnings.push(ValidationWarning {
-                severity: WarningSeverity::Critical,
-                message: "Foundation HP is critical. Tower may fall this encounter.".into(),
-            });
-        }
-
-        warnings
-    }
-
-    pub fn get_perf_state(&self) -> SimPerfSnapshot {
-        self.perf.snapshot()
-    }
-
+    /// Serialise the live state. A save is the state plus, separately,
+    /// the replay that produced it.
     pub fn save(&self) -> String {
-        serde_json::to_string(&self.state).expect("GameState must be serializable")
+        serde_json::to_string(&self.state).expect("GameState must serialise")
     }
 
-    /// Test/debug: instantly drain every alive enemy. Used by the
-    /// Playwright smoke test to fast-forward through combat without
-    /// playing it out. The next tick will detect no live enemies and
-    /// advance the encounter to PostCombat.
-    pub fn debug_force_win(&mut self) {
-        if let Some(encounter) = self.state.encounter.as_mut() {
-            for enemy in &mut encounter.enemies {
-                enemy.hp = 0.0;
-                enemy.state = EnemyState::Dead;
-            }
-        }
-    }
-
-    pub fn load(&mut self, data: &str) -> Result<(), String> {
+    pub fn load(&mut self, json: &str) -> Result<(), String> {
         let state: GameState =
-            serde_json::from_str(data).map_err(|e| format!("Failed to load save: {e}"))?;
+            serde_json::from_str(json).map_err(|err| format!("failed to load save: {err}"))?;
         self.state = state;
-        self.accumulator = 0.0;
+        self.accumulator_us = 0;
         Ok(())
     }
+
+    /// Convenience for tests and tools: apply a command and assert it
+    /// was accepted.
+    ///
+    /// # Errors
+    /// Returns the rejection if the command was not legal.
+    pub fn try_send(&mut self, cmd: GameCommand) -> Result<(), CommandError> {
+        match self.send(cmd) {
+            CommandResult::Ok => Ok(()),
+            CommandResult::Error(error) => Err(error),
+        }
+    }
+
+    /// Set the speed without going through JSON. Used by tests.
+    pub fn set_speed(&mut self, speed: SimSpeed) {
+        let _ = self.send(GameCommand::SetSpeed { speed });
+    }
 }
 
-impl GameState {
-    pub fn new(seed: u64, class: HeroClass, registry: &Registry) -> Self {
-        use crate::rng::DeterministicRng;
+impl std::fmt::Debug for GameEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GameEngine")
+            .field("tick", &self.state.tick)
+            .field("seed", &self.state.seed)
+            .field("speed", &self.state.speed)
+            .finish_non_exhaustive()
+    }
+}
 
-        let hero_def = registry
-            .hero_for_class(class)
-            .expect("registry must define selected hero class");
-        let primary_weapon_def = registry
-            .weapon(&hero_def.starting_weapon_primary)
-            .expect("registry must define primary starting weapon");
-        let secondary_weapon_def = registry
-            .weapon(&hero_def.starting_weapon_secondary)
-            .expect("registry must define secondary starting weapon");
-        let chapters = registry
-            .chapters
-            .iter()
-            .map(|chapter| ChapterMap {
-                nodes: chapter.nodes.clone(),
-                edges: chapter.edges.clone(),
-                boss_node: chapter.boss_node,
-            })
-            .collect::<Vec<_>>();
-        let current_node = chapters
-            .first()
-            .and_then(|chapter| chapter.nodes.first())
-            .map_or(NodeId(0), |node| node.id);
+/// Replay a recording into a fresh engine and compare every checkpoint.
+///
+/// Reports the **first** divergence with its tick, because the tick a
+/// determinism break appears on is nearly always the tick that caused
+/// it. A content-hash mismatch fails immediately rather than producing
+/// a confusing wall of divergences.
+#[must_use]
+pub fn verify_replay(replay: &Replay, content: Arc<Content>) -> ReplayReport {
+    let expected_hash = format!("{:016x}", content.content_hash);
+    if replay.content_hash != expected_hash {
+        return ReplayReport::failure(format!(
+            "content pack mismatch: replay recorded against {}, this build has {expected_hash}",
+            replay.content_hash
+        ));
+    }
 
-        // Build the default starting tower: 3 wood floors with balconies,
-        // hero on the top balcony so projectiles arc down with gravity, a
-        // Fletcher on floor 0 producing arrows, and a cache on the top
-        // floor so the supply chain is wired end-to-end out of the box.
-        // Playtesters land in a working tower instead of an empty plot.
-        let hero_resource =
-            weapon_resource(primary_weapon_def.base_type).unwrap_or(ResourceType::Arrows);
-        let panel_hp = registry.balance.construction.wood_panel_hp;
-        let rack_max = registry.balance.hero.ammo_rack_max;
-        let mut floors = Vec::with_capacity(3);
-        let mut balconies = Vec::with_capacity(3);
-        for idx in 0..3 {
-            floors.push(Floor {
-                index: idx,
-                building: None,
-                cache: None,
-                panel: WallPanel {
-                    current_hp: panel_hp,
-                    max_hp: panel_hp,
-                    is_breached: false,
-                },
-                material: FloorMaterial::Wood,
-                transport_segments: Vec::new(),
-                floor_width_used: 0.0,
-                floor_width_max: 1.0,
-                slots: 8,
-            });
-            balconies.push(Balcony {
-                id: BalconyId(idx as u32),
-                floor: idx,
-                rack: AmmoRack {
-                    resource: hero_resource,
-                    current: 0,
-                    max: rack_max,
-                    destroyed: false,
-                },
-                cover_level: CoverLevel::Exposed,
-                occupant: None,
-            });
+    let mut engine = GameEngine::with_content(replay.seed, content);
+    engine.recorder.disable();
+
+    let mut checkpoints = replay.checkpoints.iter().peekable();
+    let mut checked = 0usize;
+
+    // Checkpoint 0 is the freshly seeded state, before any tick.
+    if let Some(cp) = checkpoints.peek()
+        && cp.tick == 0
+    {
+        let actual = format!("{:016x}", engine.state_hash());
+        if actual != cp.hash {
+            return ReplayReport {
+                ok: false,
+                checked,
+                final_tick: 0,
+                divergence: Some(Divergence {
+                    tick: 0,
+                    expected: cp.hash.clone(),
+                    actual,
+                }),
+                message: "initial state differs — seed or content pack changed".into(),
+            };
         }
-        // Default starting tower is a real production chain so
-        // playtesters can SEE the supply line working from t=0:
-        //
-        //   F0  Lumberyard ──[wood]──┐
-        //                            │
-        //   F1  Fletcher ◄───────────┘
-        //         └──[arrows]──┐
-        //                      ▼
-        //   F2  Cache ──► Rack ──► Hero
-        //
-        // Each stage is pre-stocked so the chain has visible motion on
-        // every link the moment combat begins, instead of waiting for
-        // a 10-second production cycle to fire.
-        // Default layout (slot grid is 8 wide):
-        //   slot 0: built-in stairs column
-        //   slots 1-2: production / cache (placed at slot 1)
-        //   slots 3-7: empty for player to expand
-        let lumberyard_def = registry.building_by_type(BuildingType::Lumberyard);
-        let fletcher_def = registry.building_by_type(BuildingType::Fletcher);
-        if let Some(def) = lumberyard_def {
-            floors[0].building = Some(Building {
-                building_type: BuildingType::Lumberyard,
-                tier: def.tier,
-                output_buffer: ResourceBuffer {
-                    resource: def.output_resource,
-                    current: def.output_buffer_max,
-                    max: def.output_buffer_max,
-                },
-                input_buffers: def
-                    .inputs
-                    .iter()
-                    .map(|inp| ResourceBuffer {
-                        resource: inp.resource,
-                        current: 0,
-                        max: inp.buffer_max,
-                    })
-                    .collect(),
-                production_rate: def.production_rate,
-                operating_cost: def.operating_cost,
-                is_active: true,
-                production_progress: 0.0,
-                slot: 1,
-                width_slots: def.width_slots,
-            });
+        checked += 1;
+        checkpoints.next();
+    }
+
+    let mut commands = replay.commands.iter().peekable();
+
+    for tick in 0..replay.final_tick {
+        // Commands stamped tick T apply before tick T runs.
+        while let Some(entry) = commands.peek() {
+            if entry.tick != tick {
+                break;
+            }
+            let _ = commands::apply(&mut engine.state, &engine.content, &entry.cmd);
+            commands.next();
         }
-        if let Some(def) = fletcher_def
-            && floors.len() > 1
+
+        engine.step(1);
+
+        if let Some(cp) = checkpoints.peek()
+            && cp.tick == engine.state.tick
         {
-            floors[1].building = Some(Building {
-                building_type: BuildingType::Fletcher,
-                tier: def.tier,
-                output_buffer: ResourceBuffer {
-                    resource: def.output_resource,
-                    current: def.output_buffer_max,
-                    max: def.output_buffer_max,
-                },
-                input_buffers: def
-                    .inputs
+            let actual = format!("{:016x}", engine.state_hash());
+            if actual != cp.hash {
+                return ReplayReport {
+                    ok: false,
+                    checked,
+                    final_tick: engine.state.tick,
+                    divergence: Some(Divergence {
+                        tick: engine.state.tick,
+                        expected: cp.hash.clone(),
+                        actual,
+                    }),
+                    message: format!("state diverged at tick {}", engine.state.tick),
+                };
+            }
+            checked += 1;
+            checkpoints.next();
+        }
+    }
+
+    let leftover = checkpoints.count();
+    if leftover > 0 {
+        return ReplayReport {
+            ok: false,
+            checked,
+            final_tick: engine.state.tick,
+            divergence: None,
+            message: format!("{leftover} checkpoint(s) past the recorded final tick"),
+        };
+    }
+
+    ReplayReport {
+        ok: true,
+        checked,
+        final_tick: engine.state.tick,
+        divergence: None,
+        message: format!(
+            "{checked} checkpoint(s) matched across {} tick(s)",
+            engine.state.tick
+        ),
+    }
+}
+
+/// Verify the embedded golden fixture against this build. The same
+/// bytes run natively in `cargo test` and in the browser through the
+/// wasm bridge — that pairing is the hash-parity gate.
+#[must_use]
+pub fn verify_golden_replay() -> ReplayReport {
+    let content = match Content::load_embedded() {
+        Ok(content) => Arc::new(content),
+        Err(errors) => {
+            return ReplayReport::failure(format!(
+                "content pack failed to load: {}",
+                errors
                     .iter()
-                    .map(|inp| ResourceBuffer {
-                        resource: inp.resource,
-                        current: inp.buffer_max,
-                        max: inp.buffer_max,
-                    })
-                    .collect(),
-                production_rate: def.production_rate,
-                operating_cost: def.operating_cost,
-                is_active: true,
-                production_progress: 0.0,
-                slot: 1,
-                width_slots: def.width_slots,
-            });
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            ));
         }
-        // Cache on the top floor (where the hero stands) so runners have
-        // somewhere to deliver and the rack feeds the hero immediately.
-        // Pre-stock the cache + rack so the hero never starts starving.
-        let top_floor = floors.len() - 1;
-        let cache_max = rack_max * 2;
-        floors[top_floor].cache = Some(DepotCache {
-            slots: vec![ResourceBuffer {
-                resource: hero_resource,
-                current: cache_max,
-                max: cache_max,
-            }],
-            slot: 1,
-        });
-        if let Some(top) = balconies.get_mut(top_floor) {
-            top.rack.current = top.rack.max;
-        }
-        // Hero stands on the top balcony.
-        let hero_balcony = BalconyId(top_floor as u32);
-        if let Some(top_balcony) = balconies.iter_mut().find(|b| b.id == hero_balcony) {
-            top_balcony.occupant = Some(EntityId(0));
-        }
-
-        Self {
-            phase: GamePhase::MapView,
-            tower: Tower {
-                floors,
-                foundation: Foundation {
-                    leg_type: LegType::Chicken,
-                    current_hp: registry.balance.construction.foundation_hp,
-                    max_hp: registry.balance.construction.foundation_hp,
-                    max_floors: registry.balance.construction.max_floors,
-                    maintenance_cost: registry.balance.economy.leg_maintenance,
-                },
-                warehouse: Warehouse {
-                    slots: Vec::new(),
-                    capacity_per_slot: 20,
-                },
-                runner_quarters: vec![RunnerQuarters {
-                    floor: 0,
-                    capacity: 4,
-                    salary_per_runner: registry.balance.economy.runner_salary,
-                }],
-                runners: vec![
-                    Runner {
-                        id: RunnerId(1),
-                        quarters_id: QuartersId(0),
-                        current_floor: 0,
-                        state: RunnerState::Idle { at_floor: 0 },
-                        carried: None,
-                        speed: 50.0,
-                        carry_capacity: 1,
-                        task: None,
-                        current_slot: 0,
-                    },
-                    Runner {
-                        id: RunnerId(2),
-                        quarters_id: QuartersId(0),
-                        current_floor: 0,
-                        state: RunnerState::Idle { at_floor: 0 },
-                        carried: None,
-                        speed: 50.0,
-                        carry_capacity: 1,
-                        task: None,
-                        current_slot: 0,
-                    },
-                ],
-                width: TowerWidth::Standard,
-                balconies,
-                // Built-in stairs occupy slot 0 (left edge) on every
-                // floor at base speed. Capacity 1 means two runners
-                // both wanting to climb will visibly queue — the
-                // bottleneck the player builds dumbwaiters / ladders
-                // to relieve at other slot columns.
-                transports: vec![TransportInstance {
-                    id: TransportId(1),
-                    kind: TransportKind::Stairs,
-                    low_floor: 0,
-                    high_floor: 2,
-                    speed_mul: 1.0,
-                    capacity: 1,
-                    occupancy: 0,
-                    direction: TransportDirection::Both,
-                    slot: 0,
-                }],
-                hero: Hero {
-                    id: EntityId(0),
-                    position: hero_balcony,
-                    class,
-                    stats: hero_def.starting_stats.clone(),
-                    level: 1,
-                    xp: 0,
-                    perks: Vec::new(),
-                    weapon_primary: weapon_from_def(primary_weapon_def),
-                    weapon_secondary: weapon_from_def(secondary_weapon_def),
-                    active_weapon: WeaponSlot::Primary,
-                    trinket: None,
-                    personal_ammo: registry.balance.hero.personal_ammo,
-                    aim_direction: Vec2::new(1.0, 0.0),
-                    weapon_ability_cooldown: 0.0,
-                    hero_skill_cooldown: 0.0,
-                    hero_skill: hero_def.skill,
-                    draw_power: 1.0,
-                },
-                companions: starting_companions(registry),
-            },
-            encounter: None,
-            journey: JourneyState {
-                destination: DestinationId(0),
-                current_chapter: 1,
-                chapters,
-                current_node,
-                visited_nodes: Vec::new(),
-                available_companions: Vec::new(),
-            },
-            meta: MetaState {
-                seed,
-                run_number: 1,
-                unlocked_classes: vec![HeroClass::Archer],
-                unlocked_weapons: vec![
-                    WeaponBaseType::Bow,
-                    WeaponBaseType::Crossbow,
-                    WeaponBaseType::Melee,
-                ],
-            },
-            economy: EconomyState {
-                gold: registry.balance.economy.starting_gold,
-                materials: vec![
-                    ResourceBuffer {
-                        resource: ResourceType::Wood,
-                        current: registry.balance.economy.starting_wood,
-                        max: 99,
-                    },
-                    ResourceBuffer {
-                        resource: ResourceType::Stone,
-                        current: registry.balance.economy.starting_stone,
-                        max: 99,
-                    },
-                    ResourceBuffer {
-                        resource: ResourceType::Arrows,
-                        current: 0,
-                        max: 99,
-                    },
-                    ResourceBuffer {
-                        resource: ResourceType::Bolts,
-                        current: 0,
-                        max: 99,
-                    },
-                ],
-                ticks_remaining: 0,
-                ticks_per_prep: registry.balance.economy.chapter_ticks[0],
-            },
-            rng: DeterministicRng::new(seed),
-            tick: 0,
-            elapsed: 0.0,
-            drill: None,
-            deliveries_completed: 0,
-        }
+    };
+    match Replay::from_json(crate::replay::GOLDEN_REPLAY) {
+        Ok(replay) => verify_replay(&replay, content),
+        Err(message) => ReplayReport::failure(message),
     }
-}
-
-fn weapon_from_def(def: &crate::registry::WeaponDef) -> Weapon {
-    Weapon {
-        base_type: def.base_type,
-        sub_type: def.sub_type.clone(),
-        damage: def.damage,
-        fire_rate: def.fire_rate,
-        modifiers: Vec::new(),
-    }
-}
-
-pub(crate) fn weapon_resource(base_type: WeaponBaseType) -> Option<ResourceType> {
-    match base_type {
-        WeaponBaseType::Bow => Some(ResourceType::Arrows),
-        WeaponBaseType::Crossbow => Some(ResourceType::Bolts),
-        WeaponBaseType::Staff => Some(ResourceType::Mana),
-        WeaponBaseType::Thrown => Some(ResourceType::Thrown),
-        WeaponBaseType::Melee => None,
-    }
-}
-
-/// Per-weapon gravity in pixels/sec². Negative pulls the projectile
-/// down toward the ground (sim convention: y up is positive). Bows and
-/// thrown weapons arc; crossbows fly nearly flat; staves are magical
-/// and ignore gravity entirely. Tuned so a hero shooting from a 3-floor
-/// tower (sim height 240) can reach ~mid-battlefield at base speed.
-pub(crate) fn projectile_gravity(base_type: WeaponBaseType) -> Scalar {
-    match base_type {
-        WeaponBaseType::Bow => -140.0,
-        WeaponBaseType::Crossbow => -50.0,
-        WeaponBaseType::Staff => 0.0,
-        WeaponBaseType::Thrown => -260.0,
-        WeaponBaseType::Melee => 0.0,
-    }
-}
-
-/// Build the starting companion roster for a new run.
-/// MVP: hero starts with Ren (Mark) and Drift (Pinning) auto-assigned
-/// to the first balcony. Companion roster management moves to the prep
-/// UI in a later milestone.
-fn starting_companions(registry: &Registry) -> Vec<Companion> {
-    let default_bow = registry
-        .weapons
-        .values()
-        .find(|w| matches!(w.base_type, WeaponBaseType::Bow | WeaponBaseType::Crossbow));
-    let weapon = default_bow.map(weapon_from_def).unwrap_or_else(|| Weapon {
-        base_type: WeaponBaseType::Bow,
-        sub_type: "shortbow".into(),
-        damage: 10.0,
-        fire_rate: 1.2,
-        modifiers: Vec::new(),
-    });
-
-    // Spread the two starting companions across the lower two balconies
-    // so they're individually visible in the tower viz alongside the
-    // hero on the top floor.
-    vec![
-        Companion {
-            id: EntityId(1000),
-            name: "Ren".into(),
-            position: Some(BalconyId(0)),
-            passive: CompanionPassive::Mark,
-            accuracy: 0.4,
-            combat_xp: 0,
-            weapon: weapon.clone(),
-            trinket: None,
-            target_order: TargetOrder::Closest,
-            fire_discipline: FireDiscipline::AtWill,
-            wage: 2,
-            injured: false,
-            injury_remaining: 0,
-        },
-        Companion {
-            id: EntityId(1001),
-            name: "Drift".into(),
-            position: Some(BalconyId(1)),
-            passive: CompanionPassive::PinningShots,
-            accuracy: 0.4,
-            combat_xp: 0,
-            weapon,
-            trinket: None,
-            target_order: TargetOrder::Closest,
-            fire_discipline: FireDiscipline::AtWill,
-            wage: 2,
-            injured: false,
-            injury_remaining: 0,
-        },
-    ]
 }

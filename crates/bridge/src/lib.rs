@@ -1,133 +1,144 @@
+//! wasm-bindgen bridge.
+//!
+//! Deliberately narrow. The frontend calls `frame` once per animation
+//! frame and `view` once per frame after it — everything else is either
+//! a command going in or a one-off at startup. v1 made a dozen separate
+//! accessor calls at 30hz; each crossing costs a serialisation, and the
+//! cost is paid whether or not anything changed.
+//!
+//! JSON strings are the transport for now: debuggable, and irrelevant
+//! at cozy scale. The snapshot shape is already grouped the way a
+//! worker-plus-shared-buffer bridge would want it, so replacing this
+//! transport later does not require redesigning what crosses.
+
 use std::cell::RefCell;
+
 use wasm_bindgen::prelude::*;
 
-use supply_line_core::command::GameCommand;
-use supply_line_core::engine::GameEngine;
-use supply_line_core::state::HeroClass;
+use understory_core::GameEngine;
+use understory_core::command::GameCommand;
 
 thread_local! {
     static ENGINE: RefCell<Option<GameEngine>> = const { RefCell::new(None) };
 }
 
 fn with_engine<R>(f: impl FnOnce(&GameEngine) -> R) -> R {
-    ENGINE.with(|e| f(e.borrow().as_ref().expect("Engine not initialized")))
+    ENGINE.with(|cell| {
+        f(cell
+            .borrow()
+            .as_ref()
+            .expect("call init_game before anything else"))
+    })
 }
 
 fn with_engine_mut<R>(f: impl FnOnce(&mut GameEngine) -> R) -> R {
-    ENGINE.with(|e| f(e.borrow_mut().as_mut().expect("Engine not initialized")))
+    ENGINE.with(|cell| {
+        f(cell
+            .borrow_mut()
+            .as_mut()
+            .expect("call init_game before anything else"))
+    })
 }
 
+/// Start a run. Panics surface as readable JS errors from here on.
 #[wasm_bindgen]
-pub fn init_game(seed: u64, class: &str) -> Result<(), JsValue> {
+pub fn init_game(seed: u64) {
     console_error_panic_hook::set_once();
-    let hero_class = match class {
-        "archer" => HeroClass::Archer,
-        "engineer" => HeroClass::Engineer,
-        "commander" => HeroClass::Commander,
-        _ => return Err(JsValue::from_str("Unknown class")),
-    };
-    ENGINE.with(|e| {
-        *e.borrow_mut() = Some(GameEngine::new(seed, hero_class));
+    ENGINE.with(|cell| {
+        *cell.borrow_mut() = Some(GameEngine::new(seed));
     });
-    Ok(())
 }
 
+/// Apply a command. Takes the JSON encoding of a `GameCommand` and
+/// returns the JSON encoding of a `CommandResult`.
 #[wasm_bindgen]
 pub fn send_command(json: &str) -> String {
     let cmd: GameCommand = match serde_json::from_str(json) {
-        Ok(c) => c,
-        Err(e) => return format!(r#"{{"error":"Invalid command: {e}"}}"#),
+        Ok(cmd) => cmd,
+        Err(err) => return format!(r#"{{"Error":{{"Malformed":"{err}"}}}}"#),
     };
-    let result = with_engine_mut(|e| e.send_command(cmd));
-    serde_json::to_string(&result).unwrap_or_else(|e| format!(r#"{{"error":"{e}"}}"#))
+    let result = with_engine_mut(|engine| engine.send(cmd));
+    serde_json::to_string(&result).unwrap_or_else(|err| format!(r#"{{"Error":"{err}"}}"#))
 }
 
+/// Advance the simulation by `elapsed_us` microseconds of wall clock,
+/// scaled by the current speed. Returns the JSON array of sound events
+/// produced. Call once per animation frame.
 #[wasm_bindgen]
-pub fn tick(real_dt: f32) -> String {
-    let sounds = with_engine_mut(|e| e.tick(real_dt));
+pub fn frame(elapsed_us: u32) -> String {
+    let sounds = with_engine_mut(|engine| engine.frame(u64::from(elapsed_us)));
     serde_json::to_string(&sounds).unwrap_or_else(|_| "[]".into())
 }
 
+/// Everything the renderer needs for one frame, as one JSON document.
 #[wasm_bindgen]
-pub fn interpolation_alpha() -> f32 {
-    with_engine(supply_line_core::engine::GameEngine::interpolation_alpha)
+pub fn view() -> String {
+    with_engine(|engine| serde_json::to_string(&engine.view()).unwrap_or_default())
 }
 
+/// Item, room, and terrain definitions. Static for the lifetime of a
+/// content pack — fetch once at startup, never poll.
 #[wasm_bindgen]
-pub fn get_phase() -> String {
-    with_engine(|e| format!("{:?}", e.get_phase()))
+pub fn catalog() -> String {
+    with_engine(|engine| serde_json::to_string(&engine.catalog()).unwrap_or_default())
 }
 
+/// Hex XXH3 of the current state. Diagnostic, and the thing replay
+/// verification compares.
 #[wasm_bindgen]
-pub fn get_hud_state() -> String {
-    with_engine(|e| serde_json::to_string(&e.get_hud_state()).unwrap_or_default())
+pub fn state_hash() -> String {
+    with_engine(|engine| format!("{:016x}", engine.state_hash()))
 }
 
-#[wasm_bindgen]
-pub fn get_tower_state() -> String {
-    with_engine(|e| serde_json::to_string(&e.get_tower_state()).unwrap_or_default())
-}
-
-#[wasm_bindgen]
-pub fn get_journey_state() -> String {
-    with_engine(|e| serde_json::to_string(&e.get_journey_state()).unwrap_or_default())
-}
-
-#[wasm_bindgen]
-pub fn get_economy_state() -> String {
-    with_engine(|e| serde_json::to_string(&e.get_economy_state()).unwrap_or_default())
-}
-
-#[wasm_bindgen]
-pub fn get_gold() -> u32 {
-    with_engine(supply_line_core::engine::GameEngine::get_gold)
-}
-
-#[wasm_bindgen]
-pub fn get_hero_state() -> String {
-    with_engine(|e| serde_json::to_string(&e.get_hero_state()).unwrap_or_default())
-}
-
-#[wasm_bindgen]
-pub fn get_merchant_state() -> String {
-    with_engine(|e| serde_json::to_string(&e.get_merchant_state()).unwrap_or_default())
-}
-
-#[wasm_bindgen]
-pub fn get_encounter_state() -> String {
-    with_engine(|e| serde_json::to_string(&e.get_encounter_state()).unwrap_or_default())
-}
-
-#[wasm_bindgen]
-pub fn get_validation_warnings() -> String {
-    with_engine(|e| serde_json::to_string(&e.get_validation_warnings()).unwrap_or_default())
-}
-
-#[wasm_bindgen]
-pub fn get_perf_state() -> String {
-    with_engine(|e| serde_json::to_string(&e.get_perf_state()).unwrap_or_default())
-}
-
+/// Serialised `GameState`.
 #[wasm_bindgen]
 pub fn save() -> String {
-    with_engine(supply_line_core::engine::GameEngine::save)
+    with_engine(GameEngine::save)
 }
 
 #[wasm_bindgen]
-pub fn load(data: &str) -> Result<(), JsValue> {
-    with_engine_mut(|e| e.load(data).map_err(|err| JsValue::from_str(&err)))
+pub fn load(json: &str) -> Result<(), JsValue> {
+    with_engine_mut(|engine| engine.load(json).map_err(|err| JsValue::from_str(&err)))
 }
 
-/// Test/debug hook: instantly drain every enemy in the current
-/// encounter so the next tick advances to PostCombat. Used by the
-/// Playwright smoke test to skip the play-out of long encounters
-/// without disabling the rest of the loop. No-op if not in combat.
+/// The replay recorded so far: seed, content hash, commands, and
+/// periodic state hashes.
 #[wasm_bindgen]
-pub fn debug_force_win() {
-    with_engine_mut(GameEngine::debug_force_win);
+pub fn export_replay() -> String {
+    with_engine(|engine| engine.export_replay().to_json())
 }
 
+/// Replay a recording and report whether every checkpoint matched.
 #[wasm_bindgen]
-pub fn get_drill_state() -> String {
-    with_engine(|e| serde_json::to_string(&e.get_drill_state()).unwrap_or_default())
+pub fn verify_replay(json: &str) -> String {
+    let content = with_engine(|engine| engine.content().clone());
+    let report = match understory_core::replay::Replay::from_json(json) {
+        Ok(replay) => understory_core::verify_replay(&replay, content),
+        Err(message) => {
+            return format!(
+                r#"{{"ok":false,"message":"{}"}}"#,
+                message.replace('"', "'")
+            );
+        }
+    };
+    serde_json::to_string(&report).unwrap_or_default()
+}
+
+/// Verify the golden fixture embedded in this binary.
+///
+/// The native test suite verifies the same bytes. If this passes in the
+/// browser and there, wasm and native agree on every state hash — which
+/// is the determinism guarantee the whole project rests on.
+#[wasm_bindgen]
+pub fn verify_golden_replay() -> String {
+    let report = understory_core::verify_golden_replay();
+    serde_json::to_string(&report).unwrap_or_default()
+}
+
+/// Run exactly `ticks` ticks regardless of the speed setting. For tests
+/// that need to reach a state quickly without waiting in real time.
+#[wasm_bindgen]
+pub fn debug_step(ticks: u32) -> String {
+    let sounds = with_engine_mut(|engine| engine.step(ticks));
+    serde_json::to_string(&sounds).unwrap_or_else(|_| "[]".into())
 }

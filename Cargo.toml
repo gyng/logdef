@@ -4,7 +4,7 @@ default-members = ["crates/core", "crates/bridge"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 
 [workspace.lints.clippy]
@@ -13,15 +13,11 @@ needless_pass_by_value = "warn"
 cloned_instead_of_copied = "warn"
 redundant_closure_for_method_calls = "warn"
 # Determinism: HashMap/HashSet have non-deterministic iteration order.
-# Use Vec or BTreeMap/BTreeSet. See implementation-decisions.md §19.
+# Use Vec or BTreeMap/BTreeSet. See DECISIONS.md §1.
 disallowed_types = "deny"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 wasm-bindgen = "0.2"
-web-sys = "0.3"
-js-sys = "0.3"
-wgpu = "29"
-bytemuck = { version = "1", features = ["derive"] }
 log = "0.4"

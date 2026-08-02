@@ -1,114 +1,197 @@
-import { test, expect } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Smoke test: plays chapter 1 start → victory.
+ * The M0 smoke path.
  *
- * Chapters 2 and 3 exist in the registry but are not part of the smoke
- * test path yet — chapter 1 is sufficient to exercise the full loop
- * (map → prep → combat → post-combat → continue → next node → victory).
+ * Three things have to be true after every change: the tower boots and
+ * draws, the chain runs without anyone touching it, and the simulation
+ * agrees with itself across native and wasm. The last one is the whole
+ * determinism guarantee, so it is checked here rather than trusted.
+ *
+ * The run is seeded from the URL so the assertions describe one
+ * specific run rather than an average one.
  */
-test("chapter 1 loop: start → victory", async ({ page }) => {
-  test.setTimeout(360_000);
-  page.on("pageerror", (err) => console.log("PAGE_ERROR:", err.message));
-  page.on("console", (msg) => {
-    if (msg.type() === "error") console.log("BROWSER_ERROR:", msg.text());
-  });
 
-  await page.goto("/");
+const SEED = 4242;
 
-  await expect(page.locator(".map-page")).toBeVisible({ timeout: 10_000 });
+interface TestHooks {
+  view(): {
+    tick: number;
+    speed: string;
+    world: { distance: number; bands: unknown[]; features: unknown[] };
+    tower: { floors: { rooms: unknown[] }[]; shafts: unknown[] };
+    crew: { name: string; state: string }[];
+    stock: { item: number; count: number }[];
+    stats: { hauls_completed: number; crafts_completed: number; items_harvested: number };
+  };
+  catalog(): { content_hash: string; items: unknown[]; rooms: unknown[]; terrain: unknown[] };
+  stateHash(): string;
+  step(ticks: number): void;
+  verifyGolden(): { ok: boolean; checked: number; final_tick: number; message: string };
+  exportReplay(): string;
+  /** Centre of a slot in client coordinates, from the live layout. */
+  slotPoint(floor: number, slot: number): { x: number; y: number } | null;
+}
 
-  let encountersPlayed = 0;
-  // Chapter 1 has exactly 3 encounters (2 combats + boss).
-  const maxEncountersInChapter1 = 3;
-
-  while (encountersPlayed < maxEncountersInChapter1) {
-    if (
-      await page
-        .locator(".end-screen")
-        .isVisible()
-        .catch(() => false)
-    ) {
-      break;
-    }
-
-    await expect(page.locator(".map-page")).toBeVisible({ timeout: 10_000 });
-
-    const reachable = page.locator(".map-node.reachable").first();
-    await expect(reachable).toBeVisible();
-    await reachable.click();
-
-    await expect(page.locator(".prep-controls")).toBeVisible({ timeout: 5_000 });
-
-    // The default tower already has a Lumberyard + Fletcher + cache,
-    // so there's no need to build anything in the smoke path. March
-    // straight in.
-    await page.getByRole("button", { name: "March!" }).click();
-
-    await expect(page.locator(".combat-page")).toBeVisible({ timeout: 5_000 });
-    await fireUntilDone(page);
-
-    if (
-      await page
-        .locator(".end-screen")
-        .isVisible()
-        .catch(() => false)
-    ) {
-      break;
-    }
-    await expect(page.locator(".post-combat-page")).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: "Continue" }).click();
-
-    encountersPlayed += 1;
-    await page.waitForTimeout(200); // let React settle after Continue
-
-    // Chapter 1 only — stop after beating the chapter 1 boss (next view
-    // will be end-screen victory if it was a single-chapter run, or the
-    // chapter 2 map if multi-chapter).
-  }
-
-  // Smoke test passes if we either reached Victory or completed chapter 1
-  // without the tower falling. Reaching chapter 2's map also counts.
-  const endVisible = await page
-    .locator(".end-screen")
-    .isVisible()
-    .catch(() => false);
-  if (endVisible) {
-    await expect(page.locator("h1")).toContainText(/Victory|Game Over/);
-  } else {
-    // Should be on the next chapter's map — loop completed cleanly.
-    await expect(page.locator(".map-page")).toBeVisible({ timeout: 5_000 });
-  }
-});
-
-async function fireUntilDone(page: Page) {
-  // Smoke test cares about the *loop*, not combat balance. Use the
-  // __forceWin debug helper to drain all enemies the moment we're in
-  // an encounter, then poll for the PostCombat transition.
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    const postCombatCount = await page
-      .locator(".post-combat-page")
-      .count()
-      .catch(() => 0);
-    if (postCombatCount > 0) return;
-
-    const endScreenCount = await page
-      .locator(".end-screen")
-      .count()
-      .catch(() => 0);
-    if (endScreenCount > 0) return;
-
-    // Re-fire forceWin every loop iteration so we catch the encounter
-    // as soon as it exists. The bridge call is a no-op outside combat.
-    await page
-      .evaluate(() => {
-        type DebugWindow = Window & { __forceWin?: () => void };
-        (window as DebugWindow).__forceWin?.();
-      })
-      .catch(() => {});
-
-    await page.waitForTimeout(100);
+declare global {
+  interface Window {
+    __understory?: TestHooks;
   }
 }
+
+async function boot(page: Page, seed = SEED) {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+
+  await page.goto(`/?seed=${seed}`);
+  await expect(page.getByTestId("game-canvas")).toBeVisible({ timeout: 20_000 });
+  await page.waitForFunction(() => window.__understory !== undefined, null, { timeout: 20_000 });
+  return errors;
+}
+
+test("boots, draws, and reports a live world", async ({ page }) => {
+  const errors = await boot(page);
+
+  // WebGL2 actually produced a surface, rather than silently failing to
+  // a blank canvas.
+  const drawing = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>("[data-testid='game-canvas']");
+    return {
+      width: canvas?.width ?? 0,
+      height: canvas?.height ?? 0,
+      hasContext: canvas?.getContext("webgl2") !== null,
+    };
+  });
+  expect(drawing.width).toBeGreaterThan(0);
+  expect(drawing.height).toBeGreaterThan(0);
+  expect(drawing.hasContext).toBe(true);
+
+  const snapshot = await page.evaluate(() => window.__understory!.view());
+  expect(snapshot.tower.floors.length).toBeGreaterThanOrEqual(4);
+  expect(snapshot.tower.shafts.length).toBeGreaterThanOrEqual(1);
+  expect(snapshot.crew.length).toBeGreaterThanOrEqual(1);
+  expect(snapshot.world.bands.length).toBeGreaterThan(0);
+  expect(snapshot.world.features.length).toBeGreaterThan(0);
+
+  // The catalog is present and the pack hash is a real u64.
+  const catalog = await page.evaluate(() => window.__understory!.catalog());
+  expect(catalog.content_hash).toMatch(/^[0-9a-f]{16}$/);
+  expect(catalog.rooms.length).toBeGreaterThan(0);
+
+  // Labels render over the canvas.
+  await expect(page.locator(".stage-labels .label-room").first()).toBeVisible();
+
+  expect(errors).toEqual([]);
+});
+
+test("the chain runs unattended and the tower walks", async ({ page }) => {
+  await boot(page);
+
+  // Drive the simulation directly rather than waiting out real time:
+  // the smoke test is about the loop being wired, not about pacing.
+  const before = await page.evaluate(() => window.__understory!.view());
+  await page.evaluate(() => {
+    window.__understory!.step(1800);
+  });
+  const after = await page.evaluate(() => window.__understory!.view());
+
+  expect(after.tick).toBeGreaterThan(before.tick);
+  expect(after.world.distance).toBeGreaterThan(before.world.distance);
+  expect(after.stats.items_harvested).toBeGreaterThan(0);
+  expect(after.stats.hauls_completed).toBeGreaterThan(0);
+  expect(after.stats.crafts_completed).toBeGreaterThan(0);
+});
+
+test("speed controls drive the clock", async ({ page }) => {
+  await boot(page);
+
+  await page.getByTestId("speed-X4").click();
+  await expect(page.getByTestId("speed-X4")).toHaveAttribute("aria-pressed", "true");
+
+  const running = await page.evaluate(() => window.__understory!.view().tick);
+  await page.waitForTimeout(400);
+  const later = await page.evaluate(() => window.__understory!.view().tick);
+  expect(later).toBeGreaterThan(running);
+
+  await page.getByTestId("speed-Paused").click();
+  await expect(page.getByTestId("speed-Paused")).toHaveAttribute("aria-pressed", "true");
+  const paused = await page.evaluate(() => window.__understory!.view().tick);
+  await page.waitForTimeout(300);
+  const stillPaused = await page.evaluate(() => window.__understory!.view().tick);
+  expect(stillPaused).toBe(paused);
+});
+
+test("building a floor and placing a room round-trips through the bridge", async ({ page }) => {
+  await boot(page);
+
+  // Bank enough poles for a floor plus a room.
+  await page.evaluate(() => {
+    window.__understory!.step(3600);
+  });
+
+  const floorsBefore = await page.evaluate(() => window.__understory!.view().tower.floors.length);
+  await page.getByTestId("build-floor").click();
+  await expect
+    .poll(() => page.evaluate(() => window.__understory!.view().tower.floors.length))
+    .toBe(floorsBefore + 1);
+
+  // Placement: pick the room, click a slot in the tower, see it appear.
+  const roomsBefore = await page.evaluate(() =>
+    window.__understory!.view().tower.floors.reduce((n, floor) => n + floor.rooms.length, 0),
+  );
+  await page.getByTestId("build-room.storeroom").click();
+  await expect(page.getByTestId("build-room.storeroom")).toHaveAttribute("aria-pressed", "true");
+
+  // Click where the player would click: the renderer reports the slot's
+  // own screen position, so this survives any change to tower scale.
+  const target = await page.evaluate(() => {
+    const view = window.__understory!.view();
+    const top = view.tower.floors.length - 1;
+    // Slot 0 is the stairs column on every floor; the new top floor is
+    // otherwise empty, so slot 2 leaves room for a two-wide storeroom.
+    return window.__understory!.slotPoint(top, 2);
+  });
+  if (!target) throw new Error("the renderer could not locate the target slot");
+  await page.mouse.click(target.x, target.y);
+
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__understory!.view().tower.floors.reduce((n, floor) => n + floor.rooms.length, 0),
+      ),
+    )
+    .toBeGreaterThan(roomsBefore);
+});
+
+test("wasm and native agree on every state hash", async ({ page }) => {
+  await boot(page);
+
+  // The golden fixture is embedded in the wasm binary — the exact same
+  // bytes the native `cargo test` suite verifies. If both pass, the two
+  // platforms produced identical state hashes for every checkpoint of a
+  // 1800-tick recorded session.
+  const report = await page.evaluate(() => window.__understory!.verifyGolden());
+  expect(report.ok, report.message).toBe(true);
+  expect(report.checked).toBeGreaterThan(10);
+  expect(report.final_tick).toBeGreaterThanOrEqual(1800);
+});
+
+test("the same seed produces the same run", async ({ page }) => {
+  await boot(page, 777);
+  await page.evaluate(() => {
+    window.__understory!.step(900);
+  });
+  const first = await page.evaluate(() => window.__understory!.stateHash());
+
+  await boot(page, 777);
+  await page.evaluate(() => {
+    window.__understory!.step(900);
+  });
+  const second = await page.evaluate(() => window.__understory!.stateHash());
+
+  expect(second).toBe(first);
+  expect(first).toMatch(/^[0-9a-f]{16}$/);
+});

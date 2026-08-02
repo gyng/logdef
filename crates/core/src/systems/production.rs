@@ -1,77 +1,69 @@
-//! Building production.
+//! Production — recipes turning inputs into outputs on a timer.
 //!
-//! Each tick, every active building advances `production_progress`
-//! toward 1.0 at a rate of `dt / seconds_per_craft`. When it crosses
-//! 1.0 we consume one unit from every input buffer and push one crate
-//! to the output buffer.
+//! A room advances one tick of `progress` when, and only when, every
+//! input stack holds at least its per-craft amount and every output
+//! stack has room for what the craft will emit. At `craft_ticks` the
+//! inputs are consumed and the outputs appear.
 //!
-//! Raw producers (Lumberyard, Quarry — empty `input_buffers`) advance
-//! unconditionally. Crafters (Fletcher needs wood, Forge needs stone,
-//! …) stall whenever any input buffer is below the per-craft amount,
-//! making the chain visibly bottleneck on missing materials.
-//!
-//! A full output buffer also stalls production — the building visibly
-//! stops producing until a runner clears space, surfacing logistics
-//! pressure to the player.
+//! A stall does not reset progress. Partial work survives the gap, so a
+//! chain that hiccups doesn't throw away a half-finished craft — it
+//! just goes quiet until the crate arrives.
 
-use crate::registry::Registry;
-use crate::snapshot::SoundEvent;
-use crate::state::*;
-use crate::types::Scalar;
+use crate::content::Content;
+use crate::state::GameState;
 
-/// Each input slot consumes 1 unit per craft for v1. Future cycles can
-/// promote this to a per-input amount on the registry.
-const INPUT_PER_CRAFT: u32 = 1;
+use super::SoundEvent;
 
-pub fn run(state: &mut GameState, _registry: &Registry, dt: Scalar, sounds: &mut Vec<SoundEvent>) {
-    if state.encounter.is_none() && state.drill.is_none() {
-        return;
-    }
+pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
+    let mut crafts = 0u64;
 
     for floor in &mut state.tower.floors {
-        let Some(building) = floor.building.as_mut() else {
-            continue;
-        };
-        if !building.is_active {
-            continue;
-        }
-
-        // Output buffer full: stall (visible silent building).
-        if building.output_buffer.current >= building.output_buffer.max {
-            continue;
-        }
-
-        // Inputs gate: every input buffer must hold >= INPUT_PER_CRAFT.
-        // Raw producers (no inputs) skip this check entirely.
-        let has_inputs = !building.input_buffers.is_empty();
-        if has_inputs {
-            let all_satisfied = building
-                .input_buffers
-                .iter()
-                .all(|inb| inb.current >= INPUT_PER_CRAFT);
-            if !all_satisfied {
-                // Stall until a runner refills the inbox. Don't reset
-                // existing progress — partial work survives the gap.
+        for room in &mut floor.rooms {
+            let rt = content.room_rt(room.def);
+            if rt.craft_ticks == 0 {
                 continue;
             }
-        }
 
-        // Advance the in-progress craft.
-        let rate = building.production_rate.max(0.01);
-        let seconds_per_craft = 60.0 / rate;
-        building.production_progress += dt / seconds_per_craft;
+            let inputs_ready = rt
+                .recipe_inputs
+                .iter()
+                .enumerate()
+                .all(|(i, (_, amount, _))| room.inputs.get(i).is_some_and(|s| s.count >= *amount));
+            let outputs_ready = rt
+                .recipe_outputs
+                .iter()
+                .enumerate()
+                .all(|(i, (_, amount, _))| {
+                    room.outputs.get(i).is_some_and(|s| s.space() >= *amount)
+                });
 
-        if building.production_progress >= 1.0 {
-            // Consume one unit from each input buffer.
-            for inb in &mut building.input_buffers {
-                inb.current = inb.current.saturating_sub(INPUT_PER_CRAFT);
+            // Missing an input or backed up on the output: hold
+            // progress where it is. Partial work survives the gap, and
+            // the room simply goes quiet.
+            if !inputs_ready || !outputs_ready {
+                continue;
             }
-            // Push a crate to the outbox.
-            building.output_buffer.current += 1;
-            building.production_progress = 0.0;
-            sounds.push(SoundEvent::BuildingProduce {
-                building_type: building.building_type,
-            });
+
+            room.progress += 1;
+            if room.progress < rt.craft_ticks {
+                continue;
+            }
+
+            for (i, (_, amount, _)) in rt.recipe_inputs.iter().enumerate() {
+                if let Some(stack) = room.inputs.get_mut(i) {
+                    stack.withdraw(*amount);
+                }
+            }
+            for (i, (_, amount, _)) in rt.recipe_outputs.iter().enumerate() {
+                if let Some(stack) = room.outputs.get_mut(i) {
+                    stack.deposit(*amount);
+                }
+            }
+            room.progress = 0;
+            crafts += 1;
+            sounds.push(SoundEvent::Craft);
         }
     }
+
+    state.stats.crafts_completed += crafts;
 }

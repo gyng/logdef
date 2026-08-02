@@ -1,0 +1,16 @@
+// Shelves. Each takes whichever item lands on it first and holds only
+// that until it empties. Construction spends straight off these
+// shelves — the chain pays for the tower.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.storeroom",
+    name: "Storeroom",
+    short: "STR",
+    category: Storage,
+    width: 2,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 3)],
+    storage: StorageDef(
+        shelves: 4,
+        per_shelf: 20,
+    ),
+)

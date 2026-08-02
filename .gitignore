@@ -29,6 +29,9 @@ web/pkg/
 .playwright/
 playwright-report/
 test-results/
+# Stills written by e2e/capture.spec.ts — a way to look at the game,
+# not an artifact worth versioning.
+web/capture/
 
 # Logs
 *.log

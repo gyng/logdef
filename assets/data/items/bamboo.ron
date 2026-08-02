@@ -1,0 +1,7 @@
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.bamboo",
+    name: "Bamboo",
+    glyph: "🎍",
+    order: 10,
+)

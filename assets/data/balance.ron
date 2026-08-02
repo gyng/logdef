@@ -1,48 +1,47 @@
+// Understory — balance constants.
+//
+// Every value here is graded in docs/BALANCE.md, and a test fails if a
+// field appears in one and not the other. No floating point: rates are
+// written the way a designer thinks about them ("ticks per item",
+// "paces per 100 ticks") and converted to fixed point at use.
+//
+// The simulation runs at 30 ticks per second.
 #![enable(implicit_some)]
-#![enable(unwrap_newtypes)]
-#![enable(unwrap_variant_newtypes)]
 Balance(
-    economy: EconomyBalance(
-        starting_gold: 30,
-        starting_wood: 5,
-        starting_stone: 3,
-        chapter_ticks: (6, 8, 10),
-        unused_tick_gold: 3,
-        encounter_completion_bonus: 15,
-        hero_kill_multiplier: 1.5,
-        runner_salary: 3,
-        companion_wage: 2,
-        leg_maintenance: 5,
+    world: WorldBalance(
+        // 0.6 paces/tick — a stately 18 paces a second. The horizon
+        // should change while you watch, not while you blink.
+        stride_paces_per_100_ticks: 60,
+        // 16–50 seconds in a band at 1x, so terrain has time to matter
+        // before it changes.
+        band_min_paces: 300,
+        band_max_paces: 900,
+        stream_ahead_paces: 900,
+        stream_behind_paces: 300,
     ),
-    construction: ConstructionBalance(
-        floor_tick_cost: 2,
-        wood_floor_material_cost: 3,
-        stone_floor_material_cost: 4,
-        wood_panel_hp: 80.0,
-        stone_panel_hp: 120.0,
-        foundation_hp: 300.0,
-        max_floors: 4,
-        building_tick_cost: 2,
+    tower: TowerBalance(
+        starting_floors: 4,
+        // Cozy scale: the whole tower stays on one screen.
+        max_floors: 14,
+        floor_slots: 8,
+        floor_cost: [CostEntryDef(item: "item.poles", amount: 6)],
+        // One body on the stairs at a time. Two crew is already a
+        // queue, which is the whole thesis in miniature.
+        stairs_capacity: 1,
+        starting_stock: [CostEntryDef(item: "item.poles", amount: 10)],
     ),
-    production: ProductionBalance(
-        fletcher_rate: 6.0,
-        fletcher_operating_cost: 5,
-        fletcher_buffer_max: 4,
-        quarry_rate: 5.0,
-        quarry_operating_cost: 6,
-        quarry_buffer_max: 4,
-    ),
-    combat: CombatBalance(
-        battlefield_width: 800.0,
-        wave_delay: 5.0,
-        breach_duration: 15.0,
-        // Encounters are sized to put real pressure on the supply
-        // chain — large enough that the player visibly needs more
-        // runners and faster transport to keep racks topped up.
-        difficulty_budgets: (16, 24, 32),
-    ),
-    hero: HeroBalance(
-        personal_ammo: 99,
-        ammo_rack_max: 3,
+    crew: CrewBalance(
+        starting_crew: 2,
+        // 0.4s per slot: crossing an 8-wide floor costs about 3
+        // seconds, enough that where you put things matters.
+        walk_ticks_per_slot: 12,
+        // A full second per floor. Stairs are slow on purpose — that
+        // is the pressure the dumbwaiter relieves in M1.
+        climb_ticks_per_floor: 30,
+        load_ticks: 15,
+        unload_ticks: 15,
+        carry_capacity: 3,
+        // Two seconds blocked and the cross-section tints them red.
+        stress_ticks: 60,
     ),
 )

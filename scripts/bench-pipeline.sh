@@ -38,8 +38,8 @@ echo "label,run,elapsed_ms" > "$csv_path"
 run_case "cargo-test" "cargo test"
 run_case "make-check" "make check"
 run_case "make-build" "make build"
-run_case "bench-core" "cargo run --release -p supply-line-core --example engine_bench --quiet"
-run_case "bench-scenario" "cargo run --release -p supply-line-core --example encounter_scenario_bench --quiet"
+run_case "bench-core" "cargo run --release -p understory-core --example engine_bench --quiet"
+run_case "bench-scenario" "cargo run --release -p understory-core --example encounter_scenario_bench --quiet"
 
 cp "$csv_path" "$latest_path"
 

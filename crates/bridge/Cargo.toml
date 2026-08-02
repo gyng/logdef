@@ -1,5 +1,5 @@
 [package]
-name = "supply-line-bridge"
+name = "understory-bridge"
 version.workspace = true
 edition.workspace = true
 
@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 workspace = true
 
 [dependencies]
-supply-line-core = { path = "../core" }
+understory-core = { path = "../core" }
 serde.workspace = true
 serde_json.workspace = true
 wasm-bindgen.workspace = true

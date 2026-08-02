@@ -1,0 +1,19 @@
+// Strips bamboo from the terrain as the tower walks past it. Reaches
+// the ground, so it only mounts on the lowest floors.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.cutter_arm",
+    name: "Cutter Arm",
+    short: "CUT",
+    category: Intake,
+    width: 2,
+    max_floor: 1,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 4)],
+    intake: IntakeDef(
+        item: "item.bamboo",
+        // 3 seconds per stalk under ordinary canopy; a rich band is
+        // faster and a ruin-field is barren.
+        ticks_per_item: 90,
+        buffer_max: 8,
+    ),
+)

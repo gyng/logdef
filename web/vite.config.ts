@@ -11,7 +11,7 @@ import { execSync } from "child_process";
 const buildTime = new Date().toISOString();
 let buildCommit = "unknown";
 try {
-  buildCommit = execSync("git rev-parse --short HEAD", { cwd: __dirname })
+  buildCommit = execSync("git rev-parse --short HEAD", { cwd: import.meta.dirname })
     .toString()
     .trim();
 } catch {
@@ -19,7 +19,7 @@ try {
 }
 let buildDirty = false;
 try {
-  const status = execSync("git status --porcelain", { cwd: __dirname }).toString();
+  const status = execSync("git status --porcelain", { cwd: import.meta.dirname }).toString();
   buildDirty = status.trim().length > 0;
 } catch {
   // ignore
@@ -34,7 +34,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
   server: {

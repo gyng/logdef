@@ -1,0 +1,16 @@
+// Splits bamboo into poles. The first link in every chain the tower
+// will ever grow.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.mill",
+    name: "Mill",
+    short: "MIL",
+    category: Production,
+    width: 2,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 4)],
+    recipe: RecipeDef(
+        craft_ticks: 120,
+        inputs: [IoEntryDef(item: "item.bamboo", amount: 1, buffer_max: 6)],
+        outputs: [IoEntryDef(item: "item.poles", amount: 1, buffer_max: 6)],
+    ),
+)

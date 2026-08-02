@@ -1,133 +1,71 @@
-import { useCallback, useEffect, useState } from "react";
-import { initBridge, getBridge } from "./bridge";
-import type { GamePhase } from "./bridge/types";
-import { MapPage } from "./components/pages/MapPage";
-import { CombatPage } from "./components/pages/CombatPage";
-import { PostCombatPage } from "./components/pages/PostCombatPage";
-import { MerchantPage } from "./components/pages/MerchantPage";
-import { t } from "./i18n";
+/**
+ * Boot: load the wasm core, then hand off to the game stage.
+ *
+ * There is exactly one screen. v1 routed between a map page, a prep
+ * page, a combat page and a post-combat page, and that phase split is
+ * precisely what made rerouting logistics under pressure impossible.
+ * The tower, the world it walks through, and everything you can do to
+ * it live on one surface, always.
+ */
 
-type AppState = "loading" | "error" | "ready";
+import { useEffect, useState } from "react";
+
+import { initBridge, type Bridge } from "./bridge";
+import { GameStage } from "./ui/GameStage";
+
+type Boot =
+  | { status: "loading" }
+  | { status: "ready"; bridge: Bridge }
+  | { status: "failed"; error: string };
 
 export function App() {
-  const [appState, setAppState] = useState<AppState>("loading");
-  const [error, setError] = useState("");
-  const [phase, setPhase] = useState<GamePhase>("MainMenu");
+  const [boot, setBoot] = useState<Boot>({ status: "loading" });
 
   useEffect(() => {
-    initBridge(Date.now(), "archer")
-      .then(() => {
-        setPhase(getBridge().get_phase() as GamePhase);
-        setAppState("ready");
+    let cancelled = false;
+    initBridge(chooseSeed())
+      .then((bridge) => {
+        if (!cancelled) setBoot({ status: "ready", bridge });
       })
-      .catch((e: unknown) => {
-        setError(String(e));
-        setAppState("error");
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setBoot({
+            status: "failed",
+            error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+          });
+        }
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const refreshPhase = useCallback(() => {
-    if (appState === "ready") {
-      setPhase(getBridge().get_phase() as GamePhase);
-    }
-  }, [appState]);
-
-  const sendCommand = useCallback(
-    (cmd: Record<string, unknown> | string) => {
-      const bridge = getBridge();
-      const json = typeof cmd === "string" ? `"${cmd}"` : JSON.stringify(cmd);
-      const result = bridge.send_command(json);
-      refreshPhase();
-      return JSON.parse(result) as { Ok?: null; Error?: unknown };
-    },
-    [refreshPhase],
-  );
-
-  if (appState === "loading") {
+  if (boot.status === "loading") {
+    return <div className="boot">the tower is waking</div>;
+  }
+  if (boot.status === "failed") {
     return (
-      <div className="loading">
-        <p>{t("app.loading")}</p>
+      <div className="boot-fail">
+        <h1>Understory failed to start</h1>
+        <pre>{boot.error}</pre>
       </div>
     );
   }
-  if (appState === "error") {
-    return (
-      <div className="error">
-        <h1>{t("app.error.title")}</h1>
-        <pre>{error}</pre>
-      </div>
-    );
+  return <GameStage bridge={boot.bridge} />;
+}
+
+/**
+ * `?seed=` if given, otherwise the clock.
+ *
+ * Runs are seeded and shareable, so an explicit seed has to be able to
+ * come from outside — that is how a reproduction case gets handed over,
+ * and how the smoke test gets a run it can make assertions about.
+ */
+function chooseSeed(): number {
+  const provided = new URLSearchParams(window.location.search).get("seed");
+  if (provided !== null) {
+    const parsed = Number.parseInt(provided, 10);
+    if (Number.isFinite(parsed)) return parsed;
   }
-
-  return (
-    <div id="supply-line">
-      {(phase === "MapView" || phase === "Travel") && (
-        <MapPage sendCommand={sendCommand} refreshPhase={refreshPhase} initialPhase={phase} />
-      )}
-      {phase === "Encounter" && (
-        <CombatPage sendCommand={sendCommand} refreshPhase={refreshPhase} />
-      )}
-      {phase === "PostCombat" && <PostCombatPage sendCommand={sendCommand} />}
-      {phase === "Merchant" && (
-        <MerchantPage sendCommand={sendCommand} refreshPhase={refreshPhase} />
-      )}
-      {phase === "GameOver" && <GameOverPage />}
-      {phase === "Victory" && <VictoryPage />}
-      {(phase === "MapView" || phase === "Travel" || phase === "Merchant") && (
-        <SaveLoadMenu refreshPhase={refreshPhase} />
-      )}
-    </div>
-  );
-}
-
-function SaveLoadMenu({ refreshPhase }: { refreshPhase: () => void }) {
-  const handleSave = () => {
-    const data = getBridge().save();
-    localStorage.setItem("supply-line.save", data);
-  };
-
-  const handleLoad = () => {
-    const data = localStorage.getItem("supply-line.save");
-    if (!data) return;
-    try {
-      getBridge().load(data);
-      refreshPhase();
-    } catch (e) {
-      console.error("Load failed:", e);
-    }
-  };
-
-  const hasSave =
-    typeof window !== "undefined" && localStorage.getItem("supply-line.save") !== null;
-
-  return (
-    <div className="save-load-menu">
-      <button onClick={handleSave} title={t("save.save")}>
-        {t("save.save")}
-      </button>
-      <button onClick={handleLoad} disabled={!hasSave} title={t("save.load")}>
-        {t("save.load")}
-      </button>
-    </div>
-  );
-}
-
-function GameOverPage() {
-  return (
-    <div className="end-screen">
-      <h1>{t("end.game_over.title")}</h1>
-      <p>{t("end.game_over.body")}</p>
-      <button onClick={() => window.location.reload()}>{t("end.new_game")}</button>
-    </div>
-  );
-}
-
-function VictoryPage() {
-  return (
-    <div className="end-screen">
-      <h1>{t("end.victory.title")}</h1>
-      <p>{t("end.victory.body")}</p>
-      <button onClick={() => window.location.reload()}>{t("end.play_again")}</button>
-    </div>
-  );
+  return Date.now() % Number.MAX_SAFE_INTEGER;
 }

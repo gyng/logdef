@@ -1,0 +1,11 @@
+// Deep shade. Biomass-rich and sun-poor — the opposition that makes a
+// route a power mix once charge arrives in M1.
+#![enable(implicit_some)]
+TerrainDef(
+    id: "terrain.canopy",
+    name: "Dense Canopy",
+    yield_pct: 140,
+    weight: 40,
+    features_per_100_paces: 22,
+    feature_kinds: ["tree", "tree", "fern", "vine"],
+)

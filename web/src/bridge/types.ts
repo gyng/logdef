@@ -1,321 +1,203 @@
-/** Mirrors Rust GamePhase enum. */
-export type GamePhase =
-  | "MainMenu"
-  | "ClassSelect"
-  | "MapView"
-  | "Travel"
-  | "Encounter"
-  | "PostCombat"
-  | "Merchant"
-  | "GameOver"
-  | "Victory";
+/**
+ * TypeScript mirrors of the Rust snapshot types.
+ *
+ * These are a contract, not a convenience: every type here corresponds
+ * to a struct in `crates/core/src/snapshot.rs`, and the two change in
+ * the same commit or the renderer draws garbage. Field names match the
+ * Rust field names exactly — serde emits them verbatim.
+ */
 
-export type HeroClass = "archer" | "engineer" | "commander";
+export type SimSpeed = "Paused" | "X1" | "X2" | "X4";
 
-export type WeaponSlot = "Primary" | "Secondary";
+export type RoomCategory = "Intake" | "Production" | "Storage" | "Heart";
 
-export interface HudSnapshot {
-  ammo_primary: number;
-  ammo_secondary: number;
-  personal_ammo: number;
-  weapon_ability_cooldown: number;
-  hero_skill_cooldown: number;
-  active_weapon: WeaponSlot;
-  current_wave: number;
-  total_waves: number;
-  gold: number;
-  companion_statuses: CompanionHudStatus[];
-  hero_hp_fraction: number;
-  tower_hp_fraction: number;
-  enemies_remaining: number;
+export type CrewStateTag = "idle" | "walk" | "board" | "climb" | "load" | "unload";
+
+// ---------------------------------------------------------------------------
+// Per-frame view
+// ---------------------------------------------------------------------------
+
+export interface ViewSnapshot {
+  tick: number;
+  speed: SimSpeed;
+  /** Fraction of a tick elapsed. For render interpolation. */
+  alpha: number;
+  world: WorldView;
+  tower: TowerView;
+  crew: CrewView[];
+  stock: StockView[];
+  stats: RunStats;
 }
 
-export interface CompanionHudStatus {
-  name: string;
-  ammo: number;
-  injured: boolean;
-  displaced: boolean;
+export interface WorldView {
+  /** Whole paces walked, with fraction. */
+  distance: number;
+  /** Terrain index under the tower, or null between bands. */
+  band: number | null;
+  yield_pct: number;
+  bands: BandView[];
+  features: FeatureView[];
 }
 
-export interface TowerSnapshot {
-  floors: FloorSnapshot[];
-  warehouse: WarehouseSnapshot;
-  runners: RunnerSnapshot[];
-  balconies: BalconySnapshot[];
-  runner_quarters: RunnerQuartersSnapshot[];
-  companions: CompanionSnapshot[];
-  transports: TransportInstanceSnapshot[];
-  width: string;
+export interface BandView {
+  start: number;
+  end: number;
+  kind: number;
 }
 
-export interface TransportInstanceSnapshot {
-  id: number;
-  kind: "Stairs" | "Ladder" | "Dumbwaiter" | "Chute";
-  low_floor: number;
-  high_floor: number;
-  speed_mul: number;
-  capacity: number;
-  occupancy: number;
-  direction: "Both" | "DownOnly" | "UpOnly";
-  slot: number;
+export interface FeatureView {
+  at: number;
+  /** Terrain kind of the band this stands in. Indexes `catalog.terrain`. */
+  band: number;
+  /** Indexes that terrain's `feature_kinds`. */
+  kind: number;
+  scale: number;
+  /** Parallax depth: 0 far, 1 mid, 2 near. */
+  layer: number;
 }
 
-export interface CompanionSnapshot {
-  id: number;
-  name: string;
-  position: number | null;
-  passive: string;
-  accuracy: number;
-  combat_xp: number;
-  weapon: { sub_type: string; damage: number; fire_rate: number; base_type: string };
-  trinket: { id: string; name: string } | null;
-  target_order: string;
-  fire_discipline: string;
-  wage: number;
-  injured: boolean;
-  injury_remaining: number;
+export interface TowerView {
+  floors: FloorView[];
+  shafts: ShaftView[];
 }
 
-export interface FloorSnapshot {
+export interface FloorView {
   index: number;
-  building: BuildingSnapshot | null;
-  cache: DepotCacheSnapshot | null;
-  panel_hp_fraction: number;
-  material: string;
   slots: number;
+  rooms: RoomView[];
 }
 
-export interface BuildingSnapshot {
-  building_type: string;
-  tier: string;
-  output_buffer: ResourceBuffer;
-  input_buffers: ResourceBuffer[];
-  production_rate: number;
-  operating_cost: number;
-  is_active: boolean;
-  production_progress: number;
-  slot: number;
-  width_slots: number;
-}
-
-export interface DepotCacheSnapshot {
-  slots: ResourceBuffer[];
-  slot: number;
-}
-
-export interface WarehouseSnapshot {
-  slots: ResourceBuffer[];
-  capacity_per_slot: number;
-}
-
-export interface BalconySnapshot {
+export interface RoomView {
   id: number;
-  floor: number;
-  rack: AmmoRackSnapshot;
-  cover_level: string;
-  occupant: number | null;
+  /** Indexes `catalog.rooms`. */
+  def: number;
+  slot: number;
+  width: number;
+  progress: number;
+  inputs: StackView[];
+  outputs: StackView[];
+  shelves: ShelfView[];
+  /** Starved or backed up. Drawn quiet rather than flagged. */
+  stalled: boolean;
 }
 
-export interface AmmoRackSnapshot {
-  resource: string;
-  current: number;
+export interface StackView {
+  item: number;
+  count: number;
   max: number;
-  destroyed: boolean;
 }
 
-export interface RunnerQuartersSnapshot {
-  floor: number;
+export interface ShelfView {
+  item: number | null;
+  count: number;
+  max: number;
+}
+
+export interface ShaftView {
+  id: number;
+  kind: string;
+  low: number;
+  high: number;
+  slot: number;
   capacity: number;
-  salary_per_runner: number;
+  riders: number;
 }
 
-/** Mirrors the Rust Runner struct (state.rs). */
-export interface RunnerSnapshot {
+export interface CrewView {
   id: number;
-  quarters_id: number;
-  current_floor: number;
-  state: RunnerState;
-  carried: { resource: string } | null;
-  speed: number;
-  carry_capacity: number;
-  task: RunnerTask | null;
-  current_slot: number;
+  name: string;
+  /** Fractional floor coordinate. */
+  floor: number;
+  /** Fractional slot coordinate. */
+  slot: number;
+  state: CrewStateTag;
+  carrying: StockView | null;
+  wait_ticks: number;
+  stressed: boolean;
+  /** Cosmetic-stream draw: animation phase offset. */
+  fidget: number;
 }
 
-export type RunnerState =
-  | { Idle: { at_floor: number } }
-  | {
-      Moving: {
-        from: number;
-        to: number;
-        progress: number;
-        via: number;
-        from_slot: number;
-        to_slot: number;
-      };
-    }
-  | { Loading: { at_floor: number; timer: number } }
-  | { Unloading: { at_floor: number; timer: number } }
-  | { Queued: { at_transport: number; position_in_queue: number } };
-
-export interface RunnerTask {
-  pickup_floor: number;
-  dropoff_floor: number;
-  resource: string;
-  destination:
-    | { Inbox: { floor: number } }
-    | { Rack: { balcony: number } }
-    | { Cache: { floor: number } }
-    | "Warehouse";
-  pickup_slot: number;
-  dropoff_slot: number;
+export interface StockView {
+  item: number;
+  count: number;
 }
 
-export interface ResourceBuffer {
-  resource: string;
-  current: number;
-  max: number;
+export interface RunStats {
+  hauls_completed: number;
+  crafts_completed: number;
+  items_harvested: number;
 }
 
-export interface JourneySnapshot {
-  current_chapter: number;
-  chapters: ChapterMap[];
-  current_node: number;
-  visited_nodes: number[];
+// ---------------------------------------------------------------------------
+// Static catalog
+// ---------------------------------------------------------------------------
+
+export interface CatalogSnapshot {
+  content_hash: string;
+  items: ItemInfo[];
+  rooms: RoomInfo[];
+  terrain: TerrainInfo[];
+  floor_cost: CostInfo[];
+  max_floors: number;
+  floor_slots: number;
+  stress_ticks: number;
 }
 
-export interface ChapterMap {
-  nodes: MapNode[];
-  edges: MapEdge[];
-  boss_node: number;
+export interface ItemInfo {
+  id: string;
+  name: string;
+  glyph: string;
+  order: number;
 }
 
-export interface MapNode {
-  id: number;
-  node_type: string;
-  column: number;
-  difficulty: number | null;
-  visited: boolean;
+export interface RoomInfo {
+  id: string;
+  name: string;
+  short: string;
+  category: RoomCategory;
+  width: number;
+  build_cost: CostInfo[];
+  max_floor: number | null;
+  unique: boolean;
+  craft_ticks: number;
+  inputs: CostInfo[];
+  outputs: CostInfo[];
+  intake_item: number | null;
+  shelves: number;
 }
 
-export interface MapEdge {
-  from: number;
-  to: number;
+export interface CostInfo {
+  item: number;
+  amount: number;
 }
 
-export interface EncounterSnapshot {
-  enemies: EnemySnapshot[];
-  projectiles: ProjectileSnapshot[];
-  current_wave: number;
-  total_waves: number;
-  enemies_remaining: number;
+export interface TerrainInfo {
+  id: string;
+  name: string;
+  yield_pct: number;
+  feature_kinds: string[];
 }
 
-export interface EnemySnapshot {
-  id: number;
-  archetype: string;
-  x: number;
-  hp_fraction: number;
-}
+// ---------------------------------------------------------------------------
+// Commands and results
+// ---------------------------------------------------------------------------
 
-export interface ProjectileSnapshot {
-  id: number;
-  x: number;
-  y: number;
-}
+export type GameCommand =
+  | { SetSpeed: { speed: SimSpeed } }
+  | "BuildFloor"
+  | { PlaceRoom: { room: string; floor: number; slot: number } }
+  | { RemoveRoom: { floor: number; slot: number } };
 
-export interface SoundEvent {
-  type: string;
-  [key: string]: unknown;
-}
+/** Rust's `CommandResult`: `"Ok"` or `{ Error: … }`. */
+export type CommandResult = "Ok" | { Error: unknown };
 
-export interface ValidationWarning {
-  severity: "Info" | "Warning" | "Critical";
+export interface ReplayReport {
+  ok: boolean;
+  checked: number;
+  final_tick: number;
+  divergence: { tick: number; expected: string; actual: string } | null;
   message: string;
 }
 
-export interface HeroStats {
-  precision: number;
-  draw_power: number;
-  tempo: number;
-  grit: number;
-  salvage: number;
-  unspent_points: number;
-}
-
-export interface HeroSnapshot {
-  class: string;
-  level: number;
-  xp: number;
-  stats: HeroStats;
-  perks: unknown[];
-  weapon_primary: { sub_type: string; damage: number; fire_rate: number };
-  weapon_secondary: { sub_type: string; damage: number; fire_rate: number };
-  trinket: { id: string; name: string } | null;
-  position: number;
-}
-
-export interface MerchantItem {
-  index: number;
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-}
-
-export interface MerchantSnapshot {
-  items: MerchantItem[];
-  gold: number;
-}
-
-export interface PerfMetricSnapshot {
-  calls: number;
-  last_ms: number;
-  avg_ms: number;
-  max_ms: number;
-}
-
-export interface SimPerfSnapshot {
-  ticks_last_frame: number;
-  frame_sim: PerfMetricSnapshot;
-  tick_total: PerfMetricSnapshot;
-  systems: {
-    production: PerfMetricSnapshot;
-    transport: PerfMetricSnapshot;
-    companion_ai: PerfMetricSnapshot;
-    projectiles: PerfMetricSnapshot;
-    combat: PerfMetricSnapshot;
-    economy: PerfMetricSnapshot;
-  };
-}
-
-export interface BridgePerfSnapshot {
-  send_command: PerfMetricSnapshot;
-  tick: PerfMetricSnapshot;
-  interpolation_alpha: PerfMetricSnapshot;
-  get_phase: PerfMetricSnapshot;
-  get_hud_state: PerfMetricSnapshot;
-  get_tower_state: PerfMetricSnapshot;
-  get_journey_state: PerfMetricSnapshot;
-  get_economy_state: PerfMetricSnapshot;
-  get_gold: PerfMetricSnapshot;
-  get_hero_state: PerfMetricSnapshot;
-  get_merchant_state: PerfMetricSnapshot;
-  get_encounter_state: PerfMetricSnapshot;
-  get_validation_warnings: PerfMetricSnapshot;
-  get_perf_state: PerfMetricSnapshot;
-  save: PerfMetricSnapshot;
-  load: PerfMetricSnapshot;
-}
-
-export interface EconomySnapshot {
-  gold: number;
-  materials: ResourceBuffer[];
-  ticks_remaining: number;
-}
-
-export interface DrillSnapshot {
-  seconds_remaining: number;
-  seconds_total: number;
-  deliveries_during_drill: number;
-}
+export type SoundEvent = "Harvest" | "Craft" | "Pickup" | "Deliver" | "BandChange";

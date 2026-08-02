@@ -1,0 +1,9 @@
+// The contested material. Poles build floors, patch damage, and later
+// become darts — burn them or build with them.
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.poles",
+    name: "Poles",
+    glyph: "🎋",
+    order: 20,
+)

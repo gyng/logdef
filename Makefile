@@ -1,4 +1,4 @@
-.PHONY: check lint fmt fmt-check test e2e build build-fast build-checked wasm wasm-dev dev dev-stop clean bench-core bench-scenario bench-pipeline timings-build timings-test timings-all
+.PHONY: check lint fmt fmt-check test e2e build build-fast build-checked wasm wasm-dev dev dev-stop clean bench-core bench-scenario bench-pipeline timings-build timings-test timings-all golden mutants
 
 # Run all checks (format + lint + test)
 check: fmt-check lint test
@@ -49,7 +49,7 @@ wasm-dev:
 
 # Build everything for local iteration (fast path; typecheck lives in make check)
 build: wasm
-	cargo build --workspace --exclude supply-line-bridge
+	cargo build --workspace --exclude understory-bridge
 	cd web && npm run build
 
 # Fastest local iteration path: dev wasm + native build + vite build
@@ -58,7 +58,7 @@ build-fast: wasm-dev
 
 # Build everything with an explicit frontend typecheck step
 build-checked: wasm
-	cargo build --workspace --exclude supply-line-bridge
+	cargo build --workspace --exclude understory-bridge
 	cd web && npm run build:checked
 
 # Dev: build WASM then start Vite dev server
@@ -87,11 +87,11 @@ dev-stop:
 
 # Rust microbenchmarks
 bench-core:
-	cargo run --release -p supply-line-core --example engine_bench
+	cargo run --release -p understory-core --example engine_bench
 
 # Representative combat scenario benchmark
 bench-scenario:
-	cargo run --release -p supply-line-core --example encounter_scenario_bench
+	cargo run --release -p understory-core --example encounter_scenario_bench
 
 # Pipeline timing harness (set REPEATS=3 to average)
 bench-pipeline:
@@ -105,6 +105,20 @@ timings-test:
 	./scripts/cargo-timings.sh test
 
 timings-all: timings-build timings-test
+
+# Regenerate the golden determinism fixture. Run this whenever a
+# deliberate sim change alters expected output; commit the
+# regenerated fixture in the same PR as the change that caused it,
+# so a diff always explains itself.
+golden:
+	cargo run -p understory-core --example record_golden
+	@echo "Golden fixture regenerated — review the diff and rebuild before committing."
+
+# Mutation testing for the core crate. Slow (recompiles + reruns
+# tests per mutant) — not part of `make check`, run it deliberately.
+# Requires `cargo install cargo-mutants` (not a workspace dependency).
+mutants:
+	cargo mutants -p understory-core
 
 # Clean build artifacts
 clean:

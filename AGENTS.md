@@ -1,6 +1,8 @@
-# Agent Guidelines — Supply Line
+# Agent Guidelines — Understory
 
-This document guides AI agents (and human engineers) working on Supply Line. It covers project conventions, software practices, and pillar-specific best practices for game development.
+This document guides AI agents (and human engineers) working on Understory. It covers
+project conventions, software practices, and pillar-specific guidance for the systems that
+exist now or are coming soon.
 
 ---
 
@@ -8,426 +10,388 @@ This document guides AI agents (and human engineers) working on Supply Line. It 
 
 ### What this is
 
-Supply Line is a single-player roguelike where you build a supply chain inside a walking tower and personally defend its exterior in real-time combat. Rust/WASM core + React/TypeScript UI. Browser-first (itch.io), desktop via Tauri.
+Understory is a single-player roguelike: SimTower's cross-section, Factorio's chains, and
+tower defence's waves, fused into one walking garden-tower in a solarpunk jungle. You build
+the supply chain that feeds and lights the tower, defend it in real time while the chain
+keeps running, and keep walking — there is no separate build phase and no separate combat
+phase. Rust/WASM deterministic core + React/TypeScript UI. Desktop browser first (itch.io).
+
+v1 ("Supply Line," an ARPG with a hero, weapons, and a prep/combat phase split) is archived
+on `main`. This is `v2`, on the `v2` branch. Don't carry v1 vocabulary — hero, weapons,
+companions, encounters, prep/combat phases, chapters, ticks-as-currency — into new code or
+docs; it describes a different game.
 
 ### Doc hierarchy
 
-Before implementing anything:
+Before implementing anything, in override order:
 
-1. **`docs/foundation/implementation-decisions.md`** — overrides everything else
-2. **`docs/foundation/v1-scope.md`** — if a feature isn't tagged `v1`, don't build it
-3. **`docs/foundation/registries.md`** — canonical names, stats, unlock order
-4. **`docs/foundation/balance-config.md`** — concrete numbers for all systems
-5. Detail docs (game-design, controls, equipment, etc.) — full specs, but the above 4 win on conflict
+1. **`docs/DECISIONS.md`** — cross-cutting engineering rules; overrides everything else
+2. **`docs/SYSTEMS.md`** — what's actually built, grown one milestone at a time; if it isn't
+   in here (or isn't in the current milestone's section), don't assume it exists
+3. **`docs/v2-plan.md`** — the locked whole-game plan; sprint briefs, milestone scope,
+   what's coming and when
+4. **`docs/DESIGN.md`** — the distilled design argument; useful for *why*, not a spec
+
+`docs/BALANCE.md` holds every tuning constant with a provenance grade
+(`DESIGNED`/`PLAYTESTED`) — check there before hardcoding a number a designer might want to
+tune, and add a graded row for any new constant (`DECISIONS.md` §7 explains why a test
+enforces this).
 
 ### Architecture in one paragraph
 
-Rust owns all game state and simulation (30hz fixed tick). React owns UI, input collection, and frame orchestration (rAF). They communicate through wasm-bindgen. The full RenderSnapshot never crosses the WASM bridge — React only sees compact typed accessors (`get_hud_state()`, `get_tower_state()`, etc.). Audio is Web Audio API, owned by JS. All mutations flow through `GameCommand` variants. GameState is the single source of truth.
+Rust owns all game state and simulation, at a fixed 30 Hz tick. React owns UI chrome and
+input collection; a custom WebGL2 renderer (not React) owns the per-frame tower
+cross-section and terrain (`DECISIONS.md` §10). They talk to Rust through wasm-bindgen. The
+full simulation state never crosses the bridge — one `view()` call per frame returns a
+compact `ViewSnapshot`, and one `catalog()` call at startup returns content definitions.
+Every mutation is a `GameCommand`, validated before it applies. `GameState` is the single
+source of truth, contains no floating point, and hashes identically on native and wasm for
+the same seed and command stream — see `DECISIONS.md` §1–§5 for the determinism machinery
+this all rests on.
 
-### What v1 ships
+### What's built, and what isn't
 
-3 hero classes, 11 weapon sub-types (5 base types), 16 modifiers, 10 trinkets, 10 companions (8 exterior + 2 interior), 3-chapter journey to The Harbor, full tower building with Tier 1-2 production, seeded procedural generation. No between-run persistence, no relationship system, no pacing adaptation. See `v1-scope.md` for the complete list.
+As of this writing, M0 ("The Stride") is the current milestone: the deterministic chassis,
+a tower striding over streaming terrain, stairs-only vertical transport, and one crew
+member hauling bamboo to a mill. No charge/energy, no elevators or dumbwaiters, no enemies,
+no crew needs, no regions. `docs/SYSTEMS.md` is the exact, current boundary of what exists
+— read its non-goals section for a milestone before assuming a system is live.
 
 ### Project structure
 
 ```
-Cargo.toml                  # Rust workspace root
+Cargo.toml                  # workspace root: crates/core, crates/bridge
 crates/
-  core/                     # supply-line-core: GameState, GameCommand, systems, RNG
+  core/                     # understory-core: GameState, systems, RNG, content, replay
     src/
-      lib.rs                # pub mod declarations
-      state.rs              # GameState + all data model structs
-      command.rs            # GameCommand enum + CommandResult/CommandError
-      engine.rs             # GameEngine: command processing, tick, typed accessors
-      engine_tests.rs       # command roundtrip, snapshot shape, determinism tests
-      rng.rs                # DeterministicRng (xorshift64, seeded)
-      snapshot.rs           # HudSnapshot, TowerSnapshot, SoundEvent, etc.
-      types.rs              # Scalar alias, Vec2, strongly-typed IDs, FIXED_DT
-      systems.rs            # tick() orchestrator
-      systems/              # one file per system (production, transport, companion_ai,
-                            #   projectiles, combat, economy)
-  bridge/                   # supply-line-bridge: wasm-bindgen entry points (cdylib)
-  renderer/                 # supply-line-renderer: wgpu game canvas
-web/                        # React/TypeScript frontend (Vite)
+      lib.rs                # module map + the four rules that don't bend
+      fx.rs                 # Q8.8 fixed point (Fx) — see DECISIONS.md §1
+      rng.rs                # named RNG streams + the cosmetic firewall — §2
+      ids.rs                # interned content indices + runtime instance IDs
+      content.rs            # RON content pack: load, intern, hash, validate
+      state.rs              # GameState root
+      state/
+        world.rs            # World, TerrainBand, Feature — the streaming terrain
+        tower.rs            # Tower, Floor, Room, Shaft, Stack, Shelf
+        crew.rs             # Crew, CrewState, HaulTask — the porter state machine
+      command.rs             # GameCommand, CommandResult, CommandError
+      engine.rs               # GameEngine: frame/step/send/view, thin by design
+      engine/
+        commands.rs           # command validation + application — §4
+      systems.rs               # tick() — the fixed system order
+      systems/
+        stride.rs              # tower movement, terrain streaming
+        intake.rs               # harvesting the terrain underfoot
+        production.rs           # crafting rooms
+        haul.rs                  # crew state machine + task assignment/scoring
+      snapshot.rs                # presentation boundary — the only place Fx::to_f32 runs
+      replay.rs                  # Replay, Recorder, hash_state, embedded golden fixture
+      tests.rs, tests/            # tests grouped by topic (determinism, haul, replay, ...)
+    examples/
+      record_golden.rs            # regenerate assets/replays/m0-golden.json
+  bridge/                         # understory-bridge: wasm-bindgen entry points (cdylib)
+    src/lib.rs
+assets/
+  data/                           # RON content pack: balance.ron, items/, rooms/, terrain/
+  replays/m0-golden.json          # the embedded native/wasm parity fixture
+web/                              # React/TypeScript frontend (Vite)
   src/
-    main.tsx                # entry point
-    App.tsx                 # root component, phase routing
-    styles/
-      tokens.css            # CSS custom properties (design-system.md tokens)
-      global.css            # reset, base styles, layout
-    bridge/                 # TS types + bridge interface to WASM
-    hooks/                  # useGameCommand, etc.
-    audio/                  # AudioManager (Web Audio API)
-    context/                # React context providers (UI state only)
-    components/
-      atoms/                # Button, Text, Icon, Badge, ProgressBar
-      molecules/            # ResourceCount, WeaponCard, CompanionPortrait
-      organisms/            # CombatHUD, TowerEditor, ChapterMap
-      pages/                # Prep, Combat, Map, Menu
-docs/foundation/            # design docs (see doc hierarchy above)
+  e2e/smoke.spec.ts               # Playwright smoke test
+docs/
+  v2-plan.md, DESIGN.md, SYSTEMS.md, DECISIONS.md, BALANCE.md
 ```
 
-### Dev commands
+There is no renderer crate — the earlier wgpu stub was deleted. The renderer is a frontend
+concern; see §VI.
+
+---
+
+## II. Dev Commands
 
 ```bash
 # Unified (Makefile)
 make check                  # fmt-check + lint + test — run before every PR
 make fmt                    # auto-format Rust + TypeScript
-make lint                   # clippy + frontend typecheck + eslint
+make lint                   # clippy + frontend typecheck + lint
 make test                   # cargo test
-make build                  # fast local build: wasm-pack + native cargo build + vite build
-make build-fast             # fastest local build path: dev wasm + vite only
-make build-checked          # build + explicit frontend typecheck
-make wasm                   # build WASM bridge only (wasm-pack)
-make wasm-dev               # quick dev WASM build (no wasm-opt)
-make dev                    # build WASM + start Vite dev server
-make dev-stop               # kill any stale vite holding port 3000
-make e2e                    # stop stale vite, rebuild wasm, run smoke
-make bench-core             # lightweight engine microbenchmarks
-make bench-scenario         # representative combat scenario benchmark
-make bench-pipeline         # wall-clock timings for test/check/build + core bench
-make timings-build          # cargo build --timings HTML report
-make timings-test           # cargo test --timings HTML report
+make build                  # wasm-pack + native cargo build + vite build
+make wasm                   # build the WASM bridge only (wasm-pack, optimized)
+make dev                    # build WASM (dev, fast) + start Vite dev server
+make dev-stop                # kill any stale vite holding port 3000
+make e2e                     # stop stale vite, rebuild wasm, run the Playwright smoke test
 
 # Rust
-cargo fmt --all             # format
-cargo fmt --all --check     # verify format
-cargo clippy --all-targets -- -D warnings  # lint (warnings = errors)
-cargo test                  # test
+cargo fmt --all              # format
+cargo fmt --all --check      # verify formatting
+cargo clippy --all-targets -- -D warnings   # lint; warnings are errors
+cargo test                    # test the workspace
 
-# Frontend (from web/)
-npm run check               # typecheck + lint + format:check
-npm run check:code          # typecheck + lint
-npm run lint                # eslint
-npm run format              # prettier write
-npm run typecheck           # tsc --noEmit
-npm run lint:css            # stylelint
-npm run test:e2e -- --grep smoke  # smoke test after changes that touch web, WASM, or bridge flow
+# Regenerate the golden replay fixture (crates/core/examples/record_golden.rs)
+cargo run -p understory-core --example record_golden
+
+# Mutation testing on the core crate (occasional, not part of make check — slow)
+cargo mutants
+
+# Frontend (from web/) — ts7 (tsgo) / oxfmt / oxlint, not tsc/prettier/eslint
+npm run typecheck             # tsgo — type-checks without emitting
+npm run lint                  # oxlint
+npm run format                # oxfmt — write
 ```
 
-### Tooling
-
-- **Rust:** rustfmt (config: `rustfmt.toml`), clippy (workspace lints in `Cargo.toml`). `HashMap`/`HashSet` are denied via `disallowed_types` — use `Vec` or `BTreeMap` for determinism (see `implementation-decisions.md` §19).
-- **TypeScript:** ESLint 9 + typescript-eslint + react-hooks plugin (`web/eslint.config.js`)
-- **Formatting:** Prettier (`web/.prettierrc`)
-- **CSS:** Stylelint (`web/.stylelintrc.json`)
-- **Design tokens:** CSS custom properties in `web/src/styles/tokens.css`, sourced from `docs/foundation/design-system.md`
-- **WASM build:** `wasm-pack build crates/bridge --target web --out-dir ../../web/pkg` (or `make wasm`)
+See `DECISIONS.md` §10 for why the frontend toolchain is ts7/oxfmt/oxlint rather than the
+tsc/prettier/eslint stack v1 used, and why the renderer is custom WebGL2 rather than SVG.
 
 ---
 
-## II. Software Engineering Best Practices
+## III. Determinism Discipline
+
+This is covered in full, with the reasoning and the tests that enforce it, in
+`DECISIONS.md` §1–§6. In practice, day to day:
+
+- **Never add an `f32`/`f64` to `GameState`, a system, or a `GameCommand`.** Use `Fx`
+  (`crates/core/src/fx.rs`) for anything sub-integer. If you need a fractional constant in
+  code, write `Fx::ratio(1, 3)`, never a float literal.
+- **Never call `Fx::to_f32` outside `snapshot.rs`.** If a system needs to compare or scale
+  a fixed-point value, do it in `Fx` arithmetic; conversion to float is a presentation-only
+  operation.
+- **Never introduce a `HashMap`/`HashSet`.** Clippy denies it (`disallowed_types` in the
+  workspace lints) — use a `Vec` (sorted, if you need lookup) instead. If clippy is
+  complaining about this, don't suppress it; restructure the data.
+- **Don't reorder `systems::tick`** (stride → intake → production → haul) without
+  understanding that it invalidates every golden replay. If a change requires reordering,
+  that's a determinism-affecting change and needs a regenerated fixture plus a deliberate
+  note about why, not a quiet fix.
+- **A flaky test under `crates/core/src/tests/determinism.rs` is a P0**, not a retry. It
+  means the same seed and commands produced two different outcomes, which is the property
+  replays, saves, and seed sharing all depend on.
+- **Validate fully before mutating in every command handler.** See `DECISIONS.md` §4. If
+  you're not sure whether your handler can partially apply before failing, write the test
+  from `a_rejected_command_changes_nothing` against it before you trust it.
+
+---
+
+## IV. Software Engineering Best Practices
 
 ### Test-driven development
 
-- **Write the test first.** For game systems especially — the command pattern makes this natural. Feed commands to GameState, assert outcomes.
-- **Test at the system boundary.** Don't test internal helper functions in isolation unless they contain complex logic. Test the public interface: command in, state out.
-- **Property-based testing for procedural generation.** Map gen, loot gen, encounter composition — these should satisfy invariants (no orphan nodes, threat budget respected, anti-frustration rules hold) across thousands of seeds.
-- **Determinism is testable.** Same seed + same commands = same result. If a test is flaky, determinism is broken — treat as a P0 bug.
-- **Snapshot tests for bridge outputs.** The typed accessors (`get_hud_state()`, etc.) return compact structs. Snapshot-test their shape to catch unintentional bridge changes.
-- **Always run a smoke test before wrapping up.** If a change touches React, WASM, the bridge, or phase flow, run the smoke path as part of verification, not just unit tests. Browser-only failures count as regressions even when `cargo test` passes.
-- **Run the smoke test with `make e2e`, in the foreground.** `make e2e` stops any stale vite, rebuilds WASM, and lets playwright own the dev server for the duration of the run. Do NOT run `npx playwright test` in a background shell wrapper — if the wrapper dies (timeout, ctrl-c, tool abandonment), the vite child it spawned survives as a zombie on port 3000, which then poisons the next run. The smoke test runs in ~2s with `__forceWin`, so there's no reason to background it. If you ever need to stop a rogue dev server, run `make dev-stop`.
+- **Write the test first**, especially for simulation systems — the command pattern makes
+  this natural: feed a `GameCommand` to a `GameEngine`, assert the resulting state or the
+  rejection.
+- **Test at the system boundary.** Command in, state (or `ViewSnapshot`) out. Don't unit
+  test a private helper unless it holds genuinely complex logic in isolation (scoring,
+  fixed-point math, interning).
+- **Property-based testing for procedural generation.** Terrain band generation, and later
+  region and encounter generation, should satisfy invariants (bands never repeat their
+  predecessor's kind, the streaming window stays populated, no orphaned state) across many
+  seeds, not just a handful of examples.
+- **Determinism is testable — see §III.** Treat it as a first-class test category, not an
+  afterthought bolted onto functional tests.
+- **Snapshot tests for bridge output shape.** `snapshot.rs`'s `ViewSnapshot`/`CatalogSnapshot`
+  are the bridge's public contract; a shape change there is a frontend-breaking change and
+  should be deliberate.
+- **Always run a smoke test before wrapping up.** If a change touches React, WASM, the
+  bridge, or the frame loop, run the smoke path as part of verification, not just
+  `cargo test`. A browser-only failure is a regression even when every Rust test passes.
+- **Run the smoke test with `make e2e`, in the foreground.** `make e2e` stops any stale
+  vite, rebuilds WASM, and lets Playwright own the dev server for the run. Do not run
+  `npx playwright test` inside a background shell wrapper — if the wrapper dies (timeout,
+  ctrl-c, tool abandonment), the vite child it spawned survives as a zombie on port 3000
+  and poisons the next run. If you ever need to clear a rogue dev server, run `make dev-stop`.
 
 ### Code organization
 
-- **Separation of concerns is structural, not aspirational.** The simulation crate knows nothing about rendering. The renderer knows nothing about React. React knows nothing about game logic. If you find yourself importing across these boundaries, stop — you're violating the architecture.
-- **Command pattern is non-negotiable.** No system, callback, or input handler mutates GameState directly. All changes go through `GameCommand` variants that are validated before application. This is what makes the game testable, replayable, and debuggable.
-- **Prefer data over code.** Enemy stats, production rates, weapon parameters — these live in the balance config, not in code. If you're hardcoding a number that a designer might want to tweak, put it in the config.
-- **Ordered iteration everywhere.** `Vec`, not `HashMap`. If you need key lookup, use a sorted `Vec` or `BTreeMap`. HashMap iteration order breaks determinism.
-- **No floating-point surprises.** Use identical operations in identical order. No `HashMap` iteration feeding into f32 accumulation. If determinism breaks, suspect floating point first.
+- **Separation of concerns is structural, not aspirational.** The simulation crate
+  (`understory-core`) knows nothing about rendering or React. The frontend renderer knows
+  nothing about game logic. If you're importing across that boundary, stop — you're
+  violating the architecture, not extending it.
+- **Command pattern is non-negotiable.** No system, input handler, or snapshot builder
+  mutates `GameState` directly. Every change is a validated `GameCommand`. This is what
+  makes the game replayable and debuggable — see `DECISIONS.md` §4.
+- **Prefer data over code.** Room recipes, terrain yields, crew rates — these live in
+  `assets/data/*.ron` and are graded in `BALANCE.md`, not hardcoded. If you're writing a
+  tuning number a designer might want to change, it belongs in data.
+- **Ordered iteration everywhere.** `Vec`, sorted where lookup matters. See §III.
+- **No floating-point surprises.** Identical operations in identical order, always through
+  `Fx`. If determinism breaks, suspect floating point (or a `HashMap`) first.
 
 ### Error handling
 
-- **Validate at the command boundary.** `GameCommand` processing validates legality (enough ticks? valid floor? correct phase?). Reject bad commands with errors. Don't silently ignore them.
-- **Panic on impossible states.** If the simulation reaches a state that should be structurally impossible (negative HP, missing floor, orphaned runner), panic with a descriptive message. These are bugs, not edge cases.
-- **Degrade gracefully in presentation.** If the renderer gets unexpected data, render a fallback — don't crash. If audio gets an unknown SoundEvent, skip it. The simulation is authoritative; presentation layers are resilient.
-- **Bridge issues have a dedicated guide.** For serialization mismatches, snapshot drift, tick/accumulator problems, or WASM loading failures, follow the decision tree in `docs/foundation/debugging-bridge.md`.
+- **Validate at the command boundary.** `engine::commands::apply` validates legality —
+  enough stock? valid floor and slot range? not already occupied? — and rejects illegal
+  commands with a typed `CommandError`. Never silently ignore a bad command.
+- **Panic on impossible states.** If the simulation reaches a state that should be
+  structurally impossible (a room with no matching category behavior, a negative stack
+  count), panic with a descriptive message — these are bugs, not edge cases to paper over.
+  `Content::load_embedded` panicking on an invalid shipped content pack is the model: a
+  broken pack is a build error, not a runtime condition to degrade gracefully from.
+- **Degrade gracefully in presentation.** If the renderer gets unexpected data, render a
+  fallback rather than crash. If audio gets an unrecognized `SoundEvent`, drop it. The
+  simulation is authoritative; presentation layers are resilient to being asked to draw
+  something odd.
 
 ### Performance discipline
 
-- **Profile before optimizing.** The frame budget is generous (6.94ms at 144fps). Don't optimize speculatively. When you do optimize, measure before and after.
-- **Allocation-free hot paths.** The simulation tick and render loop should not allocate. Pre-allocate buffers, reuse Vec capacity, avoid String construction in the tick.
-- **Batch bridge calls.** Each WASM↔JS crossing has overhead. Don't call `get_hud_state()` 30 times per second if you can call it once per tick and cache.
+- **Profile before optimizing.** The frame budget is generous at cozy scale (8–14 floors,
+  single-digit crew and room counts). Don't optimize speculatively.
+- **Allocation-free hot paths in the tick.** `systems::tick` and its four systems should not
+  allocate per tick where avoidable — reuse buffers, avoid `String` construction in a
+  system.
+- **Batch bridge calls.** One `view()` call per frame, not one accessor per subsystem. See
+  `DECISIONS.md` §3.
 
 ### Version control
 
-- **Small, focused commits.** One system per PR. Don't mix combat changes with UI refactors.
-- **Commit messages reference the design doc.** "Implement runner pathfinding (docs/foundation/software-architecture.md §V)" makes review easier.
-- **Balance config changes get their own commits.** With a note on what metric motivated the change and what the before/after values are.
+- **Small, focused commits.** One system per commit; don't mix a simulation change with a
+  UI refactor.
+- **Commit messages reference the design doc.** "Add elevator car dispatch
+  (`docs/SYSTEMS.md` M1 §x.y)" makes review easier than a bare summary.
+- **Balance changes get their own commits**, noting what motivated the change and the
+  before/after values, since `BALANCE.md`'s reasoning column is meant to stay accurate.
 
 ---
 
-## III. Game Design Best Practices
+## V. Rust/WASM Practices
 
-### The core tension
-
-Every design decision should reinforce: **logistics IS strategy, shooting IS action, they share one screen.** If a feature only affects combat or only affects logistics without creating tension between the two, question whether it belongs.
-
-### Design for feel first, numbers second
-
-- **Prototype the interaction before tuning the numbers.** A weapon that feels bad at any damage value has a design problem, not a balance problem. Get the input model right (draw-hold-release, click-wait, hold-channel), then tune.
-- **Balance config exists so you can be wrong fast.** Set a number, playtest, adjust. Don't spend hours calculating the "right" value — play 5 encounters and you'll learn more.
-- **Target emotions, not metrics.** Telemetry targets (grunt dies in 1-3s, breach rate 15-30%) are proxies for emotional states (grunts feel like chaff, breaches feel like emergencies). If the metric is met but the emotion is wrong, trust the emotion.
-
-### Roguelike design principles
-
-- **Interesting decisions, not optimal solutions.** If there's one correct build, the system is broken. Multiple viable strategies = healthy design.
-- **Information before commitment.** Players should know what a choice costs before making it. Show tick costs, material costs, and consequences. Surprise mechanics are for combat, not for prep decisions.
-- **Failure should teach.** When a run ends, the player should understand why. Post-combat tips, companion hints, and the physical state of the tower (which panels broke, which racks ran dry) are the feedback loop.
-- **Unlocks expand options, not power.** No stat inflation. A first-run player and a 50-run player have identical baselines. The veteran has more tools, not bigger numbers.
-
-### Encounter design
-
-- **Each enemy type teaches one lesson.** Grunts teach aiming. Climbers teach vertical priority. Sappers teach infrastructure protection. If an enemy type doesn't have a clear teaching purpose, it's clutter.
-- **Waves create decision points.** Wave 1 tests current readiness. Wave 2 tests sustainability. Wave 3 tests crisis management. Don't add waves for length — add them for escalation.
-- **Anti-frustration is invisible.** No 3+ combat chains without breathing room. First mystery event is always positive. These rules exist in the generator, not in the UI. Players should never know they're being protected.
-
-### Economy design
-
-- **Three currencies, three pressures.** Ticks = what you CAN do. Materials = what you SHOULD do. Gold = what you can SUSTAIN. Keep them independent — no single bottleneck should gate everything.
-- **The player should always want one more thing than they can afford.** If they have spare ticks, ticks are too generous. If they can't do anything useful, ticks are too scarce.
-- **Operating costs create commitment.** Buildings cost gold every encounter. This means building decisions have ongoing consequences, not just upfront costs.
+- **`GameState` is the single source of truth.** If you're computing something derived,
+  keep it out of `GameState` unless there's a specific reason it needs to be
+  save/replay-stable, and document that reason.
+- **Serialize everything.** `GameState` must be fully `serde`-serializable; that's the hash
+  input for determinism (`replay::hash_state`) and the save format. A field that can't
+  serialize doesn't belong in state.
+- **No ECS framework.** The struct-of-arrays-ish shape (`Tower` owns `Floor`s, `Floor`s own
+  `Room`s, `GameState` owns a flat `Vec<Crew>`) is deliberate at this entity count. Don't
+  reach for `bevy_ecs`/`specs`/`legion`.
+- **No threads.** WASM threading has browser compatibility costs not worth paying at this
+  scale. Don't reach for `rayon` or `tokio` in `understory-core`.
+- **Minimize bridge crossings.** Each `wasm_bindgen` call serializes. Batch commands where
+  it makes sense; keep the per-frame call count at two (`frame`, `view`) plus whatever
+  commands the player actually issued that frame.
+- **String IDs in data, dense indices in the simulation.** Content is authored as
+  `"room.mill"`; the tick loop only ever sees `RoomIdx`. See `DECISIONS.md` §6. If you find
+  yourself comparing a `&str` inside a system, that string should have been interned at
+  load.
 
 ---
 
-## IV. Rust/WASM Best Practices
+## VI. Frontend Practices
 
-### GameState
-
-- **Single source of truth.** If you're storing derived data somewhere, document why and ensure it's read-only. Never let derived state feed back into the simulation.
-- **Serialize everything.** GameState must be fully serializable (serde). If you add a field, it must serialize. If it can't serialize (e.g., function pointers, file handles), it doesn't belong in GameState.
-- **Clone is cheap or something is wrong.** GameState cloning happens for save/load and undo. If clone becomes expensive, you're storing too much transient data in GameState.
-
-### ECS-adjacent, not full ECS
-
-- The architecture uses a struct-of-arrays approach (Tower owns Floors, Floors have Buildings, etc.) rather than a full ECS. Don't introduce an ECS framework (bevy_ecs, specs, legion). The game's entity count is small (tower + ~20 enemies + ~10 companions + ~50 projectiles) and the fixed system order is a feature, not a limitation.
-
-### Fixed-point considerations
-
-- If determinism breaks across platforms (different f32 results on ARM vs x86), consider fixed-point arithmetic for the simulation. Keep this option open by isolating f32 math behind a type alias (`type Scalar = f32`) that can be swapped.
-
-### WASM-specific
-
-- **No threads in v1.** WASM threading (SharedArrayBuffer) has browser compatibility issues. The simulation is single-threaded. Don't reach for rayon or tokio.
-- **Minimize bridge crossings.** Each wasm-bindgen call has serialization overhead. Batch commands, return compound structs, avoid chatty APIs.
-- **Watch the WASM binary size.** Dead code elimination is good but not perfect. Avoid pulling in large crates for small features. Prefer hand-rolled solutions for simple algorithms over crate dependencies.
+- **React is chrome, not the renderer.** The tower cross-section and streaming terrain are
+  drawn by a custom WebGL2 renderer (batched, with a DOM overlay for text) running its own
+  frame loop, independent of React's render cycle — see `DECISIONS.md` §10 for why this is
+  the plan from M0 rather than an SVG-first, WebGL-if-needed path. React owns panels, menus,
+  and other UI chrome, and calls into the bridge for commands and snapshots.
+- **No external state library.** No zustand, redux, or jotai. React state/context holds UI
+  state only (panel open/closed, hover targets, the last fetched snapshot) — never
+  authoritative game state. If you're building a parallel state tree that mirrors
+  `GameState`, stop; call the bridge accessor and use the result.
+- **Throttle to the sim's rate where it matters.** The sim ticks at 30 Hz; there's no reason
+  to poll `view()` faster than the renderer's frame loop needs, and no reason to re-render
+  React chrome on every WebGL frame.
+- **No game logic in components.** Components render and dispatch commands. They don't
+  compute production rates, validate placements, or run pathfinding — that's Rust's job.
+- **ts7/oxfmt/oxlint, not tsc/prettier/eslint.** See §II for the commands and
+  `DECISIONS.md` §10 for the reasoning.
 
 ---
 
-## V. React/TypeScript Best Practices
-
-### React is the view layer (mostly)
-
-- **During prep:** pure view + input. Render snapshots from Rust, send commands back. No game logic in React.
-- **During combat:** React also orchestrates the frame loop (rAF), collects input, calls `tick()`, and syncs React context/state. This is the correct architecture for browser-first — but keep the orchestration thin. React decides WHEN to tick, not WHAT happens during the tick.
-
-### State management
-
-- **React state/context for UI state only.** Selections, panel open/closed, hover targets, cached snapshots from Rust. Never authoritative game state. No external state library — see `implementation-decisions.md` §18.
-- **Don't mirror GameState in React.** Call the typed accessor, use the result, discard. If you find yourself building a parallel state tree, you're fighting the architecture.
-- **Throttle combat HUD updates to 30hz.** The sim ticks at 30hz. Updating the HUD at 144hz is waste. Use a throttled subscription.
-
-### Component architecture
-
-- Follow the atomic design system in `docs/foundation/design-system.md`: atoms (buttons, inputs) → molecules (AmmoRack, BufferDisplay) → organisms (TowerEditor, HUD) → pages (Prep, Combat, Map).
-- **No game logic in components.** Components render and dispatch. They don't calculate damage, validate commands, or run pathfinding. That's Rust's job.
-- **Memoize expensive renders.** The tower cross-section has many visual elements. Use `React.memo` and stable references to avoid re-rendering the entire tower when one rack changes.
-
----
-
-## VI. Pillar: Combat System
-
-### Principles
-
-- **The hero is the star.** 50-70% of kills should come from the hero. If companions overshadow the hero, the game becomes a passive idle game.
-- **Every shot is visible.** Arrows stick in enemies, misses hit the ground. No invisible hitscan. This is core feel and non-negotiable.
-- **Weapon identity lives in the input model.** Bow = draw-hold-release rhythm. Crossbow = click-wait rhythm. Staff = hold-channel flow. If two weapons feel the same to play, one should be cut or redesigned, regardless of their stats.
-
-### Implementation
-
-- **Projectile simulation is sweep-based.** At 30hz, fast projectiles can tunnel. Check the full travel path per tick, not just current position.
-- **Hit detection is server-side (Rust).** No client-side hit prediction. The simulation is authoritative. Visual projectiles interpolate to match.
-- **Weapon abilities are cooldown-gated, not ammo-gated** (except where noted). The ability button (Q) should always feel available-soon, not resource-constrained.
-- **Aim assist is a stat (Precision), not a setting.** Higher Precision = tighter aim cone. This is how accuracy scales with leveling, not through invisible hitbox expansion.
-
-### Testing combat
-
-- Unit test: fire command at known enemy position → enemy takes expected damage.
-- Unit test: sweep collision detects hit on fast-moving projectile that would tunnel at point-check.
-- Property test: 1000 random encounters with random weapons → hero kill % is 40-80% (broad sanity range).
-- Visual test: fire arrow, watch it arc, see it stick in enemy. If the visual doesn't match the simulation, the interpolation is broken.
-
----
-
-## VII. Pillar: Supply Chain & Logistics
-
-### Principles
-
-- **The supply chain is visible.** You can see crates move through the tower. You can see racks fill and drain. You can see runners queue at stairs. If the player can't see it, it doesn't exist as a strategic layer.
-- **Bottlenecks are the game.** The supply chain should always have one bottleneck the player is aware of and trying to fix. If everything flows smoothly, the tower is overbuilt and there's no tension.
-- **Runners are characters, not units.** They have visible behavior (walking, carrying, queuing, resting). They make the tower feel alive. Don't optimize them into invisible instant-delivery.
-
-### Implementation
-
-- **Production is per-tick, not continuous.** Buildings produce discrete crates at fixed intervals. This makes the system predictable and visually readable.
-- **Buffer overflow is visible.** When a building's output buffer is full and no runner collects, the building idles. Visually: the building stops animating. Audibly: the production loop goes silent. This IS the feedback mechanism — don't add a UI warning on top of the diegetic signal.
-- **Runner pathfinding is greedy.** Runners pick the best available task (highest-priority demand), find the fastest route (chute > dumbwaiter > lift > stairs), and go. They don't plan globally — they react to current state. This makes their behavior readable and predictable.
-- **Cache placement is the player's main logistics decision.** Where you put caches determines which floors get fast resupply. Don't automate cache placement — that removes the decision.
-
-### Testing logistics
-
-- Unit test: building produces N crates after M ticks at configured rate.
-- Unit test: runner picks highest-priority demand when multiple racks are empty.
-- Integration test: full supply chain (fletcher → runner → warehouse → runner → cache → rack) delivers ammo within expected time window.
-- Property test: 100 random tower configs → no runner deadlocks, no infinite loops, no starvation when production rate exceeds consumption rate.
-
----
-
-## VIII. Pillar: Tower Building & Prep Phase
-
-### Principles
-
-- **Prep decisions are bets. Combat is the reveal.** You can't rewire logistics during combat. This hard boundary is what makes prep decisions meaningful. Never add mid-combat building.
-- **The tower is the HP bar.** Players should look at their tower and immediately understand its health. Cracks = damage. Empty racks = ammo problems. Silent buildings = starved production. Diegetic UI is primary.
-- **Every floor has a cost-benefit tradeoff.** A floor for production means a floor not available for companions. A floor with a cache takes width from transport. Floors aren't free — they cost materials, add height (more to defend), and create new logistics demands.
-
-### Implementation
-
-- **Tick costs enforce pacing.** Every action costs ticks. The player always wants more ticks than they have. If they're banking ticks regularly, the budget is too generous.
-- **Validation before march.** `get_validation_warnings()` catches mismatches (weapon with no ammo source, companion with no rack, transport gaps). These are warnings, not blockers — the player can march anyway. Don't prevent marching; inform and let them choose.
-- **Tower width is a real constraint.** Transport takes floor width. Buildings take floor width. You can't put everything on one floor. Width management is a puzzle — don't trivialize it.
-
-### Testing prep
-
-- Unit test: `BuildFloor` command deducts correct ticks and materials.
-- Unit test: `March` command with unassigned companion generates validation warning.
-- Integration test: full prep sequence (build floor, place building, assign companion, place cache, march) produces valid GameState.
-
----
-
-## IX. Pillar: Procedural Generation
-
-### Principles
-
-- **Determinism is sacred.** Same seed = same run. Period. If you break this, you break seed sharing, replay, and bug reproduction. Test determinism explicitly.
-- **Anti-frustration rules are invisible constraints.** The generator must guarantee: no 3+ combat chains without breathing room, at least one merchant or rest per chapter, first mystery event is positive. These are hard constraints, not soft preferences.
-- **Difficulty is a budget, not a feeling.** Encounter difficulty is a number (threat budget). The generator fills the budget with enemy combinations. "How hard does this feel" is a playtesting question answered by tuning the budget and enemy threat costs, not by adding special-case logic.
-
-### Implementation
-
-- **Seed the RNG once per generation scope.** Run seed → chapter seed → node seed → encounter seed. Don't reseed randomly. Don't use system time. The seed chain must be reproducible.
-- **Validate generated content.** After generating a map, verify: all nodes reachable, boss at end, anti-frustration rules met, node type budget respected. Assert these in tests.
-- **Loot rarity is weighted random, not tiered thresholds.** Use the weight table in balance-config.md. Don't hardcode "if roll > 0.97 then legendary" — use the configurable weights.
-
-### Testing procgen
-
-- Property test: 10,000 seeds → every map is connected, every map has a boss, no orphan nodes.
-- Property test: 1,000 encounters at difficulty 2 → all compositions within threat budget ±10%.
-- Determinism test: generate map with seed X, generate again with seed X → identical result.
-- Anti-frustration test: 1,000 chapters → no chapter has 3+ consecutive combat nodes on any path.
-
----
-
-## X. Pillar: UI/UX
-
-### Principles
-
-- **Diegetic by default, abstract when precision demands it.** Crate piles = buffer level. Cracks = damage. These are primary. Numbers are secondary precision overlays. See `implementation-decisions.md` §11.
-- **No modals during combat.** Ever. Combat is real-time. Anything that blocks input during combat is a bug.
-- **Glance and know roughly. Hover and know exactly.** The tower visual gives approximate state at a glance. Tooltips give exact numbers on hover. This two-layer approach handles both fast combat scanning and careful prep planning.
-
-### Implementation
-
-- **React components are stateless where possible.** Render from the Rust snapshot. Don't build local state that can drift from the source of truth.
-- **Prep UI is information-dense.** Inventory, companion management, tower editor — these screens show a lot. Use the design system's organism components. Don't reinvent layout.
-- **Combat HUD is minimal.** Ammo count, cooldowns, wave counter, companion status row. That's it. If you're adding more to the combat HUD, justify why the player needs it at 30hz.
-- **Transitions are emotional punctuation.** Prep → march → combat → post-combat → prep. Each transition is a beat. Don't skip them for efficiency — they create rhythm.
-
-### Testing UI
-
-- Snapshot test: render each page component with mock data → visual snapshot matches.
-- Interaction test: click "March" → command sent to Rust, phase transitions to Travel.
-- Accessibility: all interactive elements have keyboard focus, tooltips work via keyboard, color-blind–safe palette verified.
-
----
-
-## XI. Pillar: Audio
-
-### Principles
-
-- **The tower is alive.** Each building has a production loop sound. Transport creaks and rattles. Runners' footsteps echo. The tower's audio state IS its health indicator. A silent tower is a broken tower.
-- **Two soundscapes: prep (warm) and combat (tense).** Prep sounds like a workshop. Combat sounds like a siege. The crossfade between them is a key emotional transition.
-- **Silence is a design choice.** A starved building goes silent. An empty rack has no clink. A breached floor has wind whistling through. Use silence to communicate state, not just sound.
-
-### Implementation
-
-- **Web Audio API only.** No Rust audio crates. JS/React owns all audio. Rust produces `SoundEvent` data; the JS `AudioManager` consumes it.
-- **Spatial audio is simple stereo in v1.** Left = tower interior. Right = battlefield. This naturally separates logistics sounds from combat sounds. Advanced height-based reverb is post-v1.
-- **Sound events are fire-and-forget.** Rust emits them during tick. JS plays them. If a sound can't play (too many concurrent sounds), drop it — don't queue. Priority: weapon fire > enemy death > building production > ambient.
-
-### Testing audio
-
-- Unit test: tick with enemy death → SoundEvent list contains death sound.
-- Integration test: AudioManager receives SoundEvent → Web Audio API node created.
-- Manual test: play an encounter with eyes closed. Can you tell how the fight is going from sound alone? That's the bar.
-
----
-
-## XII. Pillar: Animation
-
-### Principles
-
-- **Animation never changes game state.** An animation can make a death look dramatic, but the entity is dead the instant the simulation says so. Presentation interpolates; simulation is truth.
-- **Readability over beauty.** If an animation obscures what's happening in combat, simplify it. The player needs to read the battlefield at 30hz. A gorgeous particle system that hides enemies is a net negative.
-- **Motion communicates purpose.** Runners walk with purpose (carrying) or idle (waiting). Enemies approach with intent (ground, climbing, flying). Every entity's animation should answer "what is this thing doing right now?" at a glance.
-
-### Implementation
-
-- **v1 uses sprite-swap animation, not bone rigs.** Keep it simple. Each entity state (idle, walk, attack, die) has a sprite sequence. Bone rigs are post-v1.
-- **Tweens for all motion.** Position, rotation, scale, opacity — all tweened. Use easing functions (ease-in for launches, ease-out for landings, ease-in-out for UI transitions). Linear tweens feel robotic.
-- **Particles are budget-constrained.** Max particle count is capped. When the cap is hit, drop lowest-priority particles (ambient dust before hit sparks before weapon effects). Don't let particles blow the frame budget.
-- **Interpolation bridges sim and render.** At 144fps, entities move smoothly between 30hz simulation ticks. If an entity visually teleports, the interpolation is broken.
-
-### Testing animation
-
-- Unit test: entity at position A in tick N, position B in tick N+1 → interpolation at 50% between ticks yields midpoint.
-- Visual test: max enemy count + max projectiles + all buildings active → frame rate stays above 60fps.
-- Manual test: watch a runner carry a crate from building to warehouse. Does the motion feel purposeful? Does the crate visually transfer? That's the bar.
-
----
-
-## XIII. Pillar: Narrative & Companions
-
-### Principles
-
-- **Show, don't tell.** No cutscenes, no lore codex. Story lives in companion dialogue, tower visual state, landscape, loot flavor text, and mystery events.
-- **The tower is home, not a war machine.** Tone is Ghibli fantasy: warm, whimsical, melancholic. Defenders, not soldiers. Enemies are obstacles, not a target gallery. If a feature makes the game feel militaristic, reframe it.
-- **Companions are people, not stat blocks.** Each has a name, personality, and opinion about what's happening. Their dialogue should react to game state (breaches, close calls, victories, failures). Even if the mechanical effect is small, the personality should be visible.
-
-### Implementation
-
-- **Companion dialogue is state-triggered, not scripted.** Define trigger conditions (panel breached, encounter won flawlessly, companion displaced, etc.) and response pools per companion. The system picks contextually.
-- **Dialogue doesn't block gameplay.** Companion comments appear as speech bubbles or sidebar text during prep. They never interrupt, never modal, never require a response.
-- **v1 companion dialogue is text-only.** No voice acting, no animated portraits. Just text lines tied to personality and state. Keep the system simple so content can be added fast.
-
-### Testing narrative
-
-- Unit test: trigger condition met (panel breached on Kael's floor) → Kael has at least one response in the pool.
-- Coverage test: all companions have responses for all v1 trigger conditions (no silent companions).
-- Tone test (manual): read 20 random dialogue lines. Do they sound like the character? Do they fit "home under threat"? Flag any that sound militaristic or generic.
-
----
-
-## XIV. Working with the Design Docs
-
-### When docs conflict
-
-The override chain is: `implementation-decisions.md` > `v1-scope.md` > `registries.md` > detail docs. If you find a conflict not already resolved in implementation-decisions, flag it — don't guess.
-
-### When docs are silent
-
-If a detail isn't specified, check `balance-config.md` for numbers or `registries.md` for content. If still silent, make a reasonable choice, document it in your PR description, and flag for design review.
-
-### When you want to deviate
-
-Sometimes the docs are wrong or outdated. If you believe a design decision should change, propose it — don't silently diverge. The docs are the shared understanding. Changing code without updating docs creates drift that costs everyone.
+## VII. Pillar Guidance
+
+Covers the pillars that exist now (M0) or are coming soon (M1–M2). Combat, journey/region,
+and meta-progression pillars aren't built yet — check `docs/SYSTEMS.md` before writing
+guidance-driven code against a system that isn't there yet.
+
+### Logistics & transport contention
+
+The core bet of the whole game (`DESIGN.md` §2 insight 1) is that transport is shared, not
+dedicated per-chain. Every new production room you place adds load to the same stairs (and,
+from M1, the same dumbwaiters and elevator shafts) everyone else is already using.
+
+- **Runner/crew pathfinding is greedy, not planned.** `systems/haul.rs` scores every
+  candidate (item, destination) pair for each idle crew member — `priority * 1000 -
+  travel_cost` — and picks the best. It doesn't plan a global schedule. This is deliberate:
+  greedy, locally-reasoned behavior is what makes crew readable and predictable to a
+  player watching the cross-section.
+- **A shaft's capacity is the whole point, not a limitation to work around.** `Shaft.capacity`
+  gating riders is what turns "add a chain" into "add load to shared infrastructure." Don't
+  quietly raise default capacities to make queues go away — that removes the tension the
+  design rests on.
+- **Buffer overflow is visible, never silently discarded.** An intake accumulator or a
+  production output that's full stalls in place (`intake.rs`, `production.rs`) rather than
+  dropping the overflow. If you add a new production or intake room, its stall behavior
+  should follow this pattern by construction, not by special-casing.
+- **Nothing a crew member picks up is ever destroyed.** If a destination fills mid-trip,
+  they get re-tasked; if there's nowhere, they hold it. Don't add a code path that drops
+  carried items — it breaks a stated invariant in `haul.rs` and will show up as items
+  vanishing, which reads as a bug, not a feature.
+- **Test what v1 already proved out, extended.** Chain delivery across multiple rooms,
+  stalls under a full buffer, capacity limits, slot collisions, and now shaft contention
+  under multiple crew — see `crates/core/src/tests/haul.rs` and `tests/production.rs` for
+  the existing shape to extend.
+
+### Tower building
+
+- **A floor holds many rooms.** `Floor.rooms: Vec<Room>` is unbounded by design — the
+  interesting layout question (what shares a floor with what) has to be askable from the
+  data model on day one. Don't reintroduce a one-room-per-floor constraint anywhere,
+  including in UI affordances that only let the player picture one room per floor.
+- **A shaft costs a slot column on every floor it spans.** `Tower::slot_range_blocked`
+  checks both rooms and shaft columns. This is the mechanical expression of "vertical
+  transport is the belt" (`DESIGN.md` pillar 2) — a shaft is a permanent tax on every
+  floor's width, and that tax is deliberate, not a bug to optimize away.
+- **Construction is paid from storeroom stock, not an abstract wallet.** `check_stock` /
+  `spend` in `engine/commands.rs` draw from shelves the chain actually filled. If you add a
+  new buildable, its cost should draw from the same stock pool — there's no separate
+  currency to introduce.
+- **Growing taller has a real cost beyond `floor_cost`.** From M1, a new top floor
+  displaces the canopy sail deck (`v2-plan.md` §6.3). When that lands, don't let floor
+  addition become a free action just because the ticks/materials are paid — the height
+  cost is structural, not just economic.
+
+### Procedural world streaming
+
+- **Terrain is a stream, not a level.** `World::generate_ahead`/`prune_behind` keep a
+  constant-size window around the tower — generate to `stream_ahead_paces`, drop anything
+  before `distance - stream_behind_paces`. A run of any length costs the same memory; don't
+  add a path that accumulates unbounded history "for the minimap" or similar without
+  pruning it the same way.
+- **Determinism applies to world generation too.** Bands and features are drawn from the
+  `world` RNG stream (`DECISIONS.md` §2), not `cosmetic` — a feature's position has to be a
+  fact about the run (M3 turns ruins into berthing sites) rather than a fact about which
+  frame it happened to render on.
+- **Anti-frustration constraints belong in the generator, invisibly.** `pick_band_kind`
+  already guarantees no band repeats its predecessor's kind. As region/threat generation
+  comes online, keep this pattern: hard constraints enforced in code and tested across many
+  seeds, never a runtime check that the player can perceive as a rule.
+- **Property-test generation, not just example-test it.** Once regions and route forks
+  exist, the right test shape is "N seeds → every generated stretch satisfies invariant X,"
+  matching how `content.rs`'s validation and `world.rs`'s band-repeat rule are already
+  structured to be checkable mechanically rather than by eyeballing one seed.
+
+### UI/UX — diegetic-first
+
+Covered in full, with the enforceable version of the rule, in `DECISIONS.md` §8. In
+practice: a stalled room renders quiet, a blocked crew member tints red past
+`stress_ticks`, and neither of those facts gets a second, numeric representation as a
+warning banner. Precision numbers are a hover-only layer, never the primary signal. If
+you're building a UI element and reaching for a dashboard-style readout as the *first*
+thing the player sees, look for the diegetic version first — a piece of the cross-section
+that already changes state — before adding a new number to the screen.
+
+### Audio
+
+Not built yet as of M0 (`v2-plan.md` targets the audio pass at M4), but the intended shape
+carries forward from v1's philosophy: production loops go silent when a room is starved,
+not muted with a separate "problem" sound; `SoundEvent`s (`systems.rs`) are fire-and-forget
+— emitted during a tick, consumed or dropped by the JS `AudioManager`, never read back into
+the simulation. When audio work starts, keep that boundary: Rust decides *that* something
+happened, JS decides whether and how it sounds.
+
+### Narrative / crew tone
+
+Crew are named individuals with jobs, not stat blocks (`DESIGN.md` §2 structural call 4).
+When crew-facing content (barks, portraits, names) lands, keep it off the `sim` RNG stream
+— use `cosmetic` (`DECISIONS.md` §2), so that adding or editing a bark can never perturb an
+economic roll. Tone follows `DECISIONS.md` §8: solarpunk warmth, defenders not soldiers,
+creatures defending territory rather than a target gallery to clear. If a piece of crew
+dialogue or a creature description reads as militaristic, that's a tone bug worth flagging
+even if it's mechanically inert.

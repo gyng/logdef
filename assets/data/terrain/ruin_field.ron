@@ -1,0 +1,12 @@
+// The old world, drowned in green. Barren for cutting, generous with
+// sun and — from M3 — with scrap, at the price of waking what sleeps
+// in it.
+#![enable(implicit_some)]
+TerrainDef(
+    id: "terrain.ruin_field",
+    name: "Ruin Field",
+    yield_pct: 50,
+    weight: 25,
+    features_per_100_paces: 12,
+    feature_kinds: ["ruin", "rock", "ruin", "fern"],
+)

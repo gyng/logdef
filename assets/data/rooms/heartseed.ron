@@ -1,0 +1,11 @@
+// The tower's living core. Pre-placed, unique, and cannot be removed.
+// From M2 its destruction ends the run.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.heartseed",
+    name: "Heartseed",
+    short: "❤",
+    category: Heart,
+    width: 2,
+    unique: true,
+)
