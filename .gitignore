@@ -13,6 +13,9 @@ Thumbs.db
 
 # Rust
 target/
+# cargo-mutants scratch output
+mutants.out/
+mutants.out.old/
 
 # Node/web
 node_modules/

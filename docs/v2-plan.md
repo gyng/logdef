@@ -7,6 +7,12 @@
 
 **Status:** locked with owner, 2026-08-03. Build mode: big agentic sprints, one per milestone.
 
+**Progress:** M0 ✅ · M1 ✅ · M2–M5 not started. The plan below is unchanged; this line and
+the notes in §9 are the only edits since it was locked. Two owner decisions taken during
+M0 deviate from §8 and are recorded in `DECISIONS.md` §10 — a custom WebGL2 renderer from
+the start rather than SVG-until-profiling-hurts, and ts7/oxfmt/oxlint for the frontend
+toolchain.
+
 ---
 
 ## 0. Decisions locked (2026-08-03)
@@ -318,7 +324,11 @@ scope, non-goals, exit criteria. **Sprint protocol:** (1) sprint starts by writi
 `make check` + smoke + replay fixtures green **and the milestone's design question answered
 by actually playing**; (3) anything cut mid-sprint is written down, not silently dropped.
 
-### M0 — The Stride *(chassis)*
+### M0 — The Stride *(chassis)* — ✅ shipped
+
+*Answered: yes. The stride, the parallax, and crew who walk with purpose carry it; the
+tower reads as alive on one screen. Cut from scope: nothing. Added beyond scope: a custom
+WebGL2 renderer instead of SVG (owner call, `DECISIONS.md` §10).*
 **Scope:** `v2` branch; strip ARPG (surviving logistics/determinism tests green); rename
 scaffolding to Understory; integer/Q8.8 math swap; replay-format skeleton; one unified
 game view: tower strides over a streaming terrain strip, pause/1×/2×/4×, one crew member
@@ -327,7 +337,14 @@ hauls a crate up the stairs.
 **Exit:** smoke test green end-to-end; a replay file records and replays a session
 bit-identically. *Question: does the walking tower feel alive on one screen?*
 
-### M1 — The Chain *(the whole bet)*
+### M1 — The Chain *(the whole bet)* — ✅ shipped
+
+*Answered: yes, but it took a balance change to get there. Measured over 600 s with and
+without an added shaft (`--example throughput`): at two crew the difference was inside the
+noise and the question was unanswerable; at three crew it is +90% crafts and 56% fewer
+ticks queueing. `starting_crew` is now the first `PLAYTESTED` constant. Cut from scope:
+nothing. Deferred: per-daypart elevator programs exist in the data model and the command
+layer but have no UI yet — a player can only change them through a replay or a command.*
 **Scope:** bamboo→poles→darts across 3+ floors; multi-room floors; dumbwaiter; **elevator
 car sim** (tower-together dispatch, freight extension, charge draw, programmable stops);
 charge system (sails × terrain sun, burner, cell banks, stride cost); dayparts (sun curve);
