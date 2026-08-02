@@ -465,8 +465,104 @@ first is who gets served when it is thin.
 
 ### 1.7 Exit criteria
 
-- [ ] A deliberately under-built tower visibly bottlenecks at the shaft, and adding a shaft
-      visibly fixes throughput.
-- [ ] A night with no banked charge browns out; a night with banked charge does not.
-- [ ] Golden replay regenerated and verified natively and in wasm; hash-parity runs in CI.
+- [x] A deliberately under-built tower visibly bottlenecks at the shaft, and adding a shaft
+      visibly fixes throughput. **Measured**: +90% crafts, 56% fewer ticks queueing
+      (`cargo run --release -p understory-core --example throughput`). Needed
+      `starting_crew` 2 → 3 to be true at all.
+- [x] A night with no banked charge browns out; a night with banked charge does not.
+- [x] Golden replay regenerated and verified natively and in wasm; hash-parity runs in CI.
+- [x] `make check` and the smoke suite green.
+
+**Deferred out of M1:** per-daypart elevator programs exist in the data model, the command
+layer, and the replay format, but have no UI — a player cannot yet change them without
+issuing a command by hand. The night-shift program is the reason they exist, so this should
+land alongside M4's shift rota if not before.
+
+---
+
+## M2 — The Siege *(the load test)*
+
+> **Spec only. No M2 code is written yet.** This section is step one of the M2 sprint,
+> written while the M1 systems it builds on were fresh. Treat every number as a placeholder
+> until it has a graded row in `BALANCE.md`.
+
+**Sprint question:** does combat-as-logistics-stress produce drama without any aimed weapon?
+
+**Scope:** enemies that damage infrastructure, emplacements that are fed by the chain, a
+repair loop that competes with everything else for the same crew and the same poles, and a
+provocation knob that ties all of it back to how you have been playing.
+
+**Non-goals (M3+):** no feral wardens or ruin salvage, no enclaves, no regions, no meta.
+
+### 2.1 The shape of the thing
+
+Combat is not a mode. There is no phase change, no pause, no separate screen — that split
+is precisely what made v1's most interesting moment structurally impossible. A wave is a
+**demand spike on the circulation you already have**: darts to the batteries, repair crews
+to the breach, on the same stairs the mill is using.
+
+The player's verbs stay infrastructural. Targeting priorities, a small number of
+tower-level cooldowns, and triage — deciding what *not* to fix. Nothing in M2 adds an aimed
+weapon, and nothing should.
+
+### 2.2 Enemies
+
+They live on the terrain layer, approach the tower, and attack **infrastructure** rather
+than a hit-point bar. Each type teaches one lesson, and a type without a lesson is clutter:
+
+| Type | Lesson |
+|---|---|
+| skitters | ammo drain economics — cheap, numerous, and they make you count darts |
+| canopy leapers | drop onto *upper* decks from overhanging trees, so height is exposure |
+| root-borers | gnaw legs and shaft columns, so transport needs redundancy |
+| night predators | nocturnal pressure — the reason you banked charge in M1 |
+
+Content, not enum arms, following `ShaftDef`'s precedent: `assets/data/enemies/*.ron`,
+interned like everything else.
+
+### 2.3 Damage as a state of the tower
+
+Damage attaches to the things the player built, because that is what makes it legible:
+
+* **Panels** — per floor. Breached panels let things inside.
+* **Rooms** — a damaged room works slower; a destroyed one is gone, with its contents.
+* **Shafts** — a severed shaft column splits the tower's circulation in two. This is the
+  signature emergency, and `best_shaft` already routes around what does not span a trip, so
+  the reroute should fall out of the existing model rather than needing a special case.
+
+### 2.4 Emplacements
+
+Rooms with a `defence` block: a dart battery on a balcony, a seed-bomb mortar on a deck.
+They auto-fire by a player-set priority and consume ammo from a **local rack**, which is
+just an input stack — so feeding them is the haul system's existing job, and a battery that
+runs dry does so for exactly the same reason a mill does.
+
+That equivalence is the whole design. If emplacements get their own special supply
+mechanism, combat stops being a load test and becomes a parallel game.
+
+### 2.5 Repair
+
+Repair consumes poles, rope, and crew time. It is a chain sink like any other, and it
+competes for the same three crew. Triage — letting a floor stay breached because the mill
+matters more right now — is the interesting decision, so repair must never be automatic and
+never free.
+
+### 2.6 Provocation
+
+One knob, raised by aggressive harvesting, burner smoke, and (from M3) salvaging ruins.
+It feeds the threat table. Tone-safe by construction: the creatures defend their territory
+and the tower is the thing passing through — see `DECISIONS.md` §8. Nothing in the UI
+should frame this as a kill count.
+
+### 2.7 Loss
+
+The Heartseed is already placed, already unique, already undemolishable. M2 gives it hit
+points and makes its destruction the end of the run.
+
+### 2.8 Exit criteria
+
+- [ ] A severed shaft mid-assault forces a live reroute, and it is *legible* — you can see
+      why the crew changed route without opening a debug view.
+- [ ] A brown-out night assault is survivable with banked charge and lethal without.
+- [ ] Golden replay regenerated; hash parity green natively and in wasm.
 - [ ] `make check` and the smoke suite green.
