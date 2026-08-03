@@ -39,6 +39,7 @@ fn main() {
         run(plan);
     }
     pressure_table();
+    does_plating_help();
 }
 
 /// What a given tower can take at a given level of attention.
@@ -70,7 +71,8 @@ fn pressure_table() {
 
     for shape in [Shape::Bare, Shape::Plated, Shape::Answered] {
         for level in LEVELS {
-            let (standing, lost, repelled, mended, bill) = press(shape, level, DAYS);
+            let (standing, lost, repelled, mended, bill) =
+                press(shape, level, DAYS, 0x0000_5EED_0000_0003);
             println!(
                 "{:<26} {level:>5} {standing:>9}‰ {lost:>7} {repelled:>7} {mended:>6} {bill:>5}                  {:>9}",
                 shape.name(),
@@ -86,6 +88,45 @@ fn pressure_table() {
             );
         }
     }
+}
+
+/// Does plating actually help? One seed said no, loudly enough to be
+/// worth writing down — and loudly enough to be worth checking whether
+/// it was one seed being strange.
+fn does_plating_help() {
+    const LEVEL: i64 = 100;
+    println!(
+        "
+  the same tower, bare and plated twice, at provocation {LEVEL}:
+"
+    );
+    println!(
+        "    {:>6}  {:>9}  {:>9}  {:>8}",
+        "seed", "bare lost", "plated", "verdict"
+    );
+    let mut plated_worse = 0;
+    for seed in 1..=8u64 {
+        let (_, bare, _, _, _) = press(Shape::Bare, LEVEL, 3, seed);
+        let (_, plated, _, _, _) = press(Shape::Plated, LEVEL, 3, seed);
+        if plated > bare {
+            plated_worse += 1;
+        }
+        println!(
+            "    {seed:>6}  {bare:>9}  {plated:>9}  {:>8}",
+            if plated > bare {
+                "worse"
+            } else if plated < bare {
+                "better"
+            } else {
+                "same"
+            }
+        );
+    }
+    println!(
+        "
+  plated came out worse on {plated_worse} of 8 seeds. More than half is a 
+           finding; a couple is noise."
+    );
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -109,8 +150,8 @@ impl Shape {
 }
 
 /// Hold provocation at `level` and see what happens.
-fn press(shape: Shape, level: i64, days: u32) -> (i64, i64, u64, u64, i64) {
-    let mut engine = GameEngine::new(0x0000_5EED_0000_0003);
+fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64, i64) {
+    let mut engine = GameEngine::new(seed);
     engine.set_speed(SimSpeed::X1);
     let content = engine.content().clone();
 

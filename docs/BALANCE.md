@@ -123,15 +123,25 @@ Dwell, dispatch, and the estimates crew use to pick a shaft. See `SYSTEMS.md` §
 > playing loudly and playing very loudly is nothing. `threat_per_100_provocation` at 40 turns
 > 600 provocation into 240 threat — 48 skitters a wave — which is the immediate suspect.
 >
-> **Plating and defence barely register, and plating may be actively bad.** At provocation
-> 100 the starting tower loses *nothing*; the same tower plated twice loses 1,276 hit points
-> on the same seed with the same waves. More armour, more damage. It is not a metric artefact
-> — the table reports absolute hit points lost precisely so that towers with different totals
-> can be compared — and the repair figures suggest it is repair scheduling rather than the
-> plating itself: the bare tower mended 2,834 and the plated one 1,602, so the plated tower
-> is repairing *less* while damaged more. `pick_repair` orders by per-mille, and a plated
-> panel reads healthier for the same absolute wound, which would send crew to the wrong
-> place. That is a hypothesis and wants confirming before anything is changed.
+> **Plating is actively harmful, on every seed tried.** At provocation 100 a starting tower
+> ends three days having lost between 0 and 8 hit points. The *same tower plated twice*, same
+> seed, same waves, ends between 958 and 2,232 down — worse on **8 of 8 seeds**, by two to
+> three orders of magnitude. So the upgrade the enclave sells makes the tower measurably
+> worse at the one thing it is sold for.
+>
+> Not a metric artefact: the table reports absolute hit points lost precisely so towers with
+> different totals stay comparable. And not the damage side either — the plated tower
+> *repairs less*, mending 1,602 against the bare tower's 2,834. Crew are doing less work on
+> the tower that needs more.
+>
+> The mechanism is not established, and the leading guess is repair scheduling. `pick_repair`
+> orders candidates by `permille()`, so a plated panel down 60 hit points out of 270 reads
+> healthier than an unplated room down 60 out of 260 and is triaged behind it; and
+> `still_hurt` holds a crew member on one target until it is *fully* healed, so a plated
+> panel under sustained attack may be a job that can never be finished, quietly consuming a
+> crew member for the duration. Both are guesses. `cargo run --release -p understory-core
+> --example siege_run` reproduces the finding in its last section, and reproducing it is
+> where the fix starts.
 >
 > What that needs is a balance pass with an instrument that keeps a tower genuinely
 > constrained, not another round of tuning at the end of a systems milestone. Until then the
