@@ -259,3 +259,85 @@ test("the same seed produces the same run", async ({ page }) => {
   expect(second).toBe(first);
   expect(first).toMatch(/^[0-9a-f]{16}$/);
 });
+
+/**
+ * The two schedules the player writes, both through the roster panel.
+ *
+ * A rota and a shaft program are the same category of thing — something
+ * written against the daypart clock — which is why they share a panel
+ * (`SYSTEMS.md` §4.5, §4.8) and why they share a test. Both are also the
+ * kind of UI that can look right and be wired to nothing, so this drives
+ * them the way a player does, through the DOM, and checks the
+ * simulation actually moved.
+ */
+test("the roster writes both of the player's schedules", async ({ page }) => {
+  await boot(page);
+
+  // The rota. One click should move one named person onto the night
+  // shift and leave everybody else alone.
+  const crew = await page.evaluate(() => window.__understory!.view().crew.map((m) => m.id));
+  expect(crew.length).toBeGreaterThan(0);
+  const who = crew[0]!;
+  await expect(page.getByTestId(`shift-${who}`)).toHaveAttribute("aria-pressed", "false");
+  await page.getByTestId(`shift-${who}`).click();
+  await expect
+    .poll(() =>
+      page.evaluate((id) => window.__understory!.view().crew.find((m) => m.id === id)?.shift, who),
+    )
+    .toBe("Night");
+  const others = await page.evaluate(
+    (id) =>
+      window
+        .__understory!.view()
+        .crew.filter((m) => m.id !== id)
+        .every((m) => m.shift === "Day"),
+    who,
+  );
+  expect(others).toBe(true);
+
+  // The elevator's per-daypart program. These existed in the data
+  // model, the command layer and the replay format from M1 and had no
+  // UI for three milestones; this is the test that says they have one.
+  await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const catalog = hooks.catalog();
+    const poles = catalog.items.findIndex((item) => item.id === "item.poles");
+    const cost =
+      catalog.shafts
+        .find((shaft) => shaft.id === "shaft.elevator")
+        ?.build_cost.find((entry) => entry.item === poles)?.amount ?? 18;
+    for (let i = 0; i < 80; i += 1) {
+      const held = hooks.view().stock.find((entry) => entry.item === poles)?.count ?? 0;
+      if (held >= cost) break;
+      hooks.step(600);
+    }
+    const top = hooks.view().tower.floors.length - 1;
+    hooks.send({ BuildShaft: { shaft: "shaft.elevator", low: 0, high: top, slot: 7 } });
+  });
+
+  const shaft = await page.evaluate(
+    () => window.__understory!.view().tower.shafts.find((s) => s.kind === "Elevator")?.id ?? null,
+  );
+  expect(shaft, "the tower could not afford an elevator to schedule").not.toBeNull();
+
+  // Skip a floor this daypart, and check the program says so.
+  await expect(page.getByTestId(`stop-${shaft}-1`)).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId(`stop-${shaft}-1`).click();
+  await expect
+    .poll(() =>
+      page.evaluate((id) => {
+        const view = window.__understory!.view();
+        const found = view.tower.shafts.find((s) => s.id === id);
+        return found?.programs[view.clock.daypart]?.served[1] ?? null;
+      }, shaft),
+    )
+    .toBe(false);
+  // And that it is *this* daypart only — a program editor that silently
+  // wrote every daypart would be a different, worse feature.
+  const elsewhere = await page.evaluate((id) => {
+    const view = window.__understory!.view();
+    const found = view.tower.shafts.find((s) => s.id === id);
+    return found?.programs.filter((program) => program.served[1] === false).length ?? 0;
+  }, shaft);
+  expect(elsewhere).toBe(1);
+});

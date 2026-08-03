@@ -834,6 +834,13 @@ button {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--text-muted);
+  /* A passive readout must never eat a click. It sits in the same
+   * corner as the roster, so before this it silently swallowed presses
+   * on the bottom row of the crew list and the shaft schedules — the
+   * button highlighted, nothing happened, and there was no way to tell
+   * that from a command being rejected. Caught by a smoke test that
+   * drives the panel the way a player does. */
+  pointer-events: none;
 }
 
 .diagnostics span + span {
@@ -1068,4 +1075,65 @@ button {
 .sound-toggle.on {
   border-color: var(--border-default);
   opacity: 1;
+}
+
+/* The per-daypart shaft schedules, sharing the roster's panel because
+ * they are the same kind of thing: something the player writes against
+ * the daypart clock. */
+.schedule-title {
+  margin-top: var(--space-3);
+}
+
+.schedule-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+}
+
+.schedule-name {
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.schedule-floors {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+/* A floor the car stops at, and one it skips. Deliberately the floor's
+ * own number rather than a tick or a dot: the cross-section labels its
+ * decks F0..Fn, and a schedule should be readable against the thing it
+ * schedules. */
+.floor-pip {
+  width: 18px;
+  padding: 1px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
+  cursor: pointer;
+}
+
+.floor-pip.on {
+  border-color: var(--accent-brass);
+  background: rgb(217 173 94 / 16%);
+  color: var(--accent-brass);
 }

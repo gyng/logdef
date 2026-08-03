@@ -2276,7 +2276,13 @@ reading, and both were in this category.
   layer and the replay format; §1.7 deferred the UI and said it "should land alongside M4's
   shift rota if not before", and §2.9 carried that forward unchanged. The rota's roster is the
   natural home for it — both are schedules written against the daypart clock — so M4 inherits
-  it.
+  it. **Done**, and one thing had to change in the bridge to make it possible: `ShaftView` did
+  not publish the programs at all, so there was no way to *read back* what was set. A schedule
+  you cannot see is one you cannot edit, and that is most of why this went three milestones
+  without a UI despite the command existing the whole time. The editor shows the current
+  daypart and edits that one rather than offering a grid of every daypart against every floor —
+  a player setting a night program at midday cannot see what they are doing, and the version of
+  this that is a spreadsheet is the version that gets built and never opened.
 - **`web/e2e/capture.spec.ts`** gains the stills §4.9 needs. It is also the only tool the
   project has for answering a visual question, so anything in §4.5 that cannot be seen in a
   capture is not finished.
@@ -2392,6 +2398,14 @@ one below says what would actually demonstrate it.
       **Still `[~]`: nobody who has not seen the game has been shown them.** That is the
       criterion, and it cannot be self-assessed — the whole point of asking a stranger "what is
       this place?" is that the person who drew it already knows the answer.
+
+- [x] **The roster carries both schedules**, and `the roster writes both of the player's
+      schedules` in `web/e2e/smoke.spec.ts` drives them through the DOM the way a player does
+      rather than through the bridge, because a panel can look right and be wired to nothing.
+      It caught one thing immediately: the diagnostics readout sits in the same corner and was
+      silently eating clicks on the bottom of the crew list — the button highlighted, nothing
+      happened, and there was no way to tell that from a rejected command. It is
+      `pointer-events: none` now.
 
 - [x] **The kitchen chain has visibly given bamboo somewhere to go.** `examples/journey.rs`'s
       shade-versus-sun comparison reported *exactly* 100 stalks on both routes at M3 and

@@ -282,6 +282,22 @@ export interface ShaftView {
   health_permille: number;
   /** Cut through. Nothing travels on it until it is repaired. */
   severed: boolean;
+  /**
+   * The schedule, one entry per daypart in pack order.
+   *
+   * A schedule you cannot see is one you cannot edit, which is most of
+   * why the per-daypart programs went three milestones without a UI
+   * despite existing in the data model, the command layer and the
+   * replay format the whole time.
+   */
+  programs: ProgramView[];
+}
+
+/** One daypart's worth of a shaft's schedule. */
+export interface ProgramView {
+  /** Indexed by floor. A floor the car will not stop at. */
+  served: boolean[];
+  priority: ShaftPriority;
 }
 
 export interface CarView {

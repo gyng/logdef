@@ -28,6 +28,8 @@ import type {
   HaltView,
   RoomInfo,
   ShaftInfo,
+  ShaftPriority,
+  ShaftView,
   ShiftTag,
   SimSpeed,
   StockView,
@@ -60,12 +62,16 @@ export interface UiState {
    * failed.
    */
   crew: CrewView[];
+  /** Every shaft, so the roster can carry their schedules. */
+  shafts: ShaftView[];
   selected: SelectedRoom | null;
   /** Whether the selected room is switched on. */
   selectedActive: boolean;
   placing: string | null;
   day: number;
   daypart: string;
+  /** Which daypart, as an index into the catalog. */
+  daypartIndex: number;
   sunPct: number;
   /** Sun after terrain — what the sails actually get. */
   exposurePct: number;
@@ -245,6 +251,18 @@ export class Game {
 
   audioEnabled(): boolean {
     return this.audio.isEnabled();
+  }
+
+  /**
+   * Rewrite one shaft's schedule for one daypart.
+   *
+   * The whole program is sent rather than a delta, because the command
+   * is the record: a replay that says "floor 2 stopped being served at
+   * dusk" is harder to read back than one that says what the schedule
+   * *became*.
+   */
+  setShaftProgram(id: number, daypart: number, served: boolean[], priority: ShaftPriority): void {
+    this.send({ SetShaftProgram: { id, daypart, served, priority } });
   }
 
   send(cmd: GameCommand): void {
@@ -486,11 +504,13 @@ export class Game {
       hauled: view?.stats.hauls_completed ?? 0,
       waiting: view?.crew.filter((member) => member.state === "board").length ?? 0,
       crew: view?.crew ?? [],
+      shafts: view?.tower.shafts ?? [],
       selected: this.selected,
       selectedActive: this.selectedRoomActive(),
       placing: this.placeMode?.id ?? null,
       day: view?.clock.day ?? 0,
       daypart: view === null ? "—" : (this.catalog.dayparts[view.clock.daypart]?.name ?? "—"),
+      daypartIndex: view?.clock.daypart ?? 0,
       sunPct: view?.clock.sun_pct ?? 0,
       exposurePct: view?.clock.exposure_pct ?? 0,
       charge: view?.power.charge ?? 0,

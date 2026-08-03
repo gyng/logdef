@@ -276,6 +276,22 @@ pub struct ShaftView {
     pub health_permille: i64,
     /// Cut through. Nothing travels on it until it is repaired.
     pub severed: bool,
+    /// The schedule, one entry per daypart in pack order.
+    ///
+    /// Published because a schedule you cannot see is one you cannot
+    /// edit: the per-daypart programs have existed in the data model,
+    /// the command layer and the replay format since M1 with no way to
+    /// read them back, which is most of why they never got a UI.
+    pub programs: Vec<ProgramView>,
+}
+
+/// One daypart's worth of a shaft's schedule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProgramView {
+    /// Indexed by floor: a floor the car will not stop at, however
+    /// loudly somebody is calling.
+    pub served: Vec<bool>,
+    pub priority: crate::state::ShaftPriority,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -940,6 +956,14 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                 .min(255) as u8,
             health_permille: shaft.health.permille(),
             severed: shaft.is_severed(),
+            programs: shaft
+                .programs
+                .iter()
+                .map(|program| ProgramView {
+                    served: program.served.clone(),
+                    priority: program.priority,
+                })
+                .collect(),
         })
         .collect();
 

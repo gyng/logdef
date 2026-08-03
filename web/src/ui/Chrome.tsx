@@ -121,7 +121,88 @@ function Roster({ game, ui }: Props) {
           );
         })}
       </ul>
+      <Schedules game={game} ui={ui} />
     </aside>
+  );
+}
+
+/**
+ * The per-daypart elevator programs, finally given somewhere to live.
+ *
+ * These have existed in the data model, the command layer and the replay
+ * format since M1; §1.7 deferred the UI and said it "should land
+ * alongside M4's shift rota if not before", and §2.9 carried that
+ * forward unchanged. The rota's roster is the natural home because both
+ * are **schedules written against the daypart clock** — the same
+ * category of thing, edited the same way, and the reason a panel is
+ * allowable here at all (`DECISIONS.md` §8).
+ *
+ * Only shafts with cars get one: stairs have no program to write,
+ * because nothing dispatches them.
+ *
+ * The editor shows the *current* daypart and edits that one, rather
+ * than offering a grid of every daypart against every floor. A player
+ * setting a night program at midday cannot see what they are doing, and
+ * the version of this that is a spreadsheet is the version that gets
+ * built and then never opened.
+ */
+function Schedules({ game, ui }: Props) {
+  const catalog = game.getCatalog();
+  const dispatched = ui.shafts.filter((shaft) => shaft.kind !== "Stairs");
+  if (dispatched.length === 0) return null;
+  const daypart = ui.daypartIndex;
+
+  return (
+    <>
+      <h2 className="section-title schedule-title">
+        Shafts · {catalog.dayparts[daypart]?.name ?? "now"}
+      </h2>
+      <ul className="schedule-list">
+        {dispatched.map((shaft) => {
+          const program = shaft.programs[daypart];
+          const served = program?.served ?? [];
+          const info = catalog.shafts[shaft.def];
+          return (
+            <li className="schedule-row" key={shaft.id} data-testid={`schedule-${shaft.id}`}>
+              <span className="schedule-name">{info?.name ?? "shaft"}</span>
+              <span className="schedule-floors">
+                {Array.from({ length: shaft.high - shaft.low + 1 }, (_, i) => {
+                  const floor = shaft.low + i;
+                  const on = served[floor] ?? true;
+                  return (
+                    <button
+                      type="button"
+                      key={floor}
+                      className={`floor-pip${on ? " on" : ""}`}
+                      data-testid={`stop-${shaft.id}-${floor}`}
+                      aria-pressed={on}
+                      title={
+                        on
+                          ? `Stops at F${floor}. Click to skip it this daypart.`
+                          : `Skips F${floor}. Click to stop there this daypart.`
+                      }
+                      onClick={() => {
+                        const next = [...served];
+                        while (next.length <= floor) next.push(true);
+                        next[floor] = !on;
+                        game.setShaftProgram(
+                          shaft.id,
+                          daypart,
+                          next,
+                          program?.priority ?? "Balanced",
+                        );
+                      }}
+                    >
+                      {floor}
+                    </button>
+                  );
+                })}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
 
