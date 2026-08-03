@@ -22,6 +22,7 @@ import type {
   EnemyView,
   FeatureView,
   FloorView,
+  RoomInfo,
   RoomView,
   ShaftView,
   TerrainInfo,
@@ -1635,16 +1636,155 @@ function drawPlanter(
   }
 }
 
+/**
+ * How tall a room stands, and what it wears on top.
+ *
+ * Every room used to be the same box at the same height, so a floor
+ * read as a row of identical crates whatever was in it. A tower is
+ * supposed to be legible at a glance — you should know what you are
+ * looking at from the silhouette before you read a label — and that
+ * needs the machinery to be shaped like machinery.
+ *
+ * `rise` is the fraction of the floor's height the body fills; the rest
+ * is headroom above it, which is where the crown goes. Radius separates
+ * grown things from built ones: the Heartseed is nearly a lozenge, a
+ * mill is nearly a box.
+ */
+function roomProfile(info: RoomInfo | undefined): {
+  rise: number;
+  radius: number;
+  crown: "dome" | "sail" | "cells" | "vent" | "boom" | "barrel" | "none";
+} {
+  if (!info) return { rise: 0.84, radius: 4, crown: "none" };
+  switch (info.category) {
+    // Grown, not built: tall and round, and domed rather than roofed.
+    case "Heart":
+      return { rise: 0.9, radius: 14, crown: "dome" };
+    case "Energy":
+      // A sail is mostly the sail, which lives above the deck it is
+      // bolted to. A cell bank is a short rack with its cells on top.
+      if (info.solar) return { rise: 0.44, radius: 3, crown: "sail" };
+      if (info.bank_capacity > 0) return { rise: 0.5, radius: 3, crown: "cells" };
+      return { rise: 0.72, radius: 3, crown: "vent" };
+    // Machinery: full height, square, and venting.
+    case "Production":
+      return { rise: 0.84, radius: 2, crown: "vent" };
+    // An arm is a boom with a housing at the back of it.
+    case "Intake":
+      return { rise: 0.6, radius: 3, crown: "boom" };
+    case "Defence":
+      return { rise: 0.52, radius: 3, crown: "barrel" };
+    // Shelving is shelving: low, wide, and flat on top.
+    case "Storage":
+      return { rise: 0.66, radius: 2, crown: "none" };
+    default:
+      return { rise: 0.84, radius: 4, crown: "none" };
+  }
+}
+
+/**
+ * The bit that sticks out. Drawn behind nothing and in front of
+ * nothing — it simply reaches into the headroom the body left, which is
+ * what makes a floor of mixed rooms read as a skyline rather than a
+ * row.
+ */
+function drawCrown(
+  batch: QuadBatch,
+  kind: string,
+  body: Color,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  head: number,
+): void {
+  const lit = mix(body, palette.roomBodyLit, 0.35);
+  switch (kind) {
+    case "dome": {
+      // Two overlapping lozenges, so the top is round rather than
+      // chamfered.
+      batch.push(x + w * 0.1, y - head * 0.5, w * 0.8, head, lit, { radius: head });
+      batch.push(x + w * 0.28, y - head * 0.85, w * 0.44, head, lit, { radius: head });
+      break;
+    }
+    case "sail": {
+      // Canted, and tall enough to be the thing you notice about the
+      // roof. Two panels at opposing angles read as fabric under
+      // tension rather than as a lid.
+      const panel = head * 1.5;
+      batch.push(x + w * 0.04, y - panel, w * 0.46, panel, palette.sunlight, {
+        colorBottom: lit,
+        rotation: -0.16,
+        radius: 2,
+      });
+      batch.push(x + w * 0.5, y - panel * 0.86, w * 0.46, panel * 0.86, palette.sunlight, {
+        colorBottom: lit,
+        rotation: 0.13,
+        radius: 2,
+      });
+      break;
+    }
+    case "cells": {
+      // A rack: upright cells, evenly spaced, each a little taller than
+      // the last is not — they are identical on purpose, because a bank
+      // is a repeated unit.
+      const count = Math.max(2, Math.round(w / 11));
+      const cw = (w * 0.8) / count;
+      for (let i = 0; i < count; i += 1) {
+        batch.push(x + w * 0.1 + i * cw + 1, y - head, cw - 2, head, palette.charge, {
+          colorBottom: lit,
+          radius: cw / 2,
+        });
+      }
+      break;
+    }
+    case "vent": {
+      // A stack, offset from centre so a row of mills does not look
+      // stamped.
+      const vw = Math.max(4, w * 0.16);
+      batch.push(x + w * 0.62, y - head * 0.9, vw, head * 0.9, lit, { radius: 1 });
+      batch.push(x + w * 0.58, y - head, vw * 1.4, head * 0.22, lit, { radius: 1 });
+      break;
+    }
+    case "boom": {
+      // The arm. Angled down and outboard, past the room it is bolted
+      // to — the cutter arm's own description says it reaches the
+      // ground, and until now nothing about it did.
+      const reach = w * 0.75;
+      batch.push(x + w * 0.55, y + h * 0.1, reach, Math.max(3, h * 0.12), palette.legJoint, {
+        rotation: 0.42,
+        radius: 2,
+      });
+      batch.push(x + w * 0.2, y - head * 0.7, w * 0.38, head * 0.7, lit, { radius: 2 });
+      break;
+    }
+    case "barrel": {
+      // Short, level, pointing the way the tower walks.
+      batch.push(x + w * 0.35, y - head * 0.55, w * 0.9, Math.max(3, head * 0.3), lit, {
+        rotation: -0.05,
+        radius: 2,
+      });
+      break;
+    }
+    default:
+      break;
+  }
+}
+
 function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop: number): void {
   const { catalog, layout } = ctx;
   const info = catalog.rooms[room.def];
+  const profile = roomProfile(info);
   const inset = layout.slotW * 0.06;
   const x = slotX(layout, room.slot) + inset;
   const w = room.width * layout.slotW - inset * 2;
-  // Rooms sit on the deck and stop short of the ceiling, so the floor
-  // above reads as a separate storey rather than a stacked block.
-  const y = floorTop + layout.floorH * 0.16;
-  const h = layout.floorH * 0.84 - 3;
+  // Rooms stand on the deck and reach as high as their kind does, so a
+  // floor reads as a skyline. The headroom left over is where the crown
+  // goes — a sail above its housing, an arm out over the side.
+  const usable = layout.floorH - 3;
+  const h = usable * profile.rise;
+  const y = floorTop + layout.floorH - 3 - h;
+  const head = usable - h;
 
   const base = info ? roomColor(info.category) : palette.roomBody;
   if (room.wrecked) {
@@ -1660,9 +1800,12 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
   // because one of them is a supply problem and the other needs poles.
   const hurt = 1 - unit(room.health_permille / 1000);
   const body = mix(stalled, palette.hurt, hurt * 0.7);
+  if (profile.crown !== "none" && head > 4) {
+    drawCrown(batch, profile.crown, body, x, y, w, h, head);
+  }
   batch.push(x, y, w, h, mix(body, palette.roomBodyLit, 0.25), {
     colorBottom: body,
-    radius: 4,
+    radius: profile.radius,
   });
   if (hurt > 0.05) {
     drawSplits(batch, room.id, x, y, w, h, 1 + Math.floor(hurt * 4), fade(palette.crack, 0.7));
