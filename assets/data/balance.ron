@@ -123,4 +123,142 @@ Balance(
         // sharpens it.
         elevator_base_wait_ticks: 45,
     ),
+    siege: SiegeBalance(
+        // Two thirds of a second at 1x, and still a sixth of one at 4x
+        // — enough frames that a kill is something you see rather than
+        // something you infer from the counter going up.
+        enemy_fade_ticks: 20,
+        // A floor's outer skin. Cheap enough that losing one to an
+        // unanswered wave is a scrape: repairing it from nothing costs
+        // 30 poles and 600 ticks of crew time (see repair fields
+        // below), on the order of one floor's own build cost.
+        panel_hp: 150,
+        // Not quite twice a panel's health — rooms sit behind the
+        // skin, so it should take real work to reach one once its
+        // floor's panel is already down.
+        room_hp: 260,
+        // Four times a panel's health. Severing a shaft is the
+        // signature emergency (SYSTEMS.md §2.3) and must never be one
+        // bite: a lone root-borer chewing uninterrupted (18 damage
+        // every 70 ticks, see enemies/root_borer.ron) needs about
+        // 2,333 ticks — roughly 78 seconds — to take a shaft from full
+        // health to severed.
+        shaft_hp: 600,
+        // Well over six times a shaft column's health. The Heartseed
+        // is the loss condition; nothing should reach it by accident,
+        // and nothing should finish it quickly once something does.
+        heartseed_hp: 4000,
+        // The tower strides 0.6 paces/tick (world.stride_paces_per_100_ticks
+        // above). 540 paces / 0.6 = 900 ticks = 30 s at 1x, comfortably
+        // inside a 20-40 s reaction window between the wave-arrival
+        // sound cue and contact. A creature's own approach speed
+        // (EnemyDef.speed_paces_per_100_ticks) closes a little more of
+        // the gap on top of the tower's own stride, which is why the
+        // fast night prowler reaches contact sooner than the slow
+        // root-borer despite spawning at the same distance.
+        spawn_paces_ahead: 540,
+        // Three a day-cycle (ticks_per_day 14400 / 4800), 160 seconds
+        // apart at 1x.
+        //
+        // Six a day was too many to be punctuation. An opening-strength
+        // wave does about 192 damage, which costs 19 poles to mend; one
+        // mill makes about 20 poles in 2,400 ticks at its nominal rate
+        // and rather fewer once haul latency is counted. So at the old
+        // interval a tower's entire pole income went on its own skin,
+        // it could never build anything again, and a damaged mill
+        // turned that into a spiral it could not climb out of — which
+        // is what a recorded run actually did: 0 poles in the bank
+        // against a 120-pole repair bill. At 4,800 the same tower
+        // spends about a quarter of its income staying whole and keeps
+        // the rest.
+        wave_interval_ticks: 4800,
+        // Every 100 points of provocation buys 40 more threat budget.
+        // At provocation_max (1000) that is +400 on top of
+        // base_threat — a wave more than twenty times richer than the
+        // opening one. This is the "aggressive harvester in real
+        // trouble" case BALANCE.md reasons about.
+        threat_per_100_provocation: 40,
+        // The floor under a wave, once one is coming at all: 10 threat
+        // buys two skitters (5 each — see enemies/skitter.ron). A wave
+        // is never a single creature, but a barely-provoked tower gets
+        // a pair rather than a pack, and the ramp to four and beyond is
+        // something the player earns by playing loudly.
+        //
+        // This used to be 20 and unconditional, which meant the very
+        // first point of provocation bought a full four-skitter wave.
+        // Waves are now gated on the provocation-scaled budget being
+        // able to afford something on its own, and this is only the
+        // floor under that.
+        base_threat: 10,
+        // The ceiling every provocation-scaled field below is a
+        // fraction of. Round, so "a third" (canopy leaper) and "half"
+        // (root-borer) land on clean gate values.
+        provocation_max: 1000,
+        // Three points an item, calibrated against the decay below so
+        // that one cutter arm breaks even and the second one is what
+        // provokes.
+        //
+        // The first calibration here assumed an arm's nominal rate (one
+        // stalk per 90 ticks, ~158 a day) and set gain and decay to
+        // roughly cancel at that figure. Measured, a starting tower
+        // strips about 101 a day, because throughput is bounded by
+        // shelf space and crew legs rather than by the arm — and once
+        // the storerooms fill it stops entirely. Against a decay tuned
+        // for the nominal rate the dial could never turn: a two-arm
+        // tower peaked at 14 points and bled back to zero the moment
+        // it jammed.
+        //
+        // At three points an item a flowing two-arm tower nets about
+        // +318 a day and draws its first wave inside the first two
+        // minutes; one arm nets about +15, which is noise. Expansion
+        // draws attention; subsistence does not.
+        provocation_per_100_harvested: 300,
+        // The burner run through one full night stretch (~4,750 ticks
+        // below night_light_threshold, see the Clock section above, /
+        // 100 ticks per burn = ~47 burns) raises provocation by
+        // 47 x 18 = ~846 points that night alone — three times the
+        // 288 a day decay sheds. Burning through the night is the
+        // loudest thing a tower can do, and it should cost more than a
+        // day of walking quietly can pay back.
+        provocation_per_burn: 18,
+        // 14,400 ticks / 100 x 2 = 288 points a day, a little under a
+        // third of the ceiling. Set so that a subsistence tower — one
+        // cutter arm, no burner — hovers at zero, and so that a tower
+        // which stops provoking and just walks is back to quiet inside
+        // four days however loud it had been. Everything above is a
+        // multiple of this number; change it and the whole dial moves.
+        provocation_decay_per_100_ticks: 2,
+        // Four ticks a hit point — about a seventh of a second.
+        // Fully repairing a severed shaft (600 hp) costs 2,400 ticks,
+        // 80 seconds of one crew member's dedicated time: real
+        // competition against hauling, not a rounding error.
+        repair_ticks_per_hp: 4,
+        // One pole per ten hit points: re-skinning a breached panel
+        // (150 hp) costs 15 poles and rebuilding a severed shaft
+        // (600 hp) costs 60.
+        //
+        // Repair is dearer per unit than building fresh — a floor
+        // costs 6 poles all in (see the Tower section above) — because
+        // it is fiddly work on something already standing. But only
+        // about twice as dear. At the original 2 a panel cost 30, five
+        // times a whole floor, and a tower visited at the usual rate
+        // spent every pole one mill could make on putting its own skin
+        // back and could never build anything again. Halving it puts
+        // an undefended tower at roughly break-even: it can survive
+        // indefinitely by patching, but it will not grow until it
+        // answers the jungle some other way.
+        repair_poles_per_10_hp: 1,
+        // Twenty hit points a shift, so a shift is 80 ticks of crew
+        // time and 4 poles. Chunky on purpose: a crew member who
+        // commits to a repair is away from hauling for a noticeable
+        // stretch, which is what makes triage a decision. Per-tick
+        // repair would let them dip in and out for free.
+        repair_hp_per_shift: 20,
+        // A quarter health. A room keeps limping along above this —
+        // damaged, slower, but still contributing (SYSTEMS.md §2.3) —
+        // and only goes fully silent once it crosses this line, so the
+        // player sees a visible decline before the room stops rather
+        // than a surprise cliff.
+        wrecked_permille: 250,
+    ),
 )

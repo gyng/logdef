@@ -1,0 +1,27 @@
+// Drops from the trees the tower is walking beneath, straight onto the
+// upper decks — a jungle-native inversion of the old climb-from-below
+// threat (`DESIGN.md` §5.5). Teaches that height is exposure: a top
+// floor with no panel and no battery is the softest target in the
+// tower, not the safest.
+#![enable(implicit_some)]
+EnemyDef(
+    id: "enemy.canopy_leaper",
+    name: "Canopy Leaper",
+    glyph: "🕷",
+    hp: 90,
+    // Slower to close than a skitter — it waits for the tower to pass
+    // underneath rather than rushing to meet it.
+    speed_paces_per_100_ticks: 25,
+    damage: 10,
+    attack_ticks: 40,
+    // 10 damage every 40 ticks for twenty seconds is 150 — exactly one
+    // roof panel per leaper. Longer than a skitter's grip because it
+    // came down from above and has the top deck to itself.
+    cling_ticks: 600,
+    approach: Canopy,
+    threat: 12,
+    // Roughly a third of provocation_max (1000): height stops being
+    // free once a run has drawn a little attention, not from minute
+    // one.
+    min_provocation: 330,
+)

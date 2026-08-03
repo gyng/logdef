@@ -17,6 +17,7 @@ use crate::fx::Fx;
 use crate::ids::{
     CrewId, DaypartIdx, FloorIdx, ItemIdx, RoomId, RoomIdx, ShaftId, ShaftIdx, SlotIdx,
 };
+use crate::state::siege::Health;
 
 /// A typed pile of one item with a ceiling.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,6 +130,8 @@ pub struct Room {
     /// be running right now" is a real decision every night — but any
     /// room can be shut down to stop it eating charge or inputs.
     pub active: bool,
+    /// Damage. A hurt room works; a wrecked one does not.
+    pub health: Health,
 }
 
 impl Room {
@@ -147,6 +150,11 @@ impl Room {
         // with the mill for exactly the same bamboo.
         if let Some((item, buffer_max)) = rt.burner_fuel {
             inputs.push(Stack::new(item, buffer_max));
+        }
+        // A battery's magazine is an input stack too, so the crew feed
+        // it with exactly the machinery that feeds a mill.
+        if let Some(item) = rt.defence_ammo {
+            inputs.push(Stack::new(item, rt.defence_buffer_max));
         }
 
         let mut outputs: Vec<Stack> = rt
@@ -173,6 +181,11 @@ impl Room {
             progress: 0,
             intake_acc: Fx::ZERO,
             active: true,
+            health: Health::full(if room_def.category == RoomCategory::Heart {
+                content.balance.siege.heartseed_hp
+            } else {
+                content.balance.siege.room_hp
+            }),
         }
     }
 
@@ -213,6 +226,27 @@ impl Room {
             }
         }
         amount - remaining
+    }
+
+    /// Is this room damaged past the point of working at all?
+    #[must_use]
+    pub fn is_wrecked(&self, content: &Content) -> bool {
+        self.health.permille() < content.balance.siege.wrecked_permille
+    }
+
+    /// Can this room do its job on this tick?
+    ///
+    /// Damage slows a room rather than stopping it: at half health it
+    /// works half the ticks. Deterministic, because it is a function of
+    /// the tick number, and proportional, so the player sees a visible
+    /// decline before the room goes silent instead of a cliff.
+    #[must_use]
+    pub fn is_working(&self, content: &Content, tick: u64) -> bool {
+        if !self.active || self.is_wrecked(content) {
+            return false;
+        }
+        let health = self.health.permille();
+        health >= 1000 || ((tick % 1000) as i64) < health
     }
 
     /// Total shelf space this room could still take for `item`.
@@ -396,6 +430,9 @@ pub struct Shaft {
     /// One program per daypart, so the night shift can run a different
     /// pattern from the day.
     pub programs: Vec<ShaftProgram>,
+    /// Damage. A severed column splits the tower's circulation in two,
+    /// which is the signature emergency of the whole design.
+    pub health: Health,
 }
 
 impl Shaft {
@@ -413,7 +450,15 @@ impl Shaft {
 
     #[must_use]
     pub const fn has_room(&self) -> bool {
-        self.riders < self.capacity
+        self.riders < self.capacity && !self.health.is_broken()
+    }
+
+    /// Chewed through. Nothing travels on it until it is repaired, and
+    /// route-finding has to notice — that reroute is the moment the
+    /// whole siege design exists to produce.
+    #[must_use]
+    pub const fn is_severed(&self) -> bool {
+        self.health.is_broken()
     }
 
     #[must_use]
@@ -427,7 +472,7 @@ impl Shaft {
     /// Does this shaft serve both ends of the trip during `daypart`?
     #[must_use]
     pub fn serves_trip(&self, from: FloorIdx, to: FloorIdx, daypart: DaypartIdx) -> bool {
-        if !self.covers_trip(from, to) {
+        if self.is_severed() || !self.covers_trip(from, to) {
             return false;
         }
         match self.kind {
@@ -462,15 +507,18 @@ pub struct Floor {
     pub slots: u8,
     /// Sorted by `slot`, never overlapping.
     pub rooms: Vec<Room>,
+    /// The outer wall. A breached panel lets things inside.
+    pub panel: Health,
 }
 
 impl Floor {
     #[must_use]
-    pub const fn new(index: FloorIdx, slots: u8) -> Self {
+    pub const fn new(index: FloorIdx, slots: u8, panel_hp: i64) -> Self {
         Self {
             index,
             slots,
             rooms: Vec::new(),
+            panel: Health::full(panel_hp),
         }
     }
 
@@ -491,7 +539,7 @@ impl Tower {
     pub fn new(content: &Content) -> Self {
         let balance = &content.balance.tower;
         let floors = (0..balance.starting_floors)
-            .map(|index| Floor::new(index, balance.floor_slots))
+            .map(|index| Floor::new(index, balance.floor_slots, content.balance.siege.panel_hp))
             .collect();
 
         // Built-in stairs at the left edge, spanning everything. One
@@ -518,6 +566,7 @@ impl Tower {
                 ShaftProgram::all_floors(balance.max_floors as usize);
                 content.dayparts.len().max(1)
             ],
+            health: Health::full(content.balance.siege.shaft_hp),
         }];
 
         Self { floors, shafts }

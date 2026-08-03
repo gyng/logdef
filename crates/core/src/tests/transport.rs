@@ -14,7 +14,7 @@ use crate::tests::{content, engine, item};
 /// Build a shaft, banking enough poles first.
 fn with_shaft(seed: u64, shaft: &str, low: u8, high: u8, slot: u8) -> crate::engine::GameEngine {
     let mut game = engine(seed);
-    game.step(6000);
+    crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::BuildShaft {
         shaft: shaft.into(),
         low,
@@ -436,7 +436,7 @@ fn the_chain_still_runs_with_an_elevator_in_the_tower() {
 /// would have said the elevator did nothing.
 fn throughput(game: &mut crate::engine::GameEngine, ticks: u32) -> u64 {
     let before = game.state().stats.crafts_completed;
-    game.step(ticks);
+    crate::tests::step_quietly(game, ticks);
     game.state().stats.crafts_completed - before
 }
 
@@ -453,8 +453,8 @@ fn adding_a_shaft_measurably_improves_throughput() {
 
     // Both towers bank the same poles over the same warm-up, so the
     // only difference between them is the shaft.
-    cramped.step(6000);
-    relieved.step(6000);
+    crate::tests::step_quietly(&mut cramped, 6000);
+    crate::tests::step_quietly(&mut relieved, 6000);
     relieved
         .try_send(GameCommand::BuildShaft {
             shaft: "shaft.elevator".into(),

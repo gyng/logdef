@@ -43,6 +43,7 @@ export function Chrome({ game, ui }: Props) {
           {ui.lastError}
         </div>
       )}
+      {ui.lost && <Elegy ui={ui} />}
     </div>
   );
 }
@@ -60,7 +61,18 @@ function TopBar({ game, ui }: Props) {
         <Readout label="Sun" value={`${ui.exposurePct}%`} warn={ui.exposurePct < 30} />
         <Readout label="Floors" value={`${ui.floors} / ${catalog.max_floors}`} />
         <Readout label="Queued" value={String(ui.waiting)} warn={ui.waiting > 0} />
+        <Readout
+          label="Standing"
+          value={`${Math.round(ui.integrity / 10)}%`}
+          warn={ui.integrity < 1000}
+        />
+        {/* Both of these are silent until there is something to say.
+            A permanent "0 poles owed" would be a dashboard number for
+            a state the tower is in for most of a run. */}
+        {ui.repairCost > 0 && <Readout label="To mend" value={`${ui.repairCost} poles`} warn />}
+        {ui.repelled > 0 && <Readout label="Seen off" value={String(ui.repelled)} />}
       </dl>
+      <Weather ui={ui} />
       <ChargeGauge ui={ui} />
       <button
         type="button"
@@ -119,6 +131,95 @@ function ChargeGauge({ ui }: { ui: UiState }) {
       </span>
     </div>
   );
+}
+
+/**
+ * How roused the forest is, keyed by percentage of the ceiling. Words
+ * rather than a figure, because the question the player is actually
+ * asking is "should I ease off", not "what is the number". Anything
+ * past the last threshold falls through to "roused".
+ */
+const MOODS: [number, string][] = [
+  [12, "still"],
+  [34, "stirring"],
+  [62, "restless"],
+  [85, "watchful"],
+];
+
+/**
+ * Provocation, read as weather.
+ *
+ * How much attention the tower has drawn is the only difficulty dial
+ * in the game, and the player turns it by harvesting hard and burning
+ * bamboo rather than from a menu — so it belongs on the bar next to
+ * the charge, in the same shape. What it must never look like is a
+ * threat meter: the creatures are defending their territory and the
+ * tower is the thing passing through it (`DECISIONS.md` §8). Hence a
+ * word for the mood of the forest and no number at all.
+ */
+function Weather({ ui }: { ui: UiState }) {
+  const fill = Math.max(0, Math.min(100, (ui.provocation / Math.max(1, ui.provocationMax)) * 100));
+  const mood = MOODS.find(([ceiling]) => fill < ceiling)?.[1] ?? "roused";
+  const band = fill < 34 ? "calm" : fill < 85 ? "stirring" : "roused";
+  return (
+    <div className={`weather weather-${band}`} data-testid="weather">
+      <div
+        className="weather-bar"
+        role="meter"
+        aria-label="Attention"
+        aria-valuenow={Math.round(fill)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext={mood}
+      >
+        <div className="weather-fill" style={{ width: `${fill}%` }} />
+      </div>
+      <span className="weather-word">the canopy is {mood}</span>
+    </div>
+  );
+}
+
+/**
+ * The end of a run.
+ *
+ * Not a fail screen and not a scoreboard. The tower stopped somewhere,
+ * and the only things worth saying about it are how long it stood and
+ * how far it got.
+ */
+function Elegy({ ui }: { ui: UiState }) {
+  return (
+    <div className="elegy" role="status" data-testid="elegy">
+      <h1>The Heartseed is gone</h1>
+      <p>The tower stands where it stopped. The green will have it back before the season turns.</p>
+      <dl className="elegy-facts">
+        <div>
+          <dt>Stood</dt>
+          <dd>{ui.day + 1} days</dd>
+        </div>
+        <div>
+          <dt>Walked</dt>
+          <dd>{ui.distance} paces</dd>
+        </div>
+        <div>
+          <dt>Seen off</dt>
+          <dd>{ui.repelled}</dd>
+        </div>
+      </dl>
+      <button type="button" className="elegy-again" onClick={walkAgain}>
+        walk again
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Start over. An explicit seed is dropped on the way out — otherwise
+ * "walk again" would deal the same run and the same ending.
+ */
+function walkAgain(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("seed");
+  window.location.replace(url.toString());
 }
 
 function Readout({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
@@ -311,6 +412,14 @@ function costHint(room: RoomInfo): string {
       if (room.burner) return "burns bamboo for charge";
       if (room.bank_capacity > 0) return `holds ${room.bank_capacity}⚡`;
       return "";
+    case "Defence":
+      // The catalog exposes that a room shoots back but not its range
+      // or its rate, and it should stay that way: where you put it and
+      // whether the chain keeps it fed are the decisions, not the
+      // numbers on the card.
+      return room.power_draw > 0
+        ? `shoots back · ${room.power_draw}⚡ a tick`
+        : "shoots back · fed off the shelves";
     default:
       return "";
   }
@@ -328,6 +437,12 @@ function describeRoom(game: Game, info: RoomInfo): string {
   }
   if (info.bank_capacity > 0) {
     return `Holds ${info.bank_capacity} charge. Storage is something you build, not something you find.`;
+  }
+  if (info.defence) {
+    // No ammo named: the catalog does not carry which item an
+    // emplacement eats, and guessing would go stale the first time one
+    // ships that does not eat darts.
+    return "Answers whatever comes close, off an ordinary rack that ordinary crew have to keep filled. Run it dry and it goes quiet, for exactly the same reason a mill does.";
   }
   if (info.intake_item !== null) {
     return `Strips ${name(info.intake_item).toLowerCase()} from the terrain the tower is walking through.`;

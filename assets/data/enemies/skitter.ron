@@ -1,0 +1,36 @@
+// The swarm baseline: small, numerous, and cheap enough that the threat
+// budget always affords a few. One bite barely registers — the lesson
+// is that darts run out, not that any single skitter hurts
+// (`SYSTEMS.md` §2.2, "ammo drain economics").
+//
+// No `min_provocation`: this is the one creature present from the very
+// first wave, regardless of how the run has been played so far.
+#![enable(implicit_some)]
+EnemyDef(
+    id: "enemy.skitter",
+    name: "Skitter",
+    glyph: "🐜",
+    hp: 30,
+    // Quick over open ground, but still slower than the tower's own
+    // stride (60). These are not rushing you — you are walking into
+    // where they live.
+    speed_paces_per_100_ticks: 40,
+    damage: 4,
+    attack_ticks: 25,
+    // Ten seconds of chewing at 4 damage every 25 ticks — 48 hit
+    // points. The four skitters an opening wave fields do 192 between
+    // them: an unanswered wave costs a panel (150) and starts on
+    // whatever is behind it. A scrape, as intended, rather than the
+    // 576 the first pass at this number produced.
+    cling_ticks: 300,
+    approach: Ground,
+    // Five threat, and the cheapest thing in the pack — which makes it
+    // the creature that decides when a wave can happen at all, since
+    // nothing comes until the provocation-scaled budget can afford the
+    // cheapest eligible creature on its own. At
+    // `threat_per_100_provocation` 40 that puts the earliest possible
+    // wave at provocation 13. `base_threat` (`balance.ron`, 10) then
+    // buys two of them, so the first wave a run sees is a pair of
+    // skitters and nothing worse. See BALANCE.md.
+    threat: 5,
+)

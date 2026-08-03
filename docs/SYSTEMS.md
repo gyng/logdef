@@ -448,7 +448,11 @@ No new dashboards. Everything below is a change to what the cross-section alread
 | Brown-out | the tower's interior lighting drops out |
 | Night | the sky darkens and lit floors glow |
 
-### 1.6 Tick order, current
+### 1.6 Tick order, as of M1
+
+> **Superseded by §2.8.** M2 inserted `siege` and `defence` between production and haul,
+> and `repair` after haul. The eight systems below still run in this relative order; the
+> current full order is in the M2 section.
 
 Charge priority *is* tick order: consumers draw from a shared pool as they run, so who runs
 first is who gets served when it is thin.
@@ -482,10 +486,6 @@ land alongside M4's shift rota if not before.
 
 ## M2 — The Siege *(the load test)*
 
-> **Spec only. No M2 code is written yet.** This section is step one of the M2 sprint,
-> written while the M1 systems it builds on were fresh. Treat every number as a placeholder
-> until it has a graded row in `BALANCE.md`.
-
 **Sprint question:** does combat-as-logistics-stress produce drama without any aimed weapon?
 
 **Scope:** enemies that damage infrastructure, emplacements that are fed by the chain, a
@@ -501,9 +501,11 @@ is precisely what made v1's most interesting moment structurally impossible. A w
 **demand spike on the circulation you already have**: darts to the batteries, repair crews
 to the breach, on the same stairs the mill is using.
 
-The player's verbs stay infrastructural. Targeting priorities, a small number of
-tower-level cooldowns, and triage — deciding what *not* to fix. Nothing in M2 adds an aimed
-weapon, and nothing should.
+The player's verbs stay infrastructural: where a battery goes decides what it can reach,
+whether the chain keeps it fed decides whether it fires at all, and triage — which repair,
+if any, is worth committing a crew member to right now — falls out of what has been built
+and how full the storeroom is, not a menu. Nothing in M2 adds an aimed weapon, a targeting
+priority list, or a tower-level ability to fiddle with, and nothing should.
 
 ### 2.2 Enemies
 
@@ -520,6 +522,30 @@ than a hit-point bar. Each type teaches one lesson, and a type without a lesson 
 Content, not enum arms, following `ShaftDef`'s precedent: `assets/data/enemies/*.ron`,
 interned like everything else.
 
+Contact does not last forever. Once a creature reaches the tower it holds on for
+`cling_ticks` — content on `EnemyDef`, tuned per type in `BALANCE.md` — and when that runs
+out it lets go and is left behind, rather than being destroyed. The clock only runs while
+the tower is actually striding (`GameState.strode`, not the player's `walking` intent — a
+tower that cannot afford the charge to move shakes nothing off either), and it runs on
+anything that has reached the tower, not only on a creature mid-bite: one that has run out
+of things to chew and dropped back to circling is still counting down, so a tower stripped
+to its Heartseed doesn't keep a wave orbiting it indefinitely. That makes `SetStriding`
+(`command.rs`) a real answer to a wave that costs nothing in poles or darts — keeping the
+legs moving is a legitimate way to survive one, and stopping to work mid-assault is a
+genuine risk rather than a free action. Cling timers are tuned per creature rather than
+uniform: a root-borer's is well short of the time it needs to sever a shaft alone, so one
+borer on a walking tower gets a column partway down and loses its grip before finishing,
+and it takes two overlapping borers, or a tower that stopped moving, to actually sever one.
+
+A creature leaves the fight one of two ways, and the distinction is a fact the player can
+see, not an implementation detail: `Dying` is shot down by an emplacement, `Leaving` is a
+creature whose grip ran out. Both fade over `enemy_fade_ticks` rather than disappearing on
+the tick they end — long enough at 1x, and still visible at 4x, that an outcome reads as
+something that happened rather than something a counter reports after the fact. Only
+`Dying` counts toward the `repelled` readout: walking away from something is not the same
+as seeing it off, and per the tone guardrail in `DECISIONS.md` §8 the game should never
+claim otherwise.
+
 ### 2.3 Damage as a state of the tower
 
 Damage attaches to the things the player built, because that is what makes it legible:
@@ -527,25 +553,50 @@ Damage attaches to the things the player built, because that is what makes it le
 * **Panels** — per floor. Breached panels let things inside.
 * **Rooms** — a damaged room works slower; a destroyed one is gone, with its contents.
 * **Shafts** — a severed shaft column splits the tower's circulation in two. This is the
-  signature emergency, and `best_shaft` already routes around what does not span a trip, so
-  the reroute should fall out of the existing model rather than needing a special case.
+  signature emergency, and `best_shaft` already routed around what did not span a trip, so
+  the reroute falls out of the existing model rather than needing a special case:
+  `tests::siege::a_severed_shaft_forces_a_live_reroute`,
+  `a_severed_shaft_is_no_longer_a_route`,
+  `a_severed_shaft_puts_everyone_on_it_back_on_their_feet`, and
+  `a_tower_with_one_shaft_stalls_when_it_is_cut` (the case where there is nowhere to
+  reroute to) all hold.
 
 ### 2.4 Emplacements
 
 Rooms with a `defence` block: a dart battery on a balcony, a seed-bomb mortar on a deck.
-They auto-fire by a player-set priority and consume ammo from a **local rack**, which is
-just an input stack — so feeding them is the haul system's existing job, and a battery that
-runs dry does so for exactly the same reason a mill does.
+They auto-fire at the nearest live target in range — a battery has no judgement of its own;
+the player's judgement went into where they put it — and consume ammo from a **local
+rack**, which is just an input stack, so feeding them is the haul system's existing job,
+and a battery that runs dry does so for exactly the same reason a mill does.
 
 That equivalence is the whole design. If emplacements get their own special supply
 mechanism, combat stops being a load test and becomes a parallel game.
 
+The chain behind that rack has its own arithmetic, and it is not free of tradeoffs. A
+thornwright turns poles into darts three to the one. Its own craft timer runs a touch
+slower than a mill's, which reads as "a thornwright can't outpace one mill" on paper — but
+a mill's *realised* pole output is well short of its nominal rate once haul latency is
+counted, so in practice a single thornwright reliably out-consumes a single mill's actual
+output. A tower that wants a steady dart supply **and** poles left over for repair needs a
+second mill, not a faster thornwright (`docs/BALANCE.md`, thornwright recipe). Shooting
+stays the cheap side of that trade regardless: a skitter costs two darts to put down and
+does about 48 hit points of damage over a full, unanswered cling — the better part of five
+poles to mend (`repair_poles_per_10_hp`) — so putting one down is consistently cheaper than
+letting it bite, provided the rack has darts in it at all.
+
 ### 2.5 Repair
 
-Repair consumes poles, rope, and crew time. It is a chain sink like any other, and it
+Repair consumes poles and crew time. It is a chain sink like any other, and it
 competes for the same three crew. Triage — letting a floor stay breached because the mill
 matters more right now — is the interesting decision, so repair must never be automatic and
 never free.
+
+Crew do not chase scratches. A repair job is only started against damage worth at least one
+shift (`repair_hp_per_shift`) of hit points, because a shift costs its poles whether it
+mends twenty hit points or one — starting one on a mark that has lost four would throw poles
+away for almost nothing. Below a shift's worth of damage, the mark simply stays on the
+tower: the cross-section is still doing its job as the health readout, it just isn't a job
+worth a crew member's time yet.
 
 ### 2.6 Provocation
 
@@ -559,10 +610,80 @@ should frame this as a kill count.
 The Heartseed is already placed, already unique, already undemolishable. M2 gives it hit
 points and makes its destruction the end of the run.
 
-### 2.8 Exit criteria
+### 2.8 Tick order, current
 
-- [ ] A severed shaft mid-assault forces a live reroute, and it is *legible* — you can see
-      why the crew changed route without opening a debug view.
-- [ ] A brown-out night assault is survivable with banked charge and lethal without.
-- [ ] Golden replay regenerated; hash parity green natively and in wasm.
-- [ ] `make check` and the smoke suite green.
+> **Supersedes §1.6.** M2 inserted `siege` and `defence` between production and haul, and
+> `repair` after haul.
+
+1. **clock** — advance the day.
+2. **power income** — recompute capacity from the banks; collect from sails and burners.
+3. **transport** — cars move. First claim on charge, because a car freezing mid-shaft
+   should be the last thing that happens, not the first.
+4. **intake** — harvest the band underfoot.
+5. **production** — recipes advance, consume, emit. Powered rooms pay here.
+6. **siege** — creatures approach and attack; provocation decays. Runs before defence so an
+   emplacement fires at where a creature actually is this tick, not where it stood a tick
+   ago.
+7. **defence** — emplacements fire at what siege just moved.
+8. **haul** — crew advance their legs, then idle crew claim work.
+9. **repair** — crew already at damage put hit points back. Runs after haul because repair
+   competes with hauling for the same crew, and hauling's claims on that crew are settled
+   first.
+10. **lighting** — lamps, after dark.
+11. **stride** — the tower walks if it can still afford to, and terrain streams in.
+
+### 2.9 Exit criteria
+
+- [x] A severed shaft mid-assault forces a live reroute. **Confirmed**:
+      `tests::siege::a_severed_shaft_forces_a_live_reroute`,
+      `a_severed_shaft_is_no_longer_a_route`,
+      `a_severed_shaft_puts_everyone_on_it_back_on_their_feet`, and
+      `a_tower_with_one_shaft_stalls_when_it_is_cut` (the case where there is nowhere left
+      to reroute to). The second half of this criterion — that the reroute is *legible*,
+      that you can see why the crew changed route without opening a debug view — is a
+      question you answer by looking, and a passing test cannot answer it. The renderer
+      draws a severed column as two pieces sheared past each other with dust still falling
+      out of it, but no captured still has yet caught one mid-run. Listed as deferred
+      below rather than claimed here.
+- [x] A brown-out night assault is survivable with banked charge and lethal without.
+      **Confirmed**: `tests::power::a_banked_night_is_survivable_and_an_empty_one_is_not`
+      (carried over from M1, still holds).
+- [x] Does combat-as-logistics-stress produce drama without an aimed weapon? **Yes**,
+      measured by the five-day, three-tower comparison in
+      `cargo run -p understory-core --example siege_run`: `subsistence` (one cutter arm,
+      never expands) is left alone, ending at full (1000‰) integrity with 220 poles banked
+      and nothing left to spend them on; `greedy` (a second cutter arm and nothing else)
+      degrades to 743‰, runs out of poles by day 2, and has stopped repairing entirely by
+      day 4; `answered` (the second arm, plus a mill, a thornwright, and a dart battery)
+      holds full (1000‰) integrity through two days of rising provocation, sees off 51
+      creatures, and is still mending on day 5. Defence is a choice that pays for itself;
+      expanding without it has a visible, mounting price.
+- [x] Golden replay regenerated; hash parity green natively and in wasm. **Confirmed**: the
+      fixture now runs 30,000 ticks and exercises the elevator, a thornwright, a
+      demolition, a dart battery, and a wave with damage and repair
+      (`crates/core/examples/record_golden.rs`).
+- [x] `make check` and the smoke suite green — 166 Rust tests, 7 Playwright tests.
+
+**Deferred out of M2:**
+
+- **Most of the creature taxonomy is unexercised in play.** The pack defines four
+  creatures, but `min_provocation` gates the canopy leaper at 330, the night prowler at
+  200, and the root-borer at 500 (`docs/BALANCE.md`), and the measured five-day run above
+  peaks around provocation 250. So the skitter, and barely the night prowler, are the only
+  creatures a normal run has actually met; the leaper's "height is exposure" lesson and the
+  borer's shaft-severing emergency are reachable only by a much louder or much longer run
+  than the one measured here. They are tested in isolation (`tests/siege.rs`) but not
+  balanced in situ. M5's full taxonomy pass is where this gets settled.
+- **A severed shaft has not been looked at.** The reroute is tested and the renderer draws
+  the break, but the screenshot harness (`web/e2e/capture.spec.ts`) has never caught one:
+  it takes a root-borer, which is gated at provocation 500, and a captured run peaks around
+  250. Until somebody has seen it, the legibility half of the first exit criterion above is
+  a claim about code rather than about the game.
+- **One emplacement.** The dart battery is the only thing that shoots back, so "which
+  defence to build" is not yet a decision — only "whether."
+- **A creature giving up sounds like a creature dying.** `EnemyState::Leaving` and
+  `EnemyState::Dying` are distinct in the state and in the snapshot (§2.2, above), but the
+  audio layer has no separate cue yet, so walking a wave off and shooting it down sound the
+  same.
+- **Per-daypart elevator programs still have no UI**, carried forward unchanged from M1's
+  deferred note (§1.7, above).

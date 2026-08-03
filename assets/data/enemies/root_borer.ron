@@ -1,0 +1,34 @@
+// Goes for the legs and the shaft columns, not the skin. Slow and tough
+// by design: severing a shaft is the signature emergency
+// (`SYSTEMS.md` §2.3), and it has to take sustained work at one column
+// rather than a lucky bite. Teaches transport redundancy — a tower
+// with only one shaft has exactly one point of failure.
+#![enable(implicit_some)]
+EnemyDef(
+    id: "enemy.root_borer",
+    name: "Root Borer",
+    glyph: "🪲",
+    // Highest hp of the four — it has to survive long enough at a
+    // column for a severed shaft to feel earned, not like it vanished
+    // on contact.
+    hp: 225,
+    // The slowest approach of the four.
+    speed_paces_per_100_ticks: 15,
+    // 18 damage every 70 ticks: one root-borer working alone needs
+    // roughly 2,333 ticks (~78 s) to take `shaft_hp` (600, see
+    // balance.ron) from full health to severed. See BALANCE.md.
+    damage: 18,
+    attack_ticks: 70,
+    // 18 damage every 70 ticks for 1,200 ticks is 308 — just over half
+    // a shaft column (600). One borer left alone on a walking tower
+    // takes a column to half and then loses its grip; two overlapping
+    // ones sever it, which keeps the signature emergency
+    // (`SYSTEMS.md` §2.3) reachable without making it routine. Stop
+    // walking with a borer attached and it always gets there.
+    cling_ticks: 1200,
+    approach: Burrow,
+    threat: 20,
+    // Half of provocation_max: transport redundancy only becomes a
+    // real question once a run has already drawn serious attention.
+    min_provocation: 500,
+)

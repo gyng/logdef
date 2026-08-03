@@ -42,7 +42,10 @@ first of the three insights below.
    crews to a breached panel — riding the same circulation that runs your economy at every
    other moment. You don't win a fight with faster reflexes, because there are no aimed
    weapons to aim. You win it earlier, at the moment you decided whether to place a second
-   shaft.
+   shaft. Or you simply keep walking: a creature only holds its grip while the tower is
+   actually striding, so letting a wave lose its hold costs nothing beyond the charge you
+   were already spending to travel — which is why standing still to work through a jam is a
+   real risk, not a formality.
 3. **The world streams past.** Intake is positional, not a menu choice: bamboo and fiber
    sit thick under dense canopy; sun and scrap sit in the open ruin-fields. The two are
    opposed — shade is biomass-rich and sun-poor, clearings are the reverse — so which
@@ -200,10 +203,13 @@ ruins (provocation given a face), and night predators are the reason you bank ch
 
 Emplacements auto-fire by player-set priority, consuming ammo from local racks — the
 player's verb is triage, not aim. Repair consumes poles, rope, and crew time, so defence is
-itself a chain sink, not a separate system bolted on. Provocation is one knob: aggressive
-harvesting, burner smoke, and ruin-salvaging all raise local threat, which keeps the tone
-guardrail in pillar 5 true by construction — they defend their home; you are the one
-passing through.
+itself a chain sink, not a separate system bolted on. Creatures do not hold on forever: each
+type's grip counts down only while the tower is actually striding, so continuing to walk is
+a free, always-available answer to a wave and stopping to work mid-assault is a real risk,
+not a formality — losing a wave's grip is not the same as driving it off, and only a kill
+counts as the latter. Provocation is one knob: aggressive harvesting, burner smoke, and
+ruin-salvaging all raise local threat, which keeps the tone guardrail in pillar 5 true by
+construction — they defend their home; you are the one passing through.
 
 ### 5.6 Journey and run structure
 

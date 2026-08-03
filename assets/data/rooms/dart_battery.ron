@@ -1,0 +1,40 @@
+// Darts' first consumer. M1 shipped the thornwright with nowhere for
+// its output to go, a deliberate, recorded exception (`SYSTEMS.md`
+// §1.4) — this closes that gap. Feeding a battery is the haul system's
+// ordinary job: the same crew, the same shafts, the same competition
+// with the mill, because an emplacement with its own private supply
+// would turn combat into a parallel game instead of a load test on the
+// one already running (`SYSTEMS.md` §2.4).
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.dart_battery",
+    name: "Dart Battery",
+    short: "DRT",
+    category: Defence,
+    width: 2,
+    // Same tier as the mill and the burner — a first battery should be
+    // an easy, early build, not a late-game investment.
+    build_cost: [CostEntryDef(item: "item.poles", amount: 6)],
+    defence: DefenceDef(
+        ammo: "item.darts",
+        ammo_per_shot: 1,
+        // Eight darts on the rack. A skitter takes two (30 hp against
+        // 15 damage), and `base_threat` 10 buys two skitters, so a
+        // freshly stocked battery holds about two opening waves' worth
+        // — enough to answer the first arrivals off its own rack and
+        // still be dry well before provocation has climbed anywhere.
+        // The buffer is a head start, not a supply.
+        buffer_max: 8,
+        // Two shots kill a skitter, six kill a canopy leaper. See
+        // BALANCE.md for the full kill-shot table.
+        damage: 15,
+        // A little over a second between shots.
+        reload_ticks: 40,
+        // Reaches well past the tower's own skin, so a stocked battery
+        // is already firing on an approaching creature before it makes
+        // contact with anything — provided the chain keeps the rack
+        // full. An empty rack is silent for the same reason a starved
+        // mill is.
+        range_paces: 60,
+    ),
+)

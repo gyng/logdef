@@ -37,11 +37,12 @@ fn poles_reach_the_shelves() {
 
     let opening = game.state().stock_of(poles);
     game.step(3600); // two minutes
+    // Net of whatever repair spent, so this measures the chain rather
+    // than the siege.
+    let delivered = game.state().stock_of(poles) + game.state().stats.repair_poles_spent as i64;
     assert!(
-        game.state().stock_of(poles) > opening,
-        "milled poles never made it to a storeroom: {} then {}",
-        opening,
-        game.state().stock_of(poles)
+        delivered > opening,
+        "milled poles never made it to a storeroom: {opening} then {delivered}"
     );
 }
 
@@ -58,6 +59,7 @@ fn hauling_never_creates_or_destroys() {
     let mut last_poles = total_in_flight(game.state(), poles);
     let mut harvested = game.state().stats.items_harvested as i64;
     let mut crafted = game.state().stats.crafts_completed as i64;
+    let mut mending = game.state().stats.repair_poles_spent as i64;
 
     for _ in 0..120 {
         game.step(30);
@@ -67,6 +69,7 @@ fn hauling_never_creates_or_destroys() {
         let poles_now = total_in_flight(state, poles);
         let harvested_now = state.stats.items_harvested as i64;
         let crafted_now = state.stats.crafts_completed as i64;
+        let mending_now = state.stats.repair_poles_spent as i64;
 
         // Bamboo in = harvested; bamboo out = consumed by crafts.
         assert_eq!(
@@ -75,11 +78,13 @@ fn hauling_never_creates_or_destroys() {
             "bamboo appeared or vanished at tick {}",
             state.tick
         );
-        // Poles only come from crafts. Construction would also spend
-        // them, but this test issues no build commands.
+        // Poles come from crafts and leave through construction and
+        // repair. This test issues no build commands, so repair is the
+        // only sink — and once the jungle notices the tower, it is a
+        // real one.
         assert_eq!(
             poles_now - last_poles,
-            crafted_now - crafted,
+            (crafted_now - crafted) - (mending_now - mending),
             "poles appeared or vanished at tick {}",
             state.tick
         );
@@ -88,6 +93,7 @@ fn hauling_never_creates_or_destroys() {
         last_poles = poles_now;
         harvested = harvested_now;
         crafted = crafted_now;
+        mending = mending_now;
     }
 }
 
@@ -324,6 +330,7 @@ fn the_view_reports_the_same_states_the_simulation_is_in() {
             CrewState::Boarding { .. } => CrewStateTag::Board,
             CrewState::Climbing { .. } => CrewStateTag::Climb,
             CrewState::Riding { .. } => CrewStateTag::Ride,
+            CrewState::Repairing { .. } => CrewStateTag::Mend,
             CrewState::Loading { .. } => CrewStateTag::Load,
             CrewState::Unloading { .. } => CrewStateTag::Unload,
         };

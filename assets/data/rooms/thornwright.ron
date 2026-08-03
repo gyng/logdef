@@ -12,12 +12,24 @@ RoomDef(
     build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
     power_draw: 1,
     recipe: RecipeDef(
-        // 5 seconds a dart. Slower than the mill's 4 s per pole on
-        // purpose: one thornwright must never out-consume one mill's
-        // output, so the chain stays visibly fed rather than backed up
-        // at the mill.
+        // Five seconds a craft against the mill's four, so a
+        // thornwright consumes poles a little slower than one mill
+        // makes them — on paper. In practice the mill is limited by
+        // what the crew can carry to it rather than by its own timer,
+        // so a thornwright does out-consume one mill, and a tower that
+        // wants darts and repairs both needs a second one. That is a
+        // real prerequisite, not an oversight; see BALANCE.md.
         craft_ticks: 150,
         inputs: [IoEntryDef(item: "item.poles", amount: 1, buffer_max: 6)],
-        outputs: [IoEntryDef(item: "item.darts", amount: 1, buffer_max: 6)],
+        // Three darts to the pole. At one apiece a thornwright turned
+        // 96 poles a day into 96 darts — an entire second mill's output
+        // — while a battery answering a normal run's waves spent barely
+        // forty of them, so the surplus piled up in the storerooms and
+        // the tower could not afford to mend itself. Splitting a pole
+        // three ways leaves most of that mill for repairs, and keeps
+        // shooting cheaper than patching: a skitter costs two darts to
+        // put down and does 48 hit points of damage if it is left
+        // alone, which is nearly five poles to mend.
+        outputs: [IoEntryDef(item: "item.darts", amount: 3, buffer_max: 9)],
     ),
 )

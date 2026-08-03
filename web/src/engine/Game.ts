@@ -58,6 +58,17 @@ export interface UiState {
   chargeSpend: number;
   brownout: boolean;
   walking: boolean;
+  /** How much attention the tower has drawn, against its ceiling. */
+  provocation: number;
+  provocationMax: number;
+  /** Panels, rooms and shafts averaged by hit points, in per-mille. */
+  integrity: number;
+  /** Poles it would take to put everything right. */
+  repairCost: number;
+  /** Creatures seen off. Reported, never celebrated. */
+  repelled: number;
+  /** The Heartseed is gone. The run is over. */
+  lost: boolean;
   fps: number;
   quads: number;
   lastError: string | null;
@@ -369,6 +380,12 @@ export class Game {
       chargeSpend: view?.power.spent_last ?? 0,
       brownout: view?.power.brownout ?? false,
       walking: view?.power.walking ?? true,
+      provocation: view?.siege.provocation ?? 0,
+      provocationMax: view?.siege.provocation_max ?? 0,
+      integrity: view?.siege.integrity_permille ?? 1000,
+      repairCost: view?.siege.repair_cost ?? 0,
+      repelled: view?.siege.repelled ?? 0,
+      lost: view?.siege.lost ?? false,
       fps: Math.round(this.fps),
       quads: this.renderer.quadCount,
       lastError: this.lastError,

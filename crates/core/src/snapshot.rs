@@ -32,6 +32,7 @@ pub struct ViewSnapshot {
     pub power: PowerView,
     pub world: WorldView,
     pub tower: TowerView,
+    pub siege: SiegeView,
     pub crew: Vec<CrewView>,
     /// Summed across every storeroom shelf — what construction spends.
     pub stock: Vec<StockView>,
@@ -65,6 +66,44 @@ pub struct PowerView {
     pub lit: bool,
     /// The legs are running.
     pub walking: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiegeView {
+    pub enemies: Vec<EnemyView>,
+    /// How much attention the tower has drawn. The only difficulty dial
+    /// in the game, and the player turns it by playing.
+    pub provocation: i64,
+    pub provocation_max: i64,
+    /// Panels, rooms and shafts averaged by hit points, in per-mille.
+    pub integrity_permille: i64,
+    /// Creatures seen off. Reported, never celebrated.
+    pub repelled: u64,
+    /// The Heartseed is gone. The run is over.
+    pub lost: bool,
+    /// Poles it would take to put everything right, so the player can
+    /// see the bill before deciding what to triage.
+    pub repair_cost: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnemyView {
+    pub id: u32,
+    /// Indexes `catalog.enemies`.
+    pub def: u16,
+    /// Whole paces, on the same axis as `world.distance`.
+    pub at: f32,
+    pub hp_permille: i64,
+    pub state: EnemyStateTag,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EnemyStateTag {
+    Approach,
+    Attack,
+    Dying,
+    Leaving,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +146,8 @@ pub struct FloorView {
     pub index: u8,
     pub slots: u8,
     pub rooms: Vec<RoomView>,
+    /// The outer wall, in per-mille. Zero is a hole in the tower's skin.
+    pub panel_permille: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +169,9 @@ pub struct RoomView {
     /// A sail that is no longer on the top floor. Shaded rooms draw
     /// stalled, and this is why.
     pub shaded: bool,
+    pub health_permille: i64,
+    /// Damaged past the point of working at all.
+    pub wrecked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,6 +203,9 @@ pub struct ShaftView {
     pub cars: Vec<CarView>,
     /// Crew queued at this shaft right now, across all its floors.
     pub queued: u8,
+    pub health_permille: i64,
+    /// Cut through. Nothing travels on it until it is repaired.
+    pub severed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,6 +252,8 @@ pub enum CrewStateTag {
     Climb,
     /// Aboard a car.
     Ride,
+    /// Working on damage.
+    Mend,
     Load,
     Unload,
 }
@@ -229,6 +278,7 @@ pub struct CatalogSnapshot {
     pub shafts: Vec<ShaftInfo>,
     pub terrain: Vec<TerrainInfo>,
     pub dayparts: Vec<DaypartInfo>,
+    pub enemies: Vec<EnemyInfo>,
     pub floor_cost: Vec<CostInfo>,
     pub max_floors: u8,
     pub floor_slots: u8,
@@ -251,6 +301,16 @@ pub struct ShaftInfo {
     pub ticks_per_floor: u32,
     pub charge_per_floor: i64,
     pub cars: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnemyInfo {
+    pub id: String,
+    pub name: String,
+    pub glyph: String,
+    /// One of: Ground, Canopy, Burrow.
+    pub approach: String,
+    pub night_only: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -293,6 +353,8 @@ pub struct RoomInfo {
     pub burner: bool,
     /// Charge capacity this room adds.
     pub bank_capacity: i64,
+    /// Shoots back, and eats ammo off the same shelves as everything else.
+    pub defence: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -328,9 +390,41 @@ pub fn build_view(state: &GameState, content: &Content, alpha: f32) -> ViewSnaps
         power: build_power(state),
         world: build_world(state, content),
         tower: build_tower(state, content),
+        siege: build_siege(state, content),
         crew: build_crew(state, content),
         stock: build_stock(state),
         stats: state.stats.clone(),
+    }
+}
+
+fn build_siege(state: &GameState, content: &Content) -> SiegeView {
+    SiegeView {
+        enemies: state
+            .siege
+            .enemies
+            .iter()
+            .map(|enemy| EnemyView {
+                id: enemy.id.0,
+                def: enemy.def.0,
+                at: paces_to_f32(enemy.at),
+                hp_permille: {
+                    let max = content.enemy(enemy.def).hp.max(1);
+                    (enemy.hp.max(0) * 1000 / max).min(1000)
+                },
+                state: match enemy.state {
+                    crate::state::EnemyState::Approaching => EnemyStateTag::Approach,
+                    crate::state::EnemyState::Attacking { .. } => EnemyStateTag::Attack,
+                    crate::state::EnemyState::Dying => EnemyStateTag::Dying,
+                    crate::state::EnemyState::Leaving => EnemyStateTag::Leaving,
+                },
+            })
+            .collect(),
+        provocation: state.siege.provocation,
+        provocation_max: content.balance.siege.provocation_max,
+        integrity_permille: crate::systems::siege::tower_integrity_permille(state),
+        repelled: state.siege.repelled,
+        lost: state.siege.lost,
+        repair_cost: crate::systems::repair::outstanding_repair_cost(state, content),
     }
 }
 
@@ -409,6 +503,7 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
         .map(|floor| FloorView {
             index: floor.index,
             slots: floor.slots,
+            panel_permille: floor.panel.permille(),
             rooms: floor
                 .rooms
                 .iter()
@@ -422,6 +517,7 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                             room.inputs.get(i).is_none_or(|s| s.count < *amount)
                         });
                     let backed_up = room.outputs.iter().any(crate::state::Stack::is_full);
+                    let wrecked = room.health.permille() < content.balance.siege.wrecked_permille;
                     let def = content.room(room.def);
                     // A sail below the roof is in the tower's own
                     // shadow. Growing taller has a cost, and this is
@@ -431,6 +527,21 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                         room.inputs
                             .last()
                             .is_none_or(|fuel| fuel.count < burner.fuel_per_burn)
+                    });
+                    // An emplacement with an empty rack is quiet for
+                    // exactly the reason a starved mill is, and has to
+                    // read that way — the whole point of feeding a
+                    // battery off the ordinary shelves is that it fails
+                    // like everything else. Without this it kept its
+                    // working colours while sitting silent, which is
+                    // the one thing the cross-section must not do.
+                    let magazine_dry = def.defence.as_ref().is_some_and(|defence| {
+                        rt.defence_ammo.is_some_and(|ammo| {
+                            room.inputs
+                                .iter()
+                                .find(|stack| stack.item == ammo)
+                                .is_none_or(|rack| rack.count < defence.ammo_per_shot)
+                        })
                     });
                     let has_work = rt.craft_ticks > 0 || rt.intake_item.is_some();
 
@@ -454,9 +565,13 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                         stalled: (has_work && (starved || backed_up))
                             || shaded
                             || burner_dry
+                            || magazine_dry
+                            || wrecked
                             || !room.active,
                         active: room.active,
                         shaded,
+                        health_permille: room.health.permille(),
+                        wrecked,
                     }
                 })
                 .collect(),
@@ -515,6 +630,8 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                 })
                 .count()
                 .min(255) as u8,
+            health_permille: shaft.health.permille(),
+            severed: shaft.is_severed(),
         })
         .collect();
 
@@ -545,6 +662,7 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
                 crate::state::CrewState::Boarding { .. } => CrewStateTag::Board,
                 crate::state::CrewState::Climbing { .. } => CrewStateTag::Climb,
                 crate::state::CrewState::Riding { .. } => CrewStateTag::Ride,
+                crate::state::CrewState::Repairing { .. } => CrewStateTag::Mend,
                 crate::state::CrewState::Loading { .. } => CrewStateTag::Load,
                 crate::state::CrewState::Unloading { .. } => CrewStateTag::Unload,
             },
@@ -642,6 +760,7 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                     solar: room.solar.is_some(),
                     burner: room.burner.is_some(),
                     bank_capacity: room.bank.as_ref().map_or(0, |bank| bank.capacity),
+                    defence: room.defence.is_some(),
                 }
             })
             .collect(),
@@ -661,6 +780,17 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                 ticks_per_floor: shaft.ticks_per_floor,
                 charge_per_floor: shaft.charge_per_floor,
                 cars: shaft.cars,
+            })
+            .collect(),
+        enemies: content
+            .enemies
+            .iter()
+            .map(|enemy| EnemyInfo {
+                id: enemy.id.clone(),
+                name: enemy.name.clone(),
+                glyph: enemy.glyph.clone(),
+                approach: format!("{:?}", enemy.approach),
+                night_only: enemy.night_only,
             })
             .collect(),
         dayparts: content

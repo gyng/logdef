@@ -44,16 +44,28 @@ fn main() {
     engine
         .try_send(GameCommand::BuildFloor)
         .expect("a floor should be affordable after a minute of milling");
+    // Growing taller put the sails in the shade, which on a tower this
+    // small means no income at all — the legs stop within the minute
+    // and never start again. Re-roofing is not optional, and a script
+    // that skipped it recorded a tower standing still being eaten,
+    // which exercises far less of the simulation than one that walks.
     engine
         .try_send(GameCommand::PlaceRoom {
-            room: "room.thornwright".into(),
+            room: "room.canopy_sails".into(),
             floor: 4,
-            slot: 3,
+            slot: 1,
         })
-        .expect("the new top floor is empty");
+        .expect("the new roof is bare");
     // An elevator costs a lot of poles. Bank them before asking for
-    // one, the same way a player would.
-    engine.step(9000);
+    // one, and before adding a second consumer of the same item — a
+    // thornwright eats poles as fast as the mill can supply them, so
+    // the order here is the order a player is forced into.
+    //
+    // Twelve thousand ticks of it, because a tower being visited
+    // regularly spends a real part of what one mill makes on putting
+    // itself back together. That is the M2 economy, and a fixture
+    // recorded against a quieter one would not be recording this game.
+    engine.step(12_000);
 
     // The elevator: cars, dispatch, dwell, and a charge draw per floor.
     engine
@@ -97,11 +109,34 @@ fn main() {
         .expect("always legal");
     engine.step(900);
 
+    // Darts, and somewhere for them to go.
+    engine
+        .try_send(GameCommand::PlaceRoom {
+            room: "room.thornwright".into(),
+            floor: 4,
+            slot: 3,
+        })
+        .expect("the new top floor is empty");
+    engine.step(1800);
+
     // And a demolition, so the stale-task path is covered too.
     engine
         .try_send(GameCommand::RemoveRoom { floor: 4, slot: 3 })
         .expect("the thornwright placed above should still be there");
     engine.step(900);
+
+    // A battery, and then long enough at speed for the jungle to notice
+    // the tower and come and have a look. This is what puts the siege,
+    // the damage model, and the repair loop into the fixture — a
+    // fixture that never sees a wave cannot catch the siege drifting.
+    engine
+        .try_send(GameCommand::PlaceRoom {
+            room: "room.dart_battery".into(),
+            floor: 1,
+            slot: 1,
+        })
+        .expect("floor 1 slot 1 should be free");
+    engine.step(9000);
 
     let replay = engine.export_replay();
     let path = fixture_path();

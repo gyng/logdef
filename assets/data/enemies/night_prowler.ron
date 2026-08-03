@@ -1,0 +1,36 @@
+// Nocturnal and fast — the reason you bank charge instead of spending
+// every point of it on the day's stride (`SYSTEMS.md` §1.2). It only
+// shows up after dark, precisely when a brown-out tower has no lit
+// floors and a dry battery has nothing to answer it with.
+#![enable(implicit_some)]
+EnemyDef(
+    id: "enemy.night_prowler",
+    name: "Night Prowler",
+    glyph: "🐺",
+    hp: 75,
+    // The fastest of the four — faster than the tower's own stride
+    // (60), so it closes the spawn distance well inside the 20-40 s
+    // window `spawn_paces_ahead` is sized for. That speed, not just the
+    // dark, is the mechanical reason it reads as urgent.
+    speed_paces_per_100_ticks: 70,
+    // 14 damage every 20 ticks is 0.7 dps once it is in contact — by
+    // far the highest sustained bite of the four (a root-borer's 18/70
+    // is 0.257, a canopy leaper's 10/40 is 0.25, a skitter's 4/25 is
+    // 0.16). Short warning, hard bite: that is what "dangerous" means
+    // here.
+    damage: 14,
+    attack_ticks: 20,
+    // 14 damage every 20 ticks is the fastest bite in the pack, so it
+    // needs the shortest grip: 245 hit points, a panel and a little of
+    // what is behind it. Night is when the tower is least able to
+    // answer, and one prowler should be felt without being decisive.
+    cling_ticks: 350,
+    approach: Ground,
+    threat: 25,
+    night_only: true,
+    // A modest gate — 200 of provocation_max's 1000 — so it is not the
+    // very first night's problem, but it does not wait for the run to
+    // be badly provoked either. Nights are dangerous on their own
+    // merits.
+    min_provocation: 200,
+)

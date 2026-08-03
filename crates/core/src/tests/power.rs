@@ -232,7 +232,7 @@ fn switching_a_room_off_stops_it() {
     let content = content();
     let bamboo = item(&content, "item.bamboo");
     let mut game = engine(706);
-    game.step(3000);
+    crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.burner".into(),
         floor: 1,
@@ -349,7 +349,7 @@ fn a_powered_room_stalls_without_charge() {
     let poles = item(&content, "item.poles");
     let darts = item(&content, "item.darts");
     let mut game = engine(710);
-    game.step(3000);
+    crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.thornwright".into(),
         floor: 1,
@@ -412,7 +412,7 @@ fn a_burn_consumes_exactly_its_fuel_and_yields_exactly_its_charge() {
         .expect("the pack defines a burner");
 
     let mut game = engine(711);
-    game.step(3000);
+    crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.burner".into(),
         floor: 1,

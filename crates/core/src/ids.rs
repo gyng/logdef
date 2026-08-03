@@ -48,10 +48,12 @@ index_type!(RoomIdx, "room");
 index_type!(ShaftIdx, "shaft");
 index_type!(TerrainIdx, "terrain band");
 index_type!(DaypartIdx, "daypart");
+index_type!(EnemyIdx, "enemy");
 
 runtime_id!(RoomId, "room");
 runtime_id!(CrewId, "crew member");
 runtime_id!(ShaftId, "shaft");
+runtime_id!(EnemyId, "enemy");
 
 /// Floor index, counted from the ground.
 pub type FloorIdx = u8;

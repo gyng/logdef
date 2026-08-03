@@ -58,6 +58,7 @@ fn collect_solar(state: &mut GameState, content: &Content, exposure: i64) {
         .iter()
         .filter(|floor| floor.index == top)
         .flat_map(|floor| floor.rooms.iter())
+        .filter(|room| room.is_working(content, state.tick))
         .filter_map(|room| content.room(room.def).solar.as_ref())
         .map(|solar| solar.charge_per_100_ticks)
         .sum();
@@ -83,14 +84,18 @@ fn collect_solar(state: &mut GameState, content: &Content, exposure: i64) {
 /// for exactly the same bamboo.
 fn run_burners(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     let mut produced = 0i64;
+    let mut burns = 0i64;
+    let tick = state.tick;
 
     for floor in &mut state.tower.floors {
         for room in &mut floor.rooms {
             let Some(burner) = content.room(room.def).burner.as_ref() else {
                 continue;
             };
-            if !room.active {
-                room.progress = 0;
+            if !room.is_working(content, tick) {
+                if !room.active {
+                    room.progress = 0;
+                }
                 continue;
             }
             let Some(fuel) = room.inputs.first_mut() else {
@@ -107,12 +112,17 @@ fn run_burners(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundE
             fuel.withdraw(burner.fuel_per_burn);
             room.progress = 0;
             produced += burner.charge_per_burn;
+            burns += 1;
         }
     }
 
     if produced > 0 {
         state.power.add(produced);
         sounds.push(SoundEvent::Burn);
+        // Smoke. The dirty fallback is not free — this is what stops
+        // the burner being the answer to every dark night.
+        let per_burn = content.balance.siege.provocation_per_burn;
+        super::siege::provoke_hundredths(state, content, burns * per_burn * 100);
     }
 }
 

@@ -9,9 +9,26 @@
 
 export type SimSpeed = "Paused" | "X1" | "X2" | "X4";
 
-export type RoomCategory = "Intake" | "Production" | "Storage" | "Energy" | "Heart";
+export type RoomCategory = "Intake" | "Production" | "Storage" | "Energy" | "Defence" | "Heart";
 
-export type CrewStateTag = "idle" | "walk" | "board" | "climb" | "ride" | "load" | "unload";
+export type CrewStateTag =
+  | "idle"
+  | "walk"
+  | "board"
+  | "climb"
+  | "ride"
+  | "mend"
+  | "load"
+  | "unload";
+
+/**
+ * `dying` was shot down; `leaving` lost its grip on a walking tower.
+ * They fade out the same way — the difference is that only one of them
+ * counts as having been seen off.
+ */
+export type EnemyStateTag = "approach" | "attack" | "dying" | "leaving";
+
+export type EnemyApproach = "Ground" | "Canopy" | "Burrow";
 
 export type ShaftKind = "Stairs" | "Dumbwaiter" | "Elevator";
 
@@ -34,6 +51,7 @@ export interface ViewSnapshot {
   power: PowerView;
   world: WorldView;
   tower: TowerView;
+  siege: SiegeView;
   crew: CrewView[];
   stock: StockView[];
   stats: RunStats;
@@ -93,6 +111,31 @@ export interface FeatureView {
   layer: number;
 }
 
+export interface SiegeView {
+  enemies: EnemyView[];
+  /** How much attention the tower has drawn, 0 to `provocation_max`. */
+  provocation: number;
+  provocation_max: number;
+  /** Panels, rooms and shafts averaged by hit points, in per-mille. */
+  integrity_permille: number;
+  /** Creatures seen off. Reported, never celebrated. */
+  repelled: number;
+  /** The Heartseed is gone. The run is over. */
+  lost: boolean;
+  /** Poles it would take to put everything right. */
+  repair_cost: number;
+}
+
+export interface EnemyView {
+  id: number;
+  /** Indexes `catalog.enemies`. */
+  def: number;
+  /** Whole paces, on the same axis as `world.distance`. */
+  at: number;
+  hp_permille: number;
+  state: EnemyStateTag;
+}
+
 export interface TowerView {
   floors: FloorView[];
   shafts: ShaftView[];
@@ -102,6 +145,8 @@ export interface FloorView {
   index: number;
   slots: number;
   rooms: RoomView[];
+  /** The outer wall, in per-mille. Zero is a hole in the tower's skin. */
+  panel_permille: number;
 }
 
 export interface RoomView {
@@ -120,6 +165,9 @@ export interface RoomView {
   active: boolean;
   /** A sail no longer on the roof. The price of building higher. */
   shaded: boolean;
+  health_permille: number;
+  /** Damaged past the point of working at all. */
+  wrecked: boolean;
 }
 
 export interface StackView {
@@ -148,6 +196,9 @@ export interface ShaftView {
   cars: CarView[];
   /** Crew queued at this shaft right now, across all its floors. */
   queued: number;
+  health_permille: number;
+  /** Cut through. Nothing travels on it until it is repaired. */
+  severed: boolean;
 }
 
 export interface CarView {
@@ -186,6 +237,9 @@ export interface RunStats {
   hauls_completed: number;
   crafts_completed: number;
   items_harvested: number;
+  hp_repaired: number;
+  /** Poles spent putting the tower back together. */
+  repair_poles_spent: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,6 +253,7 @@ export interface CatalogSnapshot {
   shafts: ShaftInfo[];
   terrain: TerrainInfo[];
   dayparts: DaypartInfo[];
+  enemies: EnemyInfo[];
   floor_cost: CostInfo[];
   max_floors: number;
   floor_slots: number;
@@ -219,6 +274,14 @@ export interface ShaftInfo {
   ticks_per_floor: number;
   charge_per_floor: number;
   cars: number;
+}
+
+export interface EnemyInfo {
+  id: string;
+  name: string;
+  glyph: string;
+  approach: EnemyApproach;
+  night_only: boolean;
 }
 
 export interface DaypartInfo {
@@ -258,6 +321,8 @@ export interface RoomInfo {
   burner: boolean;
   /** Charge capacity this room adds. */
   bank_capacity: number;
+  /** Shoots back, and eats ammo off the same shelves as everything else. */
+  defence: boolean;
 }
 
 export interface CostInfo {
@@ -312,4 +377,14 @@ export type SoundEvent =
   | "Deliver"
   | "CarStop"
   | "Burn"
-  | "BandChange";
+  | "BandChange"
+  | "WaveArrives"
+  | "EnemyContact"
+  | "Impact"
+  | "Breach"
+  | "Wrecked"
+  | "Severed"
+  | "Shot"
+  | "EnemyDown"
+  | "Repair"
+  | "HeartseedLost";

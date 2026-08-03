@@ -20,11 +20,12 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     // Charge is drawn as rooms advance, and production sits second in
     // the priority order — after the cars, before the lamps.
     let mut power = std::mem::replace(&mut state.power, crate::state::Power::new(0));
+    let tick = state.tick;
 
     for floor in &mut state.tower.floors {
         for room in &mut floor.rooms {
             let rt = content.room_rt(room.def);
-            if rt.craft_ticks == 0 || !room.active {
+            if rt.craft_ticks == 0 || !room.is_working(content, tick) {
                 continue;
             }
 

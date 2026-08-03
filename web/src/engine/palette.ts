@@ -73,7 +73,18 @@ export const palette = {
   roomIntake: hex("#6b8f45"),
   roomProduction: hex("#a37a45"),
   roomStorage: hex("#527a86"),
+  roomDefence: hex("#7b6f9a"),
   roomHeart: hex("#a85878"),
+
+  // Damage. The tower is timber and living matter, so it splits and
+  // slumps rather than denting: a bruised body, a black split, raw
+  // pale wood where something broke through.
+  hurt: hex("#4a3a2e"),
+  wreck: hex("#241c17"),
+  crack: hex("#120c08"),
+  splinter: hex("#c9a877"),
+  /** What shows through a hole in the tower's skin. */
+  breach: hex("#0b1712"),
 
   bufferWell: hex("#1a1510"),
   bufferFill: hex("#e0b464"),
@@ -90,6 +101,21 @@ export const palette = {
   crewShadow: hex("#000000"),
 
   cargo: hex("#b4dc72"),
+
+  // Creatures. Wet, dark, forest-coloured things with their own light
+  // in them — not a target gallery, and nothing here is gunmetal. The
+  // accent is the one part that differs by approach, so the three
+  // silhouettes stay legible at a glance.
+  creature: hex("#3d322f"),
+  creatureLit: hex("#6b564a"),
+  /** Where a weakened creature fades to: the mist, not a corpse. */
+  creatureSpent: hex("#8b9a8c"),
+  creatureEye: hex("#f2b45e"),
+  creatureGround: hex("#8a7a3e"),
+  creatureCanopy: hex("#7d6a92"),
+  creatureBurrow: hex("#bcac90"),
+  /** Earth turned over by something coming up through it. */
+  spoil: hex("#4a3b2a"),
 
   ghostValid: hex("#9fe08a"),
   ghostBlocked: hex("#e0714f"),
@@ -133,6 +159,18 @@ export function terrainColors(terrainId: string): { far: Color; near: Color } {
   }
 }
 
+/** The accent that tells one creature's approach from another. */
+export function creatureColor(approach: string): Color {
+  switch (approach) {
+    case "Canopy":
+      return palette.creatureCanopy;
+    case "Burrow":
+      return palette.creatureBurrow;
+    default:
+      return palette.creatureGround;
+  }
+}
+
 /** Body colour for a room, by category. */
 export function roomColor(category: string): Color {
   switch (category) {
@@ -142,6 +180,8 @@ export function roomColor(category: string): Color {
       return palette.roomProduction;
     case "Storage":
       return palette.roomStorage;
+    case "Defence":
+      return palette.roomDefence;
     case "Heart":
       return palette.roomHeart;
     default:

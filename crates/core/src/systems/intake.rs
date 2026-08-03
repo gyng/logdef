@@ -17,6 +17,7 @@ use super::SoundEvent;
 
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     let yield_mul = Fx::ratio(state.world.current_yield_pct(content) as i32, 100);
+    let tick = state.tick;
     let mut harvested = 0u64;
 
     for floor in &mut state.tower.floors {
@@ -28,6 +29,10 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             let Some(slot) = room.outputs.iter().position(|s| s.item == item) else {
                 continue;
             };
+            // A damaged arm strips less; a wrecked one strips nothing.
+            if !room.is_working(content, tick) {
+                continue;
+            }
 
             if room.outputs[slot].is_full() {
                 // Stalled: hold the accumulator so partial work
@@ -49,4 +54,10 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     }
 
     state.stats.items_harvested += harvested;
+
+    // Stripping the terrain is noticed. The cost lands next to the act
+    // rather than in a separate bookkeeping pass, so it is impossible
+    // to add a new way of harvesting and forget to make it provoking.
+    let per_100 = content.balance.siege.provocation_per_100_harvested;
+    super::siege::provoke_hundredths(state, content, harvested as i64 * per_100);
 }

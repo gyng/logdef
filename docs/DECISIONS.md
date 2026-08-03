@@ -296,3 +296,46 @@ copy of game state that can drift from what Rust says is true, discovered only w
 disagree on screen. Reaching for tsc/eslint/prettier out of habit because "that's what v1
 used" just means two toolchains half-configured in the repo at once; pick the one this
 section names.
+
+---
+
+## §11 Cling timers, not indefinite grip
+
+An attacking creature does not hold on to the tower forever. Each `EnemyDef` (content,
+`assets/data/enemies/*.ron`) carries a `cling_ticks` value; once a creature makes contact it
+starts a countdown that only runs while the tower is actually striding (`GameState.strode`,
+`crates/core/src/systems/siege.rs`) and while it is still in contact with the tower at all —
+including a creature that has run out of things to chew and dropped back to circling. When
+the countdown reaches zero the creature lets go and is left behind, rather than being
+destroyed. The timer is set once, when the creature spawns, and never renewed — an earlier
+version reset it on contact, which meant a creature that lost its target and later found
+another got a fresh full grip for it, so mending a panel during a wave made the wave last
+longer. This makes `SetStriding` (`command.rs`) a real answer to a wave that costs
+nothing in poles or darts: keeping the legs moving is a legitimate way to survive one, and
+stopping to work mid-assault becomes a genuine risk instead of a free action, which is what
+makes triage under fire (`SYSTEMS.md` §2.1) an actual decision rather than a slogan.
+
+The alternative considered and rejected: creatures cling until something kills them, so
+every wave is answered by an emplacement or not at all. That was the original, unmeasured
+design, and measured directly it made an unanswered wave a certainty rather than a risk: a
+probe tower with no defences and no player intervention took integrity from 1000 to 88 with
+7 rooms wrecked, and the same 8 creatures were still attached 7,000 ticks later. It also made
+"keep walking" mechanically meaningless during a fight, which contradicts pillar 2's premise
+that transport — including the decision to keep moving — is a live lever during combat, not
+just during peacetime (`DESIGN.md` §3). Cling timers are tuned per creature, not a blanket
+reprieve: a root-borer's `cling_ticks` (1,200) is well short of the ~2,333 ticks it needs to
+sever a shaft alone (`BALANCE.md`, `shaft_hp`), so one borer on a walking tower gets a column
+to roughly half and loses its grip before finishing it, and it takes two overlapping borers
+— or a tower that stopped moving — to actually sever one. Emplacements still matter; they
+are no longer the *only* answer.
+
+**What breaks if you violate this:** raising `cling_ticks` back toward "effectively
+infinite," or letting the countdown run only while a creature is mid-bite instead of
+whenever it is in contact, quietly turns every wave back into a mandatory emplacement check
+— the failure mode measured above, where a tower with no darts yet is guaranteed to lose
+rooms it never had a chance to defend. That contradicts pillar 3 ("combat is a load test,"
+not a gate) and removes the one purely-defensive tool — walking — available to a tower that
+hasn't built a battery yet. Making the timer run regardless of `state.strode` (rather than
+gating on whether the tower actually moved) breaks the tie to the charge economy: a tower
+that cannot afford to walk would get the escape-by-motion benefit for free, which undercuts
+the bank-or-burn tension `SYSTEMS.md` §1.2 and `DESIGN.md` §5.2 describe.

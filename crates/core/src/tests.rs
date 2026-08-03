@@ -12,6 +12,7 @@ mod haul;
 mod power;
 mod production;
 mod replay;
+mod siege;
 mod snapshot;
 mod transport;
 mod world;
@@ -37,6 +38,47 @@ pub(crate) fn item(content: &Content, id: &str) -> ItemIdx {
     content
         .item_idx(id)
         .unwrap_or_else(|| panic!("content pack must define {id}"))
+}
+
+/// Step with the jungle held off.
+///
+/// A test that measures the economy — throughput, craft rates — is not
+/// a test about sieges, and a wave chewing through one of two otherwise
+/// identical towers turns a measurement into a coin flip. Provocation
+/// is zeroed and anything already attached is cleared, in short chunks
+/// so neither can build up in between.
+pub(crate) fn step_quietly(game: &mut GameEngine, ticks: u32) {
+    let mut left = ticks;
+    while left > 0 {
+        let chunk = left.min(100);
+        game.step(chunk);
+        let siege = &mut game.state_mut_for_test().siege;
+        siege.provocation = 0;
+        siege.provocation_acc = 0;
+        siege.enemies.clear();
+        left -= chunk;
+    }
+}
+
+/// Put poles straight onto the shelves.
+///
+/// Tests about elevators, cell banks and batteries need money, not a
+/// simulated economy. Earning it by stepping six thousand ticks made
+/// them slow, and — once the siege landed and repair started competing
+/// for the same poles — flaky for reasons that had nothing to do with
+/// what they were testing.
+pub(crate) fn stock_poles(game: &mut GameEngine, amount: i64) {
+    let poles = item(game.content(), "item.poles");
+    let state = game.state_mut_for_test();
+    let mut remaining = amount;
+    for floor in &mut state.tower.floors {
+        for room in &mut floor.rooms {
+            remaining -= room.shelve(poles, remaining);
+            if remaining == 0 {
+                return;
+            }
+        }
+    }
 }
 
 /// Total count of an item anywhere in the tower or in a crew member's

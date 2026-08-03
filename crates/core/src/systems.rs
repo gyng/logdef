@@ -13,20 +13,26 @@
 //!    mid-shaft should be the last thing that happens, not the first.
 //! 4. **intake** — intake rooms harvest the band underfoot.
 //! 5. **production** — crafting rooms advance, consume, and emit.
-//! 6. **haul** — crew advance their legs, then idle crew claim work.
-//! 7. **lighting** — lamps, after dark.
-//! 8. **stride** — the tower walks, if it can still afford to, and
-//!    terrain streams in ahead of it.
+//! 6. **siege** — creatures approach and attack; provocation decays.
+//! 7. **defence** — emplacements fire at what siege just moved.
+//! 8. **haul** — crew advance their legs, then idle crew claim work.
+//! 9. **repair** — crew already at damage put hit points back.
+//! 10. **lighting** — lamps, after dark.
+//! 11. **stride** — the tower walks, if it can still afford to, and
+//!     terrain streams in ahead of it.
 //!
 //! Haul runs after production so crew react to the buffers this tick
 //! actually produced, and after transport so they see cars where those
 //! cars really are. Stride runs last because walking is the first thing
 //! a tower short of charge gives up.
 
+pub mod defence;
 pub mod haul;
 pub mod intake;
 pub mod power;
 pub mod production;
+pub mod repair;
+pub mod siege;
 pub mod stride;
 pub mod transport;
 
@@ -52,6 +58,26 @@ pub enum SoundEvent {
     Burn,
     /// The tower crossed into a new terrain band.
     BandChange,
+    /// A wave arrived on the horizon.
+    WaveArrives,
+    /// Something reached the tower and started work.
+    EnemyContact,
+    /// A hit landed on the tower.
+    Impact,
+    /// A panel gave way.
+    Breach,
+    /// A room stopped being a room.
+    Wrecked,
+    /// A shaft column was cut through. The signature emergency.
+    Severed,
+    /// An emplacement fired.
+    Shot,
+    /// Something was seen off.
+    EnemyDown,
+    /// A shift of repair work landed.
+    Repair,
+    /// The Heartseed is gone.
+    HeartseedLost,
 }
 
 /// Run exactly one simulation tick.
@@ -61,7 +87,10 @@ pub fn tick(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEven
     transport::run(state, content, sounds);
     intake::run(state, content, sounds);
     production::run(state, content, sounds);
+    siege::run(state, content, sounds);
+    defence::run(state, content, sounds);
     haul::run(state, content, sounds);
+    repair::run(state, content, sounds);
     power::lighting(state, content);
     stride::run(state, content, sounds);
     state.tick += 1;

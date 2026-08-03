@@ -13,12 +13,14 @@
 
 import type { QuadBatch } from "./QuadBatch";
 import type { Color } from "./QuadBatch";
-import { atNight, fade, mix, palette, roomColor, terrainColors } from "./palette";
+import { atNight, creatureColor, fade, mix, palette, roomColor, terrainColors } from "./palette";
 import { floorY, slotX, worldX, type Layout } from "./layout";
 import type {
   CarView,
   CatalogSnapshot,
   CrewView,
+  EnemyView,
+  FloorView,
   RoomView,
   ShaftView,
   ViewSnapshot,
@@ -64,6 +66,24 @@ function darkness(view: ViewSnapshot): number {
   return Math.max(0, Math.min(1, 1 - view.clock.sun_pct / 100));
 }
 
+/** Clamp to 0..1. Per-mille from the snapshot goes through here. */
+function unit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+/**
+ * A stable 0..1 draw from an integer id.
+ *
+ * Creatures need a place on the tower's face and shafts need a point
+ * to break at, and both have to stay put between frames — the renderer
+ * keeps no state, so the id is the only thing available to derive them
+ * from. `Math.imul` rather than a plain multiply because ids run to
+ * 32 bits and the float product would lose the low ones.
+ */
+function hash01(id: number): number {
+  return ((Math.imul(id, 2654435761) >>> 0) % 1000) / 1000;
+}
+
 export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
   drawSky(batch, ctx);
   drawTerrain(batch, ctx);
@@ -71,6 +91,7 @@ export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
   drawTower(batch, ctx);
   drawShafts(batch, ctx);
   drawCrew(batch, ctx);
+  drawSiege(batch, ctx);
   drawPlaceMode(batch, ctx);
   drawVignette(batch, ctx);
 }
@@ -381,6 +402,448 @@ function drawFeature(
 }
 
 // ---------------------------------------------------------------------------
+// Creatures
+// ---------------------------------------------------------------------------
+
+/**
+ * How much of the approach is spent fanning out onto the tower.
+ *
+ * Everything in contact reports the tower's own position, so without
+ * this a whole wave would stack on one pixel at the tower's left edge.
+ * Spreading them over the last few paces also makes the arrival read
+ * as a wave settling in rather than as a pop.
+ */
+const ARRIVAL_PACES = 8;
+
+/**
+ * The furthest ahead this frame can see, in paces.
+ *
+ * Taken from the simulation rather than guessed at: `spawn_paces_ahead`
+ * in `assets/data/balance.ron` is 540, and `siege.rs` scatters arrivals
+ * over another quarter of that again, so 675 is the furthest out a
+ * creature is ever placed. Anything beyond it parks at the vanishing
+ * point instead of being dropped, so the number can drift in data
+ * without creatures winking into existence in mid-air.
+ */
+const SIGHT_PACES = 675;
+
+/**
+ * Where the approach stops compressing and starts opening out, in
+ * paces. Half a dart battery's reach (`range_paces` 60), which lands
+ * that whole reach in the near 35% of the corridor: the stretch where
+ * the fight is actually decided gets a third of the screen to itself,
+ * and the four hundred paces behind it share the rest.
+ */
+const SIGHT_KNEE = 30;
+
+/**
+ * How small a creature gets at the limit of sight.
+ *
+ * Not the tenth or so true perspective would give it — a three-pixel
+ * silhouette is not a creature, it is a dust mote, and the player is
+ * meant to be able to count what is coming. The far parallax layer
+ * makes the same trade (`drawTerrain` runs it at half scale rather than
+ * at its true depth) for the same reason: the frame is a diagram of the
+ * tower's situation before it is a photograph.
+ */
+const FAR_SCALE = 0.32;
+
+/**
+ * How far out a creature is, 0 at the tower and 1 at the limit of
+ * sight. The single number the whole approach is drawn from.
+ *
+ * Laid out at the scene's own `paceW` the approach does not fit, and
+ * not by a little. Measured on a 1600-wide frame: `paceW` is 40 pixels,
+ * so of the 540 paces a creature spawns out at, the last 29 were the
+ * only ones on screen — under a second at 1x, and half that of it clear
+ * of the tower's own silhouette. A dart battery reaches sixty paces, so
+ * it opened fire on something a screen and a half off camera and spent
+ * the whole fight there. What the player saw was a counter going up.
+ *
+ * So distance ahead is compressed logarithmically, which is the one
+ * curve where every doubling of the remaining distance is worth the
+ * same amount of screen. Far out that folds hundreds of paces into a
+ * narrow band under the horizon, where the eye could not have told 500
+ * from 400 anyway; close in it opens out, so the last thirty paces are
+ * worth as much travel as the sixty behind them, and those as much as
+ * the hundred and twenty behind those. Closing therefore reads as
+ * accelerating, which is what closing looks like.
+ *
+ * A linear mapping wide enough to hold 540 paces would do the opposite:
+ * a creature pinned near the frame edge for half a minute and then
+ * covering the part that matters in three frames.
+ */
+function approachDepth(gap: number): number {
+  return unit(Math.log1p(Math.abs(gap) / SIGHT_KNEE) / Math.log1p(SIGHT_PACES / SIGHT_KNEE));
+}
+
+/** Everything one creature is drawn out of, resolved once per creature. */
+interface CreatureSkin {
+  body: Color;
+  lit: Color;
+  /** The part that differs by approach: seams, membranes, mandibles. */
+  accent: Color;
+  eye: Color;
+  /** Earth turned over by a borer. Unused by the other two. */
+  spoil: Color;
+  /** Animation phase, so no two of them move in lockstep. */
+  phase: number;
+  /** -1 when the tower is to its left. */
+  facing: number;
+}
+
+/**
+ * Where a creature stands, how big it is at that distance, and how far
+ * through its approach it is.
+ *
+ * Exported because the label layer has to land on exactly the same
+ * spot the quads do — a glyph floating away from its own silhouette
+ * would be worse than no glyph at all. Every kind arrives somewhere
+ * different, and that difference is the whole reason the three
+ * approaches exist as separate things.
+ */
+export function enemyPosition(
+  view: ViewSnapshot,
+  layout: Layout,
+  approach: string,
+  enemy: EnemyView,
+): { x: number; y: number; arrived: number; scale: number } {
+  const shape = towerShape(view);
+  const spanX = shape.slots * layout.slotW;
+  const depth = layout.groundY - layout.horizonY;
+  const reach = layout.viewport.height - layout.groundY;
+  const roofY = floorY(layout, shape.floors - 1);
+  // A shade below the tower's feet, matching the near parallax layer
+  // the biggest growth stands on.
+  const groundLine = layout.groundY + depth * 0.14;
+
+  const gap = enemy.at - view.world.distance;
+  const arrived = unit(1 - Math.abs(gap) / ARRIVAL_PACES);
+  const scatter = hash01(enemy.id);
+  const far = approachDepth(gap);
+
+  // Ahead is to the right, because that is the way the tower walks:
+  // `worldX` puts a larger world position further right, so the terrain
+  // slides leftward underneath it. So a creature closing from ahead
+  // comes in off the leading flank, and one the tower has already
+  // shaken off falls away past the trailing one — the same compression
+  // either way, run out from whichever flank it is on into whatever
+  // room the frame has left on that side.
+  const ahead = gap >= 0;
+  const flankX = ahead ? layout.originX + spanX : layout.originX;
+  const margin = layout.slotW * 0.6;
+  const corridor = Math.max(0, (ahead ? layout.viewport.width - flankX : flankX) - margin);
+  const roamX = ahead ? flankX + corridor * far : flankX - corridor * far;
+
+  // The ground recedes to the horizon, so anything walking in on it
+  // travels a straight line to a vanishing point — x and y both come
+  // off `far`, which is what keeps the approach reading as one plane
+  // going away rather than as a creature sliding in sideways. The far
+  // end sits just under the horizon, where the far parallax layer roots
+  // its growth.
+  const farGroundY = layout.horizonY + depth * 0.06;
+  const moundY = groundLine + reach * 0.1;
+
+  let stationX: number;
+  let stationY: number;
+  let roamY: number;
+  switch (approach) {
+    case "Canopy": {
+      stationX = layout.originX + spanX * (0.1 + scatter * 0.8);
+      stationY = roofY;
+      // Coming in over the treetops and settling onto the roof. Not on
+      // the ground plane, so not on the ground's straight line either:
+      // a leaper crosses at height and then stoops, which is why the
+      // descent is eased rather than linear in depth. The descent is
+      // the mechanic — height is exposure — so it wants to happen where
+      // it can be watched instead of being spread thin over the whole
+      // crossing. Cruise altitude is a fraction of the sky above the
+      // roof rather than a fixed drop, because a fourteen-floor tower
+      // leaves very little of it and a leaper pinned off the top of the
+      // frame is a leaper nobody sees coming.
+      const cruiseY = roofY - Math.max(0, roofY - depth * 0.08) * 0.55;
+      roamY = roofY + (cruiseY - roofY) * Math.sqrt(far);
+      break;
+    }
+    case "Burrow":
+      stationX = layout.originX + spanX * (0.16 + scatter * 0.7);
+      stationY = layout.groundY + reach * 0.45;
+      roamY = moundY + (farGroundY - moundY) * far;
+      break;
+    default:
+      // Ground creatures work on the skin, so they gather on the
+      // leading flank rather than milling about under the middle.
+      stationX = layout.originX + spanX * (0.58 + scatter * 0.55);
+      stationY = layout.groundY;
+      roamY = groundLine + (farGroundY - groundLine) * far;
+      break;
+  }
+
+  return {
+    x: roamX + (stationX - roamX) * arrived,
+    y: roamY + (stationY - roamY) * arrived,
+    arrived,
+    scale: FAR_SCALE + (1 - FAR_SCALE) * (1 - far),
+  };
+}
+
+/**
+ * Creatures, standing on the same ground the terrain features do.
+ *
+ * Drawn after the tower rather than woven into the parallax layers: a
+ * creature working on the outboard panel has to be visible from the
+ * front, and at this entity count the depth error costs far less than
+ * losing the read would. Readability over beauty.
+ */
+function drawSiege(batch: QuadBatch, ctx: SceneContext): void {
+  const { view, catalog, layout, clock } = ctx;
+  if (view.siege.enemies.length === 0) return;
+
+  const dark = darkness(view);
+  const spanX = towerShape(view).slots * layout.slotW;
+  const spoil = atNight(palette.spoil, dark);
+
+  for (const enemy of view.siege.enemies) {
+    const approach = catalog.enemies[enemy.def]?.approach ?? "Ground";
+    const scatter = hash01(enemy.id);
+    const { x: stood, y, arrived, scale } = enemyPosition(view, layout, approach, enemy);
+    let x = stood;
+    if (x < -160 || x > layout.viewport.width + 160) continue;
+
+    const facing = x > layout.originX + spanX * 0.5 ? -1 : 1;
+    // A bite is a short lunge toward whatever it is working on. Half a
+    // sine, so it jabs rather than sways.
+    if (enemy.state === "attack") {
+      x -= facing * Math.max(0, Math.sin(clock * 6 + scatter * 7)) * layout.slotW * 0.07;
+    }
+
+    // Hit points read as substance draining out: a hurt creature
+    // washes toward the colour of the mist and thins as it goes, so
+    // "nearly seen off" is a glance rather than a number.
+    //
+    // Which is exactly why distance is carried by size and height alone
+    // and never by haze, the way the terrain layers carry it. Washing a
+    // far creature toward the mist would say it was nearly dead, and
+    // the whole point of making the approach visible is that the player
+    // can tell how the fight out there is going.
+    const spent = 1 - unit(enemy.hp_permille / 1000);
+    const dying = enemy.state === "dying" || enemy.state === "leaving";
+    const alpha = dying ? 0.3 : 1 - spent * 0.4;
+    const wash = spent * 0.85;
+    const skin: CreatureSkin = {
+      body: fade(atNight(mix(palette.creature, palette.creatureSpent, wash), dark), alpha),
+      lit: fade(atNight(mix(palette.creatureLit, palette.creatureSpent, wash), dark), alpha),
+      accent: fade(
+        atNight(mix(creatureColor(approach), palette.creatureSpent, wash * 0.8), dark),
+        alpha,
+      ),
+      // Deliberately not run through `atNight`: the eyes are the one
+      // thing out there that gets brighter as the sky goes out.
+      eye: fade(palette.creatureEye, dying ? 0 : (1 - spent) * (0.45 + dark * 0.55)),
+      spoil: fade(spoil, alpha),
+      phase: scatter * Math.PI * 2,
+      facing,
+    };
+
+    const size = layout.slotW * (dying ? 0.34 : 0.42) * scale;
+    if (dying) {
+      // Going, and visibly so: a pale bloom where it stood, spreading
+      // outward. It survives one tick, so it has to be unmissable in
+      // the frame or two it gets.
+      batch.push(
+        x - size * 2,
+        y - size * 2.4,
+        size * 4,
+        size * 3.2,
+        fade(palette.creatureSpent, 0.22),
+        {
+          radius: size * 1.6,
+          softness: size * 1.4,
+        },
+      );
+    }
+    const standY = dying ? y - size * 0.2 : y;
+
+    switch (approach) {
+      case "Canopy":
+        drawLeaper(batch, x, standY, size, skin, clock);
+        break;
+      case "Burrow":
+        drawBorer(batch, x, standY, size, skin, clock, arrived > 0.5);
+        break;
+      default:
+        drawScuttler(batch, x, standY, size, skin, clock);
+        break;
+    }
+  }
+}
+
+/**
+ * Low, wide and many-legged. The lesson it teaches is ammo economics,
+ * so there are always several of them and each one has to stay legible
+ * at a size where it is mostly silhouette.
+ */
+function drawScuttler(
+  batch: QuadBatch,
+  x: number,
+  baseY: number,
+  size: number,
+  skin: CreatureSkin,
+  clock: number,
+): void {
+  const w = size * 1.55;
+  const h = size * 0.66;
+  const shade = mix(skin.body, palette.crack, 0.45);
+
+  for (let i = 0; i < 6; i += 1) {
+    const hipX = x + (i / 5 - 0.5) * w * 0.82;
+    const swing = Math.sin(clock * 7 + skin.phase + i * 2.1) * size * 0.2;
+    batch.pushLine(hipX, baseY - h * 0.5, hipX + swing, baseY, Math.max(1, size * 0.09), shade);
+  }
+
+  batch.push(x - w / 2, baseY - h, w, h, skin.lit, { colorBottom: skin.body, radius: h * 0.5 });
+  for (let i = 1; i <= 3; i += 1) {
+    batch.push(
+      x - w * 0.4 + (i * w * 0.8) / 4,
+      baseY - h * 0.92,
+      Math.max(1, w * 0.04),
+      h * 0.76,
+      fade(skin.accent, 0.5),
+      { radius: 1 },
+    );
+  }
+
+  const headR = size * 0.27;
+  const headX = x + skin.facing * w * 0.5;
+  const headY = baseY - h * 0.72;
+  batch.push(headX - headR, headY - headR, headR * 2, headR * 2, skin.body, { radius: headR });
+  drawEyes(batch, headX + skin.facing * headR * 0.35, headY, size * 0.11, skin.eye);
+}
+
+/**
+ * Slim, high, and hanging off a pair of membranes. It arrives on the
+ * roof, so it is drawn to be recognised from below and at distance —
+ * the wings are most of the silhouette for exactly that reason.
+ */
+function drawLeaper(
+  batch: QuadBatch,
+  x: number,
+  baseY: number,
+  size: number,
+  skin: CreatureSkin,
+  clock: number,
+): void {
+  const w = size * 0.78;
+  const h = size * 1.4;
+  const beat = Math.sin(clock * 3.4 + skin.phase);
+
+  for (const side of [-1, 1]) {
+    batch.pushLine(
+      x + side * w * 0.3,
+      baseY - h * 0.78,
+      x + side * w * 1.75,
+      baseY - h * (1.02 + beat * side * 0.16),
+      h * 0.3,
+      fade(skin.accent, 0.42),
+    );
+  }
+
+  batch.push(x - w / 2, baseY - h, w, h, skin.lit, { colorBottom: skin.body, radius: w * 0.5 });
+  for (const side of [-1, 1]) {
+    batch.pushLine(
+      x + side * w * 0.22,
+      baseY - h * 0.26,
+      x + side * w * 0.52,
+      baseY,
+      Math.max(1, size * 0.08),
+      mix(skin.body, palette.crack, 0.4),
+    );
+  }
+
+  const headR = size * 0.25;
+  const headX = x + skin.facing * w * 0.18;
+  const headY = baseY - h - headR * 0.6;
+  batch.push(headX - headR, headY - headR, headR * 2, headR * 2, skin.body, { radius: headR });
+  drawEyes(batch, headX + skin.facing * headR * 0.4, headY, size * 0.1, skin.eye);
+}
+
+/**
+ * A mound of turned earth with something coming up out of it.
+ *
+ * While it is still travelling the mound is all there is, which is the
+ * read: something is coming, and it is coming under you. It has no
+ * eyes — it works blind, and that absence is what tells it apart from
+ * the other two before you can make out anything else.
+ */
+function drawBorer(
+  batch: QuadBatch,
+  x: number,
+  baseY: number,
+  size: number,
+  skin: CreatureSkin,
+  clock: number,
+  erupted: boolean,
+): void {
+  const moundW = size * 1.9;
+  batch.push(x - moundW / 2, baseY - size * 0.28, moundW, size * 0.32, skin.spoil, {
+    colorBottom: mix(skin.spoil, palette.crack, 0.4),
+    radius: size * 0.16,
+  });
+
+  if (!erupted) {
+    for (let i = 0; i < 3; i += 1) {
+      const throwUp = (clock * 1.6 + i * 0.37) % 1;
+      batch.push(
+        x + (i - 1) * size * 0.42,
+        baseY - size * 0.32 - Math.sin(throwUp * Math.PI) * size * 0.5,
+        size * 0.11,
+        size * 0.11,
+        skin.spoil,
+        { radius: size * 0.055 },
+      );
+    }
+    return;
+  }
+
+  const segments = 5;
+  const heave = 0.92 + Math.sin(clock * 2.4 + skin.phase) * 0.08;
+  let tipX = x;
+  let tipY = baseY;
+  for (let i = 0; i < segments; i += 1) {
+    const t = i / (segments - 1);
+    const sx = x + skin.facing * t * size * 1.05;
+    const sy = baseY - size * 0.2 - Math.sin(t * Math.PI * 0.8) * size * heave;
+    const r = size * (0.34 - t * 0.12);
+    batch.push(sx - r, sy - r, r * 2, r * 2, mix(skin.body, skin.accent, 0.25 + t * 0.5), {
+      radius: r,
+    });
+    tipX = sx;
+    tipY = sy;
+  }
+
+  for (const side of [-1, 1]) {
+    batch.pushLine(
+      tipX,
+      tipY,
+      tipX + skin.facing * size * 0.3,
+      tipY + side * size * 0.24,
+      Math.max(1, size * 0.07),
+      mix(skin.accent, palette.splinter, 0.4),
+    );
+  }
+}
+
+/** Two ocelli, stacked. Warm, and the last thing to go out. */
+function drawEyes(batch: QuadBatch, x: number, y: number, r: number, eye: Color): void {
+  for (let i = 0; i < 2; i += 1) {
+    batch.push(x - r / 2, y - r * 0.9 + i * r * 1.4, r, r, eye, {
+      radius: r / 2,
+      softness: r * 0.6,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The tower
 // ---------------------------------------------------------------------------
 
@@ -506,6 +969,10 @@ function drawTower(batch: QuadBatch, ctx: SceneContext): void {
       layout.slotW * 0.5,
       ctx.clock + floor.index,
     );
+
+    // Last, so a hole in the skin is drawn over the room behind it
+    // rather than under it. The panel is the outermost thing there is.
+    drawPanel(batch, ctx, floor, y, spanX, shellPad);
   }
 
   // Roof garden. The sails mount here in M1; until then it is where
@@ -545,6 +1012,79 @@ function drawTower(batch: QuadBatch, ctx: SceneContext): void {
   );
 }
 
+/**
+ * The state of a floor's outer skin, on both flanks.
+ *
+ * Sound skin draws nothing at all — the tower's shell already is the
+ * panel, and the cheapest way to say "intact" is to leave it alone. So
+ * everything below is damage: splits opening up as it takes hits, and
+ * then a ragged hole with the tower's own lamplight coming out of it.
+ * The light leaking is the point. It is a home, and you can see into
+ * it now.
+ */
+function drawPanel(
+  batch: QuadBatch,
+  ctx: SceneContext,
+  floor: FloorView,
+  top: number,
+  spanX: number,
+  pad: number,
+): void {
+  const { layout, view } = ctx;
+  const health = unit(floor.panel_permille / 1000);
+  if (health >= 1) return;
+
+  const hurt = 1 - health;
+  const dark = darkness(view);
+  const width = pad + layout.slotW * 0.14;
+  const flanks = [layout.originX - pad, layout.originX + spanX + pad - width];
+
+  for (const px of flanks) {
+    if (floor.panel_permille > 0) {
+      batch.push(px, top, width, layout.floorH, fade(palette.crack, hurt * 0.55));
+      // Splits, widening with the damage. They run with the grain of
+      // the timber, which is to say downward and slightly out.
+      const splits = 1 + Math.floor(hurt * 3);
+      for (let i = 0; i < splits; i += 1) {
+        const y = top + layout.floorH * (0.14 + i * 0.26);
+        batch.pushLine(
+          px + width * 0.15,
+          y,
+          px + width * 0.85,
+          y + layout.floorH * 0.14,
+          1.3,
+          fade(palette.crack, 0.75),
+        );
+      }
+      continue;
+    }
+
+    // Breached: the skin is gone between the deck and the ceiling, and
+    // the ragged ends of it are all that is left.
+    const holeY = top + layout.floorH * 0.1;
+    const holeH = layout.floorH * 0.78;
+    const tear = layout.floorH * 0.07;
+    const torn = fade(palette.splinter, 0.7);
+    batch.push(px, holeY, width, holeH, atNight(palette.breach, dark), { radius: 2 });
+    batch.pushLine(px, holeY, px + width, holeY + tear, 2, torn);
+    batch.pushLine(px, holeY + holeH, px + width, holeY + holeH - tear, 2, torn);
+    if (view.power.lit) {
+      // Warm light getting out where the wall used to be. It is the
+      // clearest possible statement that the tower's skin is open, and
+      // after dark it is visible from across the frame.
+      const spill = layout.slotW * 0.55;
+      batch.push(
+        px - spill,
+        holeY - spill * 0.3,
+        width + spill * 2,
+        holeH + spill * 0.6,
+        fade(palette.lamplight, 0.12 + dark * 0.2),
+        { radius: spill * 0.8, softness: spill * 0.9 },
+      );
+    }
+  }
+}
+
 /** A tuft of greenery on a ledge, swaying gently. */
 function drawPlanter(
   batch: QuadBatch,
@@ -580,13 +1120,26 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
   const h = layout.floorH * 0.84 - 3;
 
   const base = info ? roomColor(info.category) : palette.roomBody;
+  if (room.wrecked) {
+    drawWreck(batch, room, base, x, y, w, h);
+    return;
+  }
+
   // A stalled room is drawn dim rather than badged. The tower going
   // quiet is the warning; see DECISIONS.md §8.
-  const body = room.stalled ? mix(base, palette.roomStalled, 0.6) : base;
+  const stalled = room.stalled ? mix(base, palette.roomStalled, 0.6) : base;
+  // Damage bruises on top of that: the colour goes out of it and the
+  // panelling starts to split. Dim and hurt have to look different,
+  // because one of them is a supply problem and the other needs poles.
+  const hurt = 1 - unit(room.health_permille / 1000);
+  const body = mix(stalled, palette.hurt, hurt * 0.7);
   batch.push(x, y, w, h, mix(body, palette.roomBodyLit, 0.25), {
     colorBottom: body,
     radius: 4,
   });
+  if (hurt > 0.05) {
+    drawSplits(batch, room.id, x, y, w, h, 1 + Math.floor(hurt * 4), fade(palette.crack, 0.7));
+  }
 
   const wellH = Math.max(4, h * 0.2);
   const wellY = y + h - wellH - 3;
@@ -634,35 +1187,137 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
     }
   }
 
-  // The Heartseed glows, gently, always.
+  // The Heartseed glows, gently, always — right up until it does not.
   if (info?.category === "Heart") {
     const pulse = 0.55 + Math.sin(ctx.clock * 1.2) * 0.12;
-    batch.push(x - 4, y - 4, w + 8, h + 8, fade(palette.roomHeart, pulse * 0.5), {
+    batch.push(x - 4, y - 4, w + 8, h + 8, fade(palette.roomHeart, pulse * 0.5 * (1 - hurt)), {
       radius: 10,
       softness: 8,
     });
   }
 }
 
+/**
+ * A room that has stopped being a room.
+ *
+ * Not the dim treatment a stalled room gets — a stalled mill is a
+ * supply problem and will start again on its own, and the two must
+ * never be confused. What is left here is the bottom third of the box
+ * with its top torn off, a couple of struts still standing, and none
+ * of the gauges: whatever was in it is not coming back out. The label
+ * layer keeps the name and the count, so the precision read survives.
+ */
+function drawWreck(
+  batch: QuadBatch,
+  room: RoomView,
+  base: Color,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  // A trace of the original colour, so you can still tell what you
+  // lost from across the frame.
+  const carcass = mix(palette.wreck, base, 0.16);
+  const stubH = h * 0.38;
+  batch.push(x, y + h - stubH, w, stubH, carcass, {
+    colorBottom: palette.wreck,
+    radius: 2,
+  });
+
+  // A torn top edge rather than a straight one. Five teeth is enough
+  // to read as broken and few enough to stay cheap.
+  const teeth = 5;
+  for (let i = 0; i < teeth; i += 1) {
+    const tw = w / teeth;
+    const th = stubH * (0.12 + hash01(room.id + i * 977) * 0.55);
+    batch.push(x + i * tw, y + h - stubH - th, tw * 0.92, th, carcass);
+  }
+
+  // Struts still standing where the walls were, leaning inward.
+  batch.pushLine(x + w * 0.18, y + h, x + w * 0.28, y + h * 0.3, 2, fade(palette.splinter, 0.55));
+  batch.pushLine(x + w * 0.8, y + h, x + w * 0.66, y + h * 0.42, 2, fade(palette.splinter, 0.45));
+  batch.push(x, y + h - 3, w, 3, fade(palette.crack, 0.8));
+}
+
+/**
+ * Splits opening across a surface as it takes damage.
+ *
+ * The colour is the caller's, because the two surfaces this runs on
+ * are opposite values: a split in a room's pale timber reads as a dark
+ * line, and the same line on a shaft's near-black column would be
+ * invisible — there it has to be the raw wood showing through instead.
+ */
+function drawSplits(
+  batch: QuadBatch,
+  seed: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  count: number,
+  color: Color,
+): void {
+  // Kept short whatever the surface: a shaft column is the height of
+  // the whole tower, and splits scaled to that would be chasms.
+  const reach = Math.min(h * 0.3, w * 0.6);
+  for (let i = 0; i < count; i += 1) {
+    const sx = x + w * (0.12 + hash01(seed + i * 7919) * 0.7);
+    const sy = y + (h - reach) * (0.06 + hash01(seed + i * 104_729) * 0.88);
+    batch.pushLine(sx, sy, sx + (hash01(seed + i * 31) - 0.5) * w * 0.3, sy + reach, 1.4, color);
+  }
+}
+
 function drawShafts(batch: QuadBatch, ctx: SceneContext): void {
-  const { view, layout } = ctx;
+  const { view, layout, clock } = ctx;
   for (const shaft of view.tower.shafts) {
     const x = slotX(layout, shaft.slot);
     const top = floorY(layout, shaft.high);
     const bottom = floorY(layout, shaft.low) + layout.floorH;
-    batch.push(x + 2, top, layout.slotW - 4, bottom - top, palette.shaft, { radius: 3 });
+    const hurt = 1 - unit(shaft.health_permille / 1000);
+
+    // Where a severed column comes apart. Deterministic from the id,
+    // because a break that wandered between frames would look like
+    // damage happening over and over instead of damage that is there.
+    const gapH = Math.min(layout.floorH * 0.5, (bottom - top) * 0.28);
+    const breakY = top + (bottom - top - gapH) * (0.3 + hash01(shaft.id) * 0.4);
+    // The two halves have slid past each other. Two pixels is enough:
+    // the eye picks up a broken vertical line immediately.
+    const shear = 2.5;
+
+    if (shaft.severed) {
+      batch.push(x + 2 + shear, top, layout.slotW - 4, breakY - top, palette.shaft, { radius: 3 });
+      batch.push(
+        x + 2 - shear,
+        breakY + gapH,
+        layout.slotW - 4,
+        bottom - breakY - gapH,
+        palette.shaft,
+        { radius: 3 },
+      );
+    } else {
+      batch.push(x + 2, top, layout.slotW - 4, bottom - top, palette.shaft, { radius: 3 });
+    }
 
     // A shaft with people queueing on it glows. The queue is the
     // bottleneck instrument, so it has to be visible from the shaft as
     // well as from the crew standing at it.
     const busy = shaft.riders >= shaft.capacity || shaft.queued > 0;
-    const rail = busy ? palette.shaftBusy : palette.shaftRail;
+    // A severed column is not busy and is not idle — it is dead, and
+    // its rails go the colour of everything else that has broken.
+    const rail = shaft.severed
+      ? mix(palette.shaftRail, palette.crack, 0.65)
+      : mix(busy ? palette.shaftBusy : palette.shaftRail, palette.crack, hurt * 0.5);
+    const inGap = (y: number) => shaft.severed && y > breakY - 2 && y < breakY + gapH + 2;
 
     if (shaft.kind === "Stairs") {
-      // Treads, so stairs read as stairs at a glance.
+      // Treads, so stairs read as stairs at a glance. Damage takes them
+      // out one at a time, which is what a half-wrecked staircase
+      // should look like before it goes entirely.
       const treads = Math.max(1, Math.round((bottom - top) / 9));
       for (let i = 0; i < treads; i += 1) {
         const ty = top + ((i + 0.5) * (bottom - top)) / treads;
+        if (inGap(ty) || hash01(shaft.id + i * 6151) < hurt * 0.7) continue;
         batch.push(x + 4, ty, layout.slotW - 8, 1.5, fade(rail, busy ? 0.75 : 0.4));
       }
     } else {
@@ -671,12 +1326,89 @@ function drawShafts(batch: QuadBatch, ctx: SceneContext): void {
       batch.push(x + layout.slotW / 2 - 0.5, top, 1, bottom - top, fade(rail, 0.35));
     }
 
-    batch.push(x + 2, top, 2, bottom - top, fade(rail, 0.8));
-    batch.push(x + layout.slotW - 4, top, 2, bottom - top, fade(rail, 0.8));
+    if (shaft.severed) {
+      // The uprights stop dead at the break rather than running past
+      // it, and the ends they stop at are bent.
+      for (const railX of [x + 2, x + layout.slotW - 4]) {
+        batch.push(railX + shear, top, 2, breakY - top, fade(rail, 0.8));
+        batch.push(railX - shear, breakY + gapH, 2, bottom - breakY - gapH, fade(rail, 0.8));
+      }
+      drawSeverance(batch, ctx, x, breakY, gapH, shear, clock);
+    } else {
+      batch.push(x + 2, top, 2, bottom - top, fade(rail, 0.8));
+      batch.push(x + layout.slotW - 4, top, 2, bottom - top, fade(rail, 0.8));
+      if (hurt > 0.05) {
+        drawSplits(
+          batch,
+          shaft.id,
+          x + 3,
+          top,
+          layout.slotW - 6,
+          bottom - top,
+          1 + Math.floor(hurt * 4),
+          fade(palette.splinter, 0.35),
+        );
+      }
+    }
 
     for (const car of shaft.cars) {
       drawCar(batch, ctx, shaft, car, x);
     }
+  }
+}
+
+/**
+ * The break in a severed column.
+ *
+ * This is the signature emergency of the siege — the tower's
+ * circulation is cut in two and routing has already stopped going
+ * through here — so it gets the loudest visual language in the game
+ * short of the ending. Nothing about it is subtle on purpose: a gap
+ * with the bare floor plates showing through, four snapped rails bent
+ * away from one another, and dust still coming down out of it.
+ */
+function drawSeverance(
+  batch: QuadBatch,
+  ctx: SceneContext,
+  x: number,
+  breakY: number,
+  gapH: number,
+  shear: number,
+  clock: number,
+): void {
+  const { layout } = ctx;
+  const w = layout.slotW - 4;
+
+  // Straight through: the floor plate behind the column, then nothing.
+  batch.push(x + 2, breakY, w, gapH, palette.floorPlate, { colorBottom: palette.floorLit });
+  batch.push(x + 2, breakY, w, gapH * 0.4, fade(palette.crack, 0.6), {
+    colorBottom: fade(palette.crack, 0),
+  });
+
+  // Four snapped rail ends, each bent out of line with the half it
+  // belongs to.
+  const stubs: [number, number, number, number][] = [
+    [x + 3 + shear, breakY - gapH * 0.22, x - 1 + shear, breakY + gapH * 0.1],
+    [x + w - 1 + shear, breakY - gapH * 0.22, x + w + 3 + shear, breakY + gapH * 0.08],
+    [x + 3 - shear, breakY + gapH * 1.22, x - 1 - shear, breakY + gapH * 0.9],
+    [x + w - 1 - shear, breakY + gapH * 1.22, x + w + 3 - shear, breakY + gapH * 0.92],
+  ];
+  for (const [x1, y1, x2, y2] of stubs) {
+    batch.pushLine(x1, y1, x2, y2, 2.2, palette.splinter);
+  }
+
+  // Dust still falling out of it, so the break reads as ongoing rather
+  // than as something that was always drawn that way.
+  for (let i = 0; i < 4; i += 1) {
+    const drift = (clock * 0.55 + i * 0.27) % 1;
+    batch.push(
+      x + 5 + i * (w / 5),
+      breakY + gapH * 0.2 + drift * gapH * 1.6,
+      2,
+      2,
+      fade(palette.splinter, 0.5 * (1 - drift)),
+      { radius: 1 },
+    );
   }
 }
 
@@ -765,6 +1497,28 @@ function drawCrew(batch: QuadBatch, { view, layout, clock }: SceneContext): void
       batch.push(x - crate / 2, y - bodyH - crate * 1.5 + bob, crate, crate, palette.cargo, {
         radius: 2,
       });
+    }
+
+    // Mending: a pole in hand and a small pool of worklight. Repair is
+    // crew time spent somewhere other than the chain, so it has to be
+    // visible as that and not mistaken for someone standing about.
+    if (member.state === "mend") {
+      batch.push(
+        x - bodyW * 1.1,
+        y - bodyH * 1.9,
+        bodyW * 2.2,
+        bodyH * 2.1,
+        fade(palette.lamplight, 0.14 + Math.abs(Math.sin(clock * 3 + phase)) * 0.08),
+        { radius: bodyW, softness: bodyW * 0.9 },
+      );
+      batch.pushLine(
+        x - bodyW * 0.7,
+        y - bodyH * 0.2,
+        x + bodyW * 0.9,
+        y - bodyH * 1.3,
+        Math.max(1.2, bodyW * 0.18),
+        palette.splinter,
+      );
     }
 
     // Waiting reads as a swelling ring, not a number. The bottleneck
@@ -867,6 +1621,15 @@ function drawVignette(batch: QuadBatch, { layout, view }: SceneContext): void {
   if (view.power.brownout) {
     const pulse = 0.1 + Math.abs(Math.sin(view.tick * 0.06)) * 0.12;
     batch.push(0, 0, width, height, fade(palette.vignette, pulse));
+  }
+
+  // The Heartseed is gone. The frame settles rather than flashing —
+  // this is a home that did not make it, not a fail state, and nothing
+  // about the ending should read as an alarm (DECISIONS.md §8).
+  if (view.siege.lost) {
+    batch.push(0, 0, width, height, fade(palette.vignette, 0.4), {
+      colorBottom: fade(palette.vignette, 0.68),
+    });
   }
 }
 

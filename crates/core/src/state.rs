@@ -7,6 +7,7 @@
 pub mod clock;
 pub mod crew;
 pub mod power;
+pub mod siege;
 pub mod tower;
 pub mod world;
 
@@ -17,8 +18,9 @@ use crate::ids::{CrewId, ItemIdx, RoomId, ShaftId};
 use crate::rng::RngStreams;
 
 pub use clock::Clock;
-pub use crew::{Crew, CrewState, HaulDestination, HaulPickup, HaulTask};
+pub use crew::{Crew, CrewState, HaulDestination, HaulPickup, HaulTask, RepairJob};
 pub use power::Power;
+pub use siege::{DamageTarget, Enemy, EnemyState, Health, Siege};
 pub use tower::{
     Car, CarDir, CarState, Floor, Room, Shaft, ShaftPriority, ShaftProgram, Shelf, Stack, Tower,
 };
@@ -53,6 +55,11 @@ pub struct RunStats {
     pub hauls_completed: u64,
     pub crafts_completed: u64,
     pub items_harvested: u64,
+    pub hp_repaired: u64,
+    /// Poles consumed putting the tower back together. Tracked rather
+    /// than derived, because a shift that finishes a nearly-mended
+    /// panel heals less than a full shift but still costs one.
+    pub repair_poles_spent: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,17 +72,23 @@ pub struct GameState {
     pub power: Power,
     pub world: World,
     pub tower: Tower,
+    pub siege: Siege,
     pub crew: Vec<Crew>,
     /// Whether the legs are running. Halting banks the charge striding
     /// would have burned — the bank-or-burn decision in its simplest
     /// form. M3 turns this into a continuous throttle.
     pub walking: bool,
+    /// Whether the legs actually ran last tick. `walking` is the
+    /// player's intent; a tower that cannot afford the charge still
+    /// stands still, and things clinging to it are not shaken off.
+    pub strode: bool,
     pub stats: RunStats,
     /// Monotonic allocators. Never reuse an ID, even after removal —
     /// a stale reference should fail to resolve, not silently alias.
     pub next_room_id: u32,
     pub next_crew_id: u32,
     pub next_shaft_id: u32,
+    pub next_enemy_id: u32,
 }
 
 impl GameState {
@@ -94,13 +107,16 @@ impl GameState {
             power: Power::new(balance.power.starting_charge),
             world: World::new(&mut rng.world, content),
             tower: Tower::new(content),
+            siege: Siege::new(),
             crew: Vec::new(),
             walking: true,
+            strode: false,
             stats: RunStats::default(),
             rng,
             next_room_id: 1,
             next_crew_id: 1,
             next_shaft_id: 2,
+            next_enemy_id: 1,
         };
 
         state.place_starting_rooms(content);
@@ -224,6 +240,12 @@ impl GameState {
     pub fn alloc_shaft_id(&mut self) -> ShaftId {
         let id = ShaftId(self.next_shaft_id);
         self.next_shaft_id += 1;
+        id
+    }
+
+    pub fn alloc_enemy_id(&mut self) -> crate::ids::EnemyId {
+        let id = crate::ids::EnemyId(self.next_enemy_id);
+        self.next_enemy_id += 1;
         id
     }
 }

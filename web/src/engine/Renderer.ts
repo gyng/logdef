@@ -11,7 +11,7 @@ import { LabelLayer, type Label } from "./LabelLayer";
 import { QuadBatch } from "./QuadBatch";
 import { createContext, resizeToDisplay } from "./gl";
 import { computeLayout, hitSlot, slotX, floorY, type Layout } from "./layout";
-import { drawScene, towerShape, type PlaceMode } from "./scene";
+import { drawScene, enemyPosition, towerShape, type PlaceMode } from "./scene";
 import type { CatalogSnapshot, ViewSnapshot } from "../bridge/types";
 
 export interface RenderInput {
@@ -128,12 +128,15 @@ function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layou
       const info = catalog.rooms[room.def];
       if (!info) continue;
       const cx = slotX(layout, room.slot) + (room.width * layout.slotW) / 2;
+      // A wreck outranks a stall: one of them will start again on its
+      // own and the other needs poles and somebody's time.
+      const wear = room.wrecked ? " label-wrecked" : room.stalled ? " label-stalled" : "";
       labels.push({
         key: `room-${room.id}`,
         text: info.short,
         x: cx,
         y: y + layout.floorH * 0.52,
-        variant: room.stalled ? "label-room label-stalled" : "label-room",
+        variant: `label-room${wear}`,
       });
 
       // One number per room: whatever it is accumulating. More than
@@ -168,6 +171,38 @@ function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layou
       x: layout.originX + (member.slot + 0.5) * layout.slotW,
       y: layout.groundY - member.floor * layout.floorH - layout.floorH * 0.42,
       variant: member.stressed ? "label-crew label-stressed" : "label-crew",
+    });
+  }
+
+  // Creatures get their glyph and nothing else. The silhouette says
+  // which of the three approaches it is; the glyph is what separates
+  // two creatures that come the same way. A name over each one would
+  // turn a wave into a list.
+  for (const enemy of view.siege.enemies) {
+    if (enemy.state === "dying" || enemy.state === "leaving") continue;
+    const info = catalog.enemies[enemy.def];
+    if (!info) continue;
+    const { x, y, scale } = enemyPosition(view, layout, info.approach, enemy);
+    if (x < 0 || x > layout.viewport.width) continue;
+    // Nothing at all for the far half of the approach, fading in over
+    // the near half. A 14px glyph over a ten-pixel silhouette is bigger
+    // than the creature it names, and a row of them strung along the
+    // horizon reads as a list of the wave rather than as a wave. By the
+    // time it is fully in, the creature is inside a battery's reach and
+    // telling it from its neighbour is worth something. Faded rather
+    // than switched, because a glyph that pops on is a thing the eye
+    // reports as an event.
+    const near = Math.max(0, Math.min(1, (scale - 0.5) / 0.25));
+    if (near <= 0) continue;
+    labels.push({
+      key: `enemy-${enemy.id}`,
+      text: info.glyph,
+      x,
+      // Rides the silhouette rather than a fixed floor height, so it
+      // stays on the creature as the approach scales that down.
+      y: y - layout.floorH * 0.45 * scale,
+      variant: "label-creature",
+      alpha: Math.max(0.4, enemy.hp_permille / 1000) * near,
     });
   }
 

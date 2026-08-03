@@ -30,6 +30,9 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     let mut hauls = 0u64;
     let daypart = state.clock.daypart(content);
     let queues = shaft_queues(&crew, &state.tower);
+    // Repair spends poles off the shelves, and the assignment pass runs
+    // with the crew moved out of state, so the figure comes with it.
+    let poles = super::repair::repair_item(content).map_or(0, |item| state.stock_of(item));
 
     for member in &mut crew {
         advance(
@@ -43,7 +46,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         );
     }
 
-    assign_idle(&mut crew, &state.tower, content, &queues, daypart);
+    assign_idle(&mut crew, &state.tower, content, &queues, daypart, poles);
 
     state.crew = crew;
     state.stats.hauls_completed += hauls;
@@ -76,6 +79,11 @@ fn advance(
             crew.wait_ticks = 0;
         }
 
+        CrewState::Repairing { .. } => {
+            // The repair system owns them until the job is done.
+            crew.wait_ticks = 0;
+        }
+
         CrewState::Walking { to_slot } => {
             crew.wait_ticks = 0;
             let target = Fx::from_int(i32::from(to_slot));
@@ -89,14 +97,18 @@ fn advance(
             };
             if arrived {
                 crew.slot_fx = target;
-                crew.state = next_leg(crew, tower, content, queues, daypart);
+                crew.state = resume(crew, tower, content, queues, daypart);
             }
         }
 
         CrewState::Boarding { shaft, to_floor } => {
             let kind = tower.shaft(shaft).map(|s| s.kind);
-            if crew.task.is_none() {
-                // The room they were headed for was demolished while
+            // A repair job is a reason to be in the queue too. Checking
+            // only for a haul task left a crew member sent to mend
+            // something bouncing between Boarding and Idle forever,
+            // never actually climbing.
+            if crew.task.is_none() && crew.repair.is_none() {
+                // Whatever they were headed for was demolished while
                 // they queued. Step out of the line.
                 crew.state = CrewState::Idle;
             } else if kind == Some(ShaftKind::Stairs) {
@@ -132,7 +144,7 @@ fn advance(
             if arrived {
                 crew.floor_fx = target;
                 release_shaft(tower, shaft);
-                crew.state = next_leg(crew, tower, content, queues, daypart);
+                crew.state = resume(crew, tower, content, queues, daypart);
             }
         }
 
@@ -172,6 +184,21 @@ fn advance(
             // Anything that didn't fit stays in hand; the assignment
             // pass will find it a new home next tick.
         }
+    }
+}
+
+/// What a crew member does after finishing a leg — which depends on
+/// whether they are hauling or mending.
+fn resume(
+    crew: &Crew,
+    tower: &Tower,
+    content: &Content,
+    queues: &[u32],
+    daypart: DaypartIdx,
+) -> CrewState {
+    match crew.repair {
+        Some(job) => repair_leg(crew, tower, content, queues, daypart, job),
+        None => next_leg(crew, tower, content, queues, daypart),
     }
 }
 
@@ -403,6 +430,7 @@ fn assign_idle(
     content: &Content,
     queues: &[u32],
     daypart: DaypartIdx,
+    poles: i64,
 ) {
     for i in 0..crew.len() {
         if !matches!(crew[i].state, CrewState::Idle) {
@@ -416,6 +444,30 @@ fn assign_idle(
         if crew[i].task.is_some() {
             let next = next_leg(&crew[i], tower, content, queues, daypart);
             crew[i].state = next;
+            continue;
+        }
+
+        // On the way to damage, or standing on it.
+        if let Some(job) = crew[i].repair {
+            crew[i].state = repair_leg(&crew[i], tower, content, queues, daypart, job);
+            continue;
+        }
+
+        // Damage outranks a new errand. A crew member already holding
+        // something finishes that first — putting a load down where it
+        // does not belong to go and mend a wall would lose the load.
+        if !crew[i].is_carrying()
+            && let Some((target, floor, slot)) =
+                super::repair::pick_repair(tower, content, poles, crew, i, crew[i].floor())
+        {
+            let job = crate::state::RepairJob {
+                target,
+                floor,
+                slot,
+            };
+            crew[i].repair = Some(job);
+            crew[i].wait_ticks = 0;
+            crew[i].state = repair_leg(&crew[i], tower, content, queues, daypart, job);
             continue;
         }
 
@@ -450,6 +502,49 @@ fn assign_idle(
         crew[i].task = Some(task);
         let next = next_leg(&crew[i], tower, content, queues, daypart);
         crew[i].state = next;
+    }
+}
+
+/// Route a crew member to the damage they have been assigned, then set
+/// them working. Reuses the haul legs exactly — which is why a severed
+/// shaft can put damage out of reach, and why that is correct rather
+/// than a bug.
+fn repair_leg(
+    crew: &Crew,
+    tower: &Tower,
+    content: &Content,
+    queues: &[u32],
+    daypart: DaypartIdx,
+    job: crate::state::RepairJob,
+) -> CrewState {
+    let floor = crew.floor();
+    let slot = crew.slot();
+
+    if floor == job.floor {
+        if slot == job.slot {
+            return CrewState::Repairing {
+                target: job.target,
+                ticks_left: super::repair::shift_ticks(
+                    content,
+                    content.balance.siege.repair_hp_per_shift,
+                ),
+            };
+        }
+        return CrewState::Walking { to_slot: job.slot };
+    }
+
+    let Some(shaft) = best_shaft(tower, content, queues, daypart, floor, job.floor) else {
+        // Cut off from the damage. Stand down rather than spin; the
+        // assignment pass will try again once a route exists.
+        return CrewState::Idle;
+    };
+    let column = tower.shaft(shaft).map_or(0, |s| s.slot);
+    if slot != column {
+        return CrewState::Walking { to_slot: column };
+    }
+    CrewState::Boarding {
+        shaft,
+        to_floor: job.floor,
     }
 }
 

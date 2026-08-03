@@ -165,8 +165,10 @@ fn craft_output_matches_the_recipe_exactly() {
     let crafts = game.state().stats.crafts_completed as i64;
     let end_poles = crate::tests::total_in_flight(game.state(), poles);
 
-    // The mill's recipe emits exactly one pole per craft.
-    assert_eq!(end_poles - start_poles, crafts);
+    // The mill's recipe emits exactly one pole per craft — allowing
+    // for whatever repair spent putting the tower back together.
+    let spent = game.state().stats.repair_poles_spent as i64;
+    assert_eq!(end_poles - start_poles + spent, crafts);
 }
 
 fn mill_progress(game: &crate::engine::GameEngine) -> u32 {

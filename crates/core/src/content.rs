@@ -21,7 +21,7 @@ use ron::de::from_bytes;
 use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh3::Xxh3;
 
-use crate::ids::{DaypartIdx, ItemIdx, RoomIdx, ShaftIdx, TerrainIdx};
+use crate::ids::{DaypartIdx, EnemyIdx, ItemIdx, RoomIdx, ShaftIdx, TerrainIdx};
 
 static EMBEDDED_DATA: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../assets/data");
 
@@ -55,6 +55,8 @@ pub enum RoomCategory {
     Storage,
     /// Makes, burns for, or stores charge.
     Energy,
+    /// Shoots back. Fed by the chain like anything else.
+    Defence,
     /// The Heartseed. Unique, pre-placed, and the loss condition.
     Heart,
 }
@@ -169,6 +171,8 @@ pub struct RoomDef {
     pub burner: Option<BurnerDef>,
     #[serde(default)]
     pub bank: Option<BankDef>,
+    #[serde(default)]
+    pub defence: Option<DefenceDef>,
 }
 
 /// Which mechanism moves things up and down a shaft.
@@ -210,6 +214,70 @@ pub struct ShaftDef {
     /// Items a dumbwaiter moves per trip.
     #[serde(default)]
     pub batch: i64,
+}
+
+/// How a creature reaches the tower, and therefore what it threatens.
+/// Each arm is a lesson: ground teaches ammo economics, canopy teaches
+/// that height is exposure, burrow teaches transport redundancy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Approach {
+    /// Walks up to the tower and attacks the lowest floor's panel.
+    Ground,
+    /// Drops from overhanging trees onto the *upper* decks.
+    Canopy,
+    /// Goes for the legs and the shaft columns.
+    Burrow,
+}
+
+/// A creature. They are not a target gallery — they defend their
+/// territory, and the tower is the thing passing through it
+/// (`DECISIONS.md` §8).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnemyDef {
+    pub id: String,
+    pub name: String,
+    /// Single glyph for the terrain layer. Presentation only.
+    pub glyph: String,
+    pub hp: i64,
+    /// Approach speed in whole paces per 100 ticks.
+    pub speed_paces_per_100_ticks: i64,
+    pub damage: i64,
+    pub attack_ticks: u32,
+    /// How long it will hold on once it has hold of something, while
+    /// the tower is striding. A stopped tower shakes nothing off, so
+    /// this timer only runs while the legs do — which is what makes
+    /// "walk it off" a real answer to a wave and stopping a real risk.
+    pub cling_ticks: u32,
+    pub approach: Approach,
+    /// Cost against a wave's threat budget.
+    pub threat: i64,
+    /// Provocation at or above which this creature starts appearing.
+    /// Keeps the opening of a run gentle without a difficulty setting.
+    #[serde(default)]
+    pub min_provocation: i64,
+    /// Only shows up after dark. The reason you banked charge.
+    #[serde(default)]
+    pub night_only: bool,
+}
+
+/// An emplacement: dart batteries and the like.
+///
+/// Ammo is an ordinary input stack, so feeding a battery is the same
+/// job as feeding a mill and uses the same crew and the same shafts.
+/// That equivalence is the design — an emplacement with its own private
+/// supply mechanism would make combat a parallel game instead of a load
+/// test on the one you are already playing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DefenceDef {
+    pub ammo: String,
+    pub ammo_per_shot: i64,
+    pub buffer_max: i64,
+    pub damage: i64,
+    pub reload_ticks: u32,
+    /// How far out it can reach, in whole paces.
+    pub range_paces: i64,
 }
 
 /// A named stretch of the day. The simulation only uses the index; the
@@ -261,6 +329,47 @@ pub struct Balance {
     pub clock: ClockBalance,
     pub power: PowerBalance,
     pub transport: TransportBalance,
+    pub siege: SiegeBalance,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SiegeBalance {
+    /// How long a creature on its way out stays on screen, whether it
+    /// was shot down or simply left behind.
+    pub enemy_fade_ticks: u32,
+    /// Hit points of a floor's outer panel, a room, and a shaft column.
+    /// Damage attaches to the things the player built, because that is
+    /// what makes it legible.
+    pub panel_hp: i64,
+    pub room_hp: i64,
+    pub shaft_hp: i64,
+    pub heartseed_hp: i64,
+    /// How far ahead of the tower creatures appear.
+    pub spawn_paces_ahead: i64,
+    /// Ticks between wave checks.
+    pub wave_interval_ticks: u32,
+    /// Threat budget per point of provocation, per 100 points.
+    pub threat_per_100_provocation: i64,
+    /// Floor under the threat budget, so a wave is never empty.
+    pub base_threat: i64,
+    /// Provocation ceiling. Everything scales against this.
+    pub provocation_max: i64,
+    /// Raised per 100 items stripped from the terrain.
+    pub provocation_per_100_harvested: i64,
+    /// Raised per burn of the burner. Smoke announces you.
+    pub provocation_per_burn: i64,
+    /// Bled off per 100 ticks of walking quietly.
+    pub provocation_decay_per_100_ticks: i64,
+    /// Crew time and poles to put one hit point back.
+    pub repair_ticks_per_hp: u32,
+    pub repair_poles_per_10_hp: i64,
+    /// Hit points one shift of repair work puts back. Bigger shifts
+    /// mean fewer, chunkier interruptions to hauling.
+    pub repair_hp_per_shift: i64,
+    /// Below this fraction of full health (per-mille), a room stops
+    /// working entirely rather than merely running slower.
+    pub wrecked_permille: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -362,6 +471,8 @@ pub struct Content {
     pub terrain: Vec<TerrainDef>,
     /// Sorted by time of day, not by id; `DaypartIdx` indexes this.
     pub dayparts: Vec<DaypartDef>,
+    /// Sorted by `id`; `EnemyIdx` indexes this.
+    pub enemies: Vec<EnemyDef>,
     /// XXH3 of every pack byte, path-ordered. Stamped into replays.
     pub content_hash: u64,
     /// Pre-resolved room recipes and costs, so no system ever touches a
@@ -387,6 +498,10 @@ pub struct RoomRuntime {
     /// rather than authored: six burns of runway is enough to ride out
     /// a delayed haul without hiding a persistent shortfall.
     pub burner_fuel: Option<(ItemIdx, i64)>,
+    /// Ammo item and magazine size for an emplacement. An ordinary
+    /// input stack, so the haul system feeds it with no special case.
+    pub defence_ammo: Option<ItemIdx>,
+    pub defence_buffer_max: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -470,6 +585,7 @@ impl Content {
         let mut shafts = parse_dir::<ShaftDef>(source, "shafts", &mut errors, &mut hasher);
         let mut terrain = parse_dir::<TerrainDef>(source, "terrain", &mut errors, &mut hasher);
         let mut dayparts = parse_dir::<DaypartDef>(source, "dayparts", &mut errors, &mut hasher);
+        let mut enemies = parse_dir::<EnemyDef>(source, "enemies", &mut errors, &mut hasher);
 
         if !errors.is_empty() {
             return Err(errors);
@@ -481,6 +597,7 @@ impl Content {
         rooms.sort_by(|a, b| a.id.cmp(&b.id));
         shafts.sort_by(|a, b| a.id.cmp(&b.id));
         terrain.sort_by(|a, b| a.id.cmp(&b.id));
+        enemies.sort_by(|a, b| a.id.cmp(&b.id));
         // Dayparts are the exception: they index by time of day, not by
         // name, so the day would run out of order if sorted by id.
         dayparts.sort_by_key(|part| part.start_permille);
@@ -499,6 +616,7 @@ impl Content {
             shafts,
             terrain,
             dayparts,
+            enemies,
             content_hash: hasher.digest(),
             room_runtime: Vec::new(),
             shaft_runtime: Vec::new(),
@@ -556,6 +674,19 @@ impl Content {
     #[must_use]
     pub fn shaft_rt(&self, idx: ShaftIdx) -> &ShaftRuntime {
         &self.shaft_runtime[idx.get()]
+    }
+
+    #[must_use]
+    pub fn enemy_idx(&self, id: &str) -> Option<EnemyIdx> {
+        self.enemies
+            .binary_search_by(|probe| probe.id.as_str().cmp(id))
+            .ok()
+            .map(|i| EnemyIdx(i as u16))
+    }
+
+    #[must_use]
+    pub fn enemy(&self, idx: EnemyIdx) -> &EnemyDef {
+        &self.enemies[idx.get()]
     }
 
     #[must_use]
@@ -677,6 +808,12 @@ impl Content {
                 )
             });
 
+            let defence_ammo = room
+                .defence
+                .as_ref()
+                .map(|defence| lookup(&defence.ammo, "defence ammo"));
+            let defence_buffer_max = room.defence.as_ref().map_or(0, |d| d.buffer_max);
+
             room_runtime.push(RoomRuntime {
                 build_cost,
                 recipe_inputs,
@@ -688,6 +825,8 @@ impl Content {
                 shelves,
                 per_shelf,
                 burner_fuel,
+                defence_ammo,
+                defence_buffer_max,
             });
         }
         self.room_runtime = room_runtime;
@@ -838,6 +977,7 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
             RoomCategory::Energy => {
                 def.solar.is_some() || def.burner.is_some() || def.bank.is_some()
             }
+            RoomCategory::Defence => def.defence.is_some(),
             RoomCategory::Heart => true,
         };
         if !wired {

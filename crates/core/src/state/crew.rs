@@ -76,6 +76,13 @@ pub enum CrewState {
         car: u8,
         to_floor: FloorIdx,
     },
+    /// Working on damage. Reuses the same walking and climbing legs
+    /// as a haul, because repair competes for the same crew and the
+    /// same shafts — that competition is the point.
+    Repairing {
+        target: crate::state::siege::DamageTarget,
+        ticks_left: u32,
+    },
     Loading {
         ticks_left: u32,
     },
@@ -97,8 +104,21 @@ pub struct Crew {
     pub state: CrewState,
     /// Consecutive ticks blocked from making progress.
     pub wait_ticks: u32,
+    /// Damage this crew member has been assigned to, and where they
+    /// have to stand to work on it. Held separately from `task` because
+    /// a repair is not a haul and pretending otherwise would put an
+    /// `Option` inside an `Option` in every scoring path.
+    pub repair: Option<RepairJob>,
     /// Cosmetic-stream draw. Renderer-only: idle animation phase.
     pub fidget: u16,
+}
+
+/// An assigned repair: what is broken, and where to stand to fix it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepairJob {
+    pub target: crate::state::siege::DamageTarget,
+    pub floor: FloorIdx,
+    pub slot: SlotIdx,
 }
 
 impl Crew {
@@ -113,6 +133,7 @@ impl Crew {
             task: None,
             state: CrewState::Idle,
             wait_ticks: 0,
+            repair: None,
             fidget,
         }
     }

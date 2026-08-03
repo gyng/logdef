@@ -21,7 +21,8 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         .band_at(state.world.distance)
         .map(|band| band.kind);
 
-    if power::pay_for_stride(state, content) {
+    state.strode = power::pay_for_stride(state, content);
+    if state.strode {
         state.world.distance += paces_from_fx(stride_per_tick(content));
     }
 

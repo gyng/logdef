@@ -140,6 +140,7 @@ fn build_shaft(
         riders: 0,
         cars,
         programs: vec![ShaftProgram::all_floors(floors); dayparts],
+        health: crate::state::Health::full(content.balance.siege.shaft_hp),
     });
     Ok(())
 }
@@ -217,10 +218,11 @@ fn build_floor(state: &mut GameState, content: &Content) -> Result<(), CommandEr
     spend(state, &cost);
 
     let index = state.tower.floors.len() as FloorIdx;
-    state
-        .tower
-        .floors
-        .push(Floor::new(index, balance.floor_slots));
+    state.tower.floors.push(Floor::new(
+        index,
+        balance.floor_slots,
+        content.balance.siege.panel_hp,
+    ));
 
     // The stairs grow with the tower. Growing taller is never free —
     // from M1 the new top floor also displaces the sail deck.
