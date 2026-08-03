@@ -26,6 +26,15 @@ try {
 }
 
 export default defineConfig({
+  // **Relative asset paths, for itch.io.**
+  //
+  // An itch HTML5 game is a zip served from a path nobody can predict
+  // and played inside an iframe, so a bundle that asks for `/assets/...`
+  // asks the wrong origin and loads nothing. `./` costs nothing anywhere
+  // else — the dev server and any static host serve it identically — and
+  // it is the single difference between a build that runs on itch and
+  // one that shows a blank canvas with four 404s behind it.
+  base: "./",
   plugins: [react()],
   define: {
     __BUILD_TIME__: JSON.stringify(buildTime),

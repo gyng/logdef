@@ -56,6 +56,30 @@ build: wasm
 build-fast: wasm-dev
 	cd web && npm run build
 
+# The release cut: an itch.io-ready zip.
+#
+# Optimised WASM (not the dev path — wasm-opt is worth the wait for a
+# quarter-megabyte payload), a typechecked frontend build, and the whole
+# of `web/dist` zipped with `index.html` at the root, which is the shape
+# itch unpacks. Nothing about this is clever; it exists so that cutting a
+# build is one command rather than a remembered sequence, and so the
+# thing uploaded is the thing that was tested.
+release: check wasm
+	cd web && npm run build
+	rm -f understory-web.zip
+	cd web/dist && zip -qr ../../understory-web.zip .
+	@echo "wrote understory-web.zip — upload to itch as an HTML5 game,"
+	@echo "with index.html as the entry point and 'fullscreen' enabled."
+
+# Open the built bundle the way itch will and play it for a moment.
+#
+# `npm run build` succeeding proves the bundler was happy and nothing
+# else. The failure this exists to catch is a bundle that 404s its own
+# WASM and shows a blank canvas — which every other check in the project
+# passes, because every other check runs against the dev server.
+release-check: release
+	cd web && (npx vite preview --port 4173 --strictPort &) && sleep 3 && 		npx playwright test release.spec.ts --reporter=line
+
 # Build everything with an explicit frontend typecheck step
 build-checked: wasm
 	cargo build --workspace --exclude understory-bridge
