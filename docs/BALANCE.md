@@ -38,7 +38,7 @@ Shape, height, and the price of both.
 |---|---:|---|---|
 | `starting_floors` | 4 | DESIGNED | Enough vertical distance that the opening haul is a climb, few enough that the tower reads at a glance on the first frame. |
 | `max_floors` | 14 | DESIGNED | The top of the cozy 8–14 range from `v2-plan.md` §0. Above this the cross-section stops fitting on one screen, which is the constraint the whole art direction rests on. |
-| `floor_slots` | 8 | DESIGNED | Four two-wide rooms, or three plus a shaft column. Tight enough that a shaft is a real sacrifice — which is the entire point of shafts costing floor width. |
+| `floor_slots` | 8 | DESIGNED | Wide enough for a three-wide room beside a two-wide and a one-wide, with the stairs column already taking one — so a floor is a packing decision rather than a fixed set of four. Tight enough that a shaft is a real sacrifice, which is the entire point of shafts costing floor width. Was reasoned about as "four two-wide rooms" when every room *was* two wide; see `SYSTEMS.md` §0.5 for the widths as they now stand. |
 | `floor_cost` | 6 poles | DESIGNED | About two minutes of the opening chain's output. Growing taller should be a decision you save up for, not a button you press. |
 | `stairs_capacity` | 1 | DESIGNED | One body at a time. With two crew this is already a queue, which puts the contention thesis on screen in the first minute rather than in M1. |
 | `starting_stock` | 10 poles | DESIGNED | One floor's worth plus a room, so the first build is possible before the mill has ever run, and the second is not. |

@@ -131,6 +131,21 @@ Room {
 Stack { item: ItemIdx, count: i64, max: i64 }
 ```
 
+**Width is a balance lever, not a constant.** Rooms are one, two or three slots wide, and
+which is a statement about the room:
+
+| Slots | Rooms | Why |
+|---|---|---|
+| 3 | Heartseed, canopy sails, salvage rig | The heart takes the room a hearth takes. Sails are the widest thing the tower carries and roof-only, which is the cost of the charge economy stated in floor space rather than in poles. A rig is a boom long enough to reach into a ruin from the deck. |
+| 2 | Cutter arm, mill, burner, storeroom | The working middle. |
+| 1 | Thornwright, cell bank, dart battery | A bench, a rack, and — deliberately the smallest thing in the pack — an emplacement. Defence competes for floor with the chain that pays for it, and at two slots it was a decision most towers declined. Cheap in space and expensive in ammo is the better trade. |
+
+Everything was two wide until M3, which meant eight slots was always exactly four rooms and
+the question this section exists to pose — what shares a floor with what — could not be
+asked. The opening tower is now laid out to leave awkward gaps rather than tidy ones, with
+exactly one three-wide hole in it (floor 1, where the rig wants to go) and none at all on
+the ground floor, so salvage and harvest compete for the same scarce low deck.
+
 A room occupies `[slot, slot + width)` on exactly one floor. A shaft occupies a single
 slot column on **every** floor it spans. Placement validates against both, so a shaft
 column is a permanent tax on floor width — which is the point.
