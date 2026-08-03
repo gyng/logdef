@@ -1560,12 +1560,39 @@ function drawPanel(
 ): void {
   const { layout, view } = ctx;
   const health = unit(floor.panel_permille / 1000);
+  const plating = view.journey.shell_bonus;
+  const width = pad + layout.slotW * 0.14;
+  const flanks = [layout.originX - pad, layout.originX + spanX + pad - width];
+
+  // Plating goes on before the damage, because it is under it: salvaged
+  // metal bolted over the timber, and the splits and breaches that
+  // follow are in the tower rather than in the plate.
+  //
+  // The tower's shell is the one permanent upgrade a run can buy
+  // (`SYSTEMS.md` §3.5), and a permanent upgrade the player cannot see
+  // is a number in a menu. Two bands a floor, cool against the warm
+  // hull, so a plated tower reads as plated from the silhouette.
+  if (plating > 0) {
+    const rows = Math.min(3, 1 + Math.floor(plating / 60));
+    for (const px of flanks) {
+      for (let i = 0; i < rows; i += 1) {
+        const y = top + layout.floorH * (0.18 + i * 0.28);
+        batch.push(px, y, width, Math.max(2, layout.floorH * 0.1), palette.roomStorage, {
+          colorBottom: mix(palette.roomStorage, palette.towerShell, 0.5),
+          radius: 1,
+        });
+        // A rivet at each end, which is what says bolted-on rather than
+        // painted.
+        batch.push(px + 1, y + 1, 2, 2, fade(palette.splinter, 0.8), { radius: 1 });
+        batch.push(px + width - 3, y + 1, 2, 2, fade(palette.splinter, 0.8), { radius: 1 });
+      }
+    }
+  }
+
   if (health >= 1) return;
 
   const hurt = 1 - health;
   const dark = darkness(view);
-  const width = pad + layout.slotW * 0.14;
-  const flanks = [layout.originX - pad, layout.originX + spanX + pad - width];
 
   for (const px of flanks) {
     if (floor.panel_permille > 0) {

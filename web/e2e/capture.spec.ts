@@ -258,16 +258,23 @@ test("capture stills", async ({ page }) => {
   // darts with. Without these the storerooms fill, the arms jam, and
   // the tower goes quiet again — which is correct behaviour and a
   // useless screenshot.
+  //
+  // Slots chosen against the current widths: floor 1 holds the stairs,
+  // a one-wide cell bank at 1 and a two-wide storeroom at 2-3, so 4 is
+  // the only three-wide gap in the tower and the rig is three wide.
+  // These placements used to be silent no-ops after the widths changed
+  // — the rig never got built, so the tower never had scrap, so the
+  // enclave still photographed a board nobody could buy from.
   for (const [room, floor, slot] of [
     ["room.storeroom", 2, 5],
     ["room.storeroom", 3, 5],
     ["room.thornwright", 3, 1],
-    ["room.dart_battery", 1, 1],
+    ["room.dart_battery", 1, 7],
 
     // Built here rather than next to the ruin stills below, because by
     // then the tower is deep enough into the journey that the arrival
     // overlay can be up, and an overlay eats the click.
-    ["room.salvage_rig", 0, 6],
+    ["room.salvage_rig", 1, 4],
   ] as const) {
     await page.getByTestId(`build-${room}`).click();
     const spot = await page.evaluate(([f, s]) => window.__understory!.slotPoint(f, s), [
@@ -560,6 +567,10 @@ test("capture stills", async ({ page }) => {
     const stock = (item: number) => before.stock.find((entry) => entry.item === item)?.count ?? 0;
     const trade = hooks.send({ Trade: { offer: 0 } });
     const hire = hooks.send("Recruit");
+    // Shell work last, because it is the one that shows on the tower —
+    // salvaged metal bolted over the timber. A permanent upgrade the
+    // player cannot see is a number in a menu.
+    const plate = hooks.send("Reinforce");
     hooks.step(2);
     const after = hooks.view();
     const moved = after.stock
@@ -569,7 +580,7 @@ test("capture stills", async ({ page }) => {
           `${hooks.catalog().items[entry.item]?.id ?? "?"} ${entry.count - stock(entry.item)}`,
       )
       .join(", ");
-    return `trade ${JSON.stringify(trade)}, recruit ${JSON.stringify(hire)}, crew ${after.crew.length}, shelves moved: ${moved || "nothing"}`;
+    return `trade ${JSON.stringify(trade)}, recruit ${JSON.stringify(hire)}, plate ${JSON.stringify(plate)} (+${after.journey.shell_bonus} shell), crew ${after.crew.length}, shelves moved: ${moved || "nothing"}`;
   });
   await page.waitForTimeout(300);
   await page.screenshot({ path: "capture/enclave-after.png" });
