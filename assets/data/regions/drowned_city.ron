@@ -1,0 +1,121 @@
+// Region 2. Sun-rich and barren, with the jungle still visibly taking
+// it back — the exact opposite of the deep jungle on both axes, for
+// long enough that the tower has to rebuild around it rather than wait
+// it out.
+//
+// Deliberately shorter than region 1: this is a placeholder act, not a
+// second full one. M5 adds the third region and the actual arrival
+// (`SYSTEMS.md` §3.7).
+#![enable(implicit_some)]
+RegionDef(
+    id: "region.drowned_city",
+    name: "The Drowned City",
+    order: 1,
+    length_min_paces: 34000,
+    length_max_paces: 46000,
+    ruin_richness_min_pct: 60,
+    ruin_richness_max_pct: 140,
+    // Four kinds, comfortably clear of the three-kind minimum. Clearing
+    // and canopy stay in at low weight because the green reclaiming the
+    // concrete is the thing you are meant to be able to see.
+    palette: [
+        TerrainWeight(terrain: "terrain.drowned_street", weight: 40),
+        TerrainWeight(terrain: "terrain.ruin_field", weight: 35),
+        TerrainWeight(terrain: "terrain.clearing", weight: 15),
+        TerrainWeight(terrain: "terrain.canopy", weight: 10),
+    ],
+    // Half again as dangerous as the jungle for the same provocation.
+    threat_pct: 150,
+    // Same rhythm as region 1, so the beat the player learned there
+    // still holds. A shorter region simply fits fewer of them: at the
+    // low end of the length roll the second fork falls inside
+    // `fork_edge_margin_paces` of the far edge and is skipped.
+    fork_interval_paces: 15000,
+    branches: [
+        BranchDef(
+            id: "branch.collapsed_district",
+            name: "Collapsed District",
+            length_paces: 6000,
+            palette: [
+                TerrainWeight(terrain: "terrain.ruin_field", weight: 55),
+                TerrainWeight(terrain: "terrain.drowned_street", weight: 30),
+                TerrainWeight(terrain: "terrain.clearing", weight: 15),
+            ],
+            // Open sky over broken ground: the best charge in the game
+            // and almost nothing to cut, with company to match.
+            threat_pct: 130,
+        ),
+        BranchDef(
+            id: "branch.flooded_boulevard",
+            name: "Flooded Boulevard",
+            length_paces: 6000,
+            palette: [
+                TerrainWeight(terrain: "terrain.drowned_street", weight: 60),
+                TerrainWeight(terrain: "terrain.ruin_field", weight: 25),
+                TerrainWeight(terrain: "terrain.clearing", weight: 15),
+            ],
+            // The city at its most itself. Ordinary danger, ruins
+            // throughout.
+            threat_pct: 100,
+        ),
+        BranchDef(
+            id: "branch.green_terraces",
+            name: "Green Terraces",
+            length_paces: 6000,
+            palette: [
+                TerrainWeight(terrain: "terrain.canopy", weight: 50),
+                TerrainWeight(terrain: "terrain.clearing", weight: 25),
+                TerrainWeight(terrain: "terrain.drowned_street", weight: 25),
+            ],
+            // Where the jungle won. A stretch of the mill's own weather
+            // in the middle of the city, and quieter for it.
+            threat_pct: 80,
+        ),
+    ],
+    // A short way in rather than on the boundary. On the boundary the
+    // enclave would put scrap's only consumer upstream of the only
+    // region that produces much scrap, so everything salvaged past it
+    // would be dead weight — the milestone punishing the player for
+    // engaging with the thing it is about (`SYSTEMS.md` §3.5).
+    //
+    // 8,000 paces is about seven minutes of 1x walking past the
+    // boundary: one or two of the city's ruins, so arriving with
+    // something to trade is the normal case, and four-fifths of the
+    // region is still ahead of you to be provisioned for.
+    enclave: EnclaveDef(
+        id: "enclave.high_water",
+        name: "High Water",
+        at_paces: 8000,
+        // Neighbours, not a merchant's inventory. Every rate here is
+        // worse than the chain's own — a mill turns bamboo into poles
+        // one for one, a thornwright turns a pole into three darts — so
+        // this is where a tower that lacks a room buys around the gap
+        // once, not a substitute for building it. Finite stock, so it
+        // is a windfall rather than an exchange to farm.
+        offers: [
+            // The payoff for everything in §3.4, and the reason scrap
+            // exists at all in M3. A 40-unit ruin comes to 30 poles.
+            OfferDef(
+                give: CostEntryDef(item: "item.scrap", amount: 4),
+                take: CostEntryDef(item: "item.poles", amount: 3),
+                stock: 20,
+            ),
+            OfferDef(
+                give: CostEntryDef(item: "item.bamboo", amount: 10),
+                take: CostEntryDef(item: "item.poles", amount: 4),
+                stock: 10,
+            ),
+            OfferDef(
+                give: CostEntryDef(item: "item.poles", amount: 4),
+                take: CostEntryDef(item: "item.darts", amount: 6),
+                stock: 12,
+            ),
+        ],
+        // One pair of hands, priced steeply. Going from two crew to
+        // three moved measured throughput by ninety percent
+        // (`BALANCE.md`, `starting_crew`), so a fourth is the largest
+        // single change a player can buy and should cost like it.
+        recruits: 1,
+        recruit_cost: [CostEntryDef(item: "item.poles", amount: 30)],
+    ),
+)

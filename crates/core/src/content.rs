@@ -21,7 +21,9 @@ use ron::de::from_bytes;
 use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh3::Xxh3;
 
-use crate::ids::{DaypartIdx, EnemyIdx, ItemIdx, RoomIdx, ShaftIdx, TerrainIdx};
+use crate::ids::{
+    BranchIdx, DaypartIdx, EnemyIdx, ItemIdx, RegionIdx, RoomIdx, ShaftIdx, TerrainIdx,
+};
 
 static EMBEDDED_DATA: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../assets/data");
 
@@ -88,12 +90,30 @@ pub struct RecipeDef {
     pub outputs: Vec<IoEntryDef>,
 }
 
+/// Where an intake room draws from. **Walking harvests bamboo; stopping
+/// harvests scrap** (`SYSTEMS.md` §3.4) — the two sources are exact
+/// opposites, and expressing that in content rather than as a special
+/// case in `intake::run` is what keeps a third source cheap to author.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IntakeSource {
+    /// Accrues against the ground the tower covers, so a stopped tower
+    /// harvests nothing at all. Scaled by the yield of the band
+    /// underfoot.
+    Terrain { paces_per_item: i64 },
+    /// Accrues per tick, and only while the tower is stopped with a
+    /// ruin inside `range_paces`. Never scaled by terrain yield — a rig
+    /// is not drawing from the band, it is drawing from the ruin.
+    Ruin {
+        ticks_per_item: u32,
+        range_paces: i64,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntakeDef {
     pub item: String,
-    /// Ticks per item at 100% terrain yield.
-    pub ticks_per_item: u32,
+    pub source: IntakeSource,
     pub buffer_max: i64,
 }
 
@@ -259,6 +279,20 @@ pub struct EnemyDef {
     /// Only shows up after dark. The reason you banked charge.
     #[serde(default)]
     pub night_only: bool,
+    /// Whether ordinary provocation-driven waves may draw this
+    /// creature. Defaults to yes, because opting out is the exception.
+    ///
+    /// A feral warden is not summoned by attention — it is summoned by
+    /// berthing at the ruin it guards (`SYSTEMS.md` §3.4) — so it says
+    /// so here rather than being fenced off with an out-of-range
+    /// `min_provocation`, which would be a number pretending to be a
+    /// rule.
+    #[serde(default = "wave_eligible_default")]
+    pub wave_eligible: bool,
+}
+
+const fn wave_eligible_default() -> bool {
+    true
 }
 
 /// An emplacement: dart batteries and the like.
@@ -308,12 +342,137 @@ pub struct TerrainDef {
     /// whole of "your route is your power mix", and it only works if
     /// no band is good at both.
     pub sun_pct: i64,
-    /// Relative weight when the generator picks the next band.
-    pub weight: i64,
-    /// Decorative features scattered per 100 paces of this band.
+    /// Features scattered per 100 paces of this band.
     pub features_per_100_paces: i64,
-    /// Feature glyphs this band may scatter. Presentation only.
+    /// Feature glyphs this band may scatter. Presentation only —
+    /// except for the ones named in `ruin_kinds`, below.
     pub feature_kinds: Vec<String>,
+    /// Which of `feature_kinds` are drowned ruins with something left
+    /// in them (`SYSTEMS.md` §3.4). The canopy's ferns and the
+    /// ruin-field's broken frames scatter through the same generator;
+    /// this is the only thing that separates them.
+    #[serde(default)]
+    pub ruin_kinds: Vec<String>,
+    /// Whole units of scrap one of this band's ruins holds, before the
+    /// owning region's rolled ruin richness scales it. Both ends are
+    /// ignored when `ruin_kinds` is empty.
+    #[serde(default)]
+    pub ruin_salvage_min: i64,
+    #[serde(default)]
+    pub ruin_salvage_max: i64,
+}
+
+// ---------------------------------------------------------------------------
+// The journey
+// ---------------------------------------------------------------------------
+
+/// One entry in a terrain palette: how often this kind of band comes up
+/// while the tower is walking through the region (or branch) that owns
+/// the palette.
+///
+/// This replaced a pack-wide `TerrainDef.weight` at M3. How often a kind
+/// comes up is a fact about *where you are*, not about the kind, and
+/// leaving both knobs in place would have left one of them to go stale
+/// (`SYSTEMS.md` §3.2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TerrainWeight {
+    pub terrain: String,
+    pub weight: i64,
+}
+
+/// One of the archetypes a route fork may offer.
+///
+/// **A branch is a palette override, not a detour** (`SYSTEMS.md` §3.3):
+/// taking one replaces the region's palette for `length_paces` past the
+/// fork and multiplies its `threat_pct`, then the route rejoins. There
+/// is no second distance axis and no route tree in state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BranchDef {
+    pub id: String,
+    pub name: String,
+    /// How far past the fork this palette holds.
+    pub length_paces: i64,
+    pub palette: Vec<TerrainWeight>,
+    /// Multiplier on the owning region's own `threat_pct`.
+    pub threat_pct: i64,
+}
+
+/// One posted exchange at an enclave. Finite `stock`, so a waystation is
+/// a windfall rather than an exchange to farm, and every rate is
+/// deliberately worse than the chain's own — the enclave is where a
+/// tower that lacks a room buys around the gap once (`SYSTEMS.md` §3.5).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OfferDef {
+    /// What the tower hands over.
+    pub give: CostEntryDef,
+    /// What it gets back.
+    pub take: CostEntryDef,
+    /// How many times this offer may be taken across the whole run.
+    pub stock: i64,
+}
+
+/// A settlement the tower walks past. Berthing works exactly as it does
+/// at a ruin — stop within range — and the tower that keeps walking
+/// loses it, because there is no going back down the axis.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnclaveDef {
+    pub id: String,
+    pub name: String,
+    /// Offset from the **start of the owning region**, not an absolute
+    /// distance — a region's length is rolled per run, so an absolute
+    /// figure could not be authored. A short way in rather than on the
+    /// boundary, for the reasons argued at length in `SYSTEMS.md` §3.5.
+    pub at_paces: i64,
+    pub offers: Vec<OfferDef>,
+    /// Crew available to hire here, across the whole run.
+    pub recruits: u8,
+    pub recruit_cost: Vec<CostEntryDef>,
+}
+
+/// A stretch of the journey with one character.
+///
+/// Regions are traversed in order and **sorted by `order` rather than by
+/// `id`**, so `RegionIdx` is both the interned index and the position in
+/// the journey. That is the second deliberate exception to the
+/// sort-by-string-ID rule in `DECISIONS.md` §6, for the same reason
+/// dayparts are the first: a list whose meaning is a sequence must be
+/// stored in that sequence, or the index lies.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RegionDef {
+    pub id: String,
+    pub name: String,
+    /// Position in the journey, 0-based. Validation requires the pack's
+    /// `order` values to be a contiguous run from zero with no
+    /// duplicates.
+    pub order: u8,
+    /// Length is **rolled once per run** from this range, off the
+    /// `world` stream. Fork spacing stays fixed, so what the roll
+    /// changes is how many decisions a region contains.
+    pub length_min_paces: i64,
+    pub length_max_paces: i64,
+    /// Likewise rolled once per run: a percentage applied to what each
+    /// of this region's ruins holds. One run's drowned city is picked
+    /// over and grudging, the next one's is worth berthing at.
+    pub ruin_richness_min_pct: i64,
+    pub ruin_richness_max_pct: i64,
+    /// At least three kinds with positive weight — see
+    /// `validate_palette` for why two is a bug.
+    pub palette: Vec<TerrainWeight>,
+    /// Multiplier on a wave's provocation-scaled threat budget.
+    pub threat_pct: i64,
+    /// Distance between route forks. 0 for a region with no forks.
+    pub fork_interval_paces: i64,
+    /// The archetypes this region's forks draw their two options from.
+    #[serde(default)]
+    pub branches: Vec<BranchDef>,
+    /// Where in the region, if anywhere, people live.
+    #[serde(default)]
+    pub enclave: Option<EnclaveDef>,
 }
 
 // ---------------------------------------------------------------------------
@@ -330,6 +489,29 @@ pub struct Balance {
     pub power: PowerBalance,
     pub transport: TransportBalance,
     pub siege: SiegeBalance,
+    pub journey: JourneyBalance,
+}
+
+/// The handful of journey-wide constants that belong to no single room
+/// and no single creature. See `SYSTEMS.md` §3.3–§3.5.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JourneyBalance {
+    /// A fork this close to either end of its region, or to the
+    /// region's enclave, is skipped — so a decision never lands on top
+    /// of a boundary or a berth and competes with it for the same
+    /// stretch of horizon.
+    pub fork_edge_margin_paces: i64,
+    /// How near an enclave the tower must stop to be berthed at it.
+    /// Docking at a settlement is not the salvage rig's job, so unlike
+    /// a ruin's reach this is not a property of a room.
+    pub enclave_berth_paces: i64,
+    /// Threat budget a roused ruin spends on wardens, per 100 units of
+    /// salvage it held at the moment of rousing. Floored at one warden.
+    pub warden_threat_per_100_salvage: i64,
+    /// How far out of the ruin a warden wakes, so there is a few
+    /// seconds between the ground moving and the first bite.
+    pub warden_wake_paces: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -359,6 +541,11 @@ pub struct SiegeBalance {
     pub provocation_per_100_harvested: i64,
     /// Raised per burn of the burner. Smoke announces you.
     pub provocation_per_burn: i64,
+    /// Raised per 100 units stripped out of a ruin. Sits close to
+    /// `provocation_per_100_harvested` on purpose: the wardens are the
+    /// price of a ruin, and a second, much louder price on top would
+    /// make salvage a thing nobody does twice (`SYSTEMS.md` §3.4).
+    pub provocation_per_100_salvaged: i64,
     /// Bled off per 100 ticks of walking quietly.
     pub provocation_decay_per_100_ticks: i64,
     /// Crew time and poles to put one hit point back.
@@ -443,6 +630,8 @@ pub struct TowerBalance {
 #[serde(deny_unknown_fields)]
 pub struct CrewBalance {
     pub starting_crew: u8,
+    /// Ceiling on the crew an enclave may recruit the tower up to.
+    pub crew_cap: u8,
     pub walk_ticks_per_slot: u32,
     pub climb_ticks_per_floor: u32,
     pub load_ticks: u32,
@@ -473,6 +662,14 @@ pub struct Content {
     pub dayparts: Vec<DaypartDef>,
     /// Sorted by `id`; `EnemyIdx` indexes this.
     pub enemies: Vec<EnemyDef>,
+    /// Sorted by `order`, not by id; `RegionIdx` indexes this, and the
+    /// index *is* the position in the journey. See `RegionDef`.
+    pub regions: Vec<RegionDef>,
+    /// Every region's branches, flattened in region order and, within a
+    /// region, by branch id; `BranchIdx` indexes this. Each region's
+    /// slice is recorded in its `RegionRuntime`, so a fork draws from
+    /// its own region without a second lookup.
+    pub branches: Vec<BranchDef>,
     /// XXH3 of every pack byte, path-ordered. Stamped into replays.
     pub content_hash: u64,
     /// Pre-resolved room recipes and costs, so no system ever touches a
@@ -480,6 +677,8 @@ pub struct Content {
     pub room_runtime: Vec<RoomRuntime>,
     pub shaft_runtime: Vec<ShaftRuntime>,
     pub terrain_runtime: Vec<TerrainRuntime>,
+    pub region_runtime: Vec<RegionRuntime>,
+    pub branch_runtime: Vec<BranchRuntime>,
 }
 
 /// A room definition with every string already resolved to an index.
@@ -490,7 +689,9 @@ pub struct RoomRuntime {
     pub recipe_outputs: Vec<(ItemIdx, i64, i64)>,
     pub craft_ticks: u32,
     pub intake_item: Option<ItemIdx>,
-    pub intake_ticks_per_item: u32,
+    /// Where the room draws from, verbatim from the definition. `None`
+    /// for a room that harvests nothing.
+    pub intake_source: Option<IntakeSource>,
     pub intake_buffer_max: i64,
     pub shelves: u8,
     pub per_shelf: i64,
@@ -508,7 +709,43 @@ pub struct RoomRuntime {
 pub struct TerrainRuntime {
     pub yield_pct: i64,
     pub sun_pct: i64,
-    pub weight: i64,
+    /// One flag per entry in `feature_kinds`: is a feature scattered
+    /// with that kind a salvageable ruin? Resolved here so the
+    /// generator never compares a feature-kind string.
+    pub ruin_feature: Vec<bool>,
+    pub salvage_min: i64,
+    pub salvage_max: i64,
+}
+
+/// A region with its palette resolved to indices and its branches
+/// located in the flat `Content.branches` list.
+#[derive(Debug, Clone)]
+pub struct RegionRuntime {
+    /// `(terrain, weight)`, positive weights only, sorted by index.
+    pub palette: Vec<(TerrainIdx, i64)>,
+    /// Half-open range of `BranchIdx` belonging to this region.
+    pub branch_first: u16,
+    pub branch_end: u16,
+    pub enclave: Option<EnclaveRuntime>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BranchRuntime {
+    /// `(terrain, weight)`, positive weights only, sorted by index.
+    pub palette: Vec<(TerrainIdx, i64)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnclaveRuntime {
+    pub offers: Vec<OfferRuntime>,
+    pub recruit_cost: Vec<(ItemIdx, i64)>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct OfferRuntime {
+    pub give: (ItemIdx, i64),
+    pub take: (ItemIdx, i64),
+    pub stock: i64,
 }
 
 /// A shaft definition with its costs resolved to indices.
@@ -586,6 +823,7 @@ impl Content {
         let mut terrain = parse_dir::<TerrainDef>(source, "terrain", &mut errors, &mut hasher);
         let mut dayparts = parse_dir::<DaypartDef>(source, "dayparts", &mut errors, &mut hasher);
         let mut enemies = parse_dir::<EnemyDef>(source, "enemies", &mut errors, &mut hasher);
+        let mut regions = parse_dir::<RegionDef>(source, "regions", &mut errors, &mut hasher);
 
         if !errors.is_empty() {
             return Err(errors);
@@ -598,9 +836,23 @@ impl Content {
         shafts.sort_by(|a, b| a.id.cmp(&b.id));
         terrain.sort_by(|a, b| a.id.cmp(&b.id));
         enemies.sort_by(|a, b| a.id.cmp(&b.id));
-        // Dayparts are the exception: they index by time of day, not by
-        // name, so the day would run out of order if sorted by id.
+        // Dayparts and regions are the exceptions: both index a
+        // sequence — the day, and the journey — so sorting either by id
+        // would make the index lie about position. See `DECISIONS.md`
+        // §6 and `SYSTEMS.md` §3.2.
         dayparts.sort_by_key(|part| part.start_permille);
+        regions.sort_by_key(|region| region.order);
+        // Branch order within a region is arbitrary to the journey, so
+        // it falls back on the ordinary id rule. Region order then
+        // branch id makes the flat list below a pure function of the
+        // pack.
+        for region in &mut regions {
+            region.branches.sort_by(|a, b| a.id.cmp(&b.id));
+        }
+        let branches: Vec<BranchDef> = regions
+            .iter()
+            .flat_map(|region| region.branches.iter().cloned())
+            .collect();
 
         let Some(balance) = balance else {
             return Err(vec![LoadError {
@@ -617,10 +869,14 @@ impl Content {
             terrain,
             dayparts,
             enemies,
+            regions,
+            branches,
             content_hash: hasher.digest(),
             room_runtime: Vec::new(),
             shaft_runtime: Vec::new(),
             terrain_runtime: Vec::new(),
+            region_runtime: Vec::new(),
+            branch_runtime: Vec::new(),
         };
 
         content.resolve(&mut errors);
@@ -687,6 +943,48 @@ impl Content {
     #[must_use]
     pub fn enemy(&self, idx: EnemyIdx) -> &EnemyDef {
         &self.enemies[idx.get()]
+    }
+
+    /// Interned index of a region. A linear scan rather than a binary
+    /// search, because the list is ordered by journey position, not by
+    /// id — and there are a handful of regions, not a handful of
+    /// thousands.
+    #[must_use]
+    pub fn region_idx(&self, id: &str) -> Option<RegionIdx> {
+        self.regions
+            .iter()
+            .position(|region| region.id == id)
+            .map(|i| RegionIdx(i as u16))
+    }
+
+    #[must_use]
+    pub fn region(&self, idx: RegionIdx) -> &RegionDef {
+        &self.regions[idx.get()]
+    }
+
+    #[must_use]
+    pub fn region_rt(&self, idx: RegionIdx) -> &RegionRuntime {
+        &self.region_runtime[idx.get()]
+    }
+
+    /// Interned index of a route branch. Linear for the same reason
+    /// `region_idx` is: the flat list follows region order first.
+    #[must_use]
+    pub fn branch_idx(&self, id: &str) -> Option<BranchIdx> {
+        self.branches
+            .iter()
+            .position(|branch| branch.id == id)
+            .map(|i| BranchIdx(i as u16))
+    }
+
+    #[must_use]
+    pub fn branch(&self, idx: BranchIdx) -> &BranchDef {
+        &self.branches[idx.get()]
+    }
+
+    #[must_use]
+    pub fn branch_rt(&self, idx: BranchIdx) -> &BranchRuntime {
+        &self.branch_runtime[idx.get()]
     }
 
     #[must_use]
@@ -787,13 +1085,13 @@ impl Content {
                 None => (Vec::new(), Vec::new(), 0),
             };
 
-            let (intake_item, intake_ticks_per_item, intake_buffer_max) = match &room.intake {
+            let (intake_item, intake_source, intake_buffer_max) = match &room.intake {
                 Some(intake) => (
                     Some(lookup(&intake.item, "intake")),
-                    intake.ticks_per_item,
+                    Some(intake.source),
                     intake.buffer_max,
                 ),
-                None => (None, 0, 0),
+                None => (None, None, 0),
             };
 
             let (shelves, per_shelf) = match &room.storage {
@@ -820,7 +1118,7 @@ impl Content {
                 recipe_outputs,
                 craft_ticks,
                 intake_item,
-                intake_ticks_per_item,
+                intake_source,
                 intake_buffer_max,
                 shelves,
                 per_shelf,
@@ -857,9 +1155,102 @@ impl Content {
             .map(|band| TerrainRuntime {
                 yield_pct: band.yield_pct,
                 sun_pct: band.sun_pct,
-                weight: band.weight,
+                ruin_feature: band
+                    .feature_kinds
+                    .iter()
+                    .map(|kind| band.ruin_kinds.contains(kind))
+                    .collect(),
+                salvage_min: band.ruin_salvage_min,
+                salvage_max: band.ruin_salvage_max,
             })
             .collect();
+
+        self.resolve_journey(errors);
+    }
+
+    /// Regions, their branches, and their enclaves. Split out of
+    /// `resolve` only because the journey is a chunk of its own; it runs
+    /// as part of the same pass.
+    fn resolve_journey(&mut self, errors: &mut Vec<LoadError>) {
+        let mut branch_runtime = Vec::with_capacity(self.branches.len());
+        for branch in &self.branches {
+            branch_runtime.push(BranchRuntime {
+                palette: self.resolve_palette(&branch.id, &branch.palette, errors),
+            });
+        }
+        self.branch_runtime = branch_runtime;
+
+        let mut region_runtime = Vec::with_capacity(self.regions.len());
+        let mut branch_first = 0u16;
+        for region in &self.regions {
+            let palette = self.resolve_palette(&region.id, &region.palette, errors);
+            let branch_end = branch_first + region.branches.len() as u16;
+
+            let enclave = region.enclave.as_ref().map(|enclave| {
+                let mut lookup = |item: &str, field: &str| match self.item_idx(item) {
+                    Some(idx) => idx,
+                    None => {
+                        errors.push(LoadError {
+                            path: enclave.id.clone(),
+                            message: format!("{field} references unknown item {item}"),
+                        });
+                        ItemIdx(0)
+                    }
+                };
+                EnclaveRuntime {
+                    offers: enclave
+                        .offers
+                        .iter()
+                        .map(|offer| OfferRuntime {
+                            give: (lookup(&offer.give.item, "offer give"), offer.give.amount),
+                            take: (lookup(&offer.take.item, "offer take"), offer.take.amount),
+                            stock: offer.stock,
+                        })
+                        .collect(),
+                    recruit_cost: enclave
+                        .recruit_cost
+                        .iter()
+                        .map(|cost| (lookup(&cost.item, "recruit_cost"), cost.amount))
+                        .collect(),
+                }
+            });
+
+            region_runtime.push(RegionRuntime {
+                palette,
+                branch_first,
+                branch_end,
+                enclave,
+            });
+            branch_first = branch_end;
+        }
+        self.region_runtime = region_runtime;
+    }
+
+    /// Authored `(terrain id, weight)` pairs to `(TerrainIdx, weight)`,
+    /// keeping only positive weights and sorting by index so the
+    /// generator's weighted pick walks the pool in a fixed order.
+    fn resolve_palette(
+        &self,
+        owner: &str,
+        palette: &[TerrainWeight],
+        errors: &mut Vec<LoadError>,
+    ) -> Vec<(TerrainIdx, i64)> {
+        let mut resolved: Vec<(TerrainIdx, i64)> = palette
+            .iter()
+            .filter_map(|entry| match self.terrain_idx(&entry.terrain) {
+                Some(idx) if entry.weight > 0 => Some((idx, entry.weight)),
+                Some(_) => None,
+                None => {
+                    errors.push(LoadError {
+                        path: owner.to_owned(),
+                        message: format!("palette references unknown terrain {}", entry.terrain),
+                    });
+                    None
+                }
+            })
+            .collect();
+        resolved.sort_by_key(|(idx, _)| *idx);
+        resolved
     }
 }
 
@@ -876,11 +1267,29 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
             message: "pack defines no terrain bands".into(),
         });
     }
-    if content.terrain_runtime.iter().all(|t| t.weight <= 0) {
-        errors.push(LoadError {
-            path: "terrain".into(),
-            message: "no terrain band has a positive weight".into(),
-        });
+    // How often a band comes up is a region's business now, so the old
+    // pack-wide "something must have a positive weight" check lives in
+    // `validate_regions` against the palettes instead.
+    for band in &content.terrain {
+        for kind in &band.ruin_kinds {
+            if !band.feature_kinds.contains(kind) {
+                errors.push(LoadError {
+                    path: band.id.clone(),
+                    message: format!("ruin_kinds names {kind}, which is not a feature_kind"),
+                });
+            }
+        }
+        if !band.ruin_kinds.is_empty()
+            && (band.ruin_salvage_min <= 0 || band.ruin_salvage_max < band.ruin_salvage_min)
+        {
+            errors.push(LoadError {
+                path: band.id.clone(),
+                message: format!(
+                    "ruin-bearing terrain needs a positive salvage range, got {}..={}",
+                    band.ruin_salvage_min, band.ruin_salvage_max
+                ),
+            });
+        }
     }
 
     for (i, def) in content.rooms.iter().enumerate() {
@@ -938,13 +1347,31 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
                 }
             }
         }
-        if let Some(intake) = &def.intake
-            && intake.ticks_per_item == 0
-        {
-            errors.push(LoadError {
-                path: path.clone(),
-                message: "intake ticks_per_item must be positive".into(),
-            });
+        if let Some(intake) = &def.intake {
+            if intake.buffer_max <= 0 {
+                errors.push(LoadError {
+                    path: path.clone(),
+                    message: "an intake room needs somewhere to put what it takes".into(),
+                });
+            }
+            match intake.source {
+                IntakeSource::Terrain { paces_per_item } if paces_per_item <= 0 => {
+                    errors.push(LoadError {
+                        path: path.clone(),
+                        message: "intake paces_per_item must be positive".into(),
+                    });
+                }
+                IntakeSource::Ruin {
+                    ticks_per_item,
+                    range_paces,
+                } if ticks_per_item == 0 || range_paces <= 0 => {
+                    errors.push(LoadError {
+                        path: path.clone(),
+                        message: "a ruin intake needs a positive rate and a reach".into(),
+                    });
+                }
+                _ => {}
+            }
         }
         if let Some(burner) = &def.burner {
             if content.item_idx(&burner.fuel).is_none() {
@@ -1034,9 +1461,241 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
             message: "crew movement rates must be positive".into(),
         });
     }
+    if content.balance.crew.crew_cap < content.balance.crew.starting_crew {
+        errors.push(LoadError {
+            path: "balance.ron".into(),
+            message: "crew_cap is below starting_crew".into(),
+        });
+    }
 
     validate_shafts(content, errors);
     validate_clock(content, errors);
+    validate_journey(content, errors);
+}
+
+/// Regions, palettes, branches, and enclaves.
+///
+/// Two of the checks here are the whole reason the journey is content
+/// rather than code: `order` has to describe a real sequence, and a
+/// palette has to have enough in it for the generator's no-repeat rule
+/// to produce a horizon rather than a stripe.
+fn validate_journey(content: &Content, errors: &mut Vec<LoadError>) {
+    let journey = &content.balance.journey;
+    if journey.enclave_berth_paces <= 0 {
+        errors.push(LoadError {
+            path: "balance.ron".into(),
+            message: "enclave_berth_paces must be positive or no berth is ever possible".into(),
+        });
+    }
+    if journey.fork_edge_margin_paces < 0 || journey.warden_wake_paces < 0 {
+        errors.push(LoadError {
+            path: "balance.ron".into(),
+            message: "journey distances cannot be negative".into(),
+        });
+    }
+    if journey.warden_threat_per_100_salvage <= 0 {
+        errors.push(LoadError {
+            path: "balance.ron".into(),
+            message: "warden_threat_per_100_salvage must be positive".into(),
+        });
+    }
+
+    if content.regions.is_empty() {
+        errors.push(LoadError {
+            path: "regions".into(),
+            message: "pack defines no regions; a run has nowhere to walk".into(),
+        });
+        return;
+    }
+
+    // The journey is a sequence, and `RegionIdx` claims to be a
+    // position in it. A gap or a duplicate makes that claim false.
+    for (i, region) in content.regions.iter().enumerate() {
+        if usize::from(region.order) != i {
+            errors.push(LoadError {
+                path: "regions".into(),
+                message: format!(
+                    "region order must be a contiguous run from zero; {} has order {} at \
+                     journey position {i}",
+                    region.id, region.order
+                ),
+            });
+        }
+    }
+
+    for (i, region) in content.regions.iter().enumerate() {
+        let path = region.id.clone();
+        if content.regions[..i]
+            .iter()
+            .any(|other| other.id == region.id)
+        {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "two regions share an id".into(),
+            });
+        }
+        if region.length_min_paces <= 0 || region.length_max_paces < region.length_min_paces {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: format!(
+                    "length range {}..={} is not a positive range",
+                    region.length_min_paces, region.length_max_paces
+                ),
+            });
+        }
+        if region.ruin_richness_min_pct <= 0
+            || region.ruin_richness_max_pct < region.ruin_richness_min_pct
+        {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: format!(
+                    "ruin richness range {}..={} is not a positive range",
+                    region.ruin_richness_min_pct, region.ruin_richness_max_pct
+                ),
+            });
+        }
+        if region.threat_pct <= 0 {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "threat_pct must be positive".into(),
+            });
+        }
+        if region.fork_interval_paces < 0 {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "fork_interval_paces cannot be negative".into(),
+            });
+        }
+        // A fork offers two *distinct* archetypes, so a region that
+        // forks at all has to have two to draw between.
+        if region.fork_interval_paces > 0 && region.branches.len() < 2 {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: format!(
+                    "a forking region needs at least 2 branch archetypes, found {}",
+                    region.branches.len()
+                ),
+            });
+        }
+
+        let rt = &content.region_runtime[i];
+        validate_palette(&path, &rt.palette, errors);
+
+        // A region's branches are contiguous in the flat list, in the
+        // order they appear on the region — so the runtime palette for
+        // `region.branches[n]` is at `branch_first + n`.
+        for (n, branch) in region.branches.iter().enumerate() {
+            let idx = BranchIdx(rt.branch_first + n as u16);
+            if content
+                .branches
+                .iter()
+                .filter(|other| other.id == branch.id)
+                .count()
+                > 1
+            {
+                errors.push(LoadError {
+                    path: branch.id.clone(),
+                    message: "two branches share an id".into(),
+                });
+            }
+            if branch.length_paces <= 0 {
+                errors.push(LoadError {
+                    path: branch.id.clone(),
+                    message: "a branch that overrides nothing is not a choice".into(),
+                });
+            }
+            if branch.threat_pct <= 0 {
+                errors.push(LoadError {
+                    path: branch.id.clone(),
+                    message: "threat_pct must be positive".into(),
+                });
+            }
+            validate_palette(&branch.id, &content.branch_rt(idx).palette, errors);
+        }
+
+        if let Some(enclave) = &region.enclave {
+            // The enclave has to stand inside the region however its
+            // length rolls, or a short draw would leave it unreachable.
+            if enclave.at_paces <= 0 || enclave.at_paces >= region.length_min_paces {
+                errors.push(LoadError {
+                    path: enclave.id.clone(),
+                    message: format!(
+                        "at_paces {} falls outside the shortest this region can roll ({})",
+                        enclave.at_paces, region.length_min_paces
+                    ),
+                });
+            }
+            if enclave.offers.is_empty() && enclave.recruits == 0 {
+                errors.push(LoadError {
+                    path: enclave.id.clone(),
+                    message: "an enclave with nothing to offer is a berth with no reason".into(),
+                });
+            }
+            for offer in &enclave.offers {
+                if offer.give.amount <= 0 || offer.take.amount <= 0 || offer.stock <= 0 {
+                    errors.push(LoadError {
+                        path: enclave.id.clone(),
+                        message: format!(
+                            "offer {} for {} has a non-positive amount or stock",
+                            offer.give.item, offer.take.item
+                        ),
+                    });
+                }
+            }
+            if enclave.recruits > 0 && enclave.recruit_cost.is_empty() {
+                errors.push(LoadError {
+                    path: enclave.id.clone(),
+                    message: "a recruit has to cost something".into(),
+                });
+            }
+        }
+    }
+
+    // A terrain kind no palette can produce is content with no consumer
+    // (`DECISIONS.md` §9.1) — the exact failure the weight-per-terrain
+    // model used to hide, since a weight of zero looked like tuning.
+    for (i, band) in content.terrain.iter().enumerate() {
+        let idx = TerrainIdx(i as u16);
+        let referenced = content
+            .region_runtime
+            .iter()
+            .map(|rt| &rt.palette)
+            .chain(content.branch_runtime.iter().map(|rt| &rt.palette))
+            .any(|palette| palette.iter().any(|(kind, _)| *kind == idx));
+        if !referenced {
+            errors.push(LoadError {
+                path: band.id.clone(),
+                message: "no region or branch palette can produce this terrain".into(),
+            });
+        }
+    }
+}
+
+/// A palette needs at least three kinds with positive weight.
+///
+/// `pick_band_kind` never repeats the previous band's kind, so with two
+/// entries that rule degenerates into strict ABABAB alternation — a
+/// perfectly regular horizon, which reads as a bug rather than as
+/// terrain (`SYSTEMS.md` §3.2). Enforced at load, in the same spirit as
+/// the anti-frustration constraints already living invisibly inside the
+/// generator.
+fn validate_palette(owner: &str, palette: &[(TerrainIdx, i64)], errors: &mut Vec<LoadError>) {
+    if palette.len() < 3 {
+        errors.push(LoadError {
+            path: owner.to_owned(),
+            message: format!(
+                "a palette needs at least 3 terrain kinds with positive weight, found {}; \
+                 fewer makes the no-repeat rule alternate",
+                palette.len()
+            ),
+        });
+    }
+    if palette.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+        errors.push(LoadError {
+            path: owner.to_owned(),
+            message: "a palette names the same terrain twice".into(),
+        });
+    }
 }
 
 fn validate_shafts(content: &Content, errors: &mut Vec<LoadError>) {

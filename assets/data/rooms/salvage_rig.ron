@@ -1,0 +1,45 @@
+// Strips a drowned ruin while the tower stands beside it. The exact
+// opposite of a cutter arm, and deliberately so: **walking harvests
+// bamboo, stopping harvests scrap** (`SYSTEMS.md` §3.4), so the stop-go
+// decision is also an intake-mix decision. That is the cleanest
+// statement of what M3 is for.
+//
+// The difference from a cutter arm is entirely in the content — an
+// `IntakeSource::Ruin` rather than a `Terrain` — not in a special case
+// inside `intake::run`.
+//
+// Berthing is implicit. There is no Berth command: a tower that is
+// stopped with a working rig in range of a ruin is berthing, and one
+// that walks on is not. Stopping next to a ruin with no rig does
+// nothing at all — nothing is extracted, nothing is roused, and there is
+// no error, because there is no command to reject. The empty space in
+// the build menu is the affordance.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.salvage_rig",
+    name: "Salvage Rig",
+    short: "SLV",
+    category: Intake,
+    width: 2,
+    // Reaches the ground, like the cutter arm it mirrors.
+    max_floor: 1,
+    // Priced above a mill (4 poles) and below a dumbwaiter (8): a rig
+    // is a real commitment to a way of playing, not an impulse build.
+    build_cost: [CostEntryDef(item: "item.poles", amount: 8)],
+    intake: IntakeDef(
+        item: "item.scrap",
+        source: Ruin(
+            // Two seconds a unit. A 25-60 unit ruin is therefore 50
+            // seconds to two minutes of standing still at 100%
+            // richness — long enough that the wardens it rouses have
+            // time to arrive and be answered.
+            ticks_per_item: 60,
+            // Matches the dart battery's reach, which is the number the
+            // player already has a feel for. Range is a property of the
+            // rig the way a battery's is a property of the battery, so
+            // it is read where the player chooses to build it.
+            range_paces: 60,
+        ),
+        buffer_max: 8,
+    ),
+)

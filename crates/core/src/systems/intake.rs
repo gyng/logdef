@@ -1,7 +1,8 @@
 //! Intake — the tower strips what it walks past.
 //!
-//! An intake room accrues `1 / ticks_per_item`, scaled by the terrain
-//! yield underfoot, into a fixed-point accumulator. Every time the
+//! An intake room accrues at the rate its `IntakeSource` authorises,
+//! scaled by the terrain yield underfoot, into a fixed-point
+//! accumulator. Every time the
 //! accumulator crosses 1.0 it pushes one item into the room's outbox.
 //!
 //! A full outbox stalls the accumulator rather than discarding the
@@ -9,7 +10,7 @@
 //! stall is the feedback — the room goes quiet because nobody is
 //! collecting from it.
 
-use crate::content::Content;
+use crate::content::{Content, IntakeSource};
 use crate::fx::{FX_ONE, Fx};
 use crate::state::GameState;
 
@@ -42,7 +43,27 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                 continue;
             }
 
-            let base = Fx::ratio(1, rt.intake_ticks_per_item.max(1) as i32);
+            // The per-pace accrual `SYSTEMS.md` §3.6 specifies is not
+            // wired yet — that needs `paces_last`, written by stride.
+            // Until it is, a Terrain source accrues per tick at exactly
+            // the equivalent of its authored pace rate, which is the
+            // same one-for-one conversion §3.6 uses: at 0.6 paces/tick,
+            // 54 paces an item is 90 ticks an item. Behaviour is
+            // unchanged for a tower that never stops, which is the
+            // whole point of that conversion.
+            let Some(source) = rt.intake_source else {
+                continue;
+            };
+            let ticks_per_item = match source {
+                IntakeSource::Terrain { paces_per_item } => {
+                    paces_per_item * 100 / content.balance.world.stride_paces_per_100_ticks.max(1)
+                }
+                // Berthing is not built, so a ruin source draws nothing
+                // rather than quietly drawing per tick everywhere.
+                IntakeSource::Ruin { .. } => continue,
+            };
+
+            let base = Fx::ratio(1, ticks_per_item.max(1) as i32);
             room.intake_acc += base * yield_mul;
 
             while room.intake_acc.0 >= FX_ONE && room.outputs[slot].deposit(1) == 1 {

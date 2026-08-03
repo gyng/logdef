@@ -1,0 +1,45 @@
+// What a ruin has instead of a lock.
+//
+// Wardens are the counterweight to the cling rule. `DECISIONS.md` §11
+// makes a creature's grip count down only while the tower is actually
+// striding, so "keep the legs moving" is a real, free answer to a wave
+// — and berthing is the one time the tower cannot walk away, not
+// because a rule forbids it but because walking away is what ends the
+// salvage. The escape hatch closes itself. A warden's grip never runs
+// out while you keep working, and the moment you decide the scrap is
+// not worth it you start walking and it does.
+//
+// Tone: this is a creature defending the place it lives, roused by the
+// tower taking the place apart. It is not guarding treasure.
+#![enable(implicit_some)]
+EnemyDef(
+    id: "enemy.feral_warden",
+    name: "Feral Warden",
+    glyph: "🦂",
+    // The toughest thing in the pack, by half again over a root-borer
+    // (225). A dart battery needs 800 ticks and 20 darts to put one
+    // down — 300 hp against 15 damage every 40 ticks — and takes about
+    // 160 damage doing it, roughly 16 poles to mend. One ruin is one
+    // real fight.
+    hp: 300,
+    // Slower even than a root-borer (15... 20 here is a shade above it,
+    // and well under half the tower's own 60). It does not need to
+    // hurry: you are the one who stopped.
+    speed_paces_per_100_ticks: 20,
+    damage: 12,
+    attack_ticks: 60,
+    // The longest grip in the pack by twice over: 2,400 ticks is 80
+    // seconds of *walking* to shake one you have decided to leave. The
+    // price of changing your mind about a berth.
+    cling_ticks: 2400,
+    approach: Ground,
+    // 30, against warden_threat_per_100_salvage (120): a 25-unit ruin
+    // rouses one warden and a 50-unit ruin rouses two. The payout and
+    // the price are the same number, which is the whole point.
+    threat: 30,
+    // Not summoned by attention. A warden is summoned by berthing, so
+    // it is excluded from the ordinary provocation-driven pool
+    // explicitly rather than fenced off with an out-of-range
+    // min_provocation, which would be a number pretending to be a rule.
+    wave_eligible: false,
+)

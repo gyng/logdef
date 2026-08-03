@@ -9,6 +9,7 @@ mod balance_doc;
 mod commands;
 mod determinism;
 mod haul;
+mod journey;
 mod power;
 mod production;
 mod replay;

@@ -1,0 +1,16 @@
+// What the old world left behind. Pulled out of drowned ruins by a
+// salvage rig while the tower is stopped, and spent at an enclave —
+// scrap is the only material in the pack the chain cannot make, and the
+// only one that arrives by standing still.
+//
+// Its single consumer is the enclave's exchange board (`SYSTEMS.md`
+// §3.5), which you pass once. Scrap taken late in region 2 banks
+// against M5's sun-forge; that tail is a recorded exception rather than
+// an oversight (`SYSTEMS.md` §3.10, "Deferred out of M3").
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.scrap",
+    name: "Scrap",
+    glyph: "⚙️",
+    order: 40,
+)

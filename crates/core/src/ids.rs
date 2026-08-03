@@ -49,6 +49,14 @@ index_type!(ShaftIdx, "shaft");
 index_type!(TerrainIdx, "terrain band");
 index_type!(DaypartIdx, "daypart");
 index_type!(EnemyIdx, "enemy");
+index_type!(RegionIdx, "region");
+index_type!(BranchIdx, "route branch");
+
+// `DaypartIdx` and `RegionIdx` are the two deliberate exceptions to the
+// sort-by-string-ID rule in `DECISIONS.md` §6: both index a list whose
+// meaning *is* a sequence — the day, and the journey — so they are
+// sorted by `start_permille` and by `order` respectively. Sorting either
+// by id would make the index lie about position. See `SYSTEMS.md` §3.2.
 
 runtime_id!(RoomId, "room");
 runtime_id!(CrewId, "crew member");

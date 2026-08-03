@@ -89,6 +89,11 @@ fn maybe_spawn_wave(state: &mut GameState, content: &Content, sounds: &mut Vec<S
         .enemies
         .iter()
         .enumerate()
+        // A feral warden is not summoned by attention — it is summoned
+        // by berthing at the ruin it guards (`SYSTEMS.md` §3.4) — so it
+        // is excluded from the ordinary pool explicitly rather than
+        // fenced off with an out-of-range `min_provocation`.
+        .filter(|(_, def)| def.wave_eligible)
         .filter(|(_, def)| def.min_provocation <= state.siege.provocation)
         .filter(|(_, def)| !def.night_only || night)
         .filter(|(_, def)| def.threat > 0)

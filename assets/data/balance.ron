@@ -37,6 +37,12 @@ Balance(
         // unanswerable. Three puts real pressure on the stairs and
         // makes relieving them worth the poles.
         starting_crew: 3,
+        // Twice the starting three, and short of the plan's eventual
+        // eight, which M4's shift rota should have to earn. The
+        // enclave's single recruit is the only way to move toward it in
+        // M3, so this is a ceiling with plenty of headroom rather than
+        // one a run will reach.
+        crew_cap: 6,
         // 0.4s per slot: crossing an 8-wide floor costs about 3
         // seconds, enough that where you put things matters.
         walk_ticks_per_slot: 12,
@@ -221,6 +227,12 @@ Balance(
         // loudest thing a tower can do, and it should cost more than a
         // day of walking quietly can pay back.
         provocation_per_burn: 18,
+        // The same three points a unit that cutting costs
+        // (provocation_per_100_harvested, above). The wardens a ruin
+        // rouses are the price of that ruin; charging a much louder
+        // second price in provocation on top would make salvage a thing
+        // nobody does twice.
+        provocation_per_100_salvaged: 300,
         // 14,400 ticks / 100 x 2 = 288 points a day, a little under a
         // third of the ceiling. Set so that a subsistence tower — one
         // cutter arm, no burner — hovers at zero, and so that a tower
@@ -260,5 +272,35 @@ Balance(
         // player sees a visible decline before the room stops rather
         // than a surprise cliff.
         wrecked_permille: 250,
+    ),
+    // The handful of journey-wide constants that belong to no single
+    // room and no single creature. See SYSTEMS.md §3.3-§3.5.
+    journey: JourneyBalance(
+        // A third of a fork interval (15,000, see
+        // regions/deep_jungle.ron). A fork this close to a region edge
+        // or to the region's enclave is skipped, so a decision never
+        // lands on top of a boundary or a berth and competes with it
+        // for the same stretch of horizon. Sized to keep region 2's
+        // first fork (15,000 in) clear of the enclave (8,000 in) while
+        // still dropping the second one on a short length roll — which
+        // is how the rolled length turns into "how many decisions does
+        // this region ask".
+        fork_edge_margin_paces: 5000,
+        // About a five-second window at 1x, under two at 4x — the tower
+        // covers 80 paces in 133 ticks. If that reads as fiddly in
+        // play, the answer is a larger number, not an approach-and-dock
+        // mechanic.
+        enclave_berth_paces: 80,
+        // A 25-unit ruin rouses one warden (25 x 120 / 100 = 30, one
+        // warden's threat exactly); a 50-unit ruin rouses two. The
+        // payout and the price are the same number, which is what makes
+        // "is this ruin worth it" a question about the tower rather
+        // than about the ruin.
+        warden_threat_per_100_salvage: 120,
+        // About twenty seconds between the ground moving and the first
+        // bite, at a warden's own 20 paces per 100 ticks — the same
+        // order of warning spawn_paces_ahead gives an ordinary wave,
+        // bought at a much shorter distance because a warden is slow.
+        warden_wake_paces: 120,
     ),
 )

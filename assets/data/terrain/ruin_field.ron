@@ -10,7 +10,13 @@ TerrainDef(
     // where the canopy has fallen away. The opposition with yield_pct
     // is what makes a route a power mix.
     sun_pct: 130,
-    weight: 25,
     features_per_100_paces: 12,
     feature_kinds: ["ruin", "rock", "ruin", "fern"],
+    ruin_kinds: ["ruin"],
+    // The same 25-60 range the drowned street holds, before the
+    // region's rolled richness. A ruin is a ruin; what differs between
+    // the jungle and the city is how many of them there are, and what
+    // this run's richness roll left in them.
+    ruin_salvage_min: 25,
+    ruin_salvage_max: 60,
 )

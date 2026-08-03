@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::content::Content;
 use crate::fx::{Paces, paces_from_int};
-use crate::ids::TerrainIdx;
+use crate::ids::{RegionIdx, TerrainIdx};
 use crate::rng::Rng;
 
 /// One stretch of terrain with a single character.
@@ -99,8 +99,16 @@ impl World {
         let balance = &content.balance.world;
         let target = self.distance + paces_from_int(balance.stream_ahead_paces);
 
+        // Band frequency belongs to the region palette now, not to a
+        // pack-wide `TerrainDef.weight` (`SYSTEMS.md` §3.2). The region
+        // tracker that picks *which* palette — the one covering
+        // `generated_to`, region or branch — is not built yet, so the
+        // generator draws from the first region's. This line is the
+        // seam that work replaces.
+        let palette = &content.region_rt(RegionIdx(0)).palette;
+
         while self.generated_to < target {
-            let kind = pick_band_kind(rng, content, self.bands.last().map(|b| b.kind));
+            let kind = pick_band_kind(rng, palette, self.bands.last().map(|b| b.kind));
             let length_paces = rng.range(
                 balance.band_min_paces,
                 balance.band_max_paces.max(balance.band_min_paces),
@@ -149,24 +157,26 @@ impl World {
     }
 }
 
-/// Weighted pick that never repeats the previous band's kind, so the
-/// horizon always changes. Falls back to allowing a repeat if the pack
-/// only defines one kind.
-fn pick_band_kind(rng: &mut Rng, content: &Content, previous: Option<TerrainIdx>) -> TerrainIdx {
-    let eligible: Vec<(TerrainIdx, i64)> = content
-        .terrain_runtime
+/// Weighted pick from a palette that never repeats the previous band's
+/// kind, so the horizon always changes. Falls back to allowing a repeat
+/// if the palette holds only one kind — which content validation
+/// forbids, but the generator should not be the thing that panics if it
+/// ever happens.
+fn pick_band_kind(
+    rng: &mut Rng,
+    palette: &[(TerrainIdx, i64)],
+    previous: Option<TerrainIdx>,
+) -> TerrainIdx {
+    let eligible: Vec<(TerrainIdx, i64)> = palette
         .iter()
-        .enumerate()
-        .map(|(i, rt)| (TerrainIdx(i as u16), rt.weight))
+        .copied()
         .filter(|(idx, weight)| *weight > 0 && Some(*idx) != previous)
         .collect();
 
     let pool = if eligible.is_empty() {
-        content
-            .terrain_runtime
+        palette
             .iter()
-            .enumerate()
-            .map(|(i, rt)| (TerrainIdx(i as u16), rt.weight.max(1)))
+            .map(|(idx, weight)| (*idx, (*weight).max(1)))
             .collect()
     } else {
         eligible

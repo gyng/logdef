@@ -11,9 +11,18 @@ RoomDef(
     build_cost: [CostEntryDef(item: "item.poles", amount: 4)],
     intake: IntakeDef(
         item: "item.bamboo",
-        // 3 seconds per stalk under ordinary canopy; a rich band is
-        // faster and a ruin-field is barren.
-        ticks_per_item: 90,
+        // Per pace, not per tick. The description above was already
+        // making this claim — per-tick intake meant a parked tower
+        // stripped bamboo out of ground it had already stripped,
+        // indefinitely, which was invisible until M3 gave players three
+        // reasons to stop on purpose (`SYSTEMS.md` §3.6).
+        //
+        // 54 paces is exactly the old 90 ticks converted at the tower's
+        // 0.6 paces/tick, so a tower that never stops harvests at
+        // precisely the rate it did before: one stalk per 3 seconds of
+        // walking at ordinary yield, 2.1 s under canopy, 6 s across a
+        // ruin-field.
+        source: Terrain(paces_per_item: 54),
         buffer_max: 8,
     ),
 )

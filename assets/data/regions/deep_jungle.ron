@@ -1,0 +1,81 @@
+// Region 1. Canopy-heavy: biomass-rich and sun-poor, with ruins scarce
+// enough that a berth is an event rather than a routine.
+//
+// A band lasts under a minute, so in M0 the yield/sun opposition was a
+// texture the tower crossed several times a day and averaged out. A
+// region lasts long enough that it does not average out, and that is
+// the difference between "your route is your power mix" as a sentence
+// and as a decision (`SYSTEMS.md` §3.2).
+#![enable(implicit_some)]
+RegionDef(
+    id: "region.deep_jungle",
+    name: "Deep Jungle",
+    order: 0,
+    // Rolled once per run off the world stream. 60,000 paces at the
+    // midpoint is about 55 minutes of unbroken 1x walking; the +/-8,000
+    // spread is a little over half a fork interval, so most seeds
+    // differ by one fork and none by more than one.
+    length_min_paces: 52000,
+    length_max_paces: 68000,
+    // Likewise rolled once. Wide enough that a lean run and a generous
+    // one are different propositions rather than different rounding.
+    ruin_richness_min_pct: 60,
+    ruin_richness_max_pct: 140,
+    palette: [
+        TerrainWeight(terrain: "terrain.canopy", weight: 55),
+        TerrainWeight(terrain: "terrain.clearing", weight: 30),
+        TerrainWeight(terrain: "terrain.ruin_field", weight: 15),
+    ],
+    // The baseline every other region's threat is read against.
+    threat_pct: 100,
+    // Three forks across a midpoint-length region, about fourteen
+    // minutes apart at 1x. Punctuation, not a metronome: the player
+    // should learn the rhythm without having to watch for it.
+    fork_interval_paces: 15000,
+    // Three archetypes, so the pair a fork draws differs between forks
+    // and between seeds. Every palette clears the three-kind minimum.
+    branches: [
+        BranchDef(
+            id: "branch.canopy_passage",
+            name: "Canopy Passage",
+            // ~5.5 minutes at 1x — long enough to change what the chain
+            // is doing, short enough that a bad pick is not a lost
+            // region.
+            length_paces: 6000,
+            palette: [
+                TerrainWeight(terrain: "terrain.canopy", weight: 70),
+                TerrainWeight(terrain: "terrain.clearing", weight: 20),
+                TerrainWeight(terrain: "terrain.ruin_field", weight: 10),
+            ],
+            // Deep shade, and quiet with it. Bamboo for charge.
+            threat_pct: 80,
+        ),
+        BranchDef(
+            id: "branch.old_riverbed",
+            name: "Old Riverbed",
+            length_paces: 6000,
+            palette: [
+                TerrainWeight(terrain: "terrain.clearing", weight: 55),
+                TerrainWeight(terrain: "terrain.ruin_field", weight: 25),
+                TerrainWeight(terrain: "terrain.canopy", weight: 20),
+            ],
+            // Open sky, ordinary company. The neutral option a fork
+            // needs so the choice is not always quiet-or-loud.
+            threat_pct: 100,
+        ),
+        BranchDef(
+            id: "branch.overgrown_ruins",
+            name: "Overgrown Ruins",
+            length_paces: 6000,
+            palette: [
+                TerrainWeight(terrain: "terrain.ruin_field", weight: 55),
+                TerrainWeight(terrain: "terrain.canopy", weight: 25),
+                TerrainWeight(terrain: "terrain.clearing", weight: 20),
+            ],
+            // Sun and scrap, and something living in both. Loud, but
+            // not punishing on its own.
+            threat_pct: 130,
+        ),
+    ],
+    // Nobody lives out here.
+)

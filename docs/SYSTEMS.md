@@ -679,11 +679,802 @@ points and makes its destruction the end of the run.
   it takes a root-borer, which is gated at provocation 500, and a captured run peaks around
   250. Until somebody has seen it, the legibility half of the first exit criterion above is
   a claim about code rather than about the game.
-- **One emplacement.** The dart battery is the only thing that shoots back, so "which
-  defence to build" is not yet a decision — only "whether."
+- **One emplacement, and no priority targeting.** M2's brief in `v2-plan.md` §9 asked for
+  a dart battery *and* a seed-bomb mortar "with priority targeting." Only the battery is
+  built, so "which defence to build" is not yet a decision — only "whether" — and
+  `defence.rs` picks the nearest creature in range with no way for the player to say
+  otherwise. The targeting half is a deliberate cut rather than an oversight: a priority
+  list is the kind of menu `DECISIONS.md` §8 argues against, and placement already decides
+  what an emplacement can reach. The second emplacement is not a cut, just undone, and
+  belongs with M5's taxonomy pass where there is something for it to be good against.
+- **Repair costs poles and crew time, not rope.** The brief said "poles+rope+crew". There
+  is no rope item in the pack and nothing that would make one anything but a second tax on
+  the same haul, so it was not authored — `v2-plan.md` §10's first process rule says no
+  content type until a system consumes it.
+- **Building under fire is neither slow nor exposed.** The brief asked for construction to
+  cost something extra during an assault. It does not: `PlaceRoom` is as instant mid-wave
+  as it is in the quiet. The pressure M2 does apply — that poles spent building are poles
+  not spent mending — turned out to be sharp enough on its own in the measured runs, so
+  this was left rather than stacked on top of an economy that was already too tight. If it
+  comes back it should be revisited against the numbers, not added on principle.
 - **A creature giving up sounds like a creature dying.** `EnemyState::Leaving` and
   `EnemyState::Dying` are distinct in the state and in the snapshot (§2.2, above), but the
   audio layer has no separate cue yet, so walking a wave off and shooting it down sound the
   same.
 - **Per-daypart elevator programs still have no UI**, carried forward unchanged from M1's
   deferred note (§1.7, above).
+
+---
+
+## M3 — The Journey *(the run)*
+
+**Sprint question:** does run pacing work, and does the route-is-your-power-mix tension
+actually bite?
+
+**Scope:** the run becomes a journey. Two regions with opposed terrain palettes, route
+forks that split the way ahead, drowned ruins worth stopping to strip, the feral wardens
+that guard them, one enclave a short way into the second region, and the walk/stop decision
+made economically real by moving intake off the clock and onto the ground covered.
+
+**Non-goals (M4+):** no region 3 and no Refugia arrival, no unlocks or meta-progression,
+no art pass, no crew needs or shift rota, no per-region creature tables beyond a single
+threat multiplier, no enclave repair.
+
+### 3.1 The shape of the thing
+
+A run is a walk through an ordered sequence of **regions**. Nothing about the world model
+changes to accommodate that: terrain is still a stream, `World::generate_ahead` and
+`prune_behind` still keep a constant-size window around the tower (§0.4), and the tower
+still walks down one distance axis from zero. What M3 changes is *which* bands the
+generator draws from — it asks the region the tower is in rather than a single pack-wide
+weight table — and it hangs three things on that axis worth stopping for: a **fork**, a
+**ruin**, and an **enclave**.
+
+Distance is the run's clock, and the tower only advances while it is walking. That makes
+stop-or-go the verb that actually spends the run, which is why M3's other half is making
+that verb cost something in both directions (§3.6). Everything below is a reason to stop or
+a reason not to.
+
+There is no map screen, no node graph, and no travel mode. A region is a stretch of the
+same axis with a different palette; a fork is a place on that axis where the world runs out
+until you say which way it continues; an enclave is a place you can park next to. The
+`v2-plan.md` §3 structural call — "continuous world, no node map" — survives intact, and
+none of the three additions needs a second kind of space to live in.
+
+### 3.2 Regions
+
+A **region** is content: `assets/data/regions/*.ron`, interned like everything else
+(`DECISIONS.md` §6).
+
+```
+RegionDef {
+  id: String,                  // "region.deep_jungle"
+  name: String,
+  order: u8,                   // position in the journey, 0-based
+  length_min_paces: i64,       // rolled once per run, from the world stream
+  length_max_paces: i64,
+  ruin_richness_min_pct: i64,  // likewise; scales what this region's ruins hold
+  ruin_richness_max_pct: i64,
+  palette: Vec<TerrainWeight>, // { terrain: String, weight: i64 }
+  threat_pct: i64,             // multiplier on a wave's threat budget
+  fork_interval_paces: i64,    // 0 for a region with no forks
+  branches: Vec<BranchDef>,
+  enclave: Option<EnclaveDef>, // where in the region, if anywhere, people live
+}
+```
+
+Regions are traversed in order and sorted by `order` rather than by `id`, so `RegionIdx`
+is both the interned index and the position in the journey. That is the second deliberate
+exception to the sort-by-string-ID rule in `DECISIONS.md` §6, for the same reason dayparts
+are the first: a list whose meaning is a sequence must be stored in that sequence, or the
+index lies. Validation requires the `order` values to be a contiguous run from zero, with
+no duplicates.
+
+**Two things about a region are rolled from the seed, not authored.** They are the answer to
+a real risk in this design: fork spacing, the enclave, and the palettes are all content, and
+region length was going to be too — leaving two seeds to differ only in band order and where
+the ferns are, which is unlikely to clear the exit criterion that two seeds feel meaningfully
+different (§3.10). Rather than give up the predictable fork rhythm to buy variety, the
+variety is bought structurally and cheaply:
+
+* **Length**, drawn once per region from `[length_min_paces, length_max_paces]`. Fork
+  positions stay on the fixed interval (§3.3), so what the roll changes is **how many
+  decisions a region contains** — a long draw fits another fork, a short one does not —
+  without forks becoming unpredictable *within* a run. The min/max pair mirrors
+  `band_min_paces`/`band_max_paces`, which is how the pack already expresses "a length with
+  a range."
+* **Ruin richness**, a percentage drawn once per region and applied to what each of its
+  ruins holds (§3.4). This is the roll the player will actually feel, because it changes
+  whether stopping is worth it: one run's drowned city is picked over and grudging, the
+  next one's is worth berthing at three times. It scales the amount rather than the count,
+  so a poor city still has ruins in it — visibly near-empty ones, which reads as
+  disappointment rather than as absence.
+
+Both draw from `world`, never `cosmetic`: how long a region is and how much is left in it
+are facts about the run, and two people sharing a seed must get the same journey
+(`DECISIONS.md` §2).
+
+**Every roll happens once, at run start.** `World` carries the result:
+
+```
+World {
+  ...
+  journey: Vec<RegionRoll>,    // { end: Paces, ruin_richness_pct: i64 }, one per region
+  region: RegionIdx,
+  region_start: Paces,
+}
+```
+
+Rolling the whole journey up front rather than region by region on entry is what keeps the
+generator simple. Because a branch is a palette override rather than a detour (§3.3), region
+boundaries are still fixed absolute distances for the life of a run — they are just fixed by
+the seed rather than by the content — so "which region is the tower in" and "which region is
+the generator producing into" both stay pure functions of a distance. Rolling on entry would
+mean the generator, which streams up to `stream_ahead_paces` past a boundary, had to produce
+terrain for a region whose length had not been decided yet.
+
+`region` and `region_start` are derivable from `distance` and `journey`, and are stored
+anyway for one specific reason: crossing a boundary is an **event**, not just a fact. The
+stride system compares the stored region against the region the tower's new distance falls
+in, and on a mismatch it does the region's one-time setup — placing the enclave, resetting
+the fork schedule. `region_start` keeps the fork arithmetic local and readable rather than a
+running sum recomputed at each use.
+
+**The two regions.**
+
+| | Region 1 — Deep Jungle | Region 2 — The Drowned City |
+|---|---|---|
+| Character | canopy-heavy: biomass-rich, sun-poor | ruin-heavy: sun-rich, biomass-poor |
+| Palette | canopy heavy, clearing moderate, ruin-field light | drowned street and ruin-field heavy, clearing light, canopy light |
+| Ruins | scarce | common, and how much they hold is a seeded roll |
+| `threat_pct` | 100 | higher |
+| Enclave | none | one, a short way in |
+
+The opposed sun and biomass rates `v2-plan.md` §9 asks M3 for **already exist**, per
+terrain, from M0: `TerrainDef` carries `yield_pct` against `sun_pct`, and
+`assets/data/terrain/canopy.ron` is 140 against 35 where `ruin_field.ron` is 50 against
+130 — no band is allowed to be good at both, and
+the field comment says so. What M3 adds is that opposition at *region* scale. In M0 and M1
+the opposition was a texture: a band lasts 300–900 paces, roughly sixteen to fifty seconds
+at 1×, so the tower crosses the whole spectrum several times an in-game day and the mix
+averages out. A region lasts long enough that it does not average out. Walking into the
+drowned city means the mill goes hungry and the banks fill for hours, not for a minute —
+the journey itself changes the tower's power mix, and the player has to rebuild around it
+rather than wait it out. That is the difference between "your route is your power mix" as a
+sentence and as a decision.
+
+Two consequences the palette has to respect:
+
+* **A palette needs at least three kinds with positive weight.** `pick_band_kind` never
+  repeats the previous band's kind. With a two-entry palette that rule degenerates into
+  strict alternation — a perfectly regular ABABAB horizon, which reads as a bug. Validation
+  rejects a palette with fewer than three positive weights, in the same spirit as the
+  anti-frustration constraints already living invisibly inside the generator.
+* **The drowned city needs a band of its own.** Re-weighting the three M0 kinds would make
+  region 2 read as "region 1 with more ruins" rather than as somewhere else. M3 authors one
+  new terrain, `terrain.drowned_street` — high sun, low yield, ruin-bearing — so the city
+  has a face. Reusing `clearing` and `canopy` at low weight is what keeps the green
+  reclaiming the concrete visible.
+
+`TerrainDef.weight` is deleted. Its job — how often a kind comes up — now belongs to the
+region palette, and leaving a pack-wide weight in place as a second knob doing the same job
+would be one of the two numbers going stale. Validation gains the matching check: every
+terrain kind must appear with positive weight in at least one region palette, because a
+terrain no region can produce is content with no consumer (`DECISIONS.md` §9.1).
+
+`threat_pct` multiplies the provocation-scaled threat budget in `siege::maybe_spawn_wave`,
+after the affordability gate and before `base_threat`'s floor. One knob, not a table: M2
+already deferred most of the creature taxonomy as unexercised in play (§2.9), and adding
+per-region creature tables on top of creatures a run has never met would be authoring
+content for a system that is not yet consuming what it has. Per-region threat tables belong
+with M5's taxonomy pass.
+
+### 3.3 Route forks
+
+At `fork_interval_paces` intervals inside a region, the route splits in two.
+
+Fork **spacing** is content, not seed: the first fork sits at `region_start +
+fork_interval_paces`, the next one an interval further on, and so forth. Predictable
+punctuation is a feature — the player should learn the rhythm of "another choice is coming"
+without having to watch for it, and a fork that could arrive at any moment would be an
+interruption rather than a beat.
+
+A fork is skipped if it falls within `fork_edge_margin_paces` of either end of the region or
+of the region's enclave, so a decision never lands on top of a boundary or a berth and
+competes with it for the same stretch of horizon.
+
+What the seed decides is therefore **how many** forks a region has and **what each one
+offers**. Fork count falls out of the region's rolled length against the fixed interval
+(§3.2): a long draw fits one more decision in than a short one. The two branch archetypes at
+each fork are drawn from the `world` stream. Spacing stays regular; the number of beats and
+the content of each one do not.
+
+Each region authors a set of **branch archetypes**:
+
+```
+BranchDef {
+  id: String,                  // "branch.canopy_passage"
+  name: String,
+  length_paces: i64,
+  palette: Vec<TerrainWeight>,
+  threat_pct: i64,
+}
+```
+
+The two a fork draws are always distinct, and the choice between them is the choice. Taking
+one overrides the region palette for
+`length_paces` past the fork and multiplies the region's `threat_pct` by the branch's, then
+the route rejoins the region. **A branch is a palette override, not a detour.** There is no
+second distance axis, no route tree in state, and no rejoin arithmetic: the tower keeps
+walking down the one axis it has always walked down, and for a stretch the terrain it walks
+through is drawn from somewhere else. Everything downstream — streaming, pruning, region
+boundaries, replay — is unchanged by construction.
+
+**What the player is told before committing.** The fork card names each branch and lists
+its two heaviest terrain kinds and a word for its threat (*quieter* / *as usual* /
+*louder*), all derived from the branch's own palette and `threat_pct`. There is deliberately
+no authored blurb: a hand-written line describing a branch can drift out of step with its
+palette during tuning, and a game that misdescribes the only informed choice it asks the
+player to make is worse than one that describes it drily. The description is generated from
+the data it describes, so it cannot lie.
+
+**The tower halts at a fork it has not been given an answer for.** New command:
+
+| Command | Effect | Rejects on |
+|---|---|---|
+| `TakeFork { branch }` | commit to branch 0 or 1 of the pending fork | no fork pending, no such branch |
+
+Three things make the halt right rather than arbitrary.
+
+*It is what the world does, not a rule imposed on top of it.* The generator produces terrain
+`stream_ahead_paces` in front of the tower, and past an unanswered fork there is nothing to
+produce — the palette beyond depends on an answer that does not exist. So generation stops
+at the fork line. The tower halts because the ground it would walk onto has not been decided
+yet, and the renderer draws exactly that: the terrain strip ends, and the fork is the
+horizon. The property test `the_tower_is_always_standing_somewhere` continues to hold,
+because the tower never crosses into the ungenerated stretch.
+
+*It costs the player the thing M3 has just made expensive.* The halt reuses the stop
+machinery wholesale (§3.6): `strode` stays false, so nothing clinging to the tower loses its
+grip (`DECISIONS.md` §11), the cutter arms harvest nothing, and the charge the legs would
+have burned is banked. A fork reached in the middle of a wave is a genuine emergency, and a
+fork reached with the banks nearly empty is a small mercy. That is the same trade every
+other stop in the game presents, which is exactly why it needs no new machinery and no new
+UI mode.
+
+*It needs no modal dialogue and no pause.* The fork is visible from up to
+`stream_ahead_paces` out — roughly fifty seconds at 1× — and `TakeFork` is legal from the
+moment it appears. A player who answers early never stops at all. The halt is not the
+decision; it is what happens when the decision is late. That distinction is what keeps the
+fork from being a speed bump, and it is the reason to reject the obvious alternatives: a
+modal pause would make the choice a mode (against `v2-plan.md` §3), and auto-picking a
+branch would make it not a choice.
+
+An answer may be replaced while the fork is still pending — the last `TakeFork` before the
+tower reaches the fork line is the one that counts. Once the tower crosses, the branch is
+committed and the fork is cleared. A player who never answers stands there indefinitely,
+banking charge while the waves keep arriving on their own schedule; that is a legitimate,
+bad outcome and needs no special handling.
+
+**The halted states have to be visually distinct, and this is a renderer requirement rather
+than a simulation one.** A tower the player stopped, a tower waiting at a fork, and a tower
+that has reached the end of the world are the same silhouette with the same legs still and
+the same `strode` false, and they are three completely different situations. The fork halt
+in particular must read as *waiting for you* — the terrain strip ending at a fork in the
+path, with two ways named — or it looks like the game has frozen, which is the one reading
+that would make the whole argument above worthless. The arrival halt needs its own reading
+too, since standing still at the far edge is the run being over rather than a decision
+pending.
+
+**Anything that drives the engine without a player has to answer forks.** `examples/siege_run.rs`
+and `examples/throughput.rs` both step tens of thousands of ticks with no commands beyond a
+shopping list, and a harness that walks into a fork and stops measures a parked tower with
+total confidence — the exact failure mode `siege_run.rs`'s own comments record it having had
+once already, when a room it thought it had built had in fact been refused. Both harnesses,
+the golden-replay recorder, and the Playwright smoke test need a standing fork answer, and
+that is a change to make in the same commit as the halt, not after the numbers come out
+wrong.
+
+```
+World {
+  ...
+  fork: Option<PendingFork>,   // { at, branches: [BranchIdx; 2] }
+  branch: Option<ActiveBranch>,// { def, from, to }
+}
+```
+
+### 3.4 Berthing: ruins, the salvage rig, feral wardens
+
+Some `Feature`s are **berthing sites** — drowned ruins with something left in them. The
+world module has been ready for this since M0, and says so:
+
+> Drawn from the **world** stream rather than the cosmetic one, because M3 turns ruins into
+> berthing sites — where a ruin stands has to be a fact about the run, not about the frame.
+> — `crates/core/src/state/world.rs`
+
+That comment is the whole justification for the field's existence on the economically live
+stream, and M3 is what cashes it. A ruin's position, and how much it holds, are facts about
+the seed; two people sharing a seed pass the same ruins.
+
+```
+Feature {
+  at, kind, scale, layer,
+  salvage: i64,   // whole units of scrap left; 0 for ordinary scenery
+  roused: bool,   // this ruin has already woken its wardens
+}
+```
+
+`TerrainDef` names which of its `feature_kinds` are ruins and the range each holds, so the
+canopy's ferns and the ruin-field's broken frames scatter through the same generator and
+only the latter come out salvageable. Both the choice of which features are ruins and the
+amount each holds are drawn from the `world` stream at scatter time, in
+`World::scatter_features`, alongside position and scale — and the amount is then scaled by
+the **ruin richness** rolled for the region the band belongs to (§3.2). A picked-over
+drowned city and a generous one are the same ruins in the same places holding different
+amounts, which is why the renderer draws `salvage` rather than just drawing a ruin: the
+player can see from the strip which stops are worth making, and a lean region reads as
+disappointment rather than as an empty map.
+
+**The salvage rig** is a new intake room, `room.salvage_rig`, ground floors only. It works
+exactly like a cutter arm except for where it draws from, and that difference is expressed
+in the content rather than in a special case:
+
+```
+enum IntakeSource {
+  Terrain { paces_per_item: i64 },
+  Ruin    { ticks_per_item: u32, range_paces: i64 },
+}
+```
+
+A `Terrain` source accrues per pace walked (§3.6). A `Ruin` source accrues per tick, and
+only while the tower is stopped with a ruin inside `range_paces`. **Walking harvests
+bamboo; stopping harvests scrap.** The two intakes are exact opposites, and the stop/go
+decision is therefore also an intake-mix decision — which is the cleanest possible statement
+of what M3 is for. A rig with a full outbox stalls in place like every other intake room
+(§0.7), and the ruin keeps whatever it has not given up.
+
+**Berthing is implicit.** There is no `Berth` command. A tower that is stopped with a
+working rig in range of a ruin is berthing; a tower that walks on is not. Range is a
+property of the rig (`range_paces`), the way a dart battery's reach is a property of the
+battery — a longer-reaching rig is a thing M5 can author, and putting the number on the room
+means the player reads it where they choose to build it. Stopping next to a ruin with no
+salvage rig does nothing at all: nothing is extracted, nothing is roused, and there is no
+error, because there is no command to reject. The empty space in the build menu is the
+affordance.
+
+**Feral wardens** are what the ruin has instead of a lock. The first tick a rig extracts
+from a ruin rouses it: one wave, sized against how much the ruin held at that moment
+(`warden_threat_per_100_salvage`, floored at a single warden), spawning out of the ruin
+itself rather than at the usual `spawn_paces_ahead`, offset by `warden_wake_paces` so there
+is a few seconds of warning between the ground moving and the first bite. `Feature.roused`
+means a ruin wakes once and only once, so leaving and coming back is not an exploit.
+
+Wardens are content, `assets/data/enemies/feral_warden.ron`, with one new field on
+`EnemyDef`:
+
+| Field | Value | Why |
+|---|---|---|
+| `wave_eligible` | `false` | Ordinary waves draw from every creature whose `min_provocation` the tower has passed. A warden is not summoned by attention; it is summoned by berthing, so it has to be excluded from that pool explicitly rather than fenced off with an out-of-range `min_provocation`. |
+
+**This is the counterweight to the cling rule, and it is the best thing in the milestone.**
+`DECISIONS.md` §11 makes a creature's grip count down only while the tower is actually
+striding: walking shakes things off, so "keep the legs moving" is a real, free answer to a
+wave, and stopping to work mid-assault is a real risk. Berthing is the one time the tower
+*cannot* walk away — not because a new rule forbids it, but because walking away is what
+ends the salvage. So the one place the game puts something worth stopping for is the one
+place the existing escape hatch is closed, and it closes itself. No new mechanic produces
+this; §11 already did, and M3 simply builds the room that makes it matter. A warden's grip
+never runs out while you keep working, and the moment you decide the scrap is not worth it
+you start walking and it does.
+
+Salvaging also raises provocation, closing the forward reference M2 already recorded in
+§2.6 ("aggressive harvesting, burner smoke, and (from M3) salvaging ruins"). The rate should
+sit close to `provocation_per_100_harvested` rather than far above it: the wardens are the
+price of a ruin, and charging a second, much louder price in provocation on top would make
+salvage a thing nobody does twice.
+
+The arithmetic the balance pass has to settle, stated here so whoever runs it knows what
+the equation is: a ruin's scrap is worth some number of poles at the enclave (§3.5), the
+wardens it rouses cost some number of darts to see off and some number of poles to mend
+what they chew through, and salvage is only a decision if those two numbers are close
+enough that the answer depends on the tower. Both sides — ruin size and the enclave's
+exchange rate — move together and must be tuned together.
+
+### 3.5 The enclave
+
+One, standing a short way **into** region 2 rather than on the boundary. It is a settlement
+the tower walks past: berthing works exactly as it does at a ruin — stop within range — and
+the tower that keeps walking loses it, because there is no going back down the axis.
+
+```
+EnclaveDef {
+  id: String,
+  name: String,
+  at_paces: i64,           // offset from the start of the owning region
+  offers: Vec<OfferDef>,   // { give: (item, amount), take: (item, amount), stock: i64 }
+  recruits: u8,
+  recruit_cost: Vec<CostEntryDef>,
+}
+```
+
+**Where it stands is a considered departure from a locked plan, so it is recorded here
+rather than buried.** `v2-plan.md` §6.6 says "enclaves between regions," and the obvious
+reading of that is the boundary. Spec'd that way, the enclave puts scrap's only consumer
+*upstream* of the only region that produces much scrap — the drowned city — so everything
+salvaged past it is dead weight, and the milestone's headline mechanic pays out only for the
+handful of ruins region 1 scatters. Worse, it compounds: region 2's palette already halves
+bamboo yield, per-pace intake (§3.6) means every minute spent berthing costs bamboo the
+tower did not walk past, and `threat_pct` is higher — a tower that engages with salvage
+arrives in the hard region poorer, louder, and with no restock ahead of it. That is a design
+that punishes the player for playing the thing M3 is about.
+
+A short way in fixes all of it and buys a pacing beat the boundary version did not have: you
+cross into the hard region, work its edge, find out what its ruins are worth this run, and
+*then* find people to trade with. `at_paces` is small relative to the region — far enough in
+that arriving with something to trade is the normal case, near enough that the enclave still
+provisions the bulk of the region rather than arriving after it matters. The spirit of
+"between regions" survives; the letter does not.
+
+Two things happen here.
+
+**Trade** exchanges items at posted rates. Each offer has finite `stock`, so the enclave is
+a windfall rather than an exchange to farm, and the rates are deliberately worse than the
+chain's own: the enclave is where a tower that lacks a room buys its way around the gap
+once, not a substitute for building the room. The offers that earn their place are scrap for
+poles (the payoff for everything in §3.4, and the reason scrap exists at all in M3), surplus
+bamboo for poles at a rate a mill beats comfortably, and poles for darts at a rate a
+thornwright beats comfortably — so a tower heading deeper into the city without a
+thornwright can still arm itself, and pays for the privilege.
+
+**Recruit** adds one crew member for poles, up to a new `crew_cap` (a `CrewBalance` field;
+M3's target is a little above the starting three, with the plan's cap of around eight left
+for M4's shift rota to earn). Priced steeply, because `starting_crew` was the first constant
+in the game to be graded `PLAYTESTED` and what it measured was that going from two crew to
+three moved throughput by ninety percent (§1.7). A fourth pair of hands is the largest single
+change a player can buy, and it should cost like it. The enclave offers exactly one. The new crew member takes the next name from the
+placeholder list in `state.rs` by index — not by a roll — so recruiting perturbs no stream;
+their `fidget` is drawn from `cosmetic`, as every crew member's is (`DECISIONS.md` §2).
+
+| Command | Effect | Rejects on |
+|---|---|---|
+| `Trade { offer }` | take one offer, once | not berthed at an enclave, no such offer, offer exhausted, insufficient stock |
+| `Recruit` | one crew member for poles | not berthed at an enclave, no recruits left, crew at cap, insufficient stock |
+
+Both spend from and deliver to storeroom shelves through the existing `check_stock` /
+`spend` path in `engine/commands.rs` — the chain pays for the enclave the same way it pays
+for the tower. `v2-plan.md` §6.2 leaves room for trade tokens at enclaves; M3 declines to
+introduce one. A currency that exists in exactly one place is a second economy with a single
+customer, and item-for-item exchange keeps the shelves the only thing worth filling. If M5's
+enclave economy wants a token, it can add one against several enclaves that use it.
+
+The berth range for an enclave is a `JourneyBalance` field rather than a property of a room,
+since docking at a settlement is not the salvage rig's job. That new balance section is where
+`fork_edge_margin_paces` (§3.3) lives too — the handful of journey-wide constants that belong
+to no single room or creature.
+
+**What is unavoidably UI, honestly.** The berth is diegetic: the enclave is drawn on the
+terrain strip, the tower parks beside it, and walking on ends it — no screen is entered and
+nothing is paused. The transaction is not. Taking an offer is a button on a posted board,
+and the goods appear on the shelves without a crew member carrying them. The genuinely
+diegetic version — the enclave as a dock the crew haul to and from, with each accepted offer
+becoming a haul job — was considered and cut for M3: it needs a `HaulDestination` outside the
+tower and a leg of the crew state machine that walks off the edge of the cross-section, which
+is a change to the system M1 was a bet on, spent on a single waystation. If it is worth
+doing, M5's enclave economy is where there is enough enclave to justify it.
+
+The tone guardrail applies to the board's copy as much as to anything else (`DECISIONS.md`
+§8): the enclave is people who live here and the tower is passing through, so the offers
+read as an exchange between neighbours, not as a merchant's inventory.
+
+### 3.6 Walk and stop
+
+`v2-plan.md` §9 calls this "walk/stop throttle economics." The interpretation taken,
+recorded here because it is a deliberate narrowing of what §6.2 of that plan and
+`BALANCE.md`'s `stride_paces_per_100_ticks` row both anticipated:
+
+**`SetStriding` stays binary.** Walk or stop. No speed notches, no continuous dial. The plan
+describes striding as "a player-set throttle," and a throttle implies a range — but a range
+would be a new decision layered on top of an old one that does not yet cost anything, and
+M3's job is to make the existing decision economically real, not to add a knob. Five speeds
+over a choice that is nearly free is a worse game than two speeds over a choice where each
+option gives up something the other has. If, after M3, walk-or-stop turns out to be *too*
+coarse in play, notches are a small addition to a system that already prices motion; adding
+them first would have priced nothing.
+
+Four opposed forces bear on that one binary choice:
+
+| Walking | Stopping |
+|---|---|
+| spends charge (`stride_charge_per_100_ticks`) | banks it |
+| covers ground — distance is the run's clock | holds a berth: salvage, trade, recruit |
+| harvests, because the cutter arms strip what they pass | harvests nothing at all |
+| shakes off anything clinging (`DECISIONS.md` §11) | lets everything attached keep its grip |
+
+Three of those four are already true. The fourth is the change that makes the decision bite.
+
+**Intake becomes per-pace rather than per-tick.** `IntakeDef` for a `Terrain` source is
+authored as `paces_per_item` instead of `ticks_per_item`, and `intake::run` accrues against
+the ground actually covered rather than against the clock. A stopped tower harvests nothing.
+
+This is not a new claim about the fiction; it is the fiction finally being true. The cutter
+arm's own description already says so: *"Strips bamboo from the terrain as the tower walks
+past it"* (`assets/data/rooms/cutter_arm.ron`). Per-tick intake meant a parked tower stripped
+bamboo out of ground it had already stripped, indefinitely, which is the sort of thing that
+is invisible until stopping becomes a thing players do on purpose — and M3 gives them three
+reasons to.
+
+The shipped value converts one-for-one: at `stride_paces_per_100_ticks` of 60, the cutter
+arm's `ticks_per_item` of 90 is `paces_per_item` of 54, and a tower that never stops
+harvests at exactly the rate it harvested before.
+
+**This is the riskiest change in M3.** It revalues every constant the M2 balance run settled,
+and it does so indirectly, through a chain that is long enough to be hard to reason about
+from the desk: stopping cuts bamboo, which cuts poles, which cuts both repair and darts,
+which moves the whole siege curve — and because provocation is driven by
+`provocation_per_100_harvested`, a tower that stops is also quieter, so the difficulty dial
+moves in the opposite direction at the same time. There is one genuinely new failure mode to
+watch for: a tower too poor in charge to walk (`power::pay_for_stride` already stops it) now
+also cannot harvest, so it cannot make poles, so it cannot build its way out — a brown-out
+becomes a spiral rather than a bad night.
+
+That spiral has a floor, and it is worth knowing where it is before treating this as a
+reason not to make the change. `collect_solar` does not read `walking` or `strode`: the
+sails fill whether or not the legs are running, so a tower stranded overnight is walking
+again by mid-morning under its own power, having lost a night's harvest rather than the
+run. The genuinely unrecoverable case is narrower — a night entered with no banked charge,
+no bamboo to burn, and the tower already stopped — and it is reachable only after the
+player has already spent everything twice over. Design that as a bad night with a hard
+morning, not as a trap; if the re-measurement shows it landing more often than that, the
+lever is `starting_charge` or the burner's fuel cost, not reverting per-pace intake.
+
+Two things bound the blast radius, and they are worth knowing before the re-measurement:
+the always-walking case is *arithmetically identical* to M2's, so anything that never stops
+should reproduce; and the terrain palettes in §3.2 will move the numbers on their own,
+independently of this change. Both need re-measuring together against
+`cargo run -p understory-core --example siege_run`, and `docs/BALANCE.md`'s Siege rows —
+`wave_interval_ticks`, `base_threat`, `provocation_per_100_harvested`,
+`provocation_decay_per_100_ticks`, and `repair_poles_per_10_hp`, all currently `PLAYTESTED`
+against that harness — should be treated as ungraded until they have been.
+
+### 3.7 The run
+
+A run is a seed. It starts in region 1 at distance zero, with the tower, crew, and stock
+`GameState::new` already builds, and it ends exactly two ways:
+
+* **The Heartseed is lost.** M2's loss condition, unchanged (§2.7).
+* **The far edge of region 2 is reached.** The generator has nothing past the last region,
+  so the tower halts there the same way it halts at an unanswered fork — the world has run
+  out — and `arrived` is set.
+
+Arrival is presented as an arrival, not a victory: the same register as the elegy the
+frontend already shows when the Heartseed goes, reporting where the tower got to rather than
+grading it (`DECISIONS.md` §8).
+
+**M3's finish line is a placeholder.** `v2-plan.md` §6.6 puts three regions between the
+start and the Refugia; M5 adds the third and the actual arrival. Region 2 in M3 is
+deliberately shorter than region 1 — it exists to prove the region machinery works with more
+than one region in it and to give the drowned city's opposed palette somewhere to bite, not
+to be a second full act.
+
+The snapshot grows one group, `journey`, carrying the current region and how far through it
+the tower is, any pending fork and its two branches, any active branch, whatever the tower
+is berthed at, the enclave's remaining offers, and `arrived`. `FeatureView` grows `salvage`
+so the renderer can draw a ruin that still has something in it differently from one that has
+been stripped — a change to the bridge's public contract, and therefore a frontend change
+made deliberately rather than discovered (`AGENTS.md` §IV).
+
+**Opening values.** Collected here so whoever authors the content has one list rather than
+nine paragraphs to mine. Every figure below is a **design target** — a first value with an
+argument behind it, not a measurement. None of them is a `BALANCE.md` row until it has been
+authored, and each gets a graded row in the same commit that authors it (`DECISIONS.md` §7).
+All the arithmetic assumes the tower's current 0.6 paces per tick and 30 Hz.
+
+| Thing | Target | The arithmetic |
+|---|---|---|
+| region 1 length | 52,000–68,000 | About 55 minutes of unbroken 1× walking at the midpoint (60,000 paces is 100,000 ticks, roughly seven in-game days), sized so a session that stops for a berth and a fork or two lands in the 45–60 minute window the exit criterion asks for. The ±8,000 spread is a little over half a fork interval, so most seeds differ by one fork and none by more than one. |
+| region 2 length | 34,000–46,000 | Shorter on purpose: a placeholder act, not a second full one. |
+| region ruin richness | 60–140% | Wide enough that a lean drowned city and a generous one are different propositions rather than different rounding. |
+| region 1 palette | canopy 55 / clearing 30 / ruin-field 15 | Canopy-heavy, so the region reads as biomass-rich and sun-poor, with ruins scarce enough that a berth is an event. |
+| region 2 palette | drowned street 40 / ruin-field 35 / clearing 15 / canopy 10 | Sun-rich and barren, with the jungle still visibly taking it back. Four kinds clears the three-kind minimum comfortably. |
+| `terrain.drowned_street` | `yield_pct` 60, `sun_pct` 120 | Between clearing and ruin-field on both axes, so the city is poor rather than dead. |
+| `threat_pct` | 100 / 150 | Region 2 is half again as dangerous for the same provocation. |
+| `fork_interval_paces` | 15,000 | Three forks in region 1, about fourteen minutes apart at 1×. Punctuation, not a metronome. |
+| `fork_edge_margin_paces` | 5,000 | Keeps the last fork clear of the enclave, so the two never compete for the same stretch of horizon. |
+| branch `length_paces` | 6,000 | Roughly five and a half minutes at 1× — long enough to change what the chain is doing, short enough that a bad pick is not a lost region. |
+| branch `threat_pct` | 80–130 | The quieter branch is meaningfully quieter; the louder one is not punishing on its own. |
+| ruin `salvage` | 25–60 units, before richness | At the rig's rate, 50 seconds to two minutes of berthing at 100% richness. A commitment, not a top-up. |
+| enclave `at_paces` | 8,000 into region 2 | About seven minutes of 1× walking past the boundary — one or two of the city's ruins, so the normal case is arriving with something to trade, while the remaining four-fifths of the region is still ahead of you to be provisioned for. |
+| salvage rig | `Ruin { ticks_per_item: 60, range_paces: 60 }`, `buffer_max` 8, 8 poles, ground floors only | Two seconds a unit. `range_paces` 60 matches the dart battery's reach, which is the number the player already has a feel for. Priced above a mill and below a dumbwaiter. |
+| cutter arm | `Terrain { paces_per_item: 54 }` | Exactly today's `ticks_per_item` of 90 converted at 0.6 paces/tick. A tower that never stops harvests at precisely the M2 rate. |
+| feral warden | hp 300, damage 12, `attack_ticks` 60, speed 20, `cling_ticks` 2,400, `threat` 30, Ground, `wave_eligible: false` | A dart battery needs 800 ticks and 20 darts to put one down (300 hp against 15 damage every 40 ticks), and takes about 160 damage doing it — roughly 16 poles to mend. Toughest thing in the pack, slowest approach, and the longest grip: 80 seconds of walking to shake one that you have decided to leave. |
+| `warden_threat_per_100_salvage` | 120 | A 25-unit ruin rouses one warden, a 50-unit ruin rouses two. The payout and the price are the same number, which is the whole point. |
+| `warden_wake_paces` | 120 | About twenty seconds between the ground moving and the first bite, at a warden's own pace — the same order of warning `spawn_paces_ahead` gives an ordinary wave. |
+| `provocation_per_100_salvaged` | 300 | The same three points per unit that cutting costs. The wardens are the price of a ruin; charging a much louder second price would make salvage a thing nobody does twice. |
+| `enclave_berth_paces` | 80 | About a five-second window at 1×, under two at 4×. If that reads as fiddly in play, the answer is a larger number, not an approach-and-dock mechanic. |
+| `crew_cap` | 6 | Twice the starting three, and short of the plan's eventual eight, which M4's shift rota should have to earn. |
+| enclave offers | `4 scrap → 3 poles` ×20 · `10 bamboo → 4 poles` ×10 · `4 poles → 6 darts` ×12 | Every rate is worse than the chain's own: the mill turns bamboo into poles one for one, and the thornwright turns a pole into three darts. The enclave is where a tower without the room buys around the gap once. |
+| enclave recruit | 30 poles, one only | A 40-unit ruin is 30 poles at the scrap rate — so one good berth on the city's edge is one pair of hands, which is the trade the walk into region 2 is arranged around. |
+
+### 3.8 Tick order, current
+
+> **Unchanged from §2.8.** M3 adds no system. Two existing systems do more, and one new
+> value crosses between them.
+
+1. **clock** — advance the day.
+2. **power income** — recompute capacity from the banks; collect from sails and burners.
+3. **transport** — cars move.
+4. **intake** — harvest. Terrain-sourced rooms accrue against the ground covered by *last*
+   tick's stride; ruin-sourced rooms accrue per tick while berthed, and the first extraction
+   from a ruin rouses its wardens.
+5. **production** — recipes advance, consume, emit. Powered rooms pay here.
+6. **siege** — creatures approach and attack; provocation decays; wardens roused in step 4
+   spawn here, through the ordinary spawn path.
+7. **defence** — emplacements fire at what siege just moved.
+8. **haul** — crew advance their legs, then idle crew claim work.
+9. **repair** — crew already at damage put hit points back.
+10. **lighting** — lamps, after dark.
+11. **stride** — region crossings, the fork halt, the arrival halt, the distance advance,
+    and terrain streaming.
+
+**Why the new work lands where it does.** Region tracking, fork resolution, and arrival all
+gate or follow the distance advance, and `stride` already owns distance, `generate_ahead`,
+and `prune_behind` — so they extend a system in place rather than needing one of their own.
+The three halt conditions (the player stopped, a fork is unanswered, the run is over)
+collapse into a single predicate that `power::pay_for_stride` reads, so a halted tower pays
+no charge for standing still whichever reason it is standing still for, and `strode` stays
+false in every case. Salvage is an intake room, so it belongs in `intake`, which already
+runs before `production` (nothing can consume scrap before it lands) and already reaches
+across into siege to charge provocation for harvesting — the warden rousing follows exactly
+that existing call shape, and because `intake` runs before `siege`, a roused warden spawns
+on the same tick.
+
+**The one ordering hazard.** Intake now depends on how far the tower moved, and stride runs
+*last* — its position is not negotiable, because charge priority is tick order and walking
+is the first thing a tower short of power gives up (§1.6). So `intake` at tick *T* reads the
+motion of tick *T−1*. `GameState` gains `paces_last`, written by stride, read by intake. The
+one-tick lag is deterministic and invisible at 30 Hz, and it is not a new pattern: `strode`
+is already exactly this — "did the legs run last tick" — written by stride and read by
+siege's cling logic. `paces_last` is its quantitative sibling. What must not happen is
+someone moving stride earlier to make intake read the current tick; that invalidates every
+golden replay and reorders the charge priority, to fix a lag nobody can perceive.
+
+### 3.9 What M3 changes in code that already exists
+
+Not a task list — a list of the places where existing code assumes something M3 stops being
+true, collected so they are found before they are debugged.
+
+- **`examples/siege_run.rs`, `examples/throughput.rs`, `examples/record_golden.rs`,
+  `web/e2e/smoke.spec.ts`** — all drive the engine with no player, so all will walk into a
+  fork and silently measure a parked tower (§3.3). Each needs a standing fork answer.
+- **`power::pay_for_stride`** early-returns on `!state.walking`; the fork and arrival halts
+  must go through the same predicate, or a halted tower pays charge for standing still.
+- **`world::pick_band_kind`** reads `content.terrain_runtime[i].weight` pack-wide; the
+  region or branch palette replaces it, and its no-repeat rule is what forces the
+  three-kind palette minimum (§3.2).
+- **`World::generate_ahead`** streams unconditionally; it now stops at an unanswered fork
+  and at the end of the last region, and it needs the palette for the region covering
+  `generated_to` rather than the one under the tower.
+- **`Feature.kind`'s "Presentation only" comment** becomes false — features are
+  economically live once ruins hold salvage. Legal only because they were already drawn
+  from the `world` stream, which is the whole point of the M0 note quoted in §3.4.
+- **`FeatureView` gains `salvage` and `ViewSnapshot` gains `journey`** — a change to the
+  bridge's public contract, so `Chrome.tsx` needs the fork card and the enclave board, and
+  the renderer needs the fork horizon, the ruin fill level, and three distinguishable
+  halted states (§3.3).
+- **`intake::run`** computes one `yield_mul` from the band underfoot and applies it to every
+  intake room; a `Ruin` source must not be scaled by terrain it is not drawing from.
+- **`IntakeDef.ticks_per_item` becomes the `IntakeSource` enum**, touching `RoomRuntime`,
+  `content::validate`'s category wiring check, and `RoomInfo` in the catalog.
+- **`TerrainDef.weight` is deleted**; `TerrainRuntime` loses the field and
+  `content::validate`'s "no terrain band has a positive weight" check moves onto palettes.
+- **`siege::maybe_spawn_wave`** filters eligibility on `min_provocation` alone; without
+  `wave_eligible` wardens leak into ordinary waves.
+- **`tests/balance_doc.rs` is bidirectional** — every new `balance.ron` field needs a graded
+  `BALANCE.md` row in the same commit, and the content-constants group row needs rewording
+  for `paces_per_item`.
+- **`assets/replays/golden.json`** goes stale twice over, from per-pace intake and from the
+  new palettes; regenerate, and extend the recording to cover the new commands.
+- **`ids.rs`, `Content`, `command.rs`** gain `RegionIdx`/`BranchIdx`, a `regions` list, and
+  three commands with their rejections.
+- **`state.rs`'s `place_starting_crew`** picks names by index, not by a roll. Recruiting
+  must keep doing that, or adding a crew member perturbs a stream (`DECISIONS.md` §2).
+
+### 3.10 Exit criteria
+
+- [ ] **Two runs on the same seed are identical.** Demonstrated by extending
+      `assets/replays/golden.json` to exercise a fork answer, a berth with a rousing, an
+      enclave trade, and a recruit, then verifying it natively and in wasm against the same
+      embedded bytes (`DECISIONS.md` §5). Backed by a determinism test that drives a scripted
+      journey twice from one seed and compares `hash_state`, and by property tests over many
+      seeds for the new generation invariants: bands never repeat a kind *within a palette*,
+      every generated band's palette matches the region or branch covering its start,
+      generation never runs past an unanswered fork, every ruin's salvage is inside its
+      terrain's authored range scaled by its region's richness, no fork lands inside
+      `fork_edge_margin_paces` of a region edge or the enclave, every rolled region length is
+      inside its authored range, and the whole journey — lengths, richness, fork count — is
+      identical for a given seed across runs.
+
+- [ ] **Two seeds feel meaningfully different.** Needs an instrument, not an assertion. M1
+      had `examples/throughput.rs` and M2 had `examples/siege_run.rs`; M3's is
+      `crates/core/examples/journey.rs`. It plays N seeds through region 1 under one fixed
+      policy and prints, per seed: the region's rolled length and ruin richness; paces walked
+      and ticks taken to the boundary; the terrain mix as a percentage of distance in each
+      band kind; average exposure; total bamboo harvested; how many forks were offered and
+      which branch archetypes each one drew; ruins that came inside rig range and total
+      salvage available; waves, threat spent, and end-of-region provocation; days elapsed.
+      Then it prints the spread — min, median, max — across seeds for each column, **and**
+      the same spread for one seed replayed with a different fixed policy, so the run-to-run
+      variation and the seed-to-seed variation are side by side on the screen rather than in
+      someone's head. The criterion is met when fork count, terrain mix, and total salvage
+      available vary across seeds by visibly more than they vary within one — those three
+      being, respectively, how many decisions the region asked, what it fed the tower, and
+      whether stopping was worth it.
+
+- [ ] **A 45–60 minute session reaches the drowned city.** Same instrument, different
+      column: the ticks-to-boundary figure translated into minutes at 1×, 2×, and 4×, plus
+      the pure-walking figure against a figure that includes the ticks the policy spent
+      halted. That rules out the case where the region length is wrong by a factor, which is
+      the failure a harness *can* catch. It cannot answer the real question — how long a
+      person actually takes, at the speeds they actually use, with the stops they actually
+      choose — and per `v2-plan.md` §10 rule 3 that half is answered by playing it and
+      writing down the number.
+
+- [ ] Golden replay regenerated; hash parity green natively and in wasm.
+
+- [ ] `make check` and the smoke suite green, with the smoke test exercising a fork answer
+      so a halted tower can never be mistaken for a hung one.
+
+**Deferred out of M3:**
+
+- **Region 3, the coast approach, and the Refugia arrival.** Named non-goals in
+  `v2-plan.md` §9; region 2's far edge is a placeholder finish line and is labelled as one
+  in §3.7.
+- **Per-region creature tables.** `RegionDef` scales threat with a single multiplier and
+  nothing else. M2 already recorded that most of the four-creature taxonomy is unexercised in
+  play (§2.9); giving each region its own table would author selection rules for creatures a
+  run has still never met. It belongs with M5's taxonomy pass, alongside the second
+  emplacement.
+- **Enclave repair.** `v2-plan.md` §6.6 lists enclaves as "trade, recruit, repair"; §9's M3
+  scope lists "trade, recruit." Repair is left out deliberately rather than overlooked —
+  M2's repair loop is a crew-time-and-poles decision (§2.5), and letting a waystation
+  shortcut it would remove the triage pressure the loop exists to create.
+- **The enclave as a place the crew haul to.** Reasoned about and cut in §3.5. Trade is a
+  posted board and a button; the diegetic version needs a haul destination outside the tower.
+- **A continuous stride throttle.** Reasoned about and cut in §3.6. `SetStriding` stays
+  binary.
+- **Scrap has exactly one consumer, and you pass it once.** Moving the enclave into region 2
+  (§3.5) means most salvage now has somewhere to go, but the offers have finite stock and
+  the enclave is behind you for the rest of the run, so scrap taken late banks against M5's
+  sun-forge and its alloy. This is the same shape of deliberate exception M1 recorded for
+  darts (§1.4) — the content rule is satisfied, since the enclave consumes scrap at runtime
+  — reduced from a structural hole to a tail. If M5's forge slips, the honest fix is a
+  second enclave later in the journey rather than leaving late ruins as decorative dead
+  weight.
+
+### 3.11 Open questions
+
+Things that genuinely cannot be settled without building them.
+
+1. **Does the fork halt read as a decision or as a lurch?** The argument in §3.3 is that a
+   player who sees the fork coming answers it early and never stops. Whether they actually
+   see it — at 2×, with a chain to watch and a wave inbound — is a question for the
+   cross-section, not for the spec. If they consistently do not, the fix is a louder approach
+   in the terrain strip, not a modal pause.
+2. **Is one ruin worth one warden fight?** §3.4 states the equation and both of its sides
+   move together. Whether there is a setting where the answer is genuinely "it depends on the
+   tower" rather than always yes or always no is the thing the balance pass has to find, and
+   it may turn out that salvage needs a second payoff — something the tower does with scrap
+   directly — to be a decision at all. Ruin richness (§3.2) helps here by making the answer
+   differ between runs, but a mechanic that is worth it at 140% and never worth it at 60%
+   is a mechanic that is off half the time, which is not the same as a decision.
+3. **How bad a night is a brown-out, once harvesting stops with the legs?** §3.6 identifies
+   the loop and its floor — the sails fill regardless of whether the tower is walking, so
+   morning ends it. What the instrument has to find is the cost of that night in a run that
+   was otherwise going well, and whether a competently-played tower ever pays it twice.
+4. **How long is a region, in minutes?** The paces figure is arithmetic; the minutes figure
+   depends on how much of a session is spent at 1× versus 4×, and how often people stop. The
+   instrument narrows it, playing settles it.
+5. **Should a branch be able to change *what* comes, not just how much?** Threat is one
+   multiplier in M3. A branch that trades "quieter" for "different" — the ruin road that
+   wakes machines, the canopy passage that drops leapers — is a better choice than a branch
+   that trades quiet for loud, but it depends on M5's taxonomy landing first.

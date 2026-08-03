@@ -7,7 +7,6 @@ TerrainDef(
     name: "Sunlit Clearing",
     yield_pct: 100,
     sun_pct: 100,
-    weight: 35,
     features_per_100_paces: 8,
     feature_kinds: ["fern", "rock", "tree"],
 )

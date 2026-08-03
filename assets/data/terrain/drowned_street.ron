@@ -1,0 +1,27 @@
+// The drowned city's own face. Region 2 could have been authored by
+// re-weighting the three M0 bands, and it would have read as "region 1
+// with more ruins" rather than as somewhere else (`SYSTEMS.md` §3.2).
+// Between clearing and ruin-field on both axes, so the city is poor
+// rather than dead — and thick with ruins, which is what makes stopping
+// worth considering here and not in the jungle.
+#![enable(implicit_some)]
+TerrainDef(
+    id: "terrain.drowned_street",
+    name: "Drowned Street",
+    // Poorer than a clearing (100) but better than open ruin-field
+    // (50). Something still grows in the cracks.
+    yield_pct: 60,
+    // Sun-rich: the canopy never closed back over the avenues. Short of
+    // a ruin-field's 130 because the towers still standing throw shade.
+    sun_pct: 120,
+    features_per_100_paces: 16,
+    // Ruins twice over in the draw, so most of what scatters here is
+    // salvageable — the city is the region you berth in.
+    feature_kinds: ["ruin", "ruin", "vine", "rock"],
+    ruin_kinds: ["ruin"],
+    // 25-60 units before the region's rolled richness scales it: at the
+    // salvage rig's two seconds a unit, 50 seconds to two minutes of
+    // berthing at 100%. A commitment, not a top-up.
+    ruin_salvage_min: 25,
+    ruin_salvage_max: 60,
+)
