@@ -220,6 +220,10 @@ fn every_command_survives_the_replay_format() {
         C::Trade { offer: 2 },
         C::Recruit,
         C::Reinforce,
+        C::SetShift {
+            crew: crate::ids::CrewId(1),
+            shift: crate::content::Shift::Night,
+        },
     ];
 
     // Exhaustiveness: if a variant is added and not listed above, this
@@ -238,7 +242,8 @@ fn every_command_survives_the_replay_format() {
             | C::TakeFork { .. }
             | C::Trade { .. }
             | C::Recruit
-            | C::Reinforce => {}
+            | C::Reinforce
+            | C::SetShift { .. } => {}
         }
     }
 

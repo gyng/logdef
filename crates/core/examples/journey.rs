@@ -183,6 +183,11 @@ struct Run {
     /// Percentage of distance spent in each terrain kind, by index.
     mix: Vec<i64>,
     harvested: u64,
+    /// Meals eaten over the run. The kitchen chain's own throughput,
+    /// and the number that says whether the biomass axis is alive: a
+    /// tower that ate nothing has nothing to do with bamboo, which is
+    /// the exact condition `SYSTEMS.md` §3.10 recorded.
+    meals: u64,
     salvaged: i64,
     /// Mean sunlight reaching the sails, in percent, over the run.
     exposure: i64,
@@ -194,6 +199,27 @@ struct Run {
     repelled: u64,
     days: u32,
     died: bool,
+}
+
+/// Put `room` in the first slot on the lowest floor that will take it.
+/// False if the tower cannot pay for it or has nowhere to put it.
+fn place_anywhere(
+    engine: &mut GameEngine,
+    content: &understory_core::content::Content,
+    room: &str,
+) -> bool {
+    let floors = engine.state().tower.floors.len() as u8;
+    (0..floors).any(|floor| {
+        (0..content.balance.tower.floor_slots).any(|slot| {
+            engine
+                .try_send(GameCommand::PlaceRoom {
+                    room: room.into(),
+                    floor,
+                    slot,
+                })
+                .is_ok()
+        })
+    })
 }
 
 fn play(seed: u64, policy: Policy) -> Run {
@@ -213,33 +239,57 @@ fn play(seed: u64, policy: Policy) -> Run {
         .unwrap_or(60);
 
     let salvages = policy == Policy::Prepared;
+
+    // **A shopping list worked through as poles allow, rather than a
+    // one-shot purchase at tick zero.**
+    //
+    // Every policy buys a canteen, and that is the point of M4's change
+    // to this harness. `SYSTEMS.md` §3.10 recorded that a shade-seeking
+    // route and a sun-seeking one harvested *exactly* 100 bamboo each
+    // over a whole region, because a tower had nothing to do with
+    // bamboo: the shelves filled, the mill's outbox backed up, and the
+    // arm stalled, identically on both routes. Meals are a demand that
+    // scales with the crew rather than with shelf space and cannot be
+    // satisfied by stockpiling, so a policy without a canteen is still
+    // measuring the old, dead axis. A bunk comes with it, because a
+    // tower whose crew never rest measures exhaustion.
+    //
+    // The rig comes first for a prepared tower, because it is what that
+    // policy *is*: buying the home rooms first left it two poles short
+    // of a rig, and a berthing policy with nothing to berth with stops
+    // at every ruin and extracts nothing — measured, 99% of the run
+    // standing still. Order matters when the starting stock is ten
+    // poles and the list costs more than that.
+    let mut list: Vec<&str> = Vec::new();
     if salvages {
-        // Buy the rig out of the starting poles, or there is nothing to
-        // measure. A prepared tower also buys something to shoot with,
-        // because berthing wakes what lives in the ruin and a berthed
-        // tower cannot walk away from it.
-        let mut list = vec!["room.salvage_rig"];
-        if policy == Policy::Prepared {
-            list.push("room.dart_battery");
-            list.push("room.thornwright");
-        }
-        for room in list {
-            for floor in 0..content.balance.tower.starting_floors {
-                let placed = (0..content.balance.tower.floor_slots).any(|slot| {
-                    engine
-                        .try_send(GameCommand::PlaceRoom {
-                            room: room.into(),
-                            floor,
-                            slot,
-                        })
-                        .is_ok()
-                });
-                if placed {
-                    break;
-                }
-            }
-        }
+        list.push("room.salvage_rig");
+        list.push("room.dart_battery");
+        list.push("room.thornwright");
     }
+    list.push("room.canteen");
+    list.push("room.bunk");
+
+    // **And then storerooms, indefinitely — which is what finally moved
+    // this instrument's headline number.**
+    //
+    // `SYSTEMS.md` §3.10 recorded that a shade-seeking route and a
+    // sun-seeking one harvested *exactly* the same over a whole region,
+    // and read it as the biomass axis being unfeelable. That was true,
+    // and it was not the whole of it. A tower that has worked through a
+    // finite shopping list stops wanting poles; with nothing being
+    // built, the mill's outbox fills, the shelves fill, the cutter arm's
+    // buffer fills, and harvest stops dead at the tower's total buffer
+    // capacity — which is a property of the *tower*, identical on both
+    // routes whatever the ground underfoot was. The two policies were
+    // reporting the size of their own shelves.
+    //
+    // `siege_run.rs` diagnosed exactly this for provocation and fixed
+    // it there ("a player does not stop wanting things on day two, so
+    // neither does the harness"); this harness never got the same
+    // treatment. A storeroom is the cheapest standing reason to want
+    // poles, so it is what the list keeps buying.
+    list.extend(std::iter::repeat_n("room.storeroom", 40));
+    list.reverse();
 
     let mut mix = vec![0i64; content.terrain.len()];
     let mut branches = Vec::new();
@@ -257,6 +307,27 @@ fn play(seed: u64, policy: Policy) -> Run {
 
     while ticks < PATIENCE && engine.state().world.distance < boundary && !engine.state().siege.lost
     {
+        // Work the shopping list, one item at a time, whenever the
+        // poles are there. Checked every tick and cheap when the list
+        // is empty, which it is for most of a run.
+        if let Some(next) = list.last().copied()
+            && place_anywhere(&mut engine, &content, next)
+        {
+            list.pop();
+            // **Deliberately no `BuildFloor` here**, unlike
+            // `siege_run.rs`, which does grow its towers when they run
+            // out of slots. A new top floor displaces the canopy sail
+            // deck (`v2-plan.md` §6.3): only the roof's sails see the
+            // sun, so growing taller adds a floor's worth of lighting
+            // cost and no income at all. Left to build upward whenever
+            // it ran out of space, this harness bankrupted both route
+            // policies — measured, permanent brown-out from about day
+            // 27, 97% of the run standing still, and both routes
+            // reporting the same 80 stalks because neither was moving.
+            // The tower that measures a route is one that can still
+            // afford to walk it.
+        }
+
         // Answer any fork, by policy.
         if let Some(fork) = engine.state().world.fork
             && fork.answer.is_none()
@@ -341,6 +412,7 @@ fn play(seed: u64, policy: Policy) -> Run {
         halted,
         mix: mix.iter().map(|n| n * 100 / walked).collect(),
         harvested: state.stats.items_harvested,
+        meals: state.stats.meals_eaten,
         exposure: exposure_total / i64::from(ticks.max(1)),
         brownout,
         salvaged: state.stock_of(
@@ -402,8 +474,8 @@ fn table(runs: &[Run]) {
         print!(" {:>7}", &name[..name.len().min(7)]);
     }
     println!(
-        " {:>4} {:>6} {:>7} {:>6} {:>5} {:>7} {:>4}  end",
-        "sun", "brown", "bamboo", "scrap", "forks", "salvage", "off"
+        " {:>4} {:>6} {:>7} {:>6} {:>6} {:>5} {:>7} {:>4}  end",
+        "sun", "brown", "bamboo", "meals", "scrap", "forks", "salvage", "off"
     );
 
     for run in runs {
@@ -415,10 +487,11 @@ fn table(runs: &[Run]) {
             print!(" {pct:>6}%");
         }
         println!(
-            " {:>3}% {:>6} {:>7} {:>6} {:>5} {:>7} {:>4}  {}",
+            " {:>3}% {:>6} {:>7} {:>6} {:>6} {:>5} {:>7} {:>4}  {}",
             run.exposure,
             run.brownout,
             run.harvested,
+            run.meals,
             run.salvaged,
             run.forks,
             run.salvage_seen,

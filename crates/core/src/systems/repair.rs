@@ -49,7 +49,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             // No materials. Stand down rather than mending for free —
             // running out of poles mid-repair is a real outcome.
             member.state = CrewState::Idle;
-            member.repair = None;
+            member.errand = None;
             continue;
         }
 
@@ -57,7 +57,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         if healed == 0 {
             // Already fixed, or gone. Nothing to pay for.
             member.state = CrewState::Idle;
-            member.repair = None;
+            member.errand = None;
             continue;
         }
         state.take_stock(poles, cost);
@@ -74,7 +74,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             };
         } else {
             member.state = CrewState::Idle;
-            member.repair = None;
+            member.errand = None;
         }
     }
 
@@ -151,6 +151,12 @@ pub fn pick_repair(
     me: usize,
     from_floor: FloorIdx,
 ) -> Option<(DamageTarget, FloorIdx, SlotIdx)> {
+    // A sleeper handed a repair is a crew member who works in their
+    // sleep. `assign_idle` already never gets this far for one, and this
+    // is here so a future second caller cannot reintroduce it.
+    if crew.get(me).is_some_and(Crew::is_asleep) {
+        return None;
+    }
     let per_shift = content.balance.siege.repair_hp_per_shift.max(1);
     let cost = content.balance.siege.repair_poles_per_10_hp * per_shift / 10;
     if poles_in_stock < cost {
@@ -169,7 +175,7 @@ pub fn pick_repair(
     let taken = |target: DamageTarget| {
         crew.iter()
             .enumerate()
-            .any(|(i, other)| i != me && other.repair.is_some_and(|job| job.target == target))
+            .any(|(i, other)| i != me && other.repair_target() == Some(target))
     };
 
     // A severed shaft is both the most urgent damage and the damage

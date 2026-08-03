@@ -13,6 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::content::Shift;
 use crate::fx::Fx;
 use crate::ids::{CrewId, FloorIdx, ItemIdx, RoomId, ShaftId, SlotIdx};
 
@@ -89,6 +90,18 @@ pub enum CrewState {
     Unloading {
         ticks_left: u32,
     },
+    /// Sat down to a meal, wherever the meal was. Shaped exactly like a
+    /// repair — go somewhere, stand there, spend ticks — because eating
+    /// is not a haul and is not worth a second pathfinder.
+    Eating {
+        ticks_left: u32,
+    },
+    /// Off shift. In a bunk if one was free, on the deck where they
+    /// stopped if not; which it is depends on the errand, not on this
+    /// tag. A sleeper takes no tasks, advances no legs, mends nothing,
+    /// and accrues no `wait_ticks` — a red-tinted sleeper would make
+    /// the only bottleneck instrument in the game lie.
+    Sleeping,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,26 +117,98 @@ pub struct Crew {
     pub state: CrewState,
     /// Consecutive ticks blocked from making progress.
     pub wait_ticks: u32,
-    /// Damage this crew member has been assigned to, and where they
-    /// have to stand to work on it. Held separately from `task` because
-    /// a repair is not a haul and pretending otherwise would put an
-    /// `Option` inside an `Option` in every scoring path.
-    pub repair: Option<RepairJob>,
-    /// Cosmetic-stream draw. Renderer-only: idle animation phase.
+    /// Somewhere to be that is not a haul, and where to stand for it.
+    /// Held separately from `task` because none of the three is a haul
+    /// and pretending otherwise would put an `Option` inside an
+    /// `Option` in every scoring path.
+    pub errand: Option<Errand>,
+    /// Ticks since the last meal. Rises every tick, awake or asleep; a
+    /// meal resets it to zero, because a meal is a meal and somebody
+    /// who ate late does not carry the deficit forward.
+    pub hunger: u32,
+    /// Ticks of work left in them. Counts down while awake and up while
+    /// asleep. Tiredness is a scheduling problem the way hunger is a
+    /// supply problem: there is no mid-shift nap, and the only thing
+    /// that refills this is being off shift.
+    pub rested: u32,
+    /// Which half of the rota they work. The player sets it; the
+    /// simulation never does.
+    pub shift: Shift,
+    /// Cosmetic-stream draw. Renderer-only: idle animation phase, and
+    /// (frontend-side) which face and which of several equivalent bark
+    /// lines are this person's.
     pub fidget: u16,
 }
 
-/// An assigned repair: what is broken, and where to stand to fix it.
+/// A place to stand, and a reason to be there.
+///
+/// A repair, a meal and a bed are the same shape — walk, climb, stand,
+/// spend ticks — so they share one router (`haul::errand_leg`) rather
+/// than three parallel `Option`s alongside `task`, which would
+/// duplicate the routing three times.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RepairJob {
-    pub target: crate::state::siege::DamageTarget,
-    pub floor: FloorIdx,
-    pub slot: SlotIdx,
+pub enum Errand {
+    /// Damage this crew member has been assigned to.
+    Repair {
+        target: crate::state::siege::DamageTarget,
+        floor: FloorIdx,
+        slot: SlotIdx,
+    },
+    /// Somewhere holding at least one meal — a canteen's outbox, or any
+    /// shelf a meal has been hauled to. If it is gone on arrival the
+    /// errand clears and they look again, the same failure path
+    /// `Loading` already has when somebody else got there first.
+    Meal {
+        room: RoomId,
+        floor: FloorIdx,
+        slot: SlotIdx,
+    },
+    /// A bed with space in it. `None` for this errand means no bed was
+    /// free, which is not an error — it means sleeping on the deck.
+    Bunk {
+        room: RoomId,
+        floor: FloorIdx,
+        slot: SlotIdx,
+    },
+}
+
+impl Errand {
+    #[must_use]
+    pub const fn floor(&self) -> FloorIdx {
+        match self {
+            Self::Repair { floor, .. } | Self::Meal { floor, .. } | Self::Bunk { floor, .. } => {
+                *floor
+            }
+        }
+    }
+
+    #[must_use]
+    pub const fn slot(&self) -> SlotIdx {
+        match self {
+            Self::Repair { slot, .. } | Self::Meal { slot, .. } | Self::Bunk { slot, .. } => *slot,
+        }
+    }
+
+    /// The room this errand names, for the two arms that name one.
+    /// Bunk occupancy is counted by scanning these rather than stored on
+    /// the room, so there is no counter to get out of step with reality.
+    #[must_use]
+    pub const fn room(&self) -> Option<RoomId> {
+        match self {
+            Self::Repair { .. } => None,
+            Self::Meal { room, .. } | Self::Bunk { room, .. } => Some(*room),
+        }
+    }
+
+    #[must_use]
+    pub const fn is_bunk(&self) -> bool {
+        matches!(self, Self::Bunk { .. })
+    }
 }
 
 impl Crew {
     #[must_use]
-    pub fn new(id: CrewId, name: String, fidget: u16) -> Self {
+    pub fn new(id: CrewId, name: String, fidget: u16, rested: u32) -> Self {
         Self {
             id,
             name,
@@ -133,9 +218,33 @@ impl Crew {
             task: None,
             state: CrewState::Idle,
             wait_ticks: 0,
-            repair: None,
+            errand: None,
+            hunger: 0,
+            rested,
+            // Everybody starts on the day shift, so a player who never
+            // opens the roster has a tower that works in daylight and
+            // sleeps at night. The rota is a decision offered, not one
+            // demanded before the first pace.
+            shift: Shift::Day,
             fidget,
         }
+    }
+
+    /// The damage they are assigned to, if that is what they are up to.
+    #[must_use]
+    pub const fn repair_target(&self) -> Option<crate::state::siege::DamageTarget> {
+        match self.errand {
+            Some(Errand::Repair { target, .. }) => Some(target),
+            _ => None,
+        }
+    }
+
+    /// Asleep, in the sense that matters to every system that assigns
+    /// work: they are unavailable, and handing them a job would be
+    /// handing it to somebody who is not there.
+    #[must_use]
+    pub const fn is_asleep(&self) -> bool {
+        matches!(self.state, CrewState::Sleeping)
     }
 
     /// Current floor, rounded down. Exact except mid-climb.

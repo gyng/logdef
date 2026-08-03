@@ -1,0 +1,12 @@
+// What bamboo becomes for people, as poles are what it becomes for the
+// tower. Ordinary stock on ordinary shelves, hauled by the same crew
+// through the same shafts — there is no food logistics layer.
+ItemDef(
+    id: "item.meals",
+    name: "Meals",
+    glyph: "🍲",
+    // Between poles (20) and darts (30), because meals sit beside poles
+    // as the other thing bamboo becomes. Nothing mechanical reads this;
+    // the indices come from the sorted string IDs.
+    order: 25,
+)

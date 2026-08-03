@@ -13,13 +13,13 @@ pub mod world;
 
 use serde::{Deserialize, Serialize};
 
-use crate::content::Content;
+use crate::content::{Content, Shift};
 use crate::fx::Paces;
 use crate::ids::{CrewId, ItemIdx, RoomId, ShaftId};
 use crate::rng::RngStreams;
 
 pub use clock::Clock;
-pub use crew::{Crew, CrewState, HaulDestination, HaulPickup, HaulTask, RepairJob};
+pub use crew::{Crew, CrewState, Errand, HaulDestination, HaulPickup, HaulTask};
 pub use power::Power;
 pub use siege::{DamageTarget, Enemy, EnemyState, Health, Siege};
 pub use tower::{
@@ -63,6 +63,15 @@ pub struct RunStats {
     /// than derived, because a shift that finishes a nearly-mended
     /// panel heals less than a full shift but still costs one.
     pub repair_poles_spent: u64,
+    /// Meals eaten. The kitchen chain's own throughput figure, and the
+    /// one number that says whether a tower is feeding itself — a
+    /// starving tower and a tower with no canteen at all look identical
+    /// from every other counter.
+    pub meals_eaten: u64,
+    /// Crew-ticks spent asleep. What sleep actually costs the economy,
+    /// which is the largest single unknown M4 introduces
+    /// (`SYSTEMS.md` §4.10) and not something any existing counter sees.
+    pub crew_ticks_asleep: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,6 +125,10 @@ pub struct GameState {
     pub enclave_recruits: u8,
     /// How many more times a settlement will plate the shell.
     pub shell_work_left: u8,
+    /// Which shift the clock says is awake. Held only so the handover
+    /// can be noticed and sounded once for the tower rather than once
+    /// per crew member; every other reader derives it from the daypart.
+    pub shift_now: Shift,
     pub stats: RunStats,
     /// Monotonic allocators. Never reuse an ID, even after removal —
     /// a stale reference should fail to resolve, not silently alias.
@@ -137,7 +150,7 @@ impl GameState {
             tick: 0,
             seed,
             speed: SimSpeed::Paused,
-            clock: Clock::new(),
+            clock: Clock::new(content),
             power: Power::new(balance.power.starting_charge),
             world: World::new(&mut rng.world, content),
             tower: Tower::new(content),
@@ -146,6 +159,12 @@ impl GameState {
             walking: true,
             strode: false,
             paces_last: 0,
+            // `Clock::new` starts the run exactly at the handover onto
+            // the day shift, so this is Day by construction — and
+            // seeding it correctly is what stops tick 1 emitting a
+            // spurious `ShiftChange` for a handover that already
+            // happened before the run began.
+            shift_now: Shift::Day,
             stats: RunStats::default(),
             rng,
             next_room_id: 1,
@@ -233,7 +252,7 @@ impl GameState {
 
     fn place_starting_crew(&mut self, content: &Content) {
         for _ in 0..content.balance.crew.starting_crew {
-            self.add_crew();
+            self.add_crew(content);
         }
     }
 
@@ -242,17 +261,18 @@ impl GameState {
     /// Shared by the starting crew and by the enclave's recruit, so a
     /// hired hand is the same kind of thing as one the tower set out
     /// with — no second construction path to drift.
-    pub fn add_crew(&mut self) {
-        // Names are placeholders until M4 gives the crew personalities.
-        const NAMES: [&str; 8] = [
-            "Wren", "Odile", "Bakri", "Sena", "Toma", "Ilay", "Rook", "Mira",
-        ];
+    /// Names come from `crew/names.ron` by index, never from a roll —
+    /// see `content::CrewNames`. `fidget` is the one cosmetic draw, and
+    /// the renderer's only source of per-person variety.
+    pub fn add_crew(&mut self, content: &Content) {
+        let names = &content.crew_names;
         let id = CrewId(self.next_crew_id);
         self.next_crew_id += 1;
-        let index = (self.next_crew_id as usize).saturating_sub(2) % NAMES.len();
+        let index = (self.next_crew_id as usize).saturating_sub(2) % names.len();
         let fidget = (self.rng.cosmetic.next_u32() & 0xFFFF) as u16;
+        let rested = content.balance.crew.rested_max_ticks;
         self.crew
-            .push(Crew::new(id, NAMES[index].to_string(), fidget));
+            .push(Crew::new(id, names[index].clone(), fidget, rested));
     }
 
     /// Put `amount` of an item on whatever shelves will take it.

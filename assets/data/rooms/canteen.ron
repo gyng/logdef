@@ -1,0 +1,50 @@
+// Turns bamboo into meals. The room that finally gives biomass
+// somewhere to go.
+//
+// Before this, a tower had nothing to *do* with what it harvested: the
+// shelves filled, the mill's outbox backed up, the arms stalled, and a
+// shade-seeking route and a sun-seeking one came out at exactly the same
+// harvest over a whole region (`SYSTEMS.md` §3.10). Meals are a demand
+// that scales with the crew rather than with shelf space, cannot be
+// satisfied by stockpiling, and run all day.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.canteen",
+    name: "Canteen",
+    short: "CTN",
+    category: Production,
+    width: 2,
+    // A thornwright's price: dearer than a mill (4), well short of a
+    // salvage rig (8). An early, obvious build rather than a commitment.
+    build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
+    // Deliberately **not** powered, and it is the only production room
+    // that is not. A kitchen that goes dark in a brown-out and stops
+    // feeding people turns one bad night into a spiral inside a spiral —
+    // and "powered production is a charge sink" is already taught by the
+    // thornwright, a room the player chose to build for a reason other
+    // than survival.
+    recipe: RecipeDef(
+        // Ten seconds a batch, which is visible as cooking. Flat out the
+        // room makes more than ten times what a full crew eats, so it is
+        // buffer-limited and mostly idle — correct for a kitchen, and it
+        // means the canteen's *rate* is not what sets bamboo demand.
+        // The crew are.
+        craft_ticks: 300,
+        // **Two bamboo a meal, which is six a day a crew member.**
+        //
+        // This was authored 2 → 3, a third of a stalk a meal, and that
+        // was a straight misreading of the design: `SYSTEMS.md` §4.3
+        // states the target twice as "2 bamboo a meal … 6 bamboo a day
+        // a crew member … about a fifth of what a fed mill draws", and
+        // the ratio it calls "the whole judgement" is that fifth. At
+        // 2 → 3 a crew member ate two stalks a day rather than six, the
+        // canteen drew about 5% of a mill instead of 20%, and a tower
+        // stayed demand-limited on bamboo — which meant the terrain
+        // yields still could not be felt, measured at 353 stalks against
+        // 351 on two routes eight percent apart in weighted yield. The
+        // batch of three and the ten-second craft are both kept; only
+        // the price is corrected.
+        inputs: [IoEntryDef(item: "item.bamboo", amount: 6, buffer_max: 12)],
+        outputs: [IoEntryDef(item: "item.meals", amount: 3, buffer_max: 9)],
+    ),
+)

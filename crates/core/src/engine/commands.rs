@@ -52,7 +52,27 @@ pub fn apply(
         GameCommand::Trade { offer } => trade(state, content, *offer),
         GameCommand::Recruit => recruit(state, content),
         GameCommand::Reinforce => reinforce(state, content),
+        GameCommand::SetShift { crew, shift } => set_shift(state, *crew, *shift),
     }
+}
+
+/// Put one crew member on a shift.
+///
+/// The whole of the mechanism: nothing is woken, nothing is cancelled,
+/// no errand is disturbed. "Awake" is derived from this and the daypart
+/// every tick, so a sleeping day worker set to `Night` at midnight is
+/// awake on the very next tick, and a day worker set to `Night` at noon
+/// walks to a bed as soon as their hands are empty.
+fn set_shift(
+    state: &mut GameState,
+    crew: crate::ids::CrewId,
+    shift: crate::content::Shift,
+) -> Result<(), CommandError> {
+    let Some(member) = state.crew.iter_mut().find(|member| member.id == crew) else {
+        return Err(CommandError::NoSuchCrew { crew });
+    };
+    member.shift = shift;
+    Ok(())
 }
 
 /// Answer the pending fork.
@@ -168,7 +188,7 @@ fn recruit(state: &mut GameState, content: &Content) -> Result<(), CommandError>
 
     spend(state, &cost);
     state.enclave_recruits -= 1;
-    state.add_crew();
+    state.add_crew(content);
     Ok(())
 }
 

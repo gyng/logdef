@@ -15,20 +15,43 @@
 //! 5. **production** — crafting rooms advance, consume, and emit.
 //! 6. **siege** — creatures approach and attack; provocation decays.
 //! 7. **defence** — emplacements fire at what siege just moved.
-//! 8. **haul** — crew advance their legs, then idle crew claim work.
-//! 9. **repair** — crew already at damage put hit points back.
-//! 10. **lighting** — lamps, after dark.
-//! 11. **stride** — the tower walks, if it can still afford to, and
+//! 8. **needs** — hunger rises, rest drains or refills, and the shift
+//!    band decides who is awake.
+//! 9. **haul** — crew advance their legs, then idle crew claim work,
+//!    eat, sleep, or mend.
+//! 10. **repair** — crew already at damage put hit points back.
+//! 11. **lighting** — lamps, after dark.
+//! 12. **stride** — the tower walks, if it can still afford to, and
 //!     terrain streams in ahead of it.
 //!
 //! Haul runs after production so crew react to the buffers this tick
 //! actually produced, and after transport so they see cars where those
 //! cars really are. Stride runs last because walking is the first thing
 //! a tower short of charge gives up.
+//!
+//! Needs runs *before* haul, because haul both reads the work
+//! multiplier and executes every leg of going to eat and going to
+//! sleep — a crew member's speed this tick and their decision this tick
+//! should be about the same tick's hunger. It runs *after* production,
+//! so a meal cooked this tick is available to eat this tick rather than
+//! next. And it is not inside haul: haul's job is moving people, and
+//! hanging counter accrual off the top of it would bury two needs
+//! inside the most intricate system in the crate.
+//!
+//! Inserting in the middle is normally the one thing this list forbids,
+//! and it is acceptable here only because `Crew` changed shape in the
+//! same milestone — the golden fixture was going stale either way. What
+//! must not happen is somebody moving `needs` after `haul` to avoid the
+//! insertion: it would work, deterministically and imperceptibly, and
+//! it would put the decision to go and eat a tick behind the hunger
+//! that motivated it for no gain. Needs also draws no charge, and
+//! neither does eating or sleeping, so nothing here joins the priority
+//! order.
 
 pub mod defence;
 pub mod haul;
 pub mod intake;
+pub mod needs;
 pub mod power;
 pub mod production;
 pub mod repair;
@@ -82,6 +105,20 @@ pub enum SoundEvent {
     Repair,
     /// The Heartseed is gone.
     HeartseedLost,
+    /// Somebody sat down to a meal. The warmest moment in the tower,
+    /// and the audible confirmation that the kitchen chain is alive.
+    MealServed,
+    /// The rota turned over. The tower's one daily ritual, and the only
+    /// reliable way to *hear* what time it is.
+    ShiftChange,
+    /// Something lost its grip and walked away.
+    ///
+    /// Distinct from `EnemyDown` on purpose. `Leaving` and `Dying` are
+    /// distinct in state and in the snapshot but sounded identical, so
+    /// walking a wave off and shooting it down were indistinguishable —
+    /// and `SYSTEMS.md` §2.2 refuses to count the first as repelled. The
+    /// audio has to refuse too. Never triumphant.
+    EnemyLeaves,
 }
 
 /// Run exactly one simulation tick.
@@ -93,6 +130,7 @@ pub fn tick(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEven
     production::run(state, content, sounds);
     siege::run(state, content, sounds);
     defence::run(state, content, sounds);
+    needs::run(state, content, sounds);
     haul::run(state, content, sounds);
     repair::run(state, content, sounds);
     power::lighting(state, content);

@@ -1,0 +1,26 @@
+// Beds. The only room whose whole purpose is that a person is in it.
+//
+// A new category, because the pack's validation rejects any room whose
+// category has no matching behaviour block, and a bunk has no recipe, no
+// storage, no reach and nothing to shoot with.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.bunk",
+    name: "Bunk",
+    short: "BNK",
+    category: Quarters,
+    width: 2,
+    // Joint-cheapest in the pack with a storeroom, because the
+    // alternative to a bed is a crew member who degrades a little more
+    // every day, and a bed should never be a gate. The real price of
+    // quarters is the slots.
+    build_cost: [CostEntryDef(item: "item.poles", amount: 3)],
+    quarters: QuartersDef(
+        // Two to a two-slot room: one slot a person, the tightest
+        // legible packing. Quarters are a floor tax that grows with the
+        // crew that pays it — three crew need two bunks, and a tower at
+        // cap needs four, which is more than half a floor given to a
+        // dormitory. That cost is the point.
+        sleepers: 2,
+    ),
+)

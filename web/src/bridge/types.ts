@@ -9,7 +9,15 @@
 
 export type SimSpeed = "Paused" | "X1" | "X2" | "X4";
 
-export type RoomCategory = "Intake" | "Production" | "Storage" | "Energy" | "Defence" | "Heart";
+export type RoomCategory =
+  | "Intake"
+  | "Production"
+  | "Storage"
+  | "Energy"
+  | "Defence"
+  /** Somewhere to sleep. No recipe, no stock, no reach. */
+  | "Quarters"
+  | "Heart";
 
 export type CrewStateTag =
   | "idle"
@@ -19,7 +27,21 @@ export type CrewStateTag =
   | "ride"
   | "mend"
   | "load"
-  | "unload";
+  | "unload"
+  /** Sat down to a meal. */
+  | "eat"
+  /** Off shift — in a hammock if a bed was free, on the deck if not. */
+  | "sleep";
+
+/**
+ * Which half of the rota a crew member works. The player sets it.
+ *
+ * Capitalised, unlike the lowercase tags around it, because the same
+ * value crosses the bridge in both directions — `SetShift` carries it
+ * back — and one fact should not have two spellings depending on which
+ * way it is going.
+ */
+export type ShiftTag = "Day" | "Night";
 
 /**
  * `dying` was shot down; `leaving` lost its grip on a walking tower.
@@ -285,8 +307,21 @@ export interface CrewView {
   carrying: StockView | null;
   wait_ticks: number;
   stressed: boolean;
-  /** Cosmetic-stream draw: animation phase offset. */
+  /**
+   * Cosmetic-stream draw, and the only source of per-person variety the
+   * renderer gets. Animation phase offset, which face is theirs
+   * (`fidget % faces`), and which of several equivalent bark lines —
+   * all derived from this one number, so a bark can never perturb the
+   * simulation because there is nothing to perturb.
+   */
   fidget: number;
+  /** Ticks since their last meal. Hover-only; never a bar over a head. */
+  hunger: number;
+  /** Ticks of work left in them. Hover-only, for the same reason. */
+  rested: number;
+  shift: ShiftTag;
+  /** Actually asleep, as against merely off shift and walking to bed. */
+  asleep: boolean;
 }
 
 export interface StockView {
@@ -301,6 +336,10 @@ export interface RunStats {
   hp_repaired: number;
   /** Poles spent putting the tower back together. */
   repair_poles_spent: number;
+  /** Meals eaten. The kitchen chain's own throughput figure. */
+  meals_eaten: number;
+  /** Crew-ticks spent asleep. What the rota actually costs. */
+  crew_ticks_asleep: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -484,7 +523,13 @@ export type GameCommand =
   /** Have the settlement plate the tower's shell, for scrap. */
   | "Reinforce"
   /** Commit to branch 0 or 1 of the pending fork. Re-answerable. */
-  | { TakeFork: { branch: number } };
+  | { TakeFork: { branch: number } }
+  /**
+   * Put one crew member on the day or the night shift. One person per
+   * command, so a rejection names who it is about and the replay reads
+   * as a list of decisions about people.
+   */
+  | { SetShift: { crew: number; shift: ShiftTag } };
 
 /** Rust's `CommandResult`: `"Ok"` or `{ Error: … }`. */
 export type CommandResult = "Ok" | { Error: unknown };
@@ -516,4 +561,14 @@ export type SoundEvent =
   | "Shot"
   | "EnemyDown"
   | "Repair"
-  | "HeartseedLost";
+  | "HeartseedLost"
+  /** Somebody sat down to a meal. The warmest moment in the tower. */
+  | "MealServed"
+  /** The rota turned over — the only reliable way to *hear* the time. */
+  | "ShiftChange"
+  /**
+   * Something lost its grip and walked away. Distinct from `EnemyDown`
+   * on purpose: only one of the two counts as having been seen off, and
+   * the audio has to refuse to conflate them too. Never triumphant.
+   */
+  | "EnemyLeaves";

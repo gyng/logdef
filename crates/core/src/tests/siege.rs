@@ -280,8 +280,13 @@ fn equally_hurt_things_are_mended_nearest_first() {
     let mut went_to = None;
     for _ in 0..600 {
         game.step(1);
-        if let Some(job) = game.state().crew.first().and_then(|member| member.repair) {
-            went_to = Some(job.target);
+        if let Some(target) = game
+            .state()
+            .crew
+            .first()
+            .and_then(crate::state::Crew::repair_target)
+        {
+            went_to = Some(target);
             break;
         }
     }
@@ -370,8 +375,13 @@ fn crew_go_to_the_worst_damage_first() {
     let mut went_to = None;
     for _ in 0..600 {
         game.step(1);
-        if let Some(job) = game.state().crew.first().and_then(|member| member.repair) {
-            went_to = Some(job.target);
+        if let Some(target) = game
+            .state()
+            .crew
+            .first()
+            .and_then(crate::state::Crew::repair_target)
+        {
+            went_to = Some(target);
             break;
         }
     }
@@ -1714,7 +1724,7 @@ fn two_crew_never_mend_the_same_thing() {
             .state()
             .crew
             .iter()
-            .filter_map(|member| member.repair.map(|job| job.target))
+            .filter_map(crate::state::Crew::repair_target)
             .collect();
         let mut seen = jobs.clone();
         seen.sort_by_key(|target| format!("{target:?}"));

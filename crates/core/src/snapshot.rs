@@ -306,8 +306,32 @@ pub struct CrewView {
     pub wait_ticks: u32,
     /// Blocked long enough to tint red in the cross-section.
     pub stressed: bool,
-    /// Cosmetic-stream draw: animation phase offset.
+    /// Cosmetic-stream draw: animation phase offset, and — frontend
+    /// side — which face and which of several equivalent bark lines
+    /// belong to this person. `portrait = fidget % faces` is the whole
+    /// mechanism, and it costs no new state and no new draw.
     pub fidget: u16,
+    /// Ticks since their last meal.
+    pub hunger: u32,
+    /// Ticks of work left in them.
+    pub rested: u32,
+    /// Which half of the rota they are on.
+    pub shift: ShiftTag,
+    /// Actually asleep, as against merely off shift and walking to bed.
+    pub asleep: bool,
+}
+
+/// Which half of the rota, flattened for the renderer.
+///
+/// Deliberately **not** `rename_all = "lowercase"`, unlike the tags
+/// around it. `SetShift` carries a `content::Shift`, which serialises as
+/// `"Day"`/`"Night"`; spelling the same fact two ways depending on which
+/// direction it is crossing the bridge is the kind of contract detail
+/// that costs somebody an afternoon.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShiftTag {
+    Day,
+    Night,
 }
 
 /// What a crew member is doing, flattened for the renderer.
@@ -326,6 +350,10 @@ pub enum CrewStateTag {
     Mend,
     Load,
     Unload,
+    /// Sat down to a meal.
+    Eat,
+    /// Off shift — in a hammock if a bed was free, on the deck if not.
+    Sleep,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -940,6 +968,8 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
                 crate::state::CrewState::Repairing { .. } => CrewStateTag::Mend,
                 crate::state::CrewState::Loading { .. } => CrewStateTag::Load,
                 crate::state::CrewState::Unloading { .. } => CrewStateTag::Unload,
+                crate::state::CrewState::Eating { .. } => CrewStateTag::Eat,
+                crate::state::CrewState::Sleeping => CrewStateTag::Sleep,
             },
             carrying: member.carrying.map(|(item, count)| StockView {
                 item: item.0,
@@ -948,6 +978,13 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
             wait_ticks: member.wait_ticks,
             stressed: member.wait_ticks >= stress,
             fidget: member.fidget,
+            hunger: member.hunger,
+            rested: member.rested,
+            shift: match member.shift {
+                crate::content::Shift::Day => ShiftTag::Day,
+                crate::content::Shift::Night => ShiftTag::Night,
+            },
+            asleep: member.is_asleep(),
         })
         .collect()
 }

@@ -19,20 +19,27 @@ use crate::content::{Content, ShaftKind};
 use crate::fx::Fx;
 use crate::ids::{DaypartIdx, FloorIdx, ItemIdx, RoomId, ShaftId, SlotIdx};
 use crate::state::crew::HaulPickup;
-use crate::state::{Crew, CrewState, GameState, HaulDestination, HaulTask, Tower};
+use crate::state::{Crew, CrewState, Errand, GameState, HaulDestination, HaulTask, Tower};
 
 use super::SoundEvent;
+use super::needs::{effective_ticks, work_pct};
 
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     // Move the crew out so each member can be advanced while the tower
     // is also borrowed mutably. `take` on a Vec is a pointer move.
     let mut crew = std::mem::take(&mut state.crew);
     let mut hauls = 0u64;
+    let mut meals = 0u64;
     let daypart = state.clock.daypart(content);
     let queues = shaft_queues(&crew, &state.tower);
     // Repair spends poles off the shelves, and the assignment pass runs
     // with the crew moved out of state, so the figure comes with it.
     let poles = super::repair::repair_item(content).map_or(0, |item| state.stock_of(item));
+    let awake_shift = super::needs::shift_now(state, content);
+    // Working in the dark is the third penalty, and the one that
+    // connects the rota to charge. `lit` is true all day, so this only
+    // bites in a brown-out — not merely on a dark night.
+    let lit = state.power.lit;
 
     for member in &mut crew {
         advance(
@@ -41,36 +48,82 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             content,
             &queues,
             daypart,
+            lit,
             sounds,
             &mut hauls,
+            &mut meals,
         );
     }
 
-    assign_idle(&mut crew, &state.tower, content, &queues, daypart, poles);
+    assign_idle(
+        &mut crew,
+        &state.tower,
+        content,
+        &queues,
+        daypart,
+        poles,
+        awake_shift,
+    );
 
     state.crew = crew;
     state.stats.hauls_completed += hauls;
+    state.stats.meals_eaten += meals;
 }
 
 // ---------------------------------------------------------------------------
 // Per-crew state machine
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn advance(
     crew: &mut Crew,
     tower: &mut Tower,
     content: &Content,
     queues: &[u32],
     daypart: DaypartIdx,
+    lit: bool,
     sounds: &mut Vec<SoundEvent>,
     hauls: &mut u64,
+    meals: &mut u64,
 ) {
     let balance = &content.balance.crew;
+    // Starving, tired, and working unlit compose into one figure that
+    // stretches the *duration* of every leg. See `needs::effective_ticks`
+    // for why it is the duration and never the `Fx` step.
+    let pct = work_pct(crew, content, lit);
 
     match crew.state {
         CrewState::Idle => {
             // Assignment happens in a second pass so every crew member
             // sees the same picture of demand.
+        }
+
+        CrewState::Sleeping => {
+            // Off shift. Rest accrues in `needs`; waking is the
+            // assignment pass's job, since a woken crew member is just
+            // somebody with nothing to do yet.
+            crew.wait_ticks = 0;
+        }
+
+        CrewState::Eating { ticks_left } => {
+            crew.wait_ticks = 0;
+            if ticks_left > 0 {
+                crew.state = CrewState::Eating {
+                    ticks_left: ticks_left - 1,
+                };
+                return;
+            }
+            // The meal is taken on completion, not on arrival — so a
+            // meal somebody else ate while this one sat down simply
+            // isn't there, and the errand clears the same way a
+            // `Loading` that lost its crate does.
+            if take_meal(crew, tower, content) {
+                crew.hunger = 0;
+                *meals += 1;
+                sounds.push(SoundEvent::MealServed);
+            }
+            crew.errand = None;
+            crew.state = CrewState::Idle;
         }
 
         CrewState::Riding { .. } => {
@@ -87,7 +140,8 @@ fn advance(
         CrewState::Walking { to_slot } => {
             crew.wait_ticks = 0;
             let target = Fx::from_int(i32::from(to_slot));
-            let step = Fx::ratio(1, balance.walk_ticks_per_slot.max(1) as i32);
+            let ticks = effective_ticks(balance.walk_ticks_per_slot, pct);
+            let step = Fx::ratio(1, ticks.max(1) as i32);
             let arrived = if crew.slot_fx < target {
                 crew.slot_fx += step;
                 crew.slot_fx >= target
@@ -103,11 +157,12 @@ fn advance(
 
         CrewState::Boarding { shaft, to_floor } => {
             let kind = tower.shaft(shaft).map(|s| s.kind);
-            // A repair job is a reason to be in the queue too. Checking
+            // An errand is a reason to be in the queue too. Checking
             // only for a haul task left a crew member sent to mend
             // something bouncing between Boarding and Idle forever,
-            // never actually climbing.
-            if crew.task.is_none() && crew.repair.is_none() {
+            // never actually climbing — and a meal and a bed queue for
+            // the same stairs on the same terms.
+            if crew.task.is_none() && crew.errand.is_none() {
                 // Whatever they were headed for was demolished while
                 // they queued. Step out of the line.
                 crew.state = CrewState::Idle;
@@ -133,7 +188,8 @@ fn advance(
         CrewState::Climbing { shaft, to_floor } => {
             crew.wait_ticks = 0;
             let target = Fx::from_int(i32::from(to_floor));
-            let step = Fx::ratio(1, balance.climb_ticks_per_floor.max(1) as i32);
+            let ticks = effective_ticks(balance.climb_ticks_per_floor, pct);
+            let step = Fx::ratio(1, ticks.max(1) as i32);
             let arrived = if crew.floor_fx < target {
                 crew.floor_fx += step;
                 crew.floor_fx >= target
@@ -188,7 +244,7 @@ fn advance(
 }
 
 /// What a crew member does after finishing a leg — which depends on
-/// whether they are hauling or mending.
+/// whether they are hauling or on an errand.
 fn resume(
     crew: &Crew,
     tower: &Tower,
@@ -196,8 +252,8 @@ fn resume(
     queues: &[u32],
     daypart: DaypartIdx,
 ) -> CrewState {
-    match crew.repair {
-        Some(job) => repair_leg(crew, tower, content, queues, daypart, job),
+    match crew.errand {
+        Some(errand) => errand_leg(crew, tower, content, queues, daypart, errand),
         None => next_leg(crew, tower, content, queues, daypart),
     }
 }
@@ -434,6 +490,27 @@ const PRIORITY_INBOX: i64 = 3;
 /// Priority of putting something on a shelf.
 const PRIORITY_SHELF: i64 = 2;
 
+/// The priority ladder for an idle crew member:
+///
+/// 1. a task already under way — pick the trip back up rather than
+///    re-deciding it
+/// 2. a load in hand with somewhere to put it — finish the delivery;
+///    nothing carried is ever dropped
+/// 3. off shift — go to a bunk, or lie down where they are
+/// 4. past `hungry_ticks` — go and eat
+/// 5. damage worth a shift — mend it
+/// 6. a haul
+///
+/// Eating above mending is deliberate: a crew member past
+/// `starving_ticks` mends slowly too, and a meal is 300 ticks against a
+/// repair shift's 80 plus the walk. Feeding them first is the cheaper
+/// order.
+///
+/// Off shift sits *below* a task already under way, and that is what
+/// holds the invariant that a crew member never falls asleep holding
+/// something: going off shift stops them taking new work, and they head
+/// for a bunk once their hands are empty.
+#[allow(clippy::too_many_arguments)]
 fn assign_idle(
     crew: &mut [Crew],
     tower: &Tower,
@@ -441,8 +518,25 @@ fn assign_idle(
     queues: &[u32],
     daypart: DaypartIdx,
     poles: i64,
+    awake_shift: crate::content::Shift,
 ) {
     for i in 0..crew.len() {
+        let off_shift = crew[i].shift != awake_shift;
+
+        // A sleeper whose shift has come round wakes up — and only
+        // then. **Crew are never woken automatically.** An attack does
+        // not rouse anybody: if the simulation woke people when things
+        // got bad, the rota would be decorative and the interesting
+        // decision — do I burn tomorrow morning to answer tonight —
+        // would be made by the game instead of the player.
+        if crew[i].is_asleep() {
+            if off_shift {
+                continue;
+            }
+            crew[i].errand = None;
+            crew[i].state = CrewState::Idle;
+        }
+
         if !matches!(crew[i].state, CrewState::Idle) {
             continue;
         }
@@ -457,44 +551,93 @@ fn assign_idle(
             continue;
         }
 
-        // On the way to damage, or standing on it.
-        if let Some(job) = crew[i].repair {
-            crew[i].state = repair_leg(&crew[i], tower, content, queues, daypart, job);
+        // On the way somewhere, or standing on the spot.
+        if let Some(errand) = crew[i].errand {
+            // A meal that went while they walked. Clear and look again
+            // rather than standing over an empty outbox.
+            if matches!(errand, Errand::Meal { .. }) && find_meal(tower, content, 0).is_none() {
+                crew[i].errand = None;
+            } else {
+                crew[i].state = errand_leg(&crew[i], tower, content, queues, daypart, errand);
+                continue;
+            }
+        }
+
+        // **Stranded carriers may do anything except put the load
+        // down**, and that rule governs the whole of the rest of this
+        // ladder.
+        //
+        // "Hands empty" is the ordinary condition for going to bed,
+        // going to eat, or picking up a repair, because a load in hand
+        // is a trip half-finished and nothing carried is ever dropped.
+        // But a tower with no free shelf and no hungry room — the
+        // shelf-typing deadlock `BALANCE.md`'s `storeroom` row
+        // describes — strands whoever is holding something, and a
+        // stranded carrier has no trip to finish. Gating the rest of
+        // the ladder on empty hands then means somebody who never
+        // sleeps and never eats again: permanently tired, permanently
+        // starving, working at 36% for the rest of the run, with the
+        // deadlock as the invisible cause. That reads as a bug rather
+        // than as a consequence of the deadlock it actually is.
+        //
+        // The precedent is already here: `pick_repair` below has let a
+        // stranded carrier mend while holding a crate since M3,
+        // measured, because the alternative took repair down to a
+        // quarter of what the same tower managed with room to spare.
+        // Sleep and meals join it on the same terms. The load stays in
+        // their hands throughout and is delivered when somewhere opens
+        // up, which is the invariant that actually matters.
+        let stranded = crew[i].is_carrying()
+            && crew[i].carrying.is_some_and(|(item, held)| {
+                find_destination(tower, content, crew, i, item, held, false).is_none()
+            });
+        let free_to_choose = !crew[i].is_carrying() || stranded;
+
+        // Off shift. Bed if there is one; the deck if not.
+        if off_shift && free_to_choose {
+            crew[i].wait_ticks = 0;
+            crew[i].errand = find_bunk(tower, content, crew, i, crew[i].floor());
+            crew[i].state = match crew[i].errand {
+                Some(errand) => errand_leg(&crew[i], tower, content, queues, daypart, errand),
+                // Nowhere to lie down, so they lie down here. Visible,
+                // drawn as such, and refilling rest at half the rate a
+                // bed would — survivable and visibly degrading.
+                None => CrewState::Sleeping,
+            };
+            continue;
+        }
+
+        // Hungry. An errand outranking a new haul, but never a delivery
+        // that could still be finished.
+        if crew[i].hunger >= content.balance.crew.hungry_ticks
+            && free_to_choose
+            && let Some(errand) = find_meal(tower, content, crew[i].floor())
+        {
+            crew[i].wait_ticks = 0;
+            crew[i].errand = Some(errand);
+            crew[i].state = errand_leg(&crew[i], tower, content, queues, daypart, errand);
             continue;
         }
 
         // Damage outranks a new errand, but not a delivery already under
         // way: a crew member holding something finishes that first,
         // because putting a load down where it does not belong to go and
-        // mend a wall would lose the load.
-        //
-        // Unless there is nowhere to put it at all. A tower with no free
-        // shelf and no hungry room strands whoever is holding something,
-        // and a stranded carrier used to be lost to repair for the rest
-        // of the run — `is_carrying` said no and `find_destination` said
-        // no, so they stood there. Measured on a deliberately
-        // shelf-stuffed tower, that took repair down to a quarter of
-        // what the same tower managed with room to spare.
-        //
-        // Mending while holding a crate costs nothing: `repair::run`
-        // never touches `carrying`, so the load goes right on being
-        // held and is delivered when somewhere opens up.
-        let stranded = crew[i].is_carrying()
-            && crew[i].carrying.is_some_and(|(item, held)| {
-                find_destination(tower, content, crew, i, item, held, false).is_none()
-            });
-        if (!crew[i].is_carrying() || stranded)
+        // mend a wall would lose the load. A stranded carrier mends
+        // while holding it, per `free_to_choose` above — mending costs
+        // the load nothing, since `repair::run` never touches
+        // `carrying`.
+        if free_to_choose
             && let Some((target, floor, slot)) =
                 super::repair::pick_repair(tower, content, poles, crew, i, crew[i].floor())
         {
-            let job = crate::state::RepairJob {
+            let errand = Errand::Repair {
                 target,
                 floor,
                 slot,
             };
-            crew[i].repair = Some(job);
+            crew[i].errand = Some(errand);
             crew[i].wait_ticks = 0;
-            crew[i].state = repair_leg(&crew[i], tower, content, queues, daypart, job);
+            crew[i].state = errand_leg(&crew[i], tower, content, queues, daypart, errand);
             continue;
         }
 
@@ -534,37 +677,47 @@ fn assign_idle(
     }
 }
 
-/// Route a crew member to the damage they have been assigned, then set
-/// them working. Reuses the haul legs exactly — which is why a severed
-/// shaft can put damage out of reach, and why that is correct rather
-/// than a bug.
-fn repair_leg(
+/// Route a crew member to wherever their errand is, then set them to
+/// work on it. Reuses the haul legs exactly — which is why a severed
+/// shaft can put damage, a meal or a bed out of reach, and why that is
+/// correct rather than a bug.
+///
+/// One router for all three arms rather than three parallel `Option`s
+/// alongside `task`, which would duplicate this routing three times.
+fn errand_leg(
     crew: &Crew,
     tower: &Tower,
     content: &Content,
     queues: &[u32],
     daypart: DaypartIdx,
-    job: crate::state::RepairJob,
+    errand: Errand,
 ) -> CrewState {
     let floor = crew.floor();
     let slot = crew.slot();
 
-    if floor == job.floor {
-        if slot == job.slot {
-            return CrewState::Repairing {
-                target: job.target,
-                ticks_left: super::repair::shift_ticks(
-                    content,
-                    content.balance.siege.repair_hp_per_shift,
-                ),
-            };
-        }
-        return CrewState::Walking { to_slot: job.slot };
+    // An errand whose room went away — a bunk demolished under a
+    // sleeper, a canteen removed mid-meal — clears rather than spinning,
+    // exactly as `Boarding` already handles a demolished shaft.
+    if let Some(room) = errand.room()
+        && !tower
+            .floor(errand.floor())
+            .is_some_and(|f| f.rooms.iter().any(|r| r.id == room))
+    {
+        return CrewState::Idle;
     }
 
-    let Some(shaft) = best_shaft(tower, content, queues, daypart, floor, job.floor) else {
-        // Cut off from the damage. Stand down rather than spin; the
-        // assignment pass will try again once a route exists.
+    if floor == errand.floor() {
+        if slot == errand.slot() {
+            return arrive(content, errand);
+        }
+        return CrewState::Walking {
+            to_slot: errand.slot(),
+        };
+    }
+
+    let Some(shaft) = best_shaft(tower, content, queues, daypart, floor, errand.floor()) else {
+        // Cut off from it. Stand down rather than spin; the assignment
+        // pass will try again once a route exists.
         return CrewState::Idle;
     };
     let column = tower.shaft(shaft).map_or(0, |s| s.slot);
@@ -573,8 +726,161 @@ fn repair_leg(
     }
     CrewState::Boarding {
         shaft,
-        to_floor: job.floor,
+        to_floor: errand.floor(),
     }
+}
+
+/// What standing on the spot means, per errand.
+fn arrive(content: &Content, errand: Errand) -> CrewState {
+    match errand {
+        Errand::Repair { target, .. } => CrewState::Repairing {
+            target,
+            ticks_left: super::repair::shift_ticks(
+                content,
+                content.balance.siege.repair_hp_per_shift,
+            ),
+        },
+        // A meal takes as long as the canteen takes to cook one. Not
+        // scaled by `work_pct`: eating is the cure for being slow, not
+        // an instance of it, and a starving crew member who ate more
+        // slowly would be punished twice for the same failure.
+        Errand::Meal { .. } => CrewState::Eating {
+            ticks_left: meal_ticks(content),
+        },
+        Errand::Bunk { .. } => CrewState::Sleeping,
+    }
+}
+
+/// How long sitting down to a meal takes. Read off the canteen's own
+/// craft time so a designer who makes cooking slower makes eating look
+/// slower too, rather than the two drifting apart.
+fn meal_ticks(content: &Content) -> u32 {
+    meal_item(content)
+        .and_then(|item| {
+            content
+                .room_runtime
+                .iter()
+                .find(|room| room.recipe_outputs.iter().any(|(out, _, _)| *out == item))
+                .map(|room| room.craft_ticks)
+        })
+        .unwrap_or(300)
+}
+
+/// The item a meal is. Named once so no system compares the string.
+fn meal_item(content: &Content) -> Option<ItemIdx> {
+    content.item_idx("item.meals")
+}
+
+/// Take one meal out of the room the errand names. False if it is gone
+/// — somebody else got there first, or the room emptied.
+fn take_meal(crew: &Crew, tower: &mut Tower, content: &Content) -> bool {
+    let Some(Errand::Meal { room, floor, .. }) = crew.errand else {
+        return false;
+    };
+    let Some(item) = meal_item(content) else {
+        return false;
+    };
+    let Some(floor) = tower.floor_mut(floor) else {
+        return false;
+    };
+    let Some(room) = floor.rooms.iter_mut().find(|r| r.id == room) else {
+        return false;
+    };
+    // Outbox first, then the shelves — the same order a haul collects
+    // in, and the reason the kitchen chain survives a fully-claimed
+    // storeroom: eating at the source means distribution to shelves is
+    // an optimisation, not a requirement.
+    let taken = room
+        .outputs
+        .iter_mut()
+        .find(|s| s.item == item)
+        .map_or(0, |stack| stack.withdraw(1));
+    taken > 0 || room.unshelve(item, 1) > 0
+}
+
+/// Where the nearest meal is, and where to stand to eat it.
+///
+/// Not a reservation system on purpose: two hungry crew may both walk to
+/// the same last meal, and the one who arrives second finds it gone and
+/// looks again. That is the failure path `Loading` already has, and
+/// adding bookkeeping to prevent it would buy a rare case at the cost of
+/// a permanent one.
+fn find_meal(tower: &Tower, content: &Content, from: FloorIdx) -> Option<Errand> {
+    let item = meal_item(content)?;
+    let mut best: Option<(u16, FloorIdx, SlotIdx, RoomId)> = None;
+    for floor in &tower.floors {
+        for room in &floor.rooms {
+            let has = room.outputs.iter().any(|s| s.item == item && s.count > 0)
+                || room
+                    .shelves
+                    .iter()
+                    .any(|shelf| shelf.item == Some(item) && shelf.count > 0);
+            if !has {
+                continue;
+            }
+            let distance = floor.index.abs_diff(from);
+            let candidate = (
+                u16::from(distance),
+                floor.index,
+                room.outbox_slot(),
+                room.id,
+            );
+            if best.is_none_or(|current| candidate < current) {
+                best = Some(candidate);
+            }
+        }
+    }
+    best.map(|(_, floor, slot, room)| Errand::Meal { room, floor, slot })
+}
+
+/// A bed with space in it, or `None` for nowhere to lie down.
+///
+/// **Occupancy is derived, never stored.** How many sleepers a bunk
+/// holds is counted by scanning the crew whose errand names it — the
+/// same trick `shaft_queues` uses to give one crew member a picture of
+/// the whole queue while the borrow checker only lets them see
+/// themselves. `Room` gains no field, and there is no counter to get out
+/// of step with reality. Beds are claimed in crew order, which is
+/// creation order, which is `CrewId` order, so who gets the last bed is
+/// a pure function of state.
+fn find_bunk(
+    tower: &Tower,
+    content: &Content,
+    crew: &[Crew],
+    me: usize,
+    from: FloorIdx,
+) -> Option<Errand> {
+    let mut best: Option<(u16, FloorIdx, SlotIdx, RoomId)> = None;
+    for floor in &tower.floors {
+        for room in &floor.rooms {
+            let beds = content
+                .room_runtime
+                .get(room.def.0 as usize)
+                .map_or(0, |def| def.sleepers);
+            if beds == 0 {
+                continue;
+            }
+            let claimed = crew
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != me)
+                .filter(|(_, other)| {
+                    other
+                        .errand
+                        .is_some_and(|e| e.is_bunk() && e.room() == Some(room.id))
+                })
+                .count();
+            if claimed >= usize::from(beds) {
+                continue;
+            }
+            let distance = floor.index.abs_diff(from);
+            let candidate = (u16::from(distance), floor.index, room.slot, room.id);
+            if best.is_none_or(|current| candidate < current) {
+                best = Some(candidate);
+            }
+        }
+    }
+    best.map(|(_, floor, slot, room)| Errand::Bunk { room, floor, slot })
 }
 
 /// Score every collectable pile against every valid destination and

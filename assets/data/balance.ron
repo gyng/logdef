@@ -37,12 +37,11 @@ Balance(
         // unanswerable. Three puts real pressure on the stairs and
         // makes relieving them worth the poles.
         starting_crew: 3,
-        // Twice the starting three, and short of the plan's eventual
-        // eight, which M4's shift rota should have to earn. The
-        // enclave's single recruit is the only way to move toward it in
-        // M3, so this is a ceiling with plenty of headroom rather than
-        // one a run will reach.
-        crew_cap: 6,
+        // Eight, which the rota earns. Eight split across two shifts is
+        // about five awake at once, which is where six unrota'd crew
+        // already sat — so raising the cap without the rota would have
+        // been a straight throughput gift, and with it it buys coverage.
+        crew_cap: 8,
         // 0.4s per slot: crossing an 8-wide floor costs about 3
         // seconds, enough that where you put things matters.
         walk_ticks_per_slot: 12,
@@ -54,6 +53,42 @@ Balance(
         carry_capacity: 3,
         // Two seconds blocked and the cross-section tints them red.
         stress_ticks: 60,
+        // A third of a day, so three meals a day a person. Short enough
+        // that the canteen is somewhere people actually go, long enough
+        // that eating is not most of what a crew member does.
+        hungry_ticks: 4800,
+        // Half a day — a full meal cycle *past* being hungry. A working
+        // kitchen never reaches it, so the slow-down is a failure signal
+        // rather than a routine tax, and a fed tower never sees it.
+        starving_ticks: 7200,
+        // 0.6 of a day, a shade over the 8,352-tick day shift, so a day
+        // worker ends their shift nearly empty and a night worker (6,048
+        // ticks awake) never does.
+        rested_max_ticks: 8640,
+        // A tenth of a day of work left. A bunked day worker crosses it
+        // about four-fifths through their shift, so the tower flags in
+        // the late afternoon and picks up at dawn. That is the day
+        // having a shape, not a balance oversight.
+        tired_ticks: 1440,
+        // Two ticks of rest a tick asleep: 6,048 off shift refills
+        // 12,096, comfortably over the cap. A bunk should feel like a
+        // solved problem rather than a managed one.
+        rest_gain_per_tick: 2,
+        // Bunkless is a net loss of 2,304 a day and permanent tiredness
+        // inside four. Visibly degrading, never fatal, and fixable for
+        // three poles at any moment.
+        no_bunk_rest_gain: 1,
+        // Past starving_ticks everything takes about two-thirds longer.
+        // Plainly slower on screen without reading as broken.
+        hungry_work_pct: 60,
+        // The same figure as hunger's, on purpose. One visible failure
+        // mode with two causes.
+        tired_work_pct: 60,
+        // The mildest of the three — you can work by feel, just not
+        // well. Composed with the other two the worst case is 27%:
+        // crawling, never stopped, because a need that halts the tower
+        // is a death spiral rather than a pressure.
+        dark_work_pct: 75,
     ),
     clock: ClockBalance(
         // 8 minutes at 1x, 2 minutes at 4x — about 20 day cycles
@@ -221,14 +256,37 @@ Balance(
         // measured, provocation 221 and 824 per-mille standing by day
         // five, for a tower that had done nothing but exist.
         //
-        // At 240 the three-way shape holds and is sharper than it was:
-        // subsistence ends whole with 180 poles banked and never draws a
-        // wave; greedy peaks at 216 provocation, degrades to 860
-        // per-mille and goes pole-broke; answered holds 992 per-mille,
-        // sees off 63 creatures and still banks 83 poles. Defence pays
-        // for itself, plainly. Measured with
+        // **M4 moved it again, and by more than either M3 change did.**
+        // Crew now sleep through the night band and stop to eat, and a
+        // canteen draws a fifth of a mill's bamboo, so the tower on the
+        // other side of this constant is a materially slower one:
+        // measured across three seeds over five days on a fed and rested
+        // tower, one cutter arm brings in ~69 items a day and two bring
+        // in ~97, against the ~120 and ~210 the figure of 240 was sized
+        // for. Break-even at 240 is 120 items a day, which two arms now
+        // sit *below* — so the knob had quietly stopped turning at all,
+        // and no amount of harvesting could draw a wave.
+        //
+        // 300 is what puts the three-way shape back. It is not the value
+        // the old arithmetic would suggest, and the reason is worth
+        // writing down: **sleep made provocation spiky.** Harvest now
+        // arrives entirely inside the day band while decay runs around
+        // the clock, so what draws a wave is the mid-afternoon *peak*,
+        // not the daily mean, and the two no longer move together. At
+        // 370 — the value break-even arithmetic gives — one arm's peak
+        // cleared the wave threshold every afternoon and a subsistence
+        // tower took 210 hit points on day one, which is not what
+        // "living within its means" is supposed to buy. At 300 the peak
+        // stays under it.
+        //
+        // The shape at 300, over five days from this seed: subsistence
+        // never rises above 6 and ends whole at 999 per-mille; greedy —
+        // a second arm and no second mill — peaks at 56, jams on its own
+        // shelves by day 3, and is eaten down to 62 per-mille with
+        // nothing to answer with; answered holds 809 per-mille and sees
+        // off 15. Re-measured with
         // `cargo run --release -p understory-core --example siege_run`.
-        provocation_per_100_harvested: 240,
+        provocation_per_100_harvested: 300,
         // The burner run through one full night stretch (~4,750 ticks
         // below night_light_threshold, see the Clock section above, /
         // 100 ticks per burn = ~47 burns) raises provocation by

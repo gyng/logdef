@@ -5,4 +5,7 @@ DaypartDef(
     id: "daypart.predawn",
     name: "Predawn",
     start_permille: 0,
+    // Night shift. The dark hours are one contiguous band and they
+    // are exactly the band the lamps are lit through.
+    shift: Night,
 )

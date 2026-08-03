@@ -23,7 +23,7 @@ use std::path::PathBuf;
 
 use understory_core::GameEngine;
 use understory_core::command::GameCommand;
-use understory_core::content::IntakeSource;
+use understory_core::content::{IntakeSource, Shift};
 use understory_core::state::{ShaftPriority, SimSpeed};
 
 /// Fixed seed so the fixture is reproducible.
@@ -52,6 +52,15 @@ fn main() {
     place_when_affordable(&mut engine, "room.storeroom", 2, 5);
     step_walking(&mut engine, 600);
 
+    // A canteen, bought early because it is cheap and because a fixture
+    // of a starving tower is a fixture of a tower that is about to work
+    // at 60% and blame the shafts. It is also the only consumer bamboo
+    // has that is not the mill, so without one the whole meals chain —
+    // the recipe, the errand, the `Eating` state, `MealServed` — is
+    // absent from the recording.
+    place_when_affordable(&mut engine, "room.canteen", 3, 1);
+    step_walking(&mut engine, 600);
+
     // Build upward. This exercises construction, stock spending, the
     // stairs extending — and shades the sails, which were sitting on
     // what used to be the roof.
@@ -64,6 +73,11 @@ fn main() {
     // that skipped it recorded a tower standing still being eaten,
     // which exercises far less of the simulation than one that walks.
     place_when_affordable(&mut engine, "room.canopy_sails", 4, 1);
+    // Beds, on the new top floor. Two of them, which at a three-crew
+    // tower with everybody on the day shift is one short — deliberately,
+    // so the fixture records both halves of sleep: somebody in a
+    // hammock, and somebody on the deck at half the rest rate.
+    place_when_affordable(&mut engine, "room.bunk", 4, 4);
     // An elevator costs a lot of poles. Bank them before asking for
     // one, and before adding a second consumer of the same item — a
     // thornwright eats poles as fast as the mill can supply them, so
@@ -76,14 +90,14 @@ fn main() {
     step_walking(&mut engine, 12_000);
 
     // The elevator: cars, dispatch, dwell, and a charge draw per floor.
-    engine
-        .try_send(GameCommand::BuildShaft {
-            shaft: "shaft.elevator".into(),
-            low: 0,
-            high: 4,
-            slot: 7,
-        })
-        .expect("slot 7 should be clear all the way up");
+    //
+    // Waited for rather than assumed, for the same reason the rooms are
+    // (`place_when_affordable`). Eighteen poles was comfortably banked
+    // in twelve thousand ticks before M4; a tower whose crew sleep
+    // through the night and stop to eat takes longer to get there, and
+    // hardcoding the wait meant the recorder panicked eight poles short
+    // rather than recording a slower tower.
+    build_shaft_when_affordable(&mut engine, "shaft.elevator", 0, 4, 7);
     step_walking(&mut engine, 1800);
 
     // Reprogram it, so the per-daypart program path is in the fixture.
@@ -103,6 +117,23 @@ fn main() {
         })
         .expect("daypart 0 exists");
 
+    // The rota. One crew member onto the night shift, which is the one
+    // command M4 adds and the only way the fixture covers a tower whose
+    // crew are not all asleep at the same time. Recorded as a decision
+    // about a named person, which is what `SetShift` is for.
+    let night_worker = engine
+        .state()
+        .crew
+        .last()
+        .expect("a run starts with crew")
+        .id;
+    engine
+        .try_send(GameCommand::SetShift {
+            crew: night_worker,
+            shift: Shift::Night,
+        })
+        .expect("anybody aboard can be reshifted");
+
     // A speed change mid-recording, to prove it round-trips.
     engine.set_speed(SimSpeed::X4);
     step_walking(&mut engine, 900);
@@ -121,12 +152,12 @@ fn main() {
     // script has just spent a stretch of it standing still, and a
     // stopped tower harvests nothing now, so what it could afford
     // before the legs stopped is not what it can afford after.
-    place_when_affordable(&mut engine, "room.thornwright", 4, 5);
+    place_when_affordable(&mut engine, "room.thornwright", 4, 6);
     step_walking(&mut engine, 1800);
 
     // And a demolition, so the stale-task path is covered too.
     engine
-        .try_send(GameCommand::RemoveRoom { floor: 4, slot: 5 })
+        .try_send(GameCommand::RemoveRoom { floor: 4, slot: 6 })
         .expect("the thornwright placed above should still be there");
     step_walking(&mut engine, 900);
 
@@ -174,6 +205,21 @@ fn main() {
     assert!(scrap > 0, "the berth put no scrap in the fixture");
     assert!(roused > 0, "the ruin gave up scrap without waking anything");
 
+    // And that the home half of M4 is actually in the recording. A
+    // fixture with a canteen the crew never reached and bunks nobody
+    // ever lay in would look identical to one with neither, and would
+    // catch neither drifting.
+    let meals_eaten = engine.state().stats.meals_eaten;
+    let crew_ticks_asleep = engine.state().stats.crew_ticks_asleep;
+    assert!(
+        meals_eaten > 0,
+        "the fixture has a canteen in it but nobody ever ate"
+    );
+    assert!(
+        crew_ticks_asleep > 0,
+        "the fixture has bunks in it but nobody ever slept"
+    );
+
     engine
         .try_send(GameCommand::SetStriding { walking: true })
         .expect("always legal");
@@ -205,6 +251,10 @@ fn main() {
         replay.checkpoints.len()
     );
     println!("  the berth: {scrap} scrap out, {roused} warden(s) woken");
+    println!(
+        "  the home: {} meal(s) eaten, {} crew-tick(s) asleep",
+        meals_eaten, crew_ticks_asleep
+    );
     println!("rebuild so the embedded copy picks it up");
 }
 
@@ -300,6 +350,26 @@ fn place_when_affordable(engine: &mut GameEngine, room: &str, floor: u8, slot: u
         }
     }
     panic!("{room} never became affordable");
+}
+
+/// The same, for a shaft.
+fn build_shaft_when_affordable(engine: &mut GameEngine, shaft: &str, low: u8, high: u8, slot: u8) {
+    for _ in 0..200 {
+        let result = engine.try_send(GameCommand::BuildShaft {
+            shaft: shaft.into(),
+            low,
+            high,
+            slot,
+        });
+        match result {
+            Ok(()) => return,
+            Err(understory_core::command::CommandError::InsufficientStock { .. }) => {
+                step_walking(engine, 300);
+            }
+            Err(other) => panic!("could not build {shaft} at slot {slot}: {other}"),
+        }
+    }
+    panic!("{shaft} never became affordable");
 }
 
 /// Take the left-hand branch of whatever fork is pending, if any.

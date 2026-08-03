@@ -128,6 +128,18 @@ fn run_burners(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundE
 
 /// Lamps, after dark. Third in priority: the tower goes dark before the
 /// chain stalls, but it keeps its lights before it keeps walking.
+/// **Lighting is deliberately not gated on anybody being awake, and
+/// that is the obvious next idea somebody will have.** M4 gave the tower
+/// a shift rota, which raises the question of why a tower whose crew are
+/// all in bed pays for lamps. Gating it reads well and it is three
+/// lines. It was considered and rejected: the default rota is all-Day,
+/// so gating would make every night's lamps free for most towers and
+/// quietly relax the brown-out pressure `BALANCE.md`'s power rows were
+/// measured against. The night shift is instead made to depend on
+/// charge from the other side — a crew member working while `lit` is
+/// false works at `dark_work_pct` (`needs::work_pct`), so a brown-out
+/// does not just dim the tower, it wastes the shift you staffed. That
+/// costs no constants and revalues nothing.
 pub fn lighting(state: &mut GameState, content: &Content) {
     if exposure_pct(state, content) >= content.balance.clock.night_light_threshold {
         // Daylight. Nothing to pay for, and nothing to switch on.

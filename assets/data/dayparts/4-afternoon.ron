@@ -3,4 +3,7 @@ DaypartDef(
     id: "daypart.afternoon",
     name: "Afternoon",
     start_permille: 580,
+    // Where a bunked day worker crosses `tired_ticks` and the tower
+    // visibly slows. That is the day having a shape.
+    shift: Day,
 )

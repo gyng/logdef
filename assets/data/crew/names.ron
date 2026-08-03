@@ -1,0 +1,35 @@
+// The people aboard, in the order they come aboard.
+//
+// **The order of this list is load-bearing for replays.** `add_crew`
+// takes the next name by index — never by a roll, because a name drawn
+// from a stream would perturb that stream and a bark must never be able
+// to move an economic roll (`DECISIONS.md` §2). So reordering this file
+// is a simulation change, and editing the text of an entry changes the
+// content hash. Both are ordinary; both are worth knowing before
+// somebody alphabetises it.
+//
+// Longer than `crew_cap` (8) so a full tower never wraps, and long
+// enough to leave headroom for M5's enclave economy. Names are drawn
+// from the many places a tower like this walks through, because the
+// crew are people who came from somewhere, not a set matched to a
+// palette.
+CrewNames(
+    names: [
+        "Wren",
+        "Odile",
+        "Bakri",
+        "Sena",
+        "Toma",
+        "Ilay",
+        "Rook",
+        "Mira",
+        "Adaeze",
+        "Kestrel",
+        "Nuray",
+        "Solveig",
+        "Imre",
+        "Palila",
+        "Yusra",
+        "Ceren",
+    ],
+)

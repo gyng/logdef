@@ -10,6 +10,7 @@ mod commands;
 mod determinism;
 mod haul;
 mod journey;
+mod needs;
 mod power;
 mod production;
 mod replay;

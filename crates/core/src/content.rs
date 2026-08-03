@@ -63,6 +63,9 @@ pub enum RoomCategory {
     Energy,
     /// Shoots back. Fed by the chain like anything else.
     Defence,
+    /// Somewhere to sleep. The only room whose whole purpose is that a
+    /// person is in it — no recipe, no stock, no reach.
+    Quarters,
     /// The Heartseed. Unique, pre-placed, and the loss condition.
     Heart,
 }
@@ -197,6 +200,18 @@ pub struct RoomDef {
     pub bank: Option<BankDef>,
     #[serde(default)]
     pub defence: Option<DefenceDef>,
+    #[serde(default)]
+    pub quarters: Option<QuartersDef>,
+}
+
+/// Beds. `content::validate` requires every category to have a matching
+/// behaviour block, and a bunk has no recipe, no storage, no intake and
+/// nothing to shoot with — so this exists to be that block, and to say
+/// how many people fit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QuartersDef {
+    pub sleepers: u8,
 }
 
 /// Which mechanism moves things up and down a shaft.
@@ -318,6 +333,16 @@ pub struct DefenceDef {
     pub range_paces: i64,
 }
 
+/// Which half of the rota a crew member works. Awake is "the current
+/// daypart belongs to my shift" and nothing else — which is what makes
+/// re-shifting a sleeper mid-night an all-hands lever with a real price,
+/// out of nothing but the definition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Shift {
+    Day,
+    Night,
+}
+
 /// A named stretch of the day. The simulation only uses the index; the
 /// name is for the player, and the boundaries are what the elevator's
 /// per-daypart programs key off.
@@ -328,6 +353,11 @@ pub struct DaypartDef {
     pub name: String,
     /// Per-mille of the day at which this daypart begins.
     pub start_permille: i64,
+    /// Which shift is awake through this stretch. Content rather than a
+    /// constant in a system, so the handover is a designer's decision —
+    /// and validated as one contiguous band per shift, because a rota
+    /// with two night stretches is a bug in the pack.
+    pub shift: Shift,
 }
 
 /// A stretch of terrain with one character. In M0 a band's only
@@ -664,6 +694,40 @@ pub struct CrewBalance {
     pub carry_capacity: i64,
     /// Ticks blocked before the cross-section tints a crew member red.
     pub stress_ticks: u32,
+    /// Ticks since a meal before a crew member goes to eat.
+    pub hungry_ticks: u32,
+    /// Ticks since a meal before they start working slowly. A working
+    /// kitchen never reaches this, which is the point of it being a
+    /// second threshold rather than the same one.
+    pub starving_ticks: u32,
+    /// Ticks of work a rested crew member has in them.
+    pub rested_max_ticks: u32,
+    /// Below this much rest left, they work slowly.
+    pub tired_ticks: u32,
+    /// Rest gained per tick asleep in a bunk.
+    pub rest_gain_per_tick: u32,
+    /// Rest gained per tick asleep on the deck, with no bed free.
+    pub no_bunk_rest_gain: u32,
+    /// How fast a starving crew member works, in percent of normal.
+    pub hungry_work_pct: u32,
+    /// How fast a tired one works. Deliberately the same figure, so a
+    /// player learns the *look* of somebody working badly once and then
+    /// asks why, rather than learning two separate symptoms.
+    pub tired_work_pct: u32,
+    /// How fast anybody works in the dark.
+    pub dark_work_pct: u32,
+}
+
+/// The people aboard, in the order they come aboard.
+///
+/// A list rather than a roll, and the order is load-bearing for replays:
+/// `add_crew` takes the next one by index, because a name drawn from a
+/// stream would perturb that stream (`DECISIONS.md` §2). Reordering the
+/// file is a simulation change.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CrewNames {
+    pub names: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -674,6 +738,8 @@ pub struct CrewBalance {
 #[derive(Debug, Clone)]
 pub struct Content {
     pub balance: Balance,
+    /// Names in authored order, taken by index as crew come aboard.
+    pub crew_names: Vec<String>,
     /// Sorted by `id`; `ItemIdx` indexes this.
     pub items: Vec<ItemDef>,
     /// Sorted by `id`; `RoomIdx` indexes this.
@@ -719,6 +785,8 @@ pub struct RoomRuntime {
     pub intake_buffer_max: i64,
     pub shelves: u8,
     pub per_shelf: i64,
+    /// Beds in this room. Zero for everything that is not quarters.
+    pub sleepers: u8,
     /// Fuel item and inbox size for a burner. Sized from the recipe
     /// rather than authored: six burns of runway is enough to ride out
     /// a delayed haul without hiding a persistent shortfall.
@@ -843,6 +911,7 @@ impl Content {
         let mut hasher = Xxh3::new();
 
         let balance = parse_one::<Balance>(source, "balance.ron", &mut errors, &mut hasher);
+        let crew_names = parse_one::<CrewNames>(source, "crew/names.ron", &mut errors, &mut hasher);
         let mut items = parse_dir::<ItemDef>(source, "items", &mut errors, &mut hasher);
         let mut rooms = parse_dir::<RoomDef>(source, "rooms", &mut errors, &mut hasher);
         let mut shafts = parse_dir::<ShaftDef>(source, "shafts", &mut errors, &mut hasher);
@@ -886,9 +955,16 @@ impl Content {
                 message: "missing".into(),
             }]);
         };
+        let Some(crew_names) = crew_names else {
+            return Err(vec![LoadError {
+                path: "crew/names.ron".into(),
+                message: "missing".into(),
+            }]);
+        };
 
         let mut content = Self {
             balance,
+            crew_names: crew_names.names,
             items,
             rooms,
             shafts,
@@ -913,6 +989,27 @@ impl Content {
         } else {
             Err(errors)
         }
+    }
+
+    /// Tick of the day at which the day shift takes over.
+    ///
+    /// The handover, found rather than authored: the one daypart on the
+    /// day shift whose predecessor round the clock is on the night one.
+    /// `validate_rota` guarantees there is exactly one, so this is a
+    /// lookup and not a search with a policy.
+    #[must_use]
+    pub fn day_shift_start_tick(&self) -> u32 {
+        let ticks = i64::from(self.balance.clock.ticks_per_day.max(1));
+        let count = self.dayparts.len();
+        (0..count)
+            .find(|&i| {
+                let previous = (i + count - 1) % count;
+                self.dayparts[i].shift == Shift::Day
+                    && self.dayparts[previous].shift == Shift::Night
+            })
+            .map_or(0, |i| {
+                (self.dayparts[i].start_permille * ticks / 1000) as u32
+            })
     }
 
     /// Interned index of an item by its authored string ID.
@@ -1150,6 +1247,7 @@ impl Content {
                 per_shelf,
                 burner_fuel,
                 defence_ammo,
+                sleepers: room.quarters.as_ref().map_or(0, |q| q.sleepers),
                 defence_buffer_max,
             });
         }
@@ -1289,7 +1387,48 @@ impl Content {
     }
 }
 
+/// Each shift has to be one contiguous run of dayparts modulo the day,
+/// and both have to exist.
+///
+/// A pack with two separate night stretches is not describing a rota, it
+/// is describing a bug: crew would wake and sleep twice a day, and
+/// `rested_max_ticks` would be tuned against a shift length that never
+/// happens. Same spirit as the contiguous-`order` check on regions.
+fn validate_rota(dayparts: &[DaypartDef], errors: &mut Vec<LoadError>) {
+    if dayparts.is_empty() {
+        return;
+    }
+    let path = "dayparts".to_string();
+    if !dayparts.iter().any(|d| d.shift == Shift::Day)
+        || !dayparts.iter().any(|d| d.shift == Shift::Night)
+    {
+        errors.push(LoadError {
+            path,
+            message: "the rota needs both a day shift and a night shift".into(),
+        });
+        return;
+    }
+    // Two bands round the clock means exactly two handovers, one onto
+    // each shift. More than that and a band is split in half.
+    let handovers = dayparts
+        .iter()
+        .zip(dayparts.iter().cycle().skip(1))
+        .take(dayparts.len())
+        .filter(|(a, b)| a.shift != b.shift)
+        .count();
+    if handovers != 2 {
+        errors.push(LoadError {
+            path,
+            message: format!(
+                "the rota changes shift {handovers} times round the day; a rota has \
+                 exactly two handovers, one onto each shift"
+            ),
+        });
+    }
+}
+
 fn validate(content: &Content, errors: &mut Vec<LoadError>) {
+    validate_rota(&content.dayparts, errors);
     if content.items.is_empty() {
         errors.push(LoadError {
             path: "items".into(),
@@ -1479,6 +1618,7 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
                 def.solar.is_some() || def.burner.is_some() || def.bank.is_some()
             }
             RoomCategory::Defence => def.defence.is_some(),
+            RoomCategory::Quarters => def.quarters.is_some(),
             RoomCategory::Heart => true,
         };
         if !wired {

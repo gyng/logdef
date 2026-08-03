@@ -333,6 +333,8 @@ fn the_view_reports_the_same_states_the_simulation_is_in() {
             CrewState::Repairing { .. } => CrewStateTag::Mend,
             CrewState::Loading { .. } => CrewStateTag::Load,
             CrewState::Unloading { .. } => CrewStateTag::Unload,
+            CrewState::Eating { .. } => CrewStateTag::Eat,
+            CrewState::Sleeping => CrewStateTag::Sleep,
         };
         assert_eq!(rendered.state, expected);
     }

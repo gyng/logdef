@@ -998,12 +998,26 @@ fn standing_at_a_fork_costs_nothing_to_run_the_legs() {
         "this test is about a tower that still intends to walk"
     );
 
-    let before = game.state().power.charge;
+    // Measured on the stride credit rather than on the bank, because
+    // the bank is not a statement about the legs. `buy_block` tops the
+    // credit up to 99 only when the legs actually pay for a block, so a
+    // credit that never moves is the legs never buying — and unlike the
+    // charge total it cannot be confounded by lamps, which the tower is
+    // quite entitled to be spending on while it stands there thinking.
+    // The bank version of this assertion passed for three milestones by
+    // accident of what time of day seed 11 happened to reach its fork,
+    // and M4 moved the start of the run (`Clock::new`) out from under
+    // it.
+    let credit = game.state().power.stride_credit;
     game.step(300);
+    assert_eq!(
+        game.state().power.stride_credit,
+        credit,
+        "a tower standing at a fork bought charge for its legs"
+    );
     assert!(
-        game.state().power.charge >= before,
-        "a tower standing at a fork spent charge on its legs: {before} then {}",
-        game.state().power.charge
+        !game.state().strode,
+        "a tower standing at a fork moved anyway"
     );
 }
 

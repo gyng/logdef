@@ -448,15 +448,33 @@ fn adding_a_shaft_measurably_improves_throughput() {
     // whose crew queue on one staircase must move visibly more once a
     // second way up exists. If this stops being true, the contention
     // the whole design rests on has quietly stopped mattering.
-    const WINDOW: u32 = 9000;
+    // **A whole day, warmed up over a whole day, and that is not a
+    // detail.** This was 9,000 ticks after a 6,000-tick warm-up, which
+    // is 0.625 of a day starting from wherever the warm-up happened to
+    // land — and once M4 gave the crew a rota, two thirds of that
+    // window fell across the night, when everybody on the default
+    // all-Day shift is asleep. A tower whose crew are in bed does not
+    // queue on its staircase, so the elevator had nothing to relieve
+    // and the measurement said it was worthless: 19 crafts without
+    // against 18 with. The effect had not gone anywhere; the instrument
+    // had stopped pointing at it. Measured over a whole day from the
+    // same hour, the same two towers read 18 against 36.
+    //
+    // The rule this leaves behind, and it applies to every harness in
+    // `examples/` too: **a throughput window is a whole number of
+    // days, or it is a measurement of what time it started.**
+    const DAY: u32 = 14_400;
+    const WINDOW: u32 = DAY;
 
     let mut cramped = engine(900);
     let mut relieved = engine(900);
 
     // Both towers bank the same poles over the same warm-up, so the
-    // only difference between them is the shaft.
-    crate::tests::step_quietly(&mut cramped, 6000);
-    crate::tests::step_quietly(&mut relieved, 6000);
+    // only difference between them is the shaft — and both enter the
+    // window at the same hour, which is the point of warming up for a
+    // whole day rather than a round number of ticks.
+    crate::tests::step_quietly(&mut cramped, DAY);
+    crate::tests::step_quietly(&mut relieved, DAY);
     relieved
         .try_send(GameCommand::BuildShaft {
             shaft: "shaft.elevator".into(),

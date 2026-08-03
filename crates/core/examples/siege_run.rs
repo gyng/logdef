@@ -73,8 +73,8 @@ fn pressure_table() {
          `lost` is hit points still missing at the end, averaged; `worst` is the \n           unluckiest seed of the six.\n"
     );
     println!(
-        "{:<20} {:>5} {:>9} {:>7} {:>7} {:>8} {:>7}  {}",
-        "tower", "prov", "standing", "lost hp", "worst", "seen off", "mend", "verdict"
+        "{:<20} {:>5} {:>9} {:>7} {:>7} {:>8} {:>7}    verdict",
+        "tower", "prov", "standing", "lost hp", "worst", "seen off", "mend"
     );
 
     for shape in [Shape::Bare, Shape::Plated, Shape::Answered] {
@@ -324,6 +324,21 @@ fn run(plan: Plan) {
     // the first attempt at this harness tried, silently could not
     // afford the third item, and spent five days comparing a tower with
     // a dart battery against a tower that had failed to build one.
+    // **A canteen and a bunk in every plan — but after the plan's own
+    // rooms, not before them.**
+    //
+    // Without them all three towers are starving and exhausted by day
+    // two, which makes every figure below a measurement of neglect
+    // rather than of the siege. But buying them first is worse than not
+    // buying them at all: a cutter arm may only stand on the two lowest
+    // floors (`max_floor`), floor 1 has exactly two two-wide gaps, and
+    // a canteen and a bunk fill both. Greedy and answered could then
+    // never place their second arm, the list jammed behind an item that
+    // was not unaffordable but *unplaceable*, and all three plans ran
+    // as subsistence with extra steps — measured, every tower ending
+    // day 5 at full standing with provocation 0, ten rooms and two
+    // poles banked. The home rooms fit anywhere; the plan's rooms do
+    // not. Order accordingly.
     let mut list: Vec<&str> = match plan {
         Plan::Subsistence => vec![],
         Plan::Greedy => vec!["room.cutter_arm"],
@@ -334,6 +349,8 @@ fn run(plan: Plan) {
             "room.thornwright",
         ],
     };
+    list.push("room.canteen");
+    list.push("room.bunk");
     // And then storerooms, indefinitely.
     //
     // Not padding: a tower only provokes while it is *consuming*, and
@@ -424,8 +441,8 @@ fn run(plan: Plan) {
                         format!(
                             "{:?}/{}",
                             c.state,
-                            if c.repair.is_some() {
-                                "job"
+                            if c.errand.is_some() {
+                                "errand"
                             } else if c.task.is_some() {
                                 "task"
                             } else {

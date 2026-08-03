@@ -19,10 +19,27 @@ pub struct Clock {
 }
 
 impl Clock {
+    /// A run begins at the handover onto the day shift.
+    ///
+    /// **Not at permille 0**, which is predawn, which is the night band.
+    /// Until M4 the clock started there and nothing minded: it meant a
+    /// tower that set out in the dark with its sails idle for the first
+    /// minute and a half, which was atmospheric and cost nothing. The
+    /// rota made it cost something. Every crew member defaults to the
+    /// day shift — the tower a player who never opens the roster gets —
+    /// so starting at predawn would open every run with the entire crew
+    /// asleep for 2,592 ticks, about 86 seconds at 1x. Nothing moves,
+    /// nothing is hauled, and the only reading available to somebody
+    /// who has not yet been taught what a rota is, is that the game is
+    /// broken.
+    ///
+    /// So the tower sets out in the morning. Derived from the pack
+    /// rather than hardcoded, because which daypart opens the day shift
+    /// is a designer's decision (`content::validate_rota`).
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new(content: &Content) -> Self {
         Self {
-            tick_of_day: 0,
+            tick_of_day: content.day_shift_start_tick(),
             day: 0,
         }
     }
@@ -55,8 +72,6 @@ impl Clock {
     }
 }
 
-impl Default for Clock {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// No `Default`: where a run starts in the day is a fact about the
+// content pack (see `Clock::new`), and a `Clock` conjured without one
+// would silently start at predawn with the whole crew asleep.
