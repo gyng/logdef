@@ -1632,3 +1632,762 @@ Things that genuinely cannot be settled without building them.
    multiplier in M3. A branch that trades "quieter" for "different" — the ruin road that
    wakes machines, the canopy passage that drops leapers — is a better choice than a branch
    that trades quiet for loud, but it depends on M5's taxonomy landing first.
+
+---
+
+## M4 — The Home *(the tone)*
+
+**Sprint question:** does it feel like a home reclaiming the world, or a spreadsheet with legs?
+
+**Scope:** the tower stops being a machine and becomes somewhere people live. Crew get names,
+faces and things to say; they get two needs — meals from a canteen chain, sleep in a bunk on a
+shift rota the player sets — and both needs are demands on the circulation that already
+exists. Then the two presentation passes: the flat-vector solarpunk-tropical art pass
+`v2-plan.md` §0 scheduled here from the start, and the entire audio subsystem — which does not
+exist at all, and which M1's brief already asked for and did not get ("starvation/stall/
+brown-out all readable *and audible* — silence = broken").
+
+**Non-goals (M5):** no region 3 and no Refugia arrival, no tier-two chains, no unlocks or
+meta-progression, no second emplacement or full creature taxonomy, no enclave economy beyond
+M3's single waystation, and no role-priority system — crew remain generalists who haul, mend,
+eat and sleep, and the "haul / operate / gun / repair" priorities `v2-plan.md` §6.7 sketches
+are deferred with a reason (§4.9).
+
+### 4.1 The shape of the thing
+
+**Nothing in M4 adds an economy.** It adds *needs*, and a need is not a new resource loop — it
+is a new customer for the loops already running. Meals are bamboo the mill did not get; a
+sleeping crew member is a pair of hands the stairs did not carry. Every number M4 introduces
+is a claim on circulation, which is the one thing this game has always been about
+(`DESIGN.md` §2 insight 1). If a system in this milestone needs its own supply mechanism, its
+own screen, or its own currency, it has been designed wrong — the same test §2.4 applied to
+emplacements applies here.
+
+The second half is presentation, and it is not decoration. Every milestone so far has been
+answered by a test or an instrument. M4's two exit criteria are a **screenshot** and a
+**recording**, answered by looking and listening (§4.9), and that is a genuine change in how
+this milestone gets judged: `make check` passing tells you nothing about whether M4 worked.
+
+**The ordering inside the sprint matters, and it is not the order of the sections below.**
+`SYSTEMS.md` §3.10 leaves the siege balance ungraded — three M3 correctness fixes dissolved
+the three-way shape M2's `PLAYTESTED` rows were tuned to produce — and says the re-measurement
+is the first thing at M4. It cannot be. Sleep takes something on the order of two-fifths of
+the tower's crew-hours out of the economy (§4.4), and meals take a fifth of a mill's bamboo
+draw (§4.3); re-measuring before those land means measuring an economy that is about to move
+again. So: **build the needs, then re-measure once.** The balance pass is the end of M4, not
+the beginning of it, and the harnesses it runs on need the changes in §4.8 before their
+numbers mean anything.
+
+### 4.2 Crew as named individuals
+
+Crew are named individuals with jobs, not stat blocks (`DESIGN.md` §2 structural call 4).
+Three things carry that: a name, a face, and something to say. None of the three is allowed
+anywhere near the simulation.
+
+**Names are content, chosen by index.** `assets/data/crew/names.ron` holds an ordered list,
+longer than `crew_cap`, and `GameState::add_crew` takes the next one by index exactly as it
+does today — the rule §3.5 established for the enclave's recruit, kept because a name drawn
+from a stream would perturb the stream (`DECISIONS.md` §2). `Crew.name` stays a `String` in
+state: it is already there, it is already in the hash, and interning it would buy nothing
+mechanical. What that does mean is that the *order* of the name list is load-bearing for
+replays, the same way the sort order of every other content list is (`DECISIONS.md` §6);
+reordering the file is a simulation change, and editing the text of an existing entry changes
+the content hash. Both are ordinary, and both are worth knowing before someone alphabetises
+the file.
+
+**Portraits and barks live entirely in the frontend.** This is stronger than the firewall rule
+requires and the strongest available reading of it: rather than draw a bark line from
+`cosmetic`, M4 puts no part of a bark in `GameState` at all. Rust already publishes everything
+the frontend needs to know that something bark-worthy happened — the event list from `frame()`
+and the per-frame `ViewSnapshot` (§4.6) — so the JS layer decides *whether*, *which line*, and
+*when*, and the simulation cannot be perturbed by a bark because there is nothing to perturb.
+`DECISIONS.md` §2 names a bark drawing from `sim` as the exact catastrophe to avoid; a bark
+that does not draw at all cannot be that catastrophe on any future day either.
+
+Where a bark needs a *stable* per-person choice — this crew member's face, and which of
+several equivalent lines is hers — it derives from `CrewView.fidget`, the per-crew `u16`
+already drawn from `cosmetic` at spawn and already in the snapshot for the renderer's idle
+phase. One more consumer of an existing cosmetic draw costs nothing, adds no state, and is
+stable for the life of a crew member and reproducible from a seed. `portrait = fidget % faces`
+is the whole mechanism.
+
+**What each bark is triggered by, and from which of the two inputs.** Barks are punctuation on
+top of state, so they follow the same split as sound (§4.6):
+
+| Bark occasion | Read from | Note |
+|---|---|---|
+| picked something up, set something down | `Pickup` / `Deliver` event | the most common, so the most heavily rate-limited |
+| stuck in a queue | `CrewView.stressed` going true | the diegetic red tint already says it; the line is colour, not information |
+| sat down to a meal | `MealServed` event | the warmest moment in the tower, and worth a line |
+| going off shift | `ShiftChange` event | the handover is the tower's one daily ritual |
+| woken early | `CrewView.asleep` going false without a `ShiftChange` | the surge lever (§4.4) should sound like an imposition |
+| a wave on the horizon | `WaveArrives` event | defenders, not soldiers — see below |
+| something gave up and left | `EnemyLeaves` event | never triumphant; §2.2's distinction is a tone rule as much as a mechanical one |
+| a breach, a wreck, a severed column | `Breach` / `Wrecked` / `Severed` | concern for the tower, not for the enemy |
+
+Tone follows `DECISIONS.md` §8 without exception. The crew are gardeners and porters who
+defend a home they live in; they are not troops, they do not report kills, they do not banter
+about ordnance, and nothing they say frames a creature as a target. A creature that lost its
+grip and walked away has not been *beaten* — §2.2 already refuses to count it as repelled, and
+a bark that celebrates it would undo that refusal in the one register the player actually
+attends to. A line that reads as militaristic is a tone bug even though it is mechanically
+inert, and the check is `AGENTS.md` §VII's: read it aloud and ask whether it belongs in
+Nausicaä or in a shooter.
+
+Barks are fire-and-forget in the same sense sound is: emitted by a situation, drawn on screen
+or dropped, and never read back into anything. There is no bark log, no morale that barks feed,
+and no relationship state — `v2-plan.md` §3's fourth structural call rules the last one out
+explicitly.
+
+### 4.3 Meals, and the kitchen chain
+
+A **canteen** takes bamboo and makes meals. Meals are an ordinary item on ordinary shelves,
+hauled by the same crew through the same shafts, subject to the same buffer stalls. There is no
+food logistics layer; there is one more production room whose output happens to be eaten by
+people instead of by a battery.
+
+```
+room.canteen — Production, 2 slots, 5 poles
+  recipe: 2 bamboo -> 3 meals, craft_ticks 300
+```
+
+**The canteen is deliberately not powered.** Every other production room could take a
+`power_draw` and the thornwright does, but a kitchen that goes dark in a brown-out and stops
+feeding people turns one bad night into a spiral inside a spiral — and the "powered production
+is a charge sink" lesson is already taught by a room the player chose to build for a reason
+other than survival. The canteen stays free to run.
+
+**`Crew.hunger` counts ticks since the last meal.** Not a fraction, not an `Fx`, not a
+per-mille with an accumulator: a `u32` tick count, which is how this codebase already expresses
+every duration (`DECISIONS.md` §1) and which makes the accrual exactly `hunger += 1` with no
+rounding anywhere. It rises every tick, awake or asleep. A meal resets it to zero — a meal is a
+meal, and a crew member who ate late does not carry the deficit forward.
+
+Two thresholds, and the gap between them is the design:
+
+| Threshold | Ticks | What happens |
+|---|---:|---|
+| `hungry_ticks` | 4,800 | they go and eat: an errand outranking a new haul, but never a load already in hand |
+| `starving_ticks` | 7,200 | they work *slower* — the multiplier in §4.4 — and keep working |
+
+**A fed tower never sees the penalty.** That is the point of two thresholds rather than one. If
+going-to-eat and slowing-down were the same number, crew would trudge to the canteen every
+time, and a working kitchen would read as a permanent tax; with a third of a day between them,
+the slow-down appears only when the kitchen has actually failed — no bamboo, no canteen, or a
+canteen nobody can reach. **Hunger is a supply problem.** It is invisible while the chain
+works and it is the chain's failure that you feel, which is the same shape as every other
+signal in this game.
+
+At 14,400 ticks a day, `hungry_ticks` of 4,800 is three meals a day a person. At 2 bamboo a
+meal that is **6 bamboo a day a crew member** — four crew is 24 a day, about a fifth of what a
+fed mill draws (one bamboo per 120 ticks is 120 a day) and a fifth of what one cutter arm
+brings in on region 1's palette. That ratio is the whole judgement: enough that a route rich
+in biomass visibly feeds people better, not so much that meals displace poles as what bamboo
+is *for*.
+
+**Crew eat where the meals are, and the arrival machinery already exists.** Eating is not a
+haul and it is not a new pathfinder. It is shaped exactly like a repair: go to a place, stand
+there, spend ticks (§2.5, `haul::repair_leg`). A hungry crew member picks the nearest room
+holding at least one meal — the canteen's own outbox, or any shelf a meal has been hauled to —
+walks and climbs to it on the ordinary legs, and enters `CrewState::Eating`, which consumes one
+meal on completion. If the meal is gone when they arrive, the errand clears and they look
+again: the same failure path `CrewState::Loading` already has when somebody else got there
+first, and for the same reason no reservation bookkeeping is added for it.
+
+**Eating at the source is load-bearing, not a convenience.** `BALANCE.md`'s `storeroom` row
+documents the sharpest emergent failure in the game — a shelf takes whichever item lands on it
+first, so bamboo can claim every shelf and deadlock the chain — and explicitly hands the
+question of what to do about it to M4. Meals make it worse: they are a fifth claimant on four
+shelves per storeroom, alongside bamboo, poles, darts and scrap, and a shelf-starved tower
+would now starve its people as well as its mill. Because crew can eat straight out of the
+canteen's outbox, the meal chain survives a fully-claimed storeroom: distribution to shelves is
+an *optimisation*, not a requirement. That optimisation is real and worth discovering — a
+storeroom high in the tower becomes a pantry, and where the pantry is decides how far people
+walk to eat — but nobody starves for want of a free shelf. The deadlock itself is still
+unanswered; see §4.10.
+
+**This is load-bearing well beyond M4, and it is why the canteen's rate is the number to watch.**
+`SYSTEMS.md` §3.10 records that the biomass half of "your route is your power mix" is real in
+the simulation and unfeelable in play: the four terrain yields are genuinely distinct and a
+test guards it, but a starting tower has nothing to *do* with bamboo, so the shelves fill, the
+mill's outbox backs up, the arm stalls, and a shade-seeking route and a sun-seeking one harvest
+identically — measured at exactly 100 bamboo each, over a whole region. **Meals are the
+consumer that fixes it.** They are a demand that scales with the crew rather than with shelf
+space, they cannot be satisfied by stockpiling, and they run all day.
+
+So whoever authors the canteen's rate owes one more thing: **re-run `examples/journey.rs`'s
+shade-versus-sun comparison afterwards** — the `Policy::Forager` against `Policy::Sunseeker`
+table in §3.10 — with a canteen and bunks in the shopping list, and check that harvest is no
+longer identical across the two routes. If it still is, the canteen is too cheap to feed
+people with, and the lever is the meal's bamboo cost, not the terrain yields. That measurement
+is the single clearest test of whether M4 closed M3's biggest open finding.
+
+### 4.4 Sleep, and the shift rota
+
+**`Crew.shift` is `Day` or `Night`, and the player sets it.** Crew are awake when the current
+daypart belongs to their shift and asleep when it does not. Sleeping crew do no work at all:
+they take no tasks, advance no legs, mend nothing, and accumulate no `wait_ticks` — a sleeper
+tinting red would make the only bottleneck instrument in the game lie (`DECISIONS.md` §8).
+
+**Which dayparts belong to which shift is content.** `DaypartDef` gains a `shift` field, so the
+handover is a designer's decision rather than a constant buried in a system, and the seven
+dayparts already in the pack divide as:
+
+| Shift | Dayparts | Per-mille | Ticks |
+|---|---|---:|---:|
+| Day | morning, midday, afternoon | 180–760 | 8,352 |
+| Night | dusk, night, predawn, dawn | 760–180 (wrapping) | 6,048 |
+
+Validation requires both bands to be non-empty and each to be one contiguous run modulo the
+day, in the same spirit as the contiguous-`order` check on regions (§3.2): a rota with two
+separate night stretches is not a rota, it is a bug in the content pack, and a broken pack is a
+load error rather than a runtime condition (`AGENTS.md` §IV).
+
+The bands are deliberately unequal, and the night band is deliberately the one that covers the
+lamplit hours. Against the shipped sun curve, exposure drops below `night_light_threshold` at
+about 835‰ and climbs back through it at about 150‰ — entirely inside the night shift. **The
+night shift is the dark shift, exactly.** It is also the shorter one, and that asymmetry is its
+compensation: a night worker is awake for 6,048 ticks against a day worker's 8,352, so staffing
+the night costs more hands than it returns.
+
+**`Crew.rested` is ticks of work left in them.** A `u32`, like hunger, counting down one a tick
+while awake and up while asleep — `rest_gain_per_tick` in a bunk, and less on the floor.
+Below `tired_ticks` they work slower, on the same multiplier hunger uses. The arithmetic is
+arranged so that a bunked crew member on either shift wakes full:
+
+| | ticks awake | ticks asleep | rest banked |
+|---|---:|---:|---:|
+| Day shift | 8,352 | 6,048 | 12,096 (capped at `rested_max_ticks` 8,640) |
+| Night shift | 6,048 | 8,352 | capped |
+
+**A day-shift crew member with a bunk flags at the end of every shift, and that is intended.**
+`rested_max_ticks` of 8,640 against 8,352 ticks awake leaves almost no slack, so they cross
+`tired_ticks` about eighty percent of the way through the day and work the last stretch of it
+slowly. The tower visibly tires in the late afternoon and picks up at dawn. That is not a
+balance oversight to tune out — it is the day having a shape, which is most of what "somewhere
+people live" means on screen, and it costs nothing but the shape of two constants.
+
+**Tiredness is a scheduling problem, the way hunger is a supply problem.** There is no mid-shift
+nap: a crew member cannot fix being tired the way a hungry one can walk to the canteen, because
+the only thing that refills `rested` is being off shift. So the two needs fail differently and
+are read differently. Hunger says *your chain broke*; tiredness says *your rota is wrong, or
+you have no beds*.
+
+**No bunk means sleeping where they stand, and worse.** A crew member with nowhere to lie down
+enters `CrewState::Sleeping` on the deck where they stopped — visible, and drawn as such — and
+gains rest at `no_bunk_rest_gain` of 1 a tick instead of 2. The arithmetic is unforgiving and
+exact: a day-shift sleeper on the floor banks 6,048 against the 8,352 they spend, a net loss of
+2,304 a day, so they slide into permanent tiredness inside four days and never climb out.
+Bunkless is survivable and visibly degrading, which is the right shape for a cost the player
+can fix at any time for three poles.
+
+```
+room.bunk — Quarters, 2 slots, 3 poles, sleepers: 2
+```
+
+**A bunk is a new room category, because the pack's validation demands one.**
+`content::validate` rejects any room whose category has no matching behaviour block
+(`DECISIONS.md` §9.1), and a bunk has no recipe, no storage, no intake and no defence. So
+`RoomCategory::Quarters` requires `quarters: Option<QuartersDef { sleepers: u8 }>`. Two
+sleepers to a two-slot bunk is one slot a person — the tightest legible packing — which makes
+quarters a floor tax that grows with the crew that pays for it. That cost is the point and
+should not be quietly relieved; if it reads as too dear in play, the lever is `sleepers`, not
+free beds.
+
+**And here the rota pays for itself in floor space, which nobody designed and which falls
+straight out of the model: beds are shared between shifts.** A bed is only occupied while its
+sleeper is off shift, so a tower with everyone on the day shift needs one bed a head — three
+crew, two bunks — while a tower at cap split four and four needs only four beds, also two
+bunks, because the night watch is up while the day crew are in them. Eight crew unrota'd would
+want four bunks, eight slots, more than a floor has left once the stairs have taken theirs.
+Staffing the night halves the dormitory, and a player who works that out has found a real
+reason to do it that has nothing to do with the prowler.
+
+**Bunk occupancy is derived, never stored.** How many sleepers a bunk holds is counted by
+scanning the crew whose errand names it — the same trick `haul::shaft_queues` already uses to
+give one crew member a picture of the whole queue while the borrow checker only lets them see
+themselves. `Room` gains no field, and there is no occupancy counter to get out of step with
+reality. Beds are claimed in crew order, which is creation order, which is `CrewId` order, so
+who gets the last bed is a pure function of state.
+
+**The rota is a real decision, and both of its costs are already in the game.**
+
+*Night cover.* The night prowler is `night_only` (`assets/data/enemies/`), so the hours a tower
+is least able to answer a wave are precisely the hours something is out. A tower with everyone
+on the day shift has nobody to run darts up to a battery or mend a breach between dusk and
+dawn; a tower that staffs the night pays for that cover in daylight throughput, on the shift
+where the chain actually flows. Neither answer is free and neither is wrong.
+
+*Lamps, which are charge.* This connection needed a decision, because as shipped it is not
+true: `power::lighting` buys light for the whole tower whenever exposure is below
+`night_light_threshold`, regardless of whether anybody is awake in it. So a night shift adds no
+charge cost, and "night operations need light" was a sentence rather than a mechanic. **The
+call: lighting stays unconditional, and working in the dark joins hunger and tiredness on the
+same slow-down multiplier.** A crew member working while `Power.lit` is false — a brown-out,
+not merely a dark night — works at `dark_work_pct`. That makes a night shift's dependence on
+charge sharp and immediate (a brown-out does not just dim the tower, it wastes the shift you
+staffed) without adding a single new charge sink, and it strengthens M1's and M2's signature
+emergency instead of relaxing it.
+
+The alternative — gating lighting on somebody being awake — was considered and rejected. It
+reads well and it is three lines, but the default rota is all-Day, so it would make every
+night's lamps free for most towers and quietly relax the brown-out pressure `BALANCE.md`'s
+power rows were measured against. Making the dark expensive by slowing the people in it costs
+no constants and revalues nothing.
+
+**The rota's one emergency verb is a surge, and it costs what it should.** Because awake means
+"the current daypart belongs to my shift", setting a sleeping day-worker to `Night` in the
+middle of the night wakes them immediately — unrested, on the slow multiplier — and come
+morning they are off shift and will sleep through the day you needed them for. That is a real
+all-hands lever with a real price, built out of nothing but the definition above. It is also
+why **crew are never woken automatically.** An attack does not rouse a sleeper: if the
+simulation woke people when things got bad, the rota would be decorative, and the interesting
+decision — do I burn tomorrow morning to answer tonight — would be made by the game instead of
+the player.
+
+**Two invariants the state machine has to hold.** A crew member never falls asleep holding
+something: going off shift stops them taking *new* work, and they head for a bunk once their
+hands are empty, which is the same reasoning `assign_idle` already applies to a carrier who
+would otherwise be pulled onto a repair. And an errand whose room is gone — a bunk demolished
+under a sleeper, a canteen removed mid-meal — clears to `Idle` rather than spinning, exactly as
+`CrewState::Boarding` already handles a shaft demolished out from under a queue.
+
+**Priority order for an idle crew member**, extending the ladder in `haul::assign_idle`:
+
+1. a task already under way — pick the trip back up rather than re-deciding it
+2. a load in hand with somewhere to put it — finish the delivery; nothing carried is ever
+   dropped
+3. off shift — go to a bunk, or lie down where they are
+4. past `hungry_ticks` — go and eat
+5. damage worth a shift — mend it (§2.5)
+6. a haul
+
+Eating above mending is deliberate: a crew member past `starving_ticks` mends slowly too, and a
+meal is 300 ticks against a repair shift's 80 plus the walk. Feeding them first is the cheaper
+order.
+
+**The multiplier, and the one trap in implementing it.** Three causes — starving, tired, working
+unlit — compose multiplicatively into a `work_pct`, and that percentage scales **the duration of
+an action, never the fixed-point step that advances it.**
+
+```
+work_pct      = 100, times each active penalty / 100, floored at 1
+effective(t)  = t * 100 / work_pct        // integer, computed once per leg
+```
+
+This is not a stylistic preference. `haul::advance` currently steps position by
+`Fx::ratio(1, walk_ticks_per_slot)`, and `Fx::ratio(1, 12)` is already `Fx(21)` — 1.6% off the
+authored rate. Scaling *that* by a percentage is precisely the arithmetic that broke intake
+before M3: `Fx::ratio(60, 1200)` truncates to `Fx(12)`, a 21-tick slot rather than the 20 the
+constants describe, and the errors compound per penalty. `intake::terrain_effort`'s doc comment
+is the authoritative account of what that class of mistake cost the game the first time — four
+authored terrain yields behaving as two, and the flagship contrast of `DESIGN.md` pillar 1
+absent from the simulation entirely. Scaling the tick count instead keeps a single integer
+division, leaves the Fx precision exactly where it already is, and makes the penalties
+inspectable as tick counts. `Loading`, `Unloading`, `Eating` and `Repairing` are trivially
+exact, since they are already `ticks_left` counters.
+
+**`work_pct` never exceeds 100.** A fed, rested crew member in a lit tower is the baseline, not
+a buff — being cared for is normal and neglect is what costs you. A food that made people
+*faster* would turn the crew into a throughput stat to optimise, which is the one thing
+structural call 4 exists to prevent.
+
+**Opening values.** Every figure in §4.3 and §4.4, collected so whoever authors the content has
+one list rather than nine paragraphs to mine. **Each is a design target** — a first value with
+an argument behind it, not a measurement — and none is a `BALANCE.md` row until it has been
+authored, at which point it gets a graded row in the same commit (`DECISIONS.md` §7). The
+arithmetic assumes `ticks_per_day` 14,400 and 30 Hz.
+
+| Thing | Target | The arithmetic |
+|---|---|---|
+| `hungry_ticks` | 4,800 | A third of a day, so three meals a day a person. Short enough that the canteen is somewhere people actually go, long enough that eating is not most of what a crew member does. |
+| `starving_ticks` | 7,200 | Half a day — a full meal cycle *past* being hungry. A working kitchen never reaches it, so the slow-down is a failure signal rather than a routine tax. |
+| canteen recipe | 2 bamboo → 3 meals, 300 ticks | 6 bamboo a day a crew member; 24 for four crew, a fifth of a fed mill's 120. A ten-second craft is visible as cooking. Flat out the room makes eight times what a full crew eats, so it is buffer-limited and mostly idle — correct for a kitchen, and it means the canteen's *rate* is not what sets bamboo demand; the crew are. |
+| canteen | Production, 2 slots, 5 poles, no `power_draw` | A thornwright's price: dearer than a mill (4), well short of a salvage rig (8). An early, obvious build rather than a commitment. Unpowered on purpose; see above. |
+| bunk | Quarters, 2 slots, 3 poles, `sleepers` 2 | Joint-cheapest in the pack with a storeroom, because the alternative to a bed is a crew member who degrades a little more every day, and a bed should never be a gate. The real price of quarters is the slots, not the poles. |
+| `rested_max_ticks` | 8,640 | 0.6 of a day, a shade over the 8,352-tick day shift, so a day worker ends their shift nearly empty and a night worker never does. |
+| `tired_ticks` | 1,440 | A tenth of a day of work left. A bunked day worker crosses it about four-fifths through their shift, so the tower flags in the late afternoon. |
+| `rest_gain_per_tick` | 2 | Two ticks of rest a tick asleep, so 6,048 ticks off shift refills 12,096 — comfortably over the cap, which is what makes a bunk feel like a solved problem rather than a managed one. |
+| `no_bunk_rest_gain` | 1 | Bunkless is a net loss of 2,304 a day and permanent tiredness inside four. Visibly degrading, never fatal, and fixable for three poles at any moment. |
+| `hungry_work_pct` | 60 | Past `starving_ticks`, everything takes about two-thirds longer. Plainly slower on screen without reading as broken. |
+| `tired_work_pct` | 60 | Deliberately the same number as hunger's: one visible failure mode with two causes, so a player learns the *look* of a crew member working badly once and then asks why, rather than learning two separate symptoms. |
+| `dark_work_pct` | 75 | The mildest of the three — you can work by feel, just not well. Composed with the other two the worst case is 27%: crawling, never stopped. A need that halts the tower is a death spiral rather than a pressure. |
+| `crew_cap` | 6 → **8** | `BALANCE.md`'s current row defers the plan's eventual eight to "whatever M4's shift rota earns". The rota earns it: eight crew split across two shifts is about five awake at once, which is where six unrota'd crew already sat. Raising the cap without the rota would have been a straight throughput gift; with it, it buys coverage. Still aspirational either way — M3's enclave offers exactly one recruit (§3.5), so a run cannot approach either number until M5's enclave economy. |
+| `item.meals` | glyph 🍲, order 25 | Between poles (20) and darts (30) in the display order, because meals sit beside poles as the other thing bamboo becomes. Nothing mechanical reads `order`; the indices come from the sorted string IDs (`DECISIONS.md` §6). |
+
+New command:
+
+| Command | Effect | Rejects on |
+|---|---|---|
+| `SetShift { crew, shift }` | put one crew member on the day or the night shift | no such crew |
+
+One crew member per command rather than a bulk setter: commands batch cheaply
+(`DECISIONS.md` §3), a rejection then names the crew member it is about, and the replay reads
+as a list of decisions about people.
+
+### 4.5 The art pass
+
+Flat-vector solarpunk-tropical: overgrowth on the tower, warm interiors, verdigris and worked
+brass against deep jungle green. `v2-plan.md` §0 planned "readable placeholder
+(rectangles-with-personality) through M3" with the real pass here.
+
+**Most of the foundation landed early, and this pass builds on it rather than starting from
+boxes.** `web/src/engine/palette.ts` is already the solarpunk-tropical palette, with a
+day/night blend (`atNight`), per-band terrain colours including the drowned city's own, and
+warm-metal salvage against cold stone. `scene.ts` already draws per-category room silhouettes
+with a body height and a crown — a sail, a cell rack, a vent stack, a cutter boom, a battery
+barrel — off the room widths §0.5 settled, so a floor of mixed rooms already reads as a skyline
+rather than a row of crates. Planters already sit on every deck's outboard edge and across the
+roof garden, damage already splits timber and spills lamplight through a breach, and shell
+plating already reads as bolted-on metal. **The remaining work is not "add art", it is "make one
+frame say home".** Concretely:
+
+1. **Crew have to become people.** This is the largest single item, and it is the one the
+   screenshot test turns on: a frame full of rounded lozenges is a diagram whoever looks at it
+   will read as a factory. Crew need a walk cycle driven off the fractional `slot` they already
+   carry, a laden posture distinct from an empty one, a sitting pose for `Eating`, and a lying
+   pose for `Sleeping`. Nothing about this needs new snapshot data — the states and the
+   fractional positions are already there.
+2. **Two new silhouettes, and a `Quarters` arm in the two functions that switch on category.**
+   `roomColor` and `roomProfile` both fall through to a generic box for an unknown category, so
+   a bunk would work and look like a crate. A bunk draws its `sleepers` as hammocks — a
+   solarpunk answer to a bed, and one that makes occupancy diegetic: you can see who is asleep
+   and whether a bed is spare, without a number. A canteen draws a hearth: warm interior light
+   and rising steam while it is crafting, cold and dim when starved. That is the single warmest
+   image available in the tower, and it doubles as the kitchen chain's own stall signal — a cold
+   hearth is *why* people are going hungry, in the same place you notice that they are.
+3. **Overgrowth beyond the planters.** Vines trailing between floors, moss at the shell lip,
+   growth thickening on the leeward side — all with per-floor phase derived from the existing
+   `hash01` helper so it is stable frame to frame rather than crawling.
+4. **Warm interiors, per room.** A working room shows a lit window; a stalled one does not. It
+   reinforces the signal the dimmed body already carries rather than adding a second, different
+   one, which is the §8-compliant way to add emphasis.
+5. **Verdigris as its own colour.** The palette's cool blue-green is currently `roomStorage`
+   doing double duty on shell plating. Naming `verdigris` and `brass` and using them on shaft
+   rails, plating and joinery is what makes the metal read as aged copper rather than as paint.
+6. **Light through the canopy.** Dappling on the tower's face keyed to the band underfoot, and
+   motes or fireflies after dark. Both are pure JS animation with no state behind them, which
+   is where cosmetic motion belongs.
+
+**What must not happen in this pass.** No numeric badge, no warning icon, no hunger bar over
+anybody's head. The diegetic signals for the two new needs are behaviour: a hungry crew member
+walks to the canteen, a tired one moves visibly slower, a sleeping one is lying in a hammock.
+Precision is a hover layer, per `DECISIONS.md` §8, and the moment a crew member acquires a
+floating status bar the screenshot test is unwinnable — because a frame full of floating bars
+is a spreadsheet with legs, which is the exact failure the sprint question names.
+
+The one new piece of chrome M4 does add is a **crew roster**: portrait, name, what they are
+doing, and a day/night toggle that issues `SetShift`. That is a panel, and it is defensible
+under §8 because a rota is a schedule the player writes rather than a readout of state — the
+same category as the elevator's per-daypart programs. What is not defensible is the roster
+becoming the primary place hunger and tiredness are read. If the tower can only be understood
+through the roster, the pass failed.
+
+### 4.6 Audio
+
+**No audio exists.** `SoundEvent` has nineteen arms, emitted throughout the tick and carried
+across the bridge by `frame()`, and `Game.ts` throws the list away with a comment pointing at
+this milestone. So the plumbing is already done and the whole subsystem is JS-side work.
+
+**The boundary is fixed: Rust decides *that* something happened, JS decides whether and how it
+sounds.** Events are fire-and-forget — emitted during a tick, consumed or dropped by the
+`AudioManager`, never read back into the simulation. Nothing about the mix, the volume, the
+voice count, or whether audio is even enabled may reach `GameState`. If a sound needs to know
+something, it reads the snapshot; it does not ask the simulation to remember anything for it.
+
+**The audio layer reads two inputs, and telling them apart is the whole design.** The
+eyes-closed test asks whether you can hear how the tower is *doing*, which is continuous state
+— and `SoundEvent` is punctuation. A starved mill going quiet is not an event at all; it is the
+*absence* of a loop, and the fact driving it is `RoomView.stalled` in the per-frame view. So:
+
+* **`frame()`'s event list** drives one-shots: things that happened.
+* **`view()`'s `ViewSnapshot`** drives loops: things that are ongoing.
+
+Both already cross the bridge every frame. Getting this split wrong is precisely how a project
+ends up with a warning beep where a silence belonged.
+
+**Loops, from the snapshot.** Each is a bed whose gain is a function of state, and each goes
+silent when its state stops — never replaced by a different sound saying it stopped:
+
+| Loop | Read from | Silent when |
+|---|---|---|
+| a room working | `RoomView.stalled` false and `progress` advancing | starved, backed up, unpowered, wrecked — all of which sound identical, because from outside they are |
+| the legs | `journey.halt`, not `power.walking` | stopped, halted at a fork, arrived, or browned out — see below |
+| a car running | `ShaftView` car state | idle |
+| footsteps on the stairs | crew in `climb` | nobody on them |
+| the sails | `ClockView.exposure_pct` | shaded, or after dark |
+| the tower's electrical hum | `PowerView.fill_permille` | thins as the bank drains, and drops out entirely on `brownout` |
+| the day bed | `ClockView.permille` and `daypart` | crossfades with the night bed |
+| the night bed | as above | — |
+| the jungle | the band underfoot, `WorldView` | never; it is the floor under everything |
+
+**The legs are the one loop with a trap in it, and the snapshot already contains the answer.**
+`PowerView.walking` is the player's *intent*; `GameState.strode` is whether the legs actually
+ran, and it is deliberately not in the snapshot as a raw flag. What is there is
+`journey.halt` — `Walking`, `Stopped`, `Fork`, `Arrived`, or `Brownout` — precisely because §3.3
+required the halted states to be distinguishable and the renderer needed telling which one it
+was drawing. Audio inherits that for free, and should use all five: a tower that stopped and a
+tower that cannot afford to move must not sound the same, and the brown-out case has a
+treatment to match already — `drawLegs` gives it a stuttering lift that never becomes a step,
+and the sound of that is a motor asking and not being answered.
+
+**Two soundscapes, day and night**, as `v2-plan.md` §9 asks: a day of canopy-hum, insects, and
+the tower's own working noise; a night of a different insect register, wind, distant movement,
+and the tower's lamps and machines standing out against it because there is less around them.
+The crossfade follows the sun curve rather than the daypart index, for the same reason the sun
+curve is a curve — a step change at a boundary reads as a bug (§1.1).
+
+**One-shots, from the event list.** Every existing arm of `SoundEvent` is punctuation and
+already correctly shaped; M4 adds three:
+
+| Event | New | Why |
+|---|---|---|
+| `MealServed` | yes | The warmest moment in the tower deserves a cue, and it is the audible confirmation that the kitchen chain is alive. |
+| `ShiftChange` | yes | The handover is the tower's one daily ritual, and it is the only reliable way to *hear* what time it is. |
+| `EnemyLeaves` | yes | Closes M2's deferral (§2.9): `Leaving` and `Dying` are distinct in state and in the snapshot but have sounded identical, so walking a wave off and shooting it down were indistinguishable. §2.2 refuses to count the first as repelled; the audio has to refuse too. |
+
+**The diegetic rule, stated once because everything else follows from it: a starved production
+loop goes silent, it does not gain a warning sound.** No alarm on a stalled room, no beep on a
+queue, no sting on a full buffer. `wait_ticks` and the red tint are the bottleneck instrument
+(`DECISIONS.md` §8) and audio's contribution to them is the mill you can no longer hear. This
+is the rule that makes the eyes-closed test winnable at all: a tower whose problems announce
+themselves with tones is one where you hear the *alarms*, not the tower.
+
+**Three practical constraints that fall out of the existing frame loop.**
+
+* **Coalesce per frame.** `GameEngine::frame` runs up to `MAX_TICKS_PER_FRAME` ticks in one
+  call, and at 4× a frame routinely contains several ticks' worth of events. Three mills
+  finishing on one tick must not be three times as loud, and a busy frame must not machine-gun.
+  The `AudioManager` deduplicates by kind within a frame and rate-limits each kind, which is a
+  JS concern entirely and needs no change in Rust.
+* **`SoundEvent` stays payload-free, and M4 does not do positional audio.** Adding a floor or a
+  room id to the events that could use one would change the bridge's public contract from a
+  string union to tagged objects, and the eyes-closed test is about the tower's *state*, not
+  about where in it something happened. Deliberate cut, recorded here rather than discovered
+  later by someone wondering why `Craft` does not say which mill.
+* **Audio cannot start without a gesture.** Browser autoplay policy means the `AudioContext` is
+  suspended until the player clicks, so the opening frames are silent and the Playwright smoke
+  test never hears anything. Neither is a bug; both need to be true on purpose rather than
+  discovered as a mystery.
+
+### 4.7 Tick order, current
+
+> **Supersedes §3.8.** M4 inserts one system, `needs`, between `defence` and `haul`, so haul
+> becomes 9 and everything after it shifts by one.
+
+1. **clock** — advance the day.
+2. **power income** — recompute capacity from the banks; collect from sails and burners.
+3. **transport** — cars move.
+4. **intake** — harvest ground covered last tick; extract from a ruin while berthed.
+5. **production** — recipes advance, consume, emit. Powered rooms pay here. The canteen cooks.
+6. **siege** — creatures approach and attack; provocation decays.
+7. **defence** — emplacements fire at what siege just moved.
+8. **needs** — hunger rises, rest drains or refills, and the shift band decides who is awake.
+9. **haul** — crew advance their legs, then idle crew claim work, eat, sleep, or mend.
+10. **repair** — crew already at damage put hit points back.
+11. **lighting** — lamps, after dark.
+12. **stride** — region crossings, the halts, the distance advance, and terrain streaming.
+
+**Why needs lands where it does.** It must run *before* haul, because haul both reads the work
+multiplier and executes every leg of going to eat and going to sleep — a crew member's speed
+this tick and their decision this tick should be about the same tick's hunger. It must run
+*after* production, so a meal cooked this tick is available to eat this tick rather than next.
+And it must not be inside haul: haul's job is moving people, and hanging counter accrual off the
+top of it would bury two needs inside the most intricate system in the crate.
+
+**Needs cannot make tick order matter more than it already does.** Tick order is load-bearing
+for exactly two things: determinism, and charge priority — consumers draw from a shared pool as
+they run, so who runs first is who gets served when the pool is thin (§1.6). **`needs` draws no
+charge, and neither does eating or sleeping.** The canteen is unpowered by decision (§4.3), so
+nothing in this milestone joins the priority order, and the insertion moves nothing except the
+golden fixture. That fixture goes stale anyway the moment `Crew` changes shape, which is why an
+insertion in the middle is acceptable here where it would not be in a milestone that changed
+nothing else about state.
+
+What must not happen is somebody moving `needs` after `haul` to avoid the insertion. It would
+work — a one-tick lag, deterministic, imperceptible, exactly the shape of `paces_last` (§3.8) —
+and it would put the decision to go and eat a tick behind the hunger that motivated it for no
+gain, since the fixture is being regenerated either way.
+
+### 4.8 What M4 changes in code that already exists
+
+Not a task list — a list of the places where existing code assumes something M4 stops being
+true, collected so they are found before they are debugged. §3.9's record is worth reading
+first: two of that milestone's surprises were found by something running rather than by anyone
+reading, and both were in this category.
+
+- **`Crew` gains three fields** (`hunger`, `rested`, `shift`) and widens a fourth (below), so
+  the state hash changes, so **every replay and the golden fixture go stale.** Regenerate, and
+  extend the recording to cover `SetShift`, a meal, and a sleep.
+- **`Crew.repair: Option<RepairJob>` generalises to `Crew.errand: Option<Errand>`** with
+  `Repair`, `Meal` and `Bunk` arms, each carrying the floor and slot to stand at. Three
+  parallel `Option`s alongside `task` is the alternative and it duplicates `repair_leg`'s
+  routing three times; the enum keeps one router. `haul::resume`, `assign_idle`,
+  `repair::pick_repair` and every test naming `crew.repair` move with it.
+- **`CrewState` gains `Eating { ticks_left }` and `Sleeping`**, and the matches on it are
+  exhaustive in more places than the enum's definition suggests: `haul::advance`,
+  `snapshot.rs`'s `CrewStateTag`, `web/src/bridge/types.ts`'s `CrewStateTag` union, and
+  `scene.ts`'s `drawCrew`, which switches on the tag string. A tag the renderer does not know
+  draws as a standing figure, which is a graceful failure and also an invisible one.
+- **`walk_ticks_per_slot` and `climb_ticks_per_floor` stop being fixed**, and the multiplier
+  must scale the *duration* rather than the `Fx` step — the trap spelled out in §4.4. Applying
+  a percentage to `Fx::ratio(1, ticks)` reproduces the truncation that made four terrain yields
+  behave as two before M3 (`intake::terrain_effort`).
+- **Sleeping crew must be excluded from everything that assigns work**, in `haul::assign_idle`
+  and in `repair::pick_repair`. They hold no task, so `committed_pickup` and
+  `committed_delivery` are already safe, but a sleeper who gets handed a repair is a crew member
+  who works in their sleep.
+- **`wait_ticks` must stay zero in the new arms.** `Sleeping` and `Eating` are not blocked
+  states, and `CrewView.stressed` is driven purely by `wait_ticks` — a red-tinted sleeper would
+  break the one instrument §8 rests on.
+- **`state.rs`'s `add_crew` placeholder name list** becomes real content, still selected by
+  index, never by a roll (§3.5). The comment there already says "placeholders until M4".
+- **`power::lighting`** is the code the §4.4 decision is about: it is left alone, and the
+  reasoning for leaving it alone belongs in a comment next to it, because "make lamps
+  occupancy-gated" is the obvious next idea somebody will have.
+- **`RoomCategory` gains `Quarters`**, so `content::validate`'s category-wiring check, the
+  catalog's `RoomInfo`, the build menu, `roomColor` and `roomProfile` all need an arm. The last
+  two fall through to a generic box, so the failure is a bunk that looks like a crate rather
+  than a crash.
+- **`SoundEvent` gains three arms**, mirrored in `web/src/bridge/types.ts`'s union, and
+  `Game.ts`'s "sounds are produced and dropped until the audio pass in M4" comment becomes
+  false — it is the one line in the frontend that names this milestone directly.
+- **`CrewView` gains `hunger`, `rested`, `shift` and `asleep`** — a change to the bridge's
+  public contract, and therefore a frontend change made deliberately rather than discovered
+  (`AGENTS.md` §IV). `tests/snapshot.rs` guards the shape.
+- **All four harnesses build towers with no canteen and no bunks.**
+  `examples/siege_run.rs`, `examples/throughput.rs`, `examples/journey.rs` and
+  `examples/record_golden.rs` each work a shopping list and then measure; every one of them will
+  now measure a starving, exhausted tower and report it as an economy. This is the same shape as
+  M3's fork omission — a harness that silently measures the wrong tower with total confidence —
+  and it needs fixing in the same commit as the needs, not after the numbers come out wrong.
+  `throughput.rs` is the most sensitive: it measures shaft contention over 600 s with crew whose
+  walking speed M4 has just made variable.
+- **`examples/journey.rs`'s shade-versus-sun comparison is the milestone's own instrument**, per
+  §4.3, and its policies need the canteen in their shopping lists before the biomass axis can be
+  said to have come alive.
+- **`tests/balance_doc.rs` is bidirectional** — every new `balance.ron` field needs a graded
+  `BALANCE.md` row in the same commit, and the content-constants group row needs the canteen and
+  the bunk added.
+- **`BALANCE.md`'s `crew_cap` row and its `storeroom` row both defer explicitly to M4**: the
+  first for whether the rota earns the plan's eight, the second for what to do about shelf
+  typing. Neither is optional to answer; the second is answered in §4.3 and §4.10.
+- **Per-daypart elevator programs still have no UI.** They exist in the data model, the command
+  layer and the replay format; §1.7 deferred the UI and said it "should land alongside M4's
+  shift rota if not before", and §2.9 carried that forward unchanged. The rota's roster is the
+  natural home for it — both are schedules written against the daypart clock — so M4 inherits
+  it.
+- **`web/e2e/capture.spec.ts`** gains the stills §4.9 needs. It is also the only tool the
+  project has for answering a visual question, so anything in §4.5 that cannot be seen in a
+  capture is not finished.
+
+### 4.9 Exit criteria
+
+Both of M4's criteria are answered by looking and listening. Neither can be asserted, and a
+passing test suite is evidence about the code rather than about the game — which is why each
+one below says what would actually demonstrate it.
+
+- [ ] **The eyes-closed test: can you hear how the tower is doing?** Demonstrated by a
+      listener with the screen off, given three unlabelled sixty-second recordings from a real
+      run, answering four questions about each: is it day or night; is the chain running or
+      stalled; is something attacking; is the tower walking or stopped. Four binaries, twelve
+      answers, and the criterion is getting them from sound alone. A listener who can tell day
+      from night but cannot tell a working mill from a starved one has found that the loops are
+      decorating the mix rather than reporting it.
+
+      **There is no harness for this, and the honest version of one is buildable.** Playwright
+      cannot assert audio. What it would have to be: replay the golden fixture headlessly,
+      capture each frame's `SoundEvent[]` plus a once-a-second `ViewSnapshot` digest into a
+      log, then drive the same `AudioManager` from that log under an `OfflineAudioContext` and
+      render a WAV. That makes the soundscape deterministic, diffable, and reviewable without a
+      browser — the audio counterpart of `capture.spec.ts` — and it would catch the regression
+      nobody notices, which is a loop that stopped being wired to the state it claims to
+      report. Until it exists, the criterion is answered by a person listening, and that should
+      be said rather than implied.
+
+- [ ] **The screenshot test: does one frame say "solarpunk home, not war machine"?**
+      Demonstrated by two stills from `web/e2e/capture.spec.ts` shown to somebody who has never
+      seen the game, asked only "what is this place?". `home-evening.png` — dusk, lamps on,
+      the canteen's hearth lit and steaming, two crew sitting to a meal, one asleep in a
+      hammock, planters full, the jungle going blue behind it — has to come back as somebody's
+      home, greenhouse, or ark. If it comes back as a factory, a rig, or a gun platform, the
+      pass failed. `home-siege.png` — the same tower mid-wave — is the control: it should read
+      as a home under threat, not as a fortress that has finally found its purpose.
+
+      A frame with no people in it cannot pass, which is why crew-as-people (§4.5 item 1) is
+      the load-bearing item in the art pass rather than the overgrowth.
+
+- [ ] The kitchen chain has visibly given bamboo somewhere to go: `examples/journey.rs`'s
+      shade-versus-sun comparison no longer reports identical harvest on both routes (§4.3,
+      and §3.10's closing finding).
+
+- [ ] The siege balance is re-earned. §3.10 deferred this as "the biggest thing M3 leaves
+      behind"; §4.1 explains why it is the *last* job of M4 rather than the first. `BALANCE.md`'s
+      Siege section stops opening with a warning.
+
+- [ ] Golden replay regenerated; hash parity green natively and in wasm.
+
+- [ ] `make check` and the smoke suite green.
+
+**Deferred out of M4:**
+
+- **Role priorities.** `v2-plan.md` §6.7 describes "haul / operate / gun / repair, as role
+  priorities per crew member (RimWorld-lite, one screen)". §9's M4 brief does not list them,
+  and they are cut deliberately rather than overlooked. There are two kinds of work in the
+  game — hauling and mending — so a priority list would have one meaningful row in it, and a
+  per-crew priority screen is exactly the kind of menu `DECISIONS.md` §8 argues against when the
+  diegetic version already exists: `repair_hp_per_shift` and the carrying rule in
+  `assign_idle` already encode a triage policy that the player shapes by what they build. When
+  there are four kinds of work — M5's tier-two chains and second emplacement — the row count
+  might justify the screen.
+- **Positional audio.** Reasoned about and cut in §4.6: `SoundEvent` stays payload-free.
+- **An audio regression harness.** Specified in outline above and not built. The criterion is
+  answered by a person until it is.
+- **Occupancy-gated lighting.** Reasoned about and rejected in §4.4. Recorded because it is the
+  obvious idea and the reason not to do it is not obvious.
+- **Crew that wake themselves.** Rejected in §4.4: an automatic wake on attack would make the
+  rota decorative.
+- **Anything that makes a well-fed crew better than baseline.** §4.4: needs are a penalty for
+  neglect, never a buff to chase.
+
+### 4.10 Open questions
+
+Things that genuinely cannot be settled without building them.
+
+1. **Does the rota read as a decision, or as an administrative chore?** The argument in §4.4 is
+   that day throughput against night cover is a real trade with two named costs. The risk is
+   that a player finds one answer, sets it once, and never thinks about it again — at which
+   point the rota is a settings screen that cost a milestone. The tell to watch for is whether
+   anybody ever uses the surge lever, since that is the only part of the rota that is a
+   decision made *during* a run rather than at the start of one. If nobody does, the fix is
+   probably to make the night genuinely more dangerous, not to make the rota more complicated.
+2. **How much does sleep actually cost, and is the tower still playable at three crew?**
+   Removing two-fifths of crew-hours is the largest single economic change in M4 and it lands
+   on the economy `starting_crew` was measured against — where going from two crew to three
+   moved throughput ninety percent (§1.7). Three crew all on the day shift is not three crew
+   any more. The honest possibilities are that `starting_crew` has to rise, that the day band
+   has to widen, or that the whole thing is fine because the chain was never crew-limited at
+   night anyway. Only the harnesses in §4.8 can say which, and they cannot say it until they
+   have a canteen in them.
+3. **What is the answer to shelf typing?** `BALANCE.md`'s `storeroom` row hands M4 the deadlock
+   where bamboo claims every shelf and the chain stops, and meals make it a five-item
+   competition on four shelves. §4.3 makes it non-fatal — nobody starves, because crew eat at
+   the canteen — but non-fatal is not solved. The candidates are a player-set item filter per
+   shelf (a real infrastructural verb, and a new command), more shelves per storeroom (which
+   postpones rather than fixes), or a chute that dumps surplus (M5 scope). The filter is the
+   most likely right answer and the most likely to be scope creep; deciding is an owner call,
+   and leaving it undiagnosed is the one option that row already ruled out.
+4. **Can the eyes-closed test be passed without any sound the diegetic rule would forbid?** The
+   rule says a starved mill goes quiet. A tower with many problems therefore sounds like a
+   tower with nothing happening, and *quiet* is a hard signal to distinguish from *fine* with
+   your eyes shut. The intended answer is that the beds underneath — the jungle, the day and
+   night soundscapes, the electrical hum thinning as the bank drains — keep the mix from ever
+   being silent, so absence reads against a floor rather than against nothing. Whether that is
+   enough is the question the recordings answer, and if it is not, the temptation will be a
+   warning tone. That is the wrong fix, and it is worth writing down now, while nobody is
+   frustrated.
+5. **Do barks survive contact with repetition?** A run is two to four hours and there are up to
+   eight crew. Lines that charm on the first hearing are the ones that grate on the fortieth,
+   and rate-limiting them into rarity is the standard answer and also the answer that makes
+   them stop doing their job. This cannot be settled from the desk, only by hearing the same
+   line for the twentieth time and noticing how it feels.
