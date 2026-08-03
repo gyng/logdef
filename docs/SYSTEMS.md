@@ -2908,12 +2908,12 @@ Not a task list — the places where existing code assumes something M5 stops be
 0. **Does terrain yield change a decision, or is it decoration?**
 
    > **Still open, and now measured — read the numbers at the end before
-   > acting on anything in the middle.** Two diagnoses recorded below
-   > ("every chain terminates in a buffer", and "the tower is
-   > crew-limited") are both wrong. What was actually breaking the
-   > *instrument* was a jammed shelf, which the chute (§5.4) fixes. The
-   > question itself survives that fix: terrain yield is worth about 2%,
-   > and the honest answer may be to stop pretending otherwise. The
+   > acting on anything in the middle.** Two effects were being read as
+   > one. A jammed shelf was costing a complicated tower 55% of its
+   > harvest, and the chute (§5.4) fixes that. Underneath it, the
+   > diagnosis this question was filed under — every chain terminates in
+   > a buffer — is correct, and terrain yield is worth about 2%. The
+   > "crew-limited" diagnosis recorded below is simply wrong. The
    > reasoning is kept in full because the wrong turns are the useful
    > part.
 
@@ -3017,9 +3017,24 @@ Not a task list — the places where existing code assumes something M5 stops be
    **Three corrections to what is written above, worth more than the
    finding.**
 
-   *The buffer diagnosis was not the cause.* "Every chain terminates in a
-   buffer" is a true observation about the pack and it is not why the
-   route read flat; a jammed shelf was.
+   *The buffer diagnosis was right about the small number and wrong
+   about the big one.* Two effects were being read as one. The collapse
+   from 6,502 to 2,924 was a jammed shelf, and the chute fixes it. The
+   residual 1–2% is the buffer argument, and nothing fixes it: **bamboo
+   is always `wanted`** — the mill's inbox is a live consumer — so a
+   chute never spills it, and harvest stays capped by what the mill eats
+   plus what the shelves hold, both properties of the tower. Richer
+   ground only reaches that cap sooner. Note what that means for the fix
+   list above: a chute is the wrong shape of answer for this question,
+   because the material the question is about is the one material a chute
+   will never touch.
+
+   It is not dilution, either, which was the other candidate. Branches
+   are about a third of a region and the two policies differ only on that
+   third — but a canopy branch is 70% canopy against a ruins branch's
+   ruin field, weighted yields of roughly 123 against 75, so even
+   undiluted the difference would be worth a few percent rather than
+   sixty. The cap is real and it is where the yield goes.
 
    *The crew-limited diagnosis was wrong.* An earlier draft concluded a
    complicated tower is bound by hands rather than by ground. It is not:

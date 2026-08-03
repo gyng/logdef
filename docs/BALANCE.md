@@ -36,9 +36,13 @@ The tower's gait and how far it can see.
 > **Read down, not across.** The gap column is what these four numbers buy: consistent in
 > direction — shade wins on every tower — and small enough that no player will perceive it.
 > The rows are worth a third of the tower's harvest, and they are about shelf space rather
-> than about the ground. `SYSTEMS.md` §5.11 open question 0 stays open on the strength of
-> this table, and its third option — collapse `yield_pct` to fewer distinct values and say
-> route choice is about sun, scrap and danger — is now the leading answer.
+> than about the ground.
+>
+> The cap is the mill. Bamboo is always wanted by a live inbox, so a chute never spills it
+> and harvest stays bounded by what the mill eats plus what the shelves hold — richer ground
+> only reaches that bound sooner. `SYSTEMS.md` §5.11 open question 0 stays open on the
+> strength of this table, and its third option — collapse `yield_pct` to fewer distinct
+> values and say route choice is about sun, scrap and danger — is now the leading answer.
 >
 > **Three cautions for anyone tuning these.** Per seed the same comparison swings from −3.9%
 > to +71.9%, so a single-seed reading is a coin flip. Eight seeds is not enough either — it
