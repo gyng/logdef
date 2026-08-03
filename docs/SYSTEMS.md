@@ -203,6 +203,14 @@ accumulator; each time the accumulator crosses `FX_ONE` it pushes one item into 
 stack and subtracts `FX_ONE`. A full output stack stalls the accumulator — the arm stops
 visibly, and nothing is silently lost.
 
+> **Superseded at M3, and wrong as shipped.** `yield_per_tick` is a *fraction of an item*,
+> and in Q8.8 a fraction that small has almost no resolution: `Fx::ratio(1, 90)` is `Fx(2)`,
+> so an arm authored at 90 ticks ran at 128, and `Fx(2) × band_yield` was very nearly a
+> no-op, so four authored terrain yields behaved as two. Intake now accumulates *effort*
+> against a threshold, and against paces rather than ticks. See §3.6 and
+> `intake::terrain_effort`. The stall behaviour described above is unchanged and still
+> correct.
+
 **Production.** A crafting room with every input stack at or above its per-craft amount
 and room in its output advances `progress` by one tick. At `craft_ticks` it consumes the
 inputs, emits `amount_per_craft` of each output (the field v1 declared and never read),
@@ -1203,9 +1211,29 @@ bamboo out of ground it had already stripped, indefinitely, which is the sort of
 is invisible until stopping becomes a thing players do on purpose — and M3 gives them three
 reasons to.
 
-The shipped value converts one-for-one: at `stride_paces_per_100_ticks` of 60, the cutter
-arm's `ticks_per_item` of 90 is `paces_per_item` of 54, and a tower that never stops
-harvests at exactly the rate it harvested before.
+**The shipped value is 78 paces, not the 54 a one-for-one conversion gives.** At
+`stride_paces_per_100_ticks` of 60, the cutter arm's authored `ticks_per_item` of 90 is
+`paces_per_item` of 54 — and the arm had never run at 90 ticks. Intake accrued a truncated
+per-tick *fraction of an item*: `Fx::ratio(1, 90)` is `Fx(2)` in Q8.8, so the arm ran at 128
+ticks, and every M2 measurement was taken against that figure rather than against the
+content. Worse, scaling a fraction that small was very nearly a no-op — `Fx(2) * 1.40` is
+also `Fx(2)` — so dense canopy and open clearing harvested at *identical* rates, and ruin
+field and drowned street collapsed together too. Four authored terrain kinds behaved as two,
+and the flagship contrast of the route being the power mix (`DESIGN.md` pillar 1) was not in
+the simulation at all. The region palettes in §3.2 are built on exactly those differences,
+so per-pace intake could not be shipped on top of it.
+
+Rooms now accumulate *effort* against a threshold rather than a fraction of an item against
+one, which keeps the precision where it is needed; `intake::terrain_effort`'s doc comment is
+the authoritative account. 78 paces is 130 ticks at the shipped stride — a shade slower than
+the mill's 120 ticks a pole, which is what the M2 economy was actually measured against.
+Shipping 54 alongside the fix would have made the arm 33% faster than one mill can consume,
+and because a shelf holds one kind, bamboo would claim every shelf, poles would have nowhere
+to go, and the chain would deadlock with the storeroom three-quarters full — recoverable
+only out of poles stuck inside the mill, which construction cannot draw from. See
+`docs/BALANCE.md`'s `storeroom` row for that failure written up in full; it is reachable
+today with a second arm and no second mill, and it will read as a bug to a player who does
+not know why.
 
 **This is the riskiest change in M3.** It revalues every constant the M2 balance run settled,
 and it does so indirectly, through a chain that is long enough to be hard to reason about
@@ -1227,14 +1255,30 @@ player has already spent everything twice over. Design that as a bad night with 
 morning, not as a trap; if the re-measurement shows it landing more often than that, the
 lever is `starting_charge` or the burner's fuel cost, not reverting per-pace intake.
 
-Two things bound the blast radius, and they are worth knowing before the re-measurement:
-the always-walking case is *arithmetically identical* to M2's, so anything that never stops
-should reproduce; and the terrain palettes in §3.2 will move the numbers on their own,
-independently of this change. Both need re-measuring together against
-`cargo run -p understory-core --example siege_run`, and `docs/BALANCE.md`'s Siege rows —
+**What was promised here, and what is true instead.** This passage originally said twice
+that the always-walking case would be *arithmetically identical* to M2's, because 54 paces
+is 90 ticks and 90 ticks was what the arm was authored at. That rested on a false premise:
+the author did not know the rate was being truncated, and an identical *authored* number
+would have been a 42% faster *actual* arm. What holds instead is the honest version of the
+same guarantee — the always-walking case reproduces the rate M2 was **measured** at, because
+the arm has been re-authored to state that rate out loud (78 paces, 130 ticks, against the
+128 it was really running). The conversion is a measurement, not an arithmetic identity, and
+that is a weaker claim, so the second bound matters more than it did: the terrain palettes in
+§3.2 move the numbers on their own, and — now that `yield_pct` is doing anything at all —
+they move them further than anyone had reason to expect.
+
+Both bounds were re-measured together against
+`cargo run --release -p understory-core --example siege_run`, and that harness is the reason
+`provocation_per_100_harvested` came down from 300 to 240: with the yield multiplier finally
+live and region 1's palette at 55% canopy, a subsistence tower gained about 13% a day and
+started provoking on its own. `docs/BALANCE.md`'s five Siege rows —
 `wave_interval_ticks`, `base_threat`, `provocation_per_100_harvested`,
-`provocation_decay_per_100_ticks`, and `repair_poles_per_10_hp`, all currently `PLAYTESTED`
-against that harness — should be treated as ungraded until they have been.
+`provocation_decay_per_100_ticks`, and `repair_poles_per_10_hp` — carry the re-measured
+figures and stay `PLAYTESTED`; they were graded against this harness, and this harness has
+been re-run. The shape it now reports is sharper than M2's rather than merely preserved:
+`subsistence` ends whole with 180 poles banked, `greedy` is pole-broke from day 3 and slides
+to 860‰, and `answered` holds 992‰, sees off 63 creatures **and** still banks 83 poles — so
+defence visibly pays for itself instead of just slowing a decline.
 
 ### 3.7 The run
 
@@ -1285,7 +1329,7 @@ All the arithmetic assumes the tower's current 0.6 paces per tick and 30 Hz.
 | ruin `salvage` | 25–60 units, before richness | At the rig's rate, 50 seconds to two minutes of berthing at 100% richness. A commitment, not a top-up. |
 | enclave `at_paces` | 8,000 into region 2 | About seven minutes of 1× walking past the boundary — one or two of the city's ruins, so the normal case is arriving with something to trade, while the remaining four-fifths of the region is still ahead of you to be provisioned for. |
 | salvage rig | `Ruin { ticks_per_item: 60, range_paces: 60 }`, `buffer_max` 8, 8 poles, ground floors only | Two seconds a unit. `range_paces` 60 matches the dart battery's reach, which is the number the player already has a feel for. Priced above a mill and below a dumbwaiter. |
-| cutter arm | `Terrain { paces_per_item: 54 }` | Exactly today's `ticks_per_item` of 90 converted at 0.6 paces/tick. A tower that never stops harvests at precisely the M2 rate. |
+| cutter arm | `Terrain { paces_per_item: 78 }` | **Authored at 78, not the 54 this table first targeted.** 54 is the authored `ticks_per_item` of 90 converted at 0.6 paces/tick, but truncated intake had the arm running at 128 ticks, so 78 paces (130 ticks) is the rate the M2 economy was actually measured against. See §3.6. |
 | feral warden | hp 300, damage 12, `attack_ticks` 60, speed 20, `cling_ticks` 2,400, `threat` 30, Ground, `wave_eligible: false` | A dart battery needs 800 ticks and 20 darts to put one down (300 hp against 15 damage every 40 ticks), and takes about 160 damage doing it — roughly 16 poles to mend. Toughest thing in the pack, slowest approach, and the longest grip: 80 seconds of walking to shake one that you have decided to leave. |
 | `warden_threat_per_100_salvage` | 120 | A 25-unit ruin rouses one warden, a 50-unit ruin rouses two. The payout and the price are the same number, which is the whole point. |
 | `warden_wake_paces` | 120 | About twenty seconds between the ground moving and the first bite, at a warden's own pace — the same order of warning `spawn_paces_ahead` gives an ordinary wave. |
