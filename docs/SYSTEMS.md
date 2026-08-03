@@ -2947,6 +2947,51 @@ Not a task list — the places where existing code assumes something M5 stops be
    milestone found, it was invisible until three tiers existed to make it
    visible, and the temptation will be to fix the instrument.
 
+   **Prototyped, measured, and deliberately not shipped.** The first of
+   the three shapes above was built and taken out again: continuous
+   overgrowth, the jungle taking the tower back a little at a time and
+   more of a bigger tower, scaled by the band's own `yield_pct` — so
+   poles gain a sink that scales with the run the way meals scale with
+   the crew, and the ground that grows bamboo fastest grows over you
+   fastest. On a simple tower it does exactly what it was supposed to:
+   measured across a full region, a shade-seeking route harvested **364
+   bamboo against a sun-seeking route's 346**, in the right direction,
+   where both had previously reported the same number to the unit.
+
+   It is out because it is an owner's decision rather than a balance
+   one. A tower under continuous overgrowth is never quite whole, so
+   "something is attacking" and "it is Tuesday" stop being
+   distinguishable on the standing readout — and the first sizing
+   attempt, at 161 poles a day against a mill's 120, had upkeep outrun
+   income permanently, crew mending instead of hauling, and harvest
+   falling from 219 to 67. The right sizing is roughly a quarter of a
+   mill (4 hit points a floor per 1,000 ticks), and even there it breaks
+   six tests that assume a tower stays whole when nothing is biting it.
+   None of that is an argument against doing it; all of it is an
+   argument for it being chosen rather than slipped in.
+
+   **And on a complicated tower it stopped working, which is the next
+   layer down and matters whether or not overgrowth is ever shipped.** The same comparison on a tower that also runs a garden,
+   a fiber comb, a ropery and a bombary reports 76 against 76 — flat
+   again — and the reason is not demand any more. It is *crew*. Three
+   people can haul, mend, eat and sleep only so much, and past a certain
+   number of rooms every chain in the tower is waiting on the same pair
+   of hands, which is identical whichever way the tower walked. Raising
+   the crew to six or eight lifts the ceiling and then **inverts** the
+   result (406 against 411, 426 against 436), because upkeep is higher in
+   shade and with enough hands to pay it the shade route's extra harvest
+   goes straight back out again.
+
+   So the honest statement, and the thing the next person needs: **route
+   choice is legible on a supply-limited tower and invisible on a
+   crew-limited one, and this game becomes crew-limited quite early.**
+   That is not obviously wrong — "everything competes for the same
+   people" is `DESIGN.md` insight 1, and a tower where the answer to
+   every problem is *more hands* is a tower playing the game it says it
+   is. But it means terrain yield is a mid-game lever rather than a
+   permanent one, and `BALANCE.md`'s four distinct yields should be read
+   in that light rather than as a promise about the whole run.
+
 1. **Does gating the elevator behind the ruin belt make the shaded route a trap?** The argument
    in §5.3 is that it makes route choice reach into the transport layer. The risk is that it
    makes one branch strictly correct — take the ruins, get the elevator — which would be worse

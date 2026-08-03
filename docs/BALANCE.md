@@ -24,6 +24,29 @@ The tower's gait and how far it can see.
 
 | Constant | Value | Grade | Reasoning |
 |---|---:|---|---|
+> **Read `SYSTEMS.md` §5.11 open question 0 before trusting any `yield_pct` below.**
+>
+> Every chain in this game terminates in a buffer, so a tower's harvest is capped by its
+> consumption rather than by the ground, and its consumption is fixed — which makes the four
+> distinct terrain yields, in the steady state, decorative. Meals are the sole exception,
+> because crew eat three a day for ever and no buffer holds that demand, and that is exactly
+> why M4's canteen fix worked where nothing since has.
+>
+> A fix was **prototyped and measured and is not shipped**: continuous overgrowth, giving poles
+> a sink that scales with the tower the way meals scale with the crew, scaled by the band's own
+> yield so the ground that grows bamboo fastest grows over you fastest. On a simple tower it
+> works — a shade route harvested **364 bamboo against a sun route's 346**, where both had
+> previously reported the same number to the unit. On a complicated one it does not, and the
+> reason turned out to be the layer underneath: past a certain number of rooms the tower is
+> *crew*-limited rather than supply-limited, three pairs of hands are identical whichever way
+> you walked, and at six or eight crew the result **inverts**, because with enough hands to pay
+> the higher upkeep the shade route's extra harvest goes straight back out again.
+>
+> It is unshipped rather than tuned because it changes the feel of the whole game — a tower is
+> then never quite whole, so "something is attacking" and "it is Tuesday" stop being
+> distinguishable on the standing readout — and that is an owner's call rather than a balance
+> one. The measurements are here so the call can be made without redoing them.
+
 | `stride_paces_per_100_ticks` | 60 | DESIGNED | 0.6 paces/tick, 18 a second. Fast enough that the horizon changes while you watch a chain run; slow enough that terrain feels like somewhere rather than something flickering past. Becomes a player throttle in M3. |
 | `band_min_paces` | 300 | DESIGNED | ~16 s in a band at 1×. Below this, terrain changes faster than a haul round-trip, so route choice could never bite. |
 | `band_max_paces` | 900 | DESIGNED | ~50 s at 1×, ~12 s at 4×. Long enough that a rich band is worth noticing and a barren one is worth waiting out. |
