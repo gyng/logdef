@@ -555,6 +555,13 @@ impl Floor {
 pub struct Tower {
     pub floors: Vec<Floor>,
     pub shafts: Vec<Shaft>,
+    /// Extra hit points on every panel, bought at a settlement.
+    ///
+    /// Held on the tower rather than on each floor so a floor built
+    /// afterwards is plated too — otherwise growing taller would mean
+    /// growing a soft spot, and the player would have to remember which
+    /// storeys were done.
+    pub shell_bonus: i64,
 }
 
 impl Tower {
@@ -592,7 +599,27 @@ impl Tower {
             health: Health::full(content.balance.siege.shaft_hp),
         }];
 
-        Self { floors, shafts }
+        Self {
+            floors,
+            shafts,
+            shell_bonus: 0,
+        }
+    }
+
+    /// Plate every panel, and remember to plate the next one built.
+    ///
+    /// The new material arrives as material: `max` and `hp` both go up,
+    /// so reinforcing does not leave the tower reading as freshly
+    /// damaged. It is not a repair, though — a panel already breached
+    /// comes back plated but still breached.
+    pub fn reinforce(&mut self, panel_hp: i64) {
+        self.shell_bonus += panel_hp;
+        for floor in &mut self.floors {
+            floor.panel.max += panel_hp;
+            if floor.panel.hp > 0 {
+                floor.panel.hp += panel_hp;
+            }
+        }
     }
 
     #[must_use]

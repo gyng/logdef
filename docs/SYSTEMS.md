@@ -1174,6 +1174,28 @@ The tone guardrail applies to the board's copy as much as to anything else (`DEC
 §8): the enclave is people who live here and the tower is passing through, so the offers
 read as an exchange between neighbours, not as a merchant's inventory.
 
+**Shell work, and what scrap is for.** The settlement will plate the tower's hull for
+scrap: `ReinforceDef` on the enclave, a cost and a `panel_hp` figure and a number of times
+they will do it. It is the only permanent upgrade in the game.
+
+It exists because salvage had nowhere to go. Scrap's only other consumer is the trade board,
+whose offers are finite and behind you the moment you walk on, so a run that berthed at the
+drowned city's ruins banked metal it could not spend — recorded as a deferred hole when the
+enclave moved into region 2, and closed here. Plating turns a city's worth of old metal into
+hull, which is what it ought to become.
+
+Three properties that matter more than the numbers:
+
+* **It applies to floors that do not exist yet.** The bonus lives on `Tower.shell_bonus`, not
+  on each floor, so a storey built afterwards arrives already plated. Otherwise growing
+  taller would mean growing a soft spot, and the player would have to remember which floors
+  had been done.
+* **New material arrives as material.** `max` and `hp` both go up, so plating does not leave
+  an undamaged tower reading as freshly damaged.
+* **It is not a repair.** A panel already breached comes back plated and still breached.
+  Shell work cannot be used to skip the repair loop (§2.5) it is meant to make survivable —
+  which is also why enclave *repair*, listed in `v2-plan.md` §6.6, stays cut.
+
 ### 3.6 Walk and stop
 
 `v2-plan.md` §9 calls this "walk/stop throttle economics." The interpretation taken,
@@ -1536,7 +1558,10 @@ the literal sense — sunlight — and a salvage mix, but not yet a food one.
   posted board and a button; the diegetic version needs a haul destination outside the tower.
 - **A continuous stride throttle.** Reasoned about and cut in §3.6. `SetStriding` stays
   binary.
-- **Scrap has exactly one consumer, and you pass it once.** Moving the enclave into region 2
+- **~~Scrap has exactly one consumer, and you pass it once.~~ Closed.** Shell work (§3.5)
+  is the second consumer, and the one that scales with how hard a run salvaged. The original
+  note is kept below because the reasoning that led to it is what produced the fix.
+ Moving the enclave into region 2
   (§3.5) means most salvage now has somewhere to go, but the offers have finite stock and
   the enclave is behind you for the rest of the run, so scrap taken late banks against M5's
   sun-forge and its alloy. This is the same shape of deliberate exception M1 recorded for

@@ -2083,3 +2083,126 @@ fn every_region_that_says_it_forks_actually_does() {
         );
     }
 }
+
+#[test]
+fn a_settlement_plates_the_whole_tower_and_what_gets_built_after() {
+    // Shell work is the only permanent upgrade in the game, and the
+    // only thing scrap can become besides a trade. It has to apply to
+    // every floor, including ones that do not exist yet — otherwise
+    // growing taller means growing a soft spot, and the player has to
+    // remember which storeys were done.
+    let content = content();
+    let scrap = item(&content, "item.scrap");
+    let mut game = engine(4200);
+    berth_at_the_enclave(&mut game);
+    // Scrap first: shelves hold one kind each, and a tower full of
+    // poles has nowhere to put metal.
+    game.state_mut_for_test().shelve(scrap, 40);
+    crate::tests::stock_poles(&mut game, 20);
+
+    let before: Vec<i64> = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .map(|floor| floor.panel.max)
+        .collect();
+    game.try_send(GameCommand::Reinforce)
+        .expect("the city plates hulls, and there is scrap for it");
+    let bonus = game.state().tower.shell_bonus;
+    assert!(bonus > 0, "plating added nothing");
+
+    for (floor, was) in game.state().tower.floors.iter().zip(&before) {
+        assert_eq!(
+            floor.panel.max,
+            was + bonus,
+            "floor {} was not plated",
+            floor.index
+        );
+        assert_eq!(
+            floor.panel.hp, floor.panel.max,
+            "an undamaged panel came back reading as damaged"
+        );
+    }
+
+    // And the next floor up arrives already plated.
+    let top = game.state().tower.top_floor();
+    game.try_send(GameCommand::BuildFloor)
+        .expect("affordable with 60 poles");
+    let fresh = game
+        .state()
+        .tower
+        .floor(top + 1)
+        .expect("the new floor is there");
+    assert_eq!(
+        fresh.panel.max,
+        content.balance.siege.panel_hp + bonus,
+        "a floor built after the plating came up bare"
+    );
+}
+
+#[test]
+fn plating_a_breach_does_not_close_it() {
+    // New material is material, not a repair. A panel already breached
+    // comes back plated and still breached, so shell work cannot be
+    // used as a way to skip the repair loop it is supposed to make
+    // survivable.
+    let mut game = engine(4201);
+    berth_at_the_enclave(&mut game);
+    let scrap = item(&content(), "item.scrap");
+    game.state_mut_for_test().shelve(scrap, 60);
+    {
+        let floor = game
+            .state_mut_for_test()
+            .tower
+            .floor_mut(0)
+            .expect("ground floor");
+        floor.panel.hp = 0;
+    }
+
+    game.try_send(GameCommand::Reinforce).expect("affordable");
+    let panel = game.state().tower.floor(0).expect("ground floor").panel;
+    assert_eq!(panel.hp, 0, "plating quietly repaired a breach");
+    assert!(panel.max > 0, "the breached floor was not plated at all");
+}
+
+#[test]
+fn a_settlement_only_does_so_much_shell_work() {
+    let mut game = engine(4202);
+    berth_at_the_enclave(&mut game);
+    let scrap = item(&content(), "item.scrap");
+    game.state_mut_for_test().shelve(scrap, 60);
+
+    let times = game.state().shell_work_left;
+    assert!(times > 0, "the pack authors no shell work at all");
+    for _ in 0..times {
+        game.try_send(GameCommand::Reinforce)
+            .expect("they will do it this many times");
+    }
+    let error = game
+        .try_send(GameCommand::Reinforce)
+        .expect_err("and no more");
+    assert!(matches!(error, CommandError::NoShellWorkLeft));
+}
+
+#[test]
+fn shell_work_costs_scrap_and_a_refusal_costs_nothing() {
+    let mut game = engine(4203);
+    berth_at_the_enclave(&mut game);
+    let scrap = item(&content(), "item.scrap");
+
+    let error = game
+        .try_send(GameCommand::Reinforce)
+        .expect_err("no scrap aboard");
+    assert!(matches!(error, CommandError::InsufficientStock { .. }));
+    assert_eq!(
+        game.state().tower.shell_bonus,
+        0,
+        "a refused plating still plated the tower"
+    );
+
+    game.state_mut_for_test().shelve(scrap, 60);
+    let held = game.state().stock_of(scrap);
+    game.try_send(GameCommand::Reinforce).expect("affordable");
+    assert!(game.state().stock_of(scrap) < held, "the plating was free");
+}

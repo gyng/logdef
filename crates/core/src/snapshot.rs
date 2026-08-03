@@ -171,6 +171,10 @@ pub struct JourneyView {
     /// What the enclave has left, one entry per authored offer.
     pub offers: Vec<i64>,
     pub recruits: u8,
+    /// How many more times the settlement will plate the shell.
+    pub shell_work: u8,
+    /// Hit points already added to every panel by shell work.
+    pub shell_bonus: i64,
     /// The far edge of the last region, reached. The run is over.
     pub arrived: bool,
 }
@@ -460,6 +464,15 @@ pub struct EnclaveInfo {
     pub offers: Vec<OfferInfo>,
     pub recruits: u8,
     pub recruit_cost: Vec<CostInfo>,
+    /// What one round of shell work costs and adds, if they do it.
+    pub reinforce: Option<ReinforceInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReinforceInfo {
+    pub cost: Vec<CostInfo>,
+    /// Added to every panel, present and future.
+    pub panel_hp: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -603,6 +616,16 @@ fn build_regions(content: &Content) -> Vec<RegionInfo> {
                         })
                         .collect(),
                     recruits: def.recruits,
+                    reinforce: rt.reinforce.as_ref().map(|(cost, panel_hp)| ReinforceInfo {
+                        cost: cost
+                            .iter()
+                            .map(|(item, amount)| CostInfo {
+                                item: item.0,
+                                amount: *amount,
+                            })
+                            .collect(),
+                        panel_hp: *panel_hp,
+                    }),
                     recruit_cost: rt
                         .recruit_cost
                         .iter()
@@ -668,6 +691,8 @@ fn build_journey(state: &GameState, content: &Content) -> JourneyView {
         at_enclave: world.at_enclave(content, state.strode),
         offers: state.enclave_stock.clone(),
         recruits: state.enclave_recruits,
+        shell_work: state.shell_work_left,
+        shell_bonus: state.tower.shell_bonus,
         arrived: state.arrived,
     }
 }

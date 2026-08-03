@@ -421,6 +421,23 @@ pub struct OfferDef {
 /// A settlement the tower walks past. Berthing works exactly as it does
 /// at a ruin — stop within range — and the tower that keeps walking
 /// loses it, because there is no going back down the axis.
+/// Shell work: people who will plate a passing tower, for scrap.
+///
+/// The only permanent upgrade in the game, and deliberately the one
+/// that closes salvage's loop — a ruin's scrap has nowhere else to go
+/// but the trade board, so a run that berths late banks metal it cannot
+/// spend. Plating turns it into hull, which is what a drowned city's
+/// worth of old metal ought to become.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReinforceDef {
+    pub cost: Vec<CostEntryDef>,
+    /// Added to every floor's panel, present and future.
+    pub panel_hp: i64,
+    /// How many times this settlement will do it.
+    pub times: u8,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EnclaveDef {
@@ -432,6 +449,9 @@ pub struct EnclaveDef {
     /// boundary, for the reasons argued at length in `SYSTEMS.md` §3.5.
     pub at_paces: i64,
     pub offers: Vec<OfferDef>,
+    /// What the settlement will do to the tower's shell, if anything.
+    #[serde(default)]
+    pub reinforce: Option<ReinforceDef>,
     /// Crew available to hire here, across the whole run.
     pub recruits: u8,
     pub recruit_cost: Vec<CostEntryDef>,
@@ -743,6 +763,8 @@ pub struct BranchRuntime {
 pub struct EnclaveRuntime {
     pub offers: Vec<OfferRuntime>,
     pub recruit_cost: Vec<(ItemIdx, i64)>,
+    /// Cost and effect of one round of shell work.
+    pub reinforce: Option<(Vec<(ItemIdx, i64)>, i64)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1216,6 +1238,15 @@ impl Content {
                         .iter()
                         .map(|cost| (lookup(&cost.item, "recruit_cost"), cost.amount))
                         .collect(),
+                    reinforce: enclave.reinforce.as_ref().map(|work| {
+                        (
+                            work.cost
+                                .iter()
+                                .map(|cost| (lookup(&cost.item, "reinforce cost"), cost.amount))
+                                .collect(),
+                            work.panel_hp,
+                        )
+                    }),
                 }
             });
 

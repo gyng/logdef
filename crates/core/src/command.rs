@@ -75,6 +75,8 @@ pub enum GameCommand {
     Trade { offer: u8 },
     /// Take somebody aboard, for poles.
     Recruit,
+    /// Have the settlement plate the tower's shell, for scrap.
+    Reinforce,
     /// Commit to one of the two branches the pending fork offers.
     ///
     /// Legal from the moment the fork appears until the tower crosses
@@ -142,6 +144,10 @@ pub enum CommandError {
     NobodyToRecruit,
     /// The tower has as many people as it can house.
     CrewFull { cap: u8 },
+    /// Nobody here does shell work.
+    NoShellWorkHere,
+    /// They have plated this tower as often as they are going to.
+    NoShellWorkLeft,
     /// No shaft with that runtime ID is standing.
     NoSuchShaft { id: ShaftId },
     /// The span is inverted, too short, or too tall for this kind.
@@ -197,6 +203,10 @@ impl std::fmt::Display for CommandError {
             CommandError::OfferExhausted { offer } => write!(f, "offer {offer} is spent"),
             CommandError::NobodyToRecruit => write!(f, "nobody else here wants to come"),
             CommandError::CrewFull { cap } => write!(f, "the tower houses {cap} already"),
+            CommandError::NoShellWorkHere => write!(f, "nobody here works on hulls"),
+            CommandError::NoShellWorkLeft => {
+                write!(f, "they have plated this tower as often as they will")
+            }
             CommandError::NoSuchBranch { branch } => {
                 write!(f, "a fork offers two ways; {branch} was not one of them")
             }

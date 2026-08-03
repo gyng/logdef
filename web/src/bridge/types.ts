@@ -155,6 +155,10 @@ export interface JourneyView {
   /** What the enclave has left, one entry per authored offer. */
   offers: number[];
   recruits: number;
+  /** How many more times the settlement will plate the shell. */
+  shell_work: number;
+  /** Hit points already added to every panel by shell work. */
+  shell_bonus: number;
   /** The far edge of the last region, reached. The run is over. */
   arrived: boolean;
 }
@@ -408,6 +412,14 @@ export interface EnclaveInfo {
   offers: OfferInfo[];
   recruits: number;
   recruit_cost: CostInfo[];
+  /** What one round of shell work costs and adds, if they do it. */
+  reinforce: ReinforceInfo | null;
+}
+
+export interface ReinforceInfo {
+  cost: CostInfo[];
+  /** Added to every panel, present and future. */
+  panel_hp: number;
 }
 
 export interface OfferInfo {
@@ -469,6 +481,8 @@ export type GameCommand =
   | { Trade: { offer: number } }
   /** Take somebody aboard, for poles. */
   | "Recruit"
+  /** Have the settlement plate the tower's shell, for scrap. */
+  | "Reinforce"
   /** Commit to branch 0 or 1 of the pending fork. Re-answerable. */
   | { TakeFork: { branch: number } };
 

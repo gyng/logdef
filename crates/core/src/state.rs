@@ -114,6 +114,8 @@ pub struct GameState {
     /// not a shop that restocks.
     pub enclave_stock: Vec<i64>,
     pub enclave_recruits: u8,
+    /// How many more times a settlement will plate the shell.
+    pub shell_work_left: u8,
     pub stats: RunStats,
     /// Monotonic allocators. Never reuse an ID, even after removal —
     /// a stale reference should fail to resolve, not silently alias.
@@ -166,6 +168,12 @@ impl GameState {
                 .iter()
                 .find_map(|region| region.enclave.as_ref())
                 .map_or(0, |enclave| enclave.recruits),
+            shell_work_left: content
+                .regions
+                .iter()
+                .find_map(|region| region.enclave.as_ref())
+                .and_then(|enclave| enclave.reinforce.as_ref())
+                .map_or(0, |work| work.times),
         };
 
         state.place_starting_rooms(content);

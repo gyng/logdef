@@ -288,6 +288,24 @@ function EnclaveBoard({ game, ui }: Props) {
           </li>
         ))}
       </ul>
+      {ui.enclave?.reinforce && (
+        <button
+          type="button"
+          className="enclave-reinforce"
+          disabled={ui.shellWork <= 0}
+          data-testid="reinforce"
+          onClick={() => game.reinforce()}
+        >
+          {ui.shellWork > 0
+            ? `Have them plate the hull · ${costLine(catalog, ui.enclave.reinforce.cost)}`
+            : "The hull is as plated as they will make it"}
+          <span className="enclave-note">
+            {ui.shellWork > 0
+              ? `+${ui.enclave.reinforce.panel_hp} to every panel, and to every floor built after`
+              : `+${ui.shellBonus} already on every panel`}
+          </span>
+        </button>
+      )}
       <button
         type="button"
         className="enclave-recruit"

@@ -91,6 +91,8 @@ export interface UiState {
   enclaveAhead: number | null;
   offers: number[];
   recruits: number;
+  shellWork: number;
+  shellBonus: number;
   /** The far edge of the journey, reached. */
   arrived: boolean;
   fps: number;
@@ -281,6 +283,11 @@ export class Game {
     this.send("Recruit");
   }
 
+  /** Have the settlement plate the tower's shell, for scrap. */
+  reinforce(): void {
+    this.send("Reinforce");
+  }
+
   /** Switch the selected room off or on. */
   toggleSelectedRoom(): void {
     const selected = this.selected;
@@ -455,6 +462,8 @@ export class Game {
       enclaveAhead: view?.journey.enclave_ahead ?? null,
       offers: view?.journey.offers ?? [],
       recruits: view?.journey.recruits ?? 0,
+      shellWork: view?.journey.shell_work ?? 0,
+      shellBonus: view?.journey.shell_bonus ?? 0,
       arrived: view?.journey.arrived ?? false,
       fps: Math.round(this.fps),
       quads: this.renderer.quadCount,

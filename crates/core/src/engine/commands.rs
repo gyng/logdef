@@ -51,6 +51,7 @@ pub fn apply(
         GameCommand::TakeFork { branch } => take_fork(state, content, *branch),
         GameCommand::Trade { offer } => trade(state, content, *offer),
         GameCommand::Recruit => recruit(state, content),
+        GameCommand::Reinforce => reinforce(state, content),
     }
 }
 
@@ -127,6 +128,28 @@ fn trade(state: &mut GameState, content: &Content, offer: u8) -> Result<(), Comm
     let landed = state.shelve(take_item, take_amount);
     state.enclave_stock[index] -= 1;
     state.stats.traded += landed as u64;
+    Ok(())
+}
+
+/// Have the settlement plate the tower's shell.
+///
+/// The one permanent upgrade in the game, and the reason a run that
+/// salvages has something to do with the metal: scrap's only other
+/// consumer is the trade board, so a tower that berths late banks
+/// metal it cannot spend. Plating turns it into hull.
+fn reinforce(state: &mut GameState, content: &Content) -> Result<(), CommandError> {
+    let enclave = berthed_enclave(state, content)?;
+    let Some((cost, panel_hp)) = enclave.reinforce.clone() else {
+        return Err(CommandError::NoShellWorkHere);
+    };
+    if state.shell_work_left == 0 {
+        return Err(CommandError::NoShellWorkLeft);
+    }
+    check_stock(state, content, &cost)?;
+
+    spend(state, &cost);
+    state.shell_work_left -= 1;
+    state.tower.reinforce(panel_hp);
     Ok(())
 }
 
@@ -316,10 +339,12 @@ fn build_floor(state: &mut GameState, content: &Content) -> Result<(), CommandEr
     spend(state, &cost);
 
     let index = state.tower.floors.len() as FloorIdx;
+    // Plated to whatever the shell has been plated to, so growing
+    // taller never grows a soft spot.
     state.tower.floors.push(Floor::new(
         index,
         balance.floor_slots,
-        content.balance.siege.panel_hp,
+        content.balance.siege.panel_hp + state.tower.shell_bonus,
     ));
 
     // The stairs grow with the tower. Growing taller is never free —

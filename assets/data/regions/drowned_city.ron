@@ -115,6 +115,24 @@ RegionDef(
         // three moved measured throughput by ninety percent
         // (`BALANCE.md`, `starting_crew`), so a fourth is the largest
         // single change a player can buy and should cost like it.
+        // Shell work, twice, for the city's own metal.
+        //
+        // The only permanent upgrade in the game, and the one thing
+        // that gives scrap somewhere to go besides the trade board. A
+        // run that berths at the city's ruins arrives here with metal;
+        // this turns it into hull. Sixty hit points a round is 40% of
+        // a panel, so two rounds take every floor from 150 to 270 —
+        // nearly double, which is what makes region 2's half-again
+        // threat land on a tower that can take it.
+        //
+        // Eighteen scrap a round is most of one good ruin, so plating
+        // twice means berthing at least twice and getting away with it
+        // both times.
+        reinforce: ReinforceDef(
+            cost: [CostEntryDef(item: "item.scrap", amount: 18)],
+            panel_hp: 60,
+            times: 2,
+        ),
         recruits: 1,
         recruit_cost: [CostEntryDef(item: "item.poles", amount: 30)],
     ),

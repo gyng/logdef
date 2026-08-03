@@ -175,9 +175,25 @@ test("speed controls drive the clock", async ({ page }) => {
 test("building a floor and placing a room round-trips through the bridge", async ({ page }) => {
   await boot(page);
 
-  // Bank enough poles for a floor plus a room.
+  // Bank enough poles for a floor plus a room — by waiting for the
+  // money rather than by stepping a fixed number of ticks. A fixed
+  // 3,600 was marginal once room widths and intake rates moved, and a
+  // smoke test that is *usually* rich enough is a smoke test that fails
+  // in CI and passes on your machine.
   await page.evaluate(() => {
-    window.__understory!.step(3600);
+    const catalog = window.__understory!.catalog();
+    const poles = catalog.items.findIndex((item) => item.id === "item.poles");
+    const need =
+      (catalog.floor_cost.find((cost) => cost.item === poles)?.amount ?? 6) +
+      (catalog.rooms
+        .find((room) => room.id === "room.storeroom")
+        ?.build_cost.find((cost) => cost.item === poles)?.amount ?? 3);
+    for (let i = 0; i < 40; i += 1) {
+      const held =
+        window.__understory!.view().stock.find((entry) => entry.item === poles)?.count ?? 0;
+      if (held >= need) return;
+      window.__understory!.step(600);
+    }
   });
 
   const floorsBefore = await page.evaluate(() => window.__understory!.view().tower.floors.length);

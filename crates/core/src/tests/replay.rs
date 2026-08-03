@@ -219,6 +219,7 @@ fn every_command_survives_the_replay_format() {
         C::TakeFork { branch: 1 },
         C::Trade { offer: 2 },
         C::Recruit,
+        C::Reinforce,
     ];
 
     // Exhaustiveness: if a variant is added and not listed above, this
@@ -236,7 +237,8 @@ fn every_command_survives_the_replay_format() {
             | C::SetStriding { .. }
             | C::TakeFork { .. }
             | C::Trade { .. }
-            | C::Recruit => {}
+            | C::Recruit
+            | C::Reinforce => {}
         }
     }
 
