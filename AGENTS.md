@@ -59,8 +59,19 @@ ends two ways; and now named crew with two needs — meals from a canteen chain 
 bunk on a shift rota the player sets — plus the art pass and the whole audio subsystem. A run
 can be played from the first pace to the last, and the tower is somewhere people live.
 
-Not built: region 3, the Refugia, tier-two chains, unlocks, role priorities, and any
-meta-progression. Those are M5 — see `docs/v2-plan.md` §9.
+M5 ("The Refugia") is most of the way there: the tier-two chains and the materials under
+them, the chute, region 3 and the coast, the two creatures that complete the taxonomy, three
+enclaves, the journal that carries unlocks between runs, and the run log. A run can be played
+from the first pace to an arrival at the Refugia.
+
+Not built: the difficulty pass that would turn `DESIGNED` into `PLAYTESTED`, and the itch.io
+release cut. Role priorities are cut for good rather than deferred (`SYSTEMS.md` §5.10).
+
+**Read `SYSTEMS.md` §5.11 open question 0 before touching terrain, yields or a chain.** It is
+the largest open finding in the project: every chain terminates in a buffer, so a tower's
+harvest is capped by its consumption rather than by the ground, and in the steady state every
+terrain yield is decorative. Meals are the one exception and the reason M4's fix worked. Any
+work on the economy either lands inside that problem or has to answer it.
 
 **`docs/SYSTEMS.md` is the exact, current boundary of what exists.** Read the milestone
 section for whatever you are about to touch, and its "Deferred out of" list, before

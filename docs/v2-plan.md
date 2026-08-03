@@ -7,8 +7,15 @@
 
 **Status:** locked with owner, 2026-08-03. Build mode: big agentic sprints, one per milestone.
 
-**Progress:** M0 ✅ · M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 not started. The plan below is
-unchanged; this line and the notes in §9 are the only edits since it was locked. Two owner decisions taken during
+**Progress:** M0 ✅ · M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 mostly built. The plan below is
+unchanged; this line and the notes in §9 are the only edits since it was locked.
+
+**Two things M5 decided that this document guessed at**, recorded here because §11 asked for
+them and they are answered in `SYSTEMS.md` §5 rather than by editing the plan: the destination
+keeps the name *the Refugia* (§11 open #1), and unlocks arrive as a **journal** rather than as
+enclave gifts or Heartseed cultivars (§11 open #2). §6.1's `meals` are made of bamboo rather
+than produce, which is a deliberate departure from this document and is argued in
+`SYSTEMS.md` §5.2 — M4 measured it, and the measurement is why. Two owner decisions taken during
 M0 deviate from §8 and are recorded in `DECISIONS.md` §10 — a custom WebGL2 renderer from
 the start rather than SVG-until-profiling-hurts, and ts7/oxfmt/oxlint for the frontend
 toolchain.
