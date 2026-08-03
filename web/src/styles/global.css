@@ -1137,3 +1137,48 @@ button {
   background: rgb(217 173 94 / 16%);
   color: var(--accent-brass);
 }
+
+/* A room this player has not unlocked. Shown, not hidden — the shape of
+ * what the game becomes is worth seeing from the first run. */
+.build-card.locked {
+  opacity: 0.42;
+}
+
+.build-card.locked .build-name {
+  font-style: italic;
+}
+
+/* What a run taught, on the arrival. A diary, not a trophy case. */
+.learned {
+  margin-top: var(--space-4);
+  text-align: left;
+}
+
+.learned ul {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.learned-opens {
+  color: var(--text-muted);
+}
+
+.elegy-seed {
+  margin-top: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+}
+
+.elegy-seed code {
+  color: var(--accent-brass);
+  font-family: var(--font-mono);
+}
+
+.elegy-note {
+  margin-top: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}

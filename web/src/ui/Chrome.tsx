@@ -55,7 +55,7 @@ export function Chrome({ game, ui }: Props) {
         </div>
       )}
       {ui.lost && <Elegy ui={ui} />}
-      {ui.arrived && !ui.lost && <Arrival ui={ui} />}
+      {ui.arrived && !ui.lost && <Arrival game={game} ui={ui} />}
     </div>
   );
 }
@@ -555,13 +555,25 @@ function EnclaveBoard({ game, ui }: Props) {
  * pretending otherwise would be the wrong tone twice over
  * (`SYSTEMS.md` §3.7, `DECISIONS.md` §8).
  */
-function Arrival({ ui }: { ui: UiState }) {
+/**
+ * The Refugia, reached.
+ *
+ * **A description, not a score** (`DECISIONS.md` §8). No rating, no rank,
+ * no stars, and nothing that could be read as a mark out of ten. What
+ * arriving shows is what the tower has, who is aboard by name, the route
+ * it walked, and the seed — so the run can be handed to somebody else,
+ * which is the whole of what `v2-plan.md` §6.6 promises about seeds.
+ *
+ * And what the journal learnt, if anything, phrased as a thing the crew
+ * did rather than a thing the player earned.
+ */
+function Arrival({ game, ui }: Props) {
   return (
     <div className="elegy arrival" role="status" data-testid="arrival">
-      <h1>The far edge</h1>
+      <h1>The Refugia</h1>
       <p>
-        The ground runs out here. The tower stands where the walk ended, and the green carries on
-        without it.
+        The ground runs out here, and this is where it was going. The tower stands with its legs
+        still, and the people who walked it here are already talking about what to plant.
       </p>
       <dl className="elegy-facts">
         <div>
@@ -573,14 +585,55 @@ function Arrival({ ui }: { ui: UiState }) {
           <dd>{ui.distance} paces</dd>
         </div>
         <div>
-          <dt>Reached</dt>
-          <dd>{ui.region}</dd>
+          <dt>Aboard</dt>
+          <dd>{ui.crew.map((member) => member.name).join(", ") || "nobody"}</dd>
         </div>
       </dl>
+      <Learned ui={ui} />
+      <Seed ui={ui} />
       <button type="button" className="elegy-again" onClick={walkAgain}>
         walk again
       </button>
+      {/* Read rather than shown: the whole journal is a lot, and the
+          arrival is not the place for a table. */}
+      <p className="elegy-note">{game.journalNow().runs.length} runs written down.</p>
     </div>
+  );
+}
+
+/**
+ * What this run taught, if anything.
+ *
+ * Deeds rather than achievements: "ran a forge" is a thing you did, and
+ * a list of things you did is a diary. The moment this reads as a
+ * checklist with ticks on it, it has become the thing `v2-plan.md` §3
+ * rules out.
+ */
+function Learned({ ui }: { ui: UiState }) {
+  if (ui.learned.length === 0) return null;
+  return (
+    <div className="learned" data-testid="learned">
+      <h2 className="section-title">The journal gains</h2>
+      <ul>
+        {ui.learned.map((deed) => (
+          <li key={deed.said}>
+            {deed.said}
+            {deed.opens.length > 0 && (
+              <span className="learned-opens"> — and how to build with what it left.</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** The seed, plainly, so a run can be handed to somebody else. */
+function Seed({ ui }: { ui: UiState }) {
+  return (
+    <p className="elegy-seed">
+      seed <code data-testid="run-seed">{ui.seed}</code>
+    </p>
   );
 }
 
@@ -816,16 +869,22 @@ function RoomCard({ game, ui, room }: Props & { room: RoomInfo }) {
   const affordable = game.canAfford(room);
   const fits = game.hasRoomFor(room);
   const placed = room.unique && !fits;
-  const disabled = !affordable || !fits;
+  // **Locked rooms are greyed, not hidden.** A newcomer can see the
+  // shape of what the game becomes without being able to reach for it,
+  // and an unlock is then a thing that *opens* rather than a thing that
+  // appears from nowhere and has to be explained (`SYSTEMS.md` §5.7).
+  const locked = ui.locked.includes(room.id);
+  const disabled = locked || !affordable || !fits;
 
   let hint = costHint(room);
-  if (!fits) hint = placed ? "already standing" : "no room for it";
+  if (locked) hint = "the journal has not learnt this yet";
+  else if (!fits) hint = placed ? "already standing" : "no room for it";
   else if (!affordable) hint = "not enough on the shelves";
 
   return (
     <button
       type="button"
-      className="build-card"
+      className={`build-card${locked ? " locked" : ""}`}
       aria-pressed={ui.placing === room.id}
       disabled={disabled}
       data-testid={`build-${room.id}`}

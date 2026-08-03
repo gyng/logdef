@@ -87,6 +87,13 @@ export type HaltView = "walking" | "stopped" | "brownout" | "fork" | "arrived";
 
 export interface ViewSnapshot {
   tick: number;
+  /**
+   * The seed this run started from, as a decimal string.
+   *
+   * A string because it is 64 bits and JavaScript numbers are not: a
+   * seed that does not round-trip is a seed that cannot be shared.
+   */
+  seed: string;
   speed: SimSpeed;
   /** Fraction of a tick elapsed. For render interpolation. */
   alpha: number;

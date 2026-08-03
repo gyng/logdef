@@ -213,6 +213,54 @@ test("capture stills", async ({ page }) => {
   await page.waitForTimeout(600);
   await page.screenshot({ path: "capture/tower-running.png" });
 
+  // **The elevator is made of rope from M5**, so the tower has to run a
+  // fiber comb and a ropery before the build button is even enabled —
+  // and the ropery has to be switched off again once there is rope, or
+  // it claims every shelf and the poles never arrive. Without this the
+  // capture clicked a disabled button and the elevator stills were
+  // stills of a tower with no elevator.
+  await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const catalog = hooks.catalog();
+    const idOf = (id: string): number => catalog.items.findIndex((item) => item.id === id);
+    const held = (item: number): number =>
+      hooks.view().stock.find((entry) => entry.item === item)?.count ?? 0;
+    const place = (room: string): void => {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        for (const floor of hooks.view().tower.floors) {
+          for (let slot = 0; slot + 2 < floor.slots; slot += 1) {
+            if (hooks.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") return;
+          }
+        }
+        window.__capture!.walk(600);
+      }
+    };
+    place("room.fiber_comb");
+    place("room.ropery");
+
+    const rope = idOf("item.rope");
+    const poles = idOf("item.poles");
+    let off = false;
+    for (let i = 0; i < 200; i += 1) {
+      if (!off && held(rope) >= 12) {
+        off = true;
+        for (const floor of hooks.view().tower.floors) {
+          for (const room of floor.rooms) {
+            const id = catalog.rooms[room.def]?.id ?? "";
+            if (id === "room.ropery" || id === "room.fiber_comb") {
+              hooks.send({
+                SetRoomActive: { floor: floor.index, slot: room.slot, active: false },
+              });
+            }
+          }
+        }
+      }
+      if (held(poles) >= 18 && held(rope) >= 6) break;
+      window.__capture!.walk(600);
+    }
+  });
+  await page.waitForTimeout(200);
+
   await page.getByTestId("build-shaft.elevator").click();
   await page.waitForTimeout(200);
   const point = await page.evaluate(() => window.__capture!.freeSlot(0, 1));
@@ -249,7 +297,8 @@ test("capture stills", async ({ page }) => {
   //
   // Provoked the way a player provokes: a second cutter arm, and then
   // time. Nothing here reaches past the buttons the UI actually has.
-  await page.getByTestId("build-room.cutter_arm").click();
+  const armButton = page.getByTestId("build-room.cutter_arm");
+  if (!(await armButton.isDisabled())) await armButton.click();
   const armPoint = await page.evaluate(() => window.__capture!.freeSlot(0, 1));
   if (armPoint) {
     await page.mouse.click(armPoint.x, armPoint.y);
@@ -276,7 +325,39 @@ test("capture stills", async ({ page }) => {
     // overlay can be up, and an overlay eats the click.
     ["room.salvage_rig", 1, 4],
   ] as const) {
-    await page.getByTestId(`build-${room}`).click();
+    // **Clear the ground floors first.** Three rooms reach the ground
+    // and therefore carry `max_floor: 1` — the cutter arm, the salvage
+    // rig, and from M5 the fiber comb — and two floors do not hold all
+    // three once the Heartseed, a cell bank and a storeroom have taken
+    // theirs. The comb has done its job by now (there is rope banked
+    // and the ropery is off), so it is what goes, which is also what a
+    // player would do. Without this the rig's button is simply disabled
+    // and the ruin stills are stills of a tower with no rig.
+    if (room === "room.salvage_rig") {
+      await page.evaluate(() => {
+        const hooks = window.__understory!;
+        const catalog = hooks.catalog();
+        for (const deck of hooks.view().tower.floors) {
+          for (const item of deck.rooms) {
+            if (catalog.rooms[item.def]?.id === "room.fiber_comb") {
+              hooks.send({ RemoveRoom: { floor: deck.index, slot: item.slot } });
+            }
+          }
+        }
+      });
+      await page.waitForTimeout(150);
+    }
+    // **Skip what the tower cannot pay for rather than waiting on it.**
+    // This clicked the button and let Playwright block until timeout,
+    // which turns "the economy got tighter" into "the harness hung for
+    // three minutes and produced nothing". A capture is a tool for
+    // looking: it should take the stills it can and say what it missed.
+    const button = page.getByTestId(`build-${room}`);
+    if (await button.isDisabled()) {
+      console.log(`capture: skipped ${room} — the tower could not build it`);
+      continue;
+    }
+    await button.click();
     const spot = await page.evaluate(([f, s]) => window.__understory!.slotPoint(f, s), [
       floor,
       slot,
@@ -331,7 +412,12 @@ test("capture stills", async ({ page }) => {
   // ended at seven per cent standing and never reached region 2 — the
   // §3.6 spiral, arrived at by trying to buy shelf space.
   for (let i = 0; i < 2; i += 1) {
-    await page.getByTestId("build-room.storeroom").click();
+    const store = page.getByTestId("build-room.storeroom");
+    if (await store.isDisabled()) {
+      console.log("capture: skipped a storeroom — the tower could not build it");
+      break;
+    }
+    await store.click();
     const gap = await page.evaluate(() => {
       const at = window.__capture!.freeSlotAny(2);
       return at === null ? null : window.__understory!.slotPoint(at.floor, at.slot);

@@ -25,6 +25,15 @@ use crate::state::{GameState, RunStats, SimSpeed};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ViewSnapshot {
     pub tick: u64,
+    /// The seed this run was started from, as a decimal string.
+    ///
+    /// **A string because it is 64 bits** and JavaScript numbers are not:
+    /// a seed above 2^53 would arrive subtly wrong, and a seed that does
+    /// not round-trip is a seed that cannot be shared — which is the one
+    /// thing `v2-plan.md` §6.6 promises about it. Published at all
+    /// because the run log has to record what run it is a log *of*
+    /// (`SYSTEMS.md` §5.8).
+    pub seed: String,
     pub speed: SimSpeed,
     /// Fraction of a tick elapsed, for render interpolation.
     pub alpha: f32,
@@ -564,6 +573,7 @@ fn paces_to_f32(value: Paces) -> f32 {
 pub fn build_view(state: &GameState, content: &Content, alpha: f32) -> ViewSnapshot {
     ViewSnapshot {
         tick: state.tick,
+        seed: state.seed.to_string(),
         speed: state.speed,
         alpha,
         clock: build_clock(state, content),

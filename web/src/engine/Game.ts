@@ -13,6 +13,7 @@
  */
 
 import { AudioManager } from "./AudioManager";
+import { GATED, type Journal, loadJournal, newlyLearned, recordRun, unlocked } from "./journal";
 import { Renderer } from "./Renderer";
 import type { PlaceMode } from "./scene";
 import { slotRangeFree, towerShape } from "./scene";
@@ -61,6 +62,20 @@ export interface UiState {
    * the tower can only be understood through this list, the art pass
    * failed.
    */
+  /**
+   * Room and shaft ids this player has *not* unlocked yet.
+   *
+   * The build menu greys these rather than hiding them, so a newcomer
+   * can see the shape of what the game becomes without being able to
+   * reach for it — and so an unlock is a thing that opens rather than a
+   * thing that appears from nowhere.
+   */
+  /** This run's seed, so it can be read off and handed over. */
+  seed: string;
+  locked: string[];
+  /** Deeds this run has done that this player had never done before. */
+  learned: { said: string; opens: string[] }[];
+
   crew: CrewView[];
   /** Every shaft, so the roster can carry their schedules. */
   shafts: ShaftView[];
@@ -151,6 +166,21 @@ export class Game {
   private fps = 0;
 
   private readonly audio = new AudioManager();
+
+  /**
+   * What this player has unlocked, and what this run has built.
+   *
+   * **Player-level, never run-level.** None of this enters `GameState`
+   * or the replay: an unlock changes which commands the player may
+   * send, and a replay carries the commands, so a veteran's recording
+   * replays perfectly for somebody who has unlocked nothing
+   * (`SYSTEMS.md` §5.7).
+   */
+  private journal: Journal = loadJournal();
+  private readonly built: string[] = [];
+  private readonly routeSeen: string[] = [];
+  private recorded = false;
+  private learned: { said: string; opens: string[] }[] = [];
 
   private placeMode: PlaceMode | null = null;
   private selected: SelectedRoom | null = null;
@@ -265,8 +295,77 @@ export class Game {
     this.send({ SetShaftProgram: { id, daypart, served, priority } });
   }
 
+  /**
+   * Follow the run, and write it down once when it ends.
+   *
+   * Once: `recorded` is the guard, because the frame loop keeps running
+   * after a run is over — the tower still stands there and the renderer
+   * still draws it — and a journal that gained an entry every frame
+   * after the Heartseed went would be a journal of one bad afternoon.
+   */
+  private noteRun(view: ViewSnapshot): void {
+    const region = this.catalog.regions[view.journey.region]?.name;
+    if (region && this.routeSeen.at(-1) !== region) this.routeSeen.push(region);
+
+    if (this.recorded || (!view.journey.arrived && !view.siege.lost)) return;
+    this.recorded = true;
+    const before = this.journal;
+    this.learned = newlyLearned(
+      before,
+      // Deeds are derived inside `recordRun` from the same snapshot, so
+      // asking twice would be asking the same question twice; this is
+      // the *new* ones, which is what the arrival has to say out loud.
+      recordRun(view, {
+        // From the snapshot rather than held here: the bridge already
+        // knows it, and a second copy is a second thing to keep in step.
+        seed: view.seed,
+        route: [...this.routeSeen],
+        built: [...this.built],
+        crew: view.crew.map((member) => member.name),
+      }).done,
+    ).map((deed) => ({ said: deed.said, opens: deed.opens }));
+    this.journal = loadJournal();
+  }
+
+  /** The whole journal, for the arrival and the elegy to read. */
+  journalNow(): Journal {
+    return this.journal;
+  }
+
+  /** Ids this player cannot build yet. */
+  lockedIds(): Set<string> {
+    const open = unlocked(this.journal);
+    const gated = new Set<string>();
+    for (const info of this.catalog.rooms) {
+      if (!open.has(info.id) && GATED.has(info.id)) gated.add(info.id);
+    }
+    for (const info of this.catalog.shafts) {
+      if (!open.has(info.id) && GATED.has(info.id)) gated.add(info.id);
+    }
+    return gated;
+  }
+
   send(cmd: GameCommand): void {
+    // **The unlock gate lives here and nowhere else.** Rust validates
+    // legality — enough stock, a free slot, a real floor — and knows
+    // nothing about who is playing. Whether this *player* has earned
+    // the right to ask is a question about the player, so it is
+    // answered on this side and never crosses the bridge.
+    const wants =
+      typeof cmd === "object" && "PlaceRoom" in cmd
+        ? cmd.PlaceRoom.room
+        : typeof cmd === "object" && "BuildShaft" in cmd
+          ? cmd.BuildShaft.shaft
+          : null;
+    if (wants !== null && this.lockedIds().has(wants)) {
+      this.lastError = "not yet — the journal has not learnt that one";
+      return;
+    }
     const result = this.bridge.send(cmd);
+    // What this run built, for the log and for the deeds. Recorded from
+    // accepted commands rather than by scanning the tower, because a
+    // room built and later demolished still happened.
+    if (!commandFailed(result) && wants !== null) this.built.push(wants);
     this.lastError = commandFailed(result) ? describeError(result.Error) : null;
     this.publish(true);
   }
@@ -462,6 +561,7 @@ export class Game {
     const view = this.bridge.view();
     this.latest = view;
     this.audio.update(view, sounds, deltaMs);
+    this.noteRun(view);
 
     // A demolished or newly built room can invalidate the selection.
     if (this.selected) {
@@ -504,6 +604,9 @@ export class Game {
       hauled: view?.stats.hauls_completed ?? 0,
       waiting: view?.crew.filter((member) => member.state === "board").length ?? 0,
       crew: view?.crew ?? [],
+      seed: view?.seed ?? "",
+      locked: [...this.lockedIds()],
+      learned: this.learned,
       shafts: view?.tower.shafts ?? [],
       selected: this.selected,
       selectedActive: this.selectedRoomActive(),

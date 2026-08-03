@@ -300,27 +300,83 @@ test("the roster writes both of the player's schedules", async ({ page }) => {
   // The elevator's per-daypart program. These existed in the data
   // model, the command layer and the replay format from M1 and had no
   // UI for three milestones; this is the test that says they have one.
-  await page.evaluate(() => {
+  const outcome = await page.evaluate(() => {
     const hooks = window.__understory!;
     const catalog = hooks.catalog();
-    const poles = catalog.items.findIndex((item) => item.id === "item.poles");
-    const cost =
-      catalog.shafts
-        .find((shaft) => shaft.id === "shaft.elevator")
-        ?.build_cost.find((entry) => entry.item === poles)?.amount ?? 18;
-    for (let i = 0; i < 80; i += 1) {
-      const held = hooks.view().stock.find((entry) => entry.item === poles)?.count ?? 0;
-      if (held >= cost) break;
+    const idOf = (id: string): number => catalog.items.findIndex((item) => item.id === id);
+    const held = (item: number): number =>
+      hooks.view().stock.find((entry) => entry.item === item)?.count ?? 0;
+
+    // **The elevator is made of rope from M5**, and rope comes from a
+    // ropery fed by a fiber comb — so a test that wants an elevator has
+    // to build the chain that makes one, exactly as a player does. This
+    // used to bank poles and build; it silently stopped building
+    // anything the day the cost changed, and the schedule assertions
+    // below were then asserting against a shaft that was not there.
+    // Leaves the outermost column alone: that is where the elevator is
+    // going, and a room dropped in it makes the shaft unbuildable
+    // several hundred lines later, which reads as a balance failure and
+    // is a placement one.
+    const place = (room: string): void => {
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        for (const floor of hooks.view().tower.floors) {
+          for (let slot = 0; slot + 2 < floor.slots; slot += 1) {
+            if (hooks.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") return;
+          }
+        }
+        hooks.step(600);
+      }
+    };
+    place("room.fiber_comb");
+    place("room.ropery");
+
+    const poles = idOf("item.poles");
+    const rope = idOf("item.rope");
+    // **And switch the ropery off once there is rope**, because rope's
+    // only consumer is a build cost and a ropery left running claims
+    // every shelf — measured here as 60 rope and *zero poles*, in a
+    // tower that then could not afford the shaft the rope was for. The
+    // same lesson the golden recorder learnt; see `SYSTEMS.md` §5.11.
+    let off = false;
+    for (let i = 0; i < 200; i += 1) {
+      if (!off && held(rope) >= 12) {
+        off = true;
+        for (const floor of hooks.view().tower.floors) {
+          for (const room of floor.rooms) {
+            hooks.send({
+              SetRoomActive: { floor: floor.index, slot: room.slot, active: false },
+            });
+          }
+        }
+        // Everything except the chain that makes poles.
+        for (const floor of hooks.view().tower.floors) {
+          for (const room of floor.rooms) {
+            const id = catalog.rooms[room.def]?.id ?? "";
+            if (id === "room.mill" || id === "room.cutter_arm" || id === "room.canopy_sails") {
+              hooks.send({
+                SetRoomActive: { floor: floor.index, slot: room.slot, active: true },
+              });
+            }
+          }
+        }
+      }
+      if (held(poles) >= 18 && held(rope) >= 6) break;
       hooks.step(600);
     }
     const top = hooks.view().tower.floors.length - 1;
-    hooks.send({ BuildShaft: { shaft: "shaft.elevator", low: 0, high: top, slot: 7 } });
+    const built = hooks.send({
+      BuildShaft: { shaft: "shaft.elevator", low: 0, high: top, slot: 7 },
+    });
+    return { built, poles: held(poles), rope: held(rope) };
   });
 
   const shaft = await page.evaluate(
     () => window.__understory!.view().tower.shafts.find((s) => s.kind === "Elevator")?.id ?? null,
   );
-  expect(shaft, "the tower could not afford an elevator to schedule").not.toBeNull();
+  expect(
+    shaft,
+    `the tower could not build an elevator to schedule: ${JSON.stringify(outcome)}`,
+  ).not.toBeNull();
 
   // Skip a floor this daypart, and check the program says so.
   await expect(page.getByTestId(`stop-${shaft}-1`)).toHaveAttribute("aria-pressed", "true");
