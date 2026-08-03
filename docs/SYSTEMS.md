@@ -1545,6 +1545,26 @@ the literal sense — sunlight — and a salvage mix, but not yet a food one.
   second enclave later in the journey rather than leaving late ruins as decorative dead
   weight.
 
+- **The siege balance is ungraded again, and this is the biggest thing M3 leaves behind.**
+  Three correctness fixes in one milestone — per-pace intake, a yield multiplier that had
+  been rounding to a no-op, and a storeroom that had been a one-way sink — each made the
+  economy more forgiving, and together they dissolved the three-way shape M2's
+  `PLAYTESTED` rows were tuned to produce. Re-measured, every plan finishes untouched with
+  poles banked. `BALANCE.md`'s Siege section opens by saying so. Recovering it needs an
+  instrument that keeps a tower genuinely constrained, which is a balance pass and not
+  something to bolt onto the end of a systems milestone. First thing at M4.
+- **The biomass half of "route is your power mix" is real but unfeelable.** The four terrain
+  yields are genuinely distinct now and a test guards it, but a starting tower fills its
+  shelves and stalls long before a 140% band and a 50% one add up to anything, so both a
+  shade-seeking and a sun-seeking route harvest identically. The sun half measures clearly
+  (§3.10). What the biomass half needs is somewhere for biomass to go — M4's meals, M5's
+  tier-two chains — not a change to the routes.
+- **Region 2 is barely exercised.** Everything measured routinely stops at the region-1
+  boundary; only `a_run_can_be_played_from_the_first_pace_to_the_last` and the whole-way
+  section of `examples/journey.rs` go further. The drowned city's palette, its higher
+  `threat_pct` and the enclave in it have been walked through, and that is all — nobody has
+  looked at how the second region *plays*.
+
 ### 3.11 Open questions
 
 Things that genuinely cannot be settled without building them.
