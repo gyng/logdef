@@ -19,7 +19,9 @@ import type { Bridge } from "../bridge";
 import { commandFailed } from "../bridge";
 import type {
   CatalogSnapshot,
+  ForkView,
   GameCommand,
+  HaltView,
   RoomInfo,
   ShaftInfo,
   SimSpeed,
@@ -69,6 +71,25 @@ export interface UiState {
   repelled: number;
   /** The Heartseed is gone. The run is over. */
   lost: boolean;
+  /** Where the run has got to. */
+  region: string;
+  /** How far through that region, in per-mille. */
+  regionPermille: number;
+  /** The branch archetype being walked through, if any. */
+  branch: string | null;
+  /** Why the tower is standing still, if it is. */
+  halt: HaltView;
+  /** The split ahead, if there is one the tower has not crossed. */
+  fork: ForkView | null;
+  /** Berthed at the enclave. */
+  atEnclave: boolean;
+  /** What the settlement in this region is called, if it has one. */
+  enclaveName: string | null;
+  /** Remaining stock, one entry per posted offer. */
+  offers: number[];
+  recruits: number;
+  /** The far edge of the journey, reached. */
+  arrived: boolean;
   fps: number;
   quads: number;
   lastError: string | null;
@@ -220,6 +241,27 @@ export class Game {
 
   setStriding(walking: boolean): void {
     this.send({ SetStriding: { walking } });
+  }
+
+  /**
+   * Commit to one way at the pending fork.
+   *
+   * Legal from the moment the fork appears and re-sendable until the
+   * tower crosses, so this is not a one-shot: the button stays live and
+   * the last answer is the one that counts (`SYSTEMS.md` §3.3).
+   */
+  takeFork(branch: number): void {
+    this.send({ TakeFork: { branch } });
+  }
+
+  /** Take one of the enclave's posted offers. */
+  trade(offer: number): void {
+    this.send({ Trade: { offer } });
+  }
+
+  /** Take somebody aboard, for poles. */
+  recruit(): void {
+    this.send("Recruit");
   }
 
   /** Switch the selected room off or on. */
@@ -386,6 +428,17 @@ export class Game {
       repairCost: view?.siege.repair_cost ?? 0,
       repelled: view?.siege.repelled ?? 0,
       lost: view?.siege.lost ?? false,
+      region: view === null ? "—" : (this.catalog.regions[view.journey.region]?.name ?? "—"),
+      regionPermille: view?.journey.region_permille ?? 0,
+      branch: this.branchName(),
+      halt: view?.journey.halt ?? "stopped",
+      fork: view?.journey.fork ?? null,
+      atEnclave: view?.journey.at_enclave ?? false,
+      enclaveName:
+        view === null ? null : (this.catalog.regions[view.journey.region]?.enclave ?? null),
+      offers: view?.journey.offers ?? [],
+      recruits: view?.journey.recruits ?? 0,
+      arrived: view?.journey.arrived ?? false,
       fps: Math.round(this.fps),
       quads: this.renderer.quadCount,
       lastError: this.lastError,
@@ -395,6 +448,20 @@ export class Game {
   /** Can the player afford this shaft, and is there anywhere to put it? */
   canAffordShaft(info: ShaftInfo): boolean {
     return info.build_cost.every((cost) => this.stockOf(cost.item) >= cost.amount);
+  }
+
+  /**
+   * The branch archetype the tower is walking through, by name.
+   *
+   * The palette says the terrain has changed; only the name says which
+   * of the two ways it was, and that is worth carrying because a player
+   * comparing this stretch against the one they turned down has nothing
+   * else to compare it by.
+   */
+  private branchName(): string | null {
+    const branch = this.latest?.journey.branch;
+    if (branch === null || branch === undefined) return null;
+    return this.catalog.branches[branch]?.name ?? null;
   }
 
   private selectedRoomActive(): boolean {
@@ -433,9 +500,16 @@ export class Game {
   }
 }
 
+/** Unit variants of `CommandError` cross as a bare string. */
+const BARE_ERRORS: Record<string, string> = {
+  NoForkPending: "The route does not split here",
+  NotBerthedAtAnEnclave: "The tower is not stopped at the enclave",
+  NobodyToRecruit: "Nobody else here wants to come",
+};
+
 /** Turn a `CommandError` into one line a player can act on. */
 function describeError(error: unknown): string {
-  if (typeof error === "string") return humanise(error);
+  if (typeof error === "string") return BARE_ERRORS[error] ?? humanise(error);
   if (error && typeof error === "object") {
     // A `CommandError` is externally tagged, so it has exactly one key.
     const entry = Object.entries(error as Record<string, unknown>)[0];
@@ -461,6 +535,14 @@ function describeError(error: unknown): string {
         return "That cannot be removed";
       case "NoRoomThere":
         return "Nothing there to remove";
+      case "NoSuchBranch":
+        return "The way does not go there";
+      case "NoSuchOffer":
+        return "Nothing like that is posted";
+      case "OfferExhausted":
+        return "That one is spoken for";
+      case "CrewFull":
+        return `There is no room aboard for more than ${String(detail.cap)}`;
       default:
         return humanise(kind);
     }

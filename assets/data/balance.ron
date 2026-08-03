@@ -136,8 +136,10 @@ Balance(
         enemy_fade_ticks: 20,
         // A floor's outer skin. Cheap enough that losing one to an
         // unanswered wave is a scrape: repairing it from nothing costs
-        // 30 poles and 600 ticks of crew time (see repair fields
-        // below), on the order of one floor's own build cost.
+        // 15 poles and 600 ticks of crew time (see the repair fields
+        // below), against a whole floor's build cost of 6 — dearer than
+        // building fresh, as fiddly work on something already standing
+        // should be, but not so dear that a breach is a catastrophe.
         panel_hp: 150,
         // Not quite twice a panel's health — rooms sit behind the
         // skin, so it should take real work to reach one once its
@@ -235,11 +237,19 @@ Balance(
         // loudest thing a tower can do, and it should cost more than a
         // day of walking quietly can pay back.
         provocation_per_burn: 18,
-        // The same three points a unit that cutting costs
-        // (provocation_per_100_harvested, above). The wardens a ruin
-        // rouses are the price of that ruin; charging a much louder
-        // second price in provocation on top would make salvage a thing
-        // nobody does twice.
+        // A quarter louder per unit than cutting
+        // (provocation_per_100_harvested, above, is 240). Taking a ruin
+        // apart is noisier work than stripping a stand of bamboo, and a
+        // little noisier is the whole of the difference: the wardens a
+        // ruin rouses are already the price of that ruin, and charging
+        // a much louder second price in provocation on top would make
+        // salvage a thing nobody does twice.
+        //
+        // The two were deliberately equal when both read 300. Cutting
+        // came down to 240 when the yield multiplier started working
+        // and a subsistence tower began provoking on its own; salvage
+        // did not need the same correction, because a berth harvests
+        // nothing from the terrain while it happens.
         provocation_per_100_salvaged: 300,
         // 14,400 ticks / 100 x 2 = 288 points a day, a little under a
         // third of the ceiling. Set so that a subsistence tower — one
@@ -269,10 +279,15 @@ Balance(
         // answers the jungle some other way.
         repair_poles_per_10_hp: 1,
         // Twenty hit points a shift, so a shift is 80 ticks of crew
-        // time and 4 poles. Chunky on purpose: a crew member who
+        // time and 2 poles. Chunky on purpose: a crew member who
         // commits to a repair is away from hauling for a noticeable
         // stretch, which is what makes triage a decision. Per-tick
         // repair would let them dip in and out for free.
+        //
+        // It is also the threshold below which crew do not bother: a
+        // shift costs its poles whether it mends twenty points or one,
+        // so anything missing less than this is left alone and the mark
+        // stays on the tower.
         repair_hp_per_shift: 20,
         // A quarter health. A room keeps limping along above this —
         // damaged, slower, but still contributing (SYSTEMS.md §2.3) —

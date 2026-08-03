@@ -211,3 +211,80 @@ function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layou
 
   return labels;
 }
+
+/**
+ * The two ways, named on the ground.
+ *
+ * The fork card in the chrome is where the choice is made, but the
+ * choice itself belongs to the strip: the tower is standing in front of
+ * a split with two ways out of it, and both of them have names. Without
+ * this the card is a dialogue box about something happening off screen
+ * (`SYSTEMS.md` §3.3).
+ */
+function forkLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
+  const fork = view.journey.fork;
+  if (!fork) return [];
+  const { x, y, far } = aheadPoint(view, layout, fork.ahead);
+  if (x > layout.viewport.width) return [];
+
+  // Nothing at all while it is a speck at the vanishing point, fading
+  // in as it comes. Same treatment the creature glyphs get, for the
+  // same reason: a name over a four-pixel post is bigger than the post.
+  const near = Math.max(0, Math.min(1, (1 - far - 0.15) / 0.35));
+  if (near <= 0) return [];
+
+  const scale = 0.3 + 0.7 * (1 - far);
+  const post = layout.slotW * 0.9 * scale;
+  const reach = Math.max(post * 2.2, (layout.groundY - layout.horizonY) * 0.55 * (0.4 + far * 0.9));
+
+  return fork.branches.flatMap((branchIdx, side) => {
+    const info = catalog.branches[branchIdx];
+    if (!info) return [];
+    const chosen = fork.answer === side;
+    const lift = side === 0 ? -0.55 : 0.12;
+    return [
+      {
+        key: `fork-${side}`,
+        text: info.name,
+        x: x + reach * (0.85 + side * 0.15),
+        y: y + reach * lift - post * 0.25,
+        variant: chosen ? "label-way label-way-taken" : "label-way",
+        alpha: near * (chosen ? 1 : 0.75),
+      },
+    ];
+  });
+}
+
+/**
+ * What a ruin holds, for the ones the tower could actually stop at.
+ *
+ * The heap on the strip is the primary read and carries across the
+ * frame; this is the precision layer on top of it, and it is gated
+ * hard — only ruins near enough to be a live decision get a figure, so
+ * the horizon never turns into a list of numbers (`DECISIONS.md` §8).
+ */
+function salvageLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
+  const scrap = catalog.items.findIndex((item) => item.id === "item.scrap");
+  const glyph = scrap >= 0 ? (catalog.items[scrap]?.glyph ?? "") : "";
+  const labels: Label[] = [];
+
+  for (const feature of view.world.features) {
+    if (feature.salvage <= 0) continue;
+    const gap = feature.at - view.world.distance;
+    // Roughly the near half of the tower's own footprint either side —
+    // a berth is decided at the last moment, and this is that moment.
+    if (Math.abs(gap) > 90) continue;
+    const parallax = feature.layer === 0 ? 0.22 : feature.layer === 1 ? 0.55 : 1;
+    const x = worldX(layout, feature.at, view.world.distance, parallax);
+    if (x < 0 || x > layout.viewport.width) continue;
+    labels.push({
+      key: `salvage-${feature.at}-${feature.layer}`,
+      text: `${glyph}${feature.salvage}`,
+      x,
+      y: layout.groundY + (layout.groundY - layout.horizonY) * 0.1,
+      variant: "label-salvage",
+      alpha: Math.max(0.35, 1 - Math.abs(gap) / 90),
+    });
+  }
+  return labels;
+}

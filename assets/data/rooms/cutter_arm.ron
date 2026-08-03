@@ -11,9 +11,17 @@ RoomDef(
     build_cost: [CostEntryDef(item: "item.poles", amount: 4)],
     intake: IntakeDef(
         item: "item.bamboo",
-        // 78 paces a stalk — 130 ticks at the shipped stride, a little
-        // slower than the mill's 120 ticks a pole, so one arm very
-        // nearly keeps one mill busy and never outruns it.
+        // 78 paces a stalk — 130 ticks at the shipped stride on
+        // ordinary ground, a little slower than the mill's 120 ticks a
+        // pole, so one arm very nearly keeps one mill busy.
+        //
+        // On ordinary ground. Under dense canopy (yield 140) the same
+        // arm cuts every 93 ticks and *does* outrun the mill, and
+        // region 1's palette is 55% canopy — so bamboo builds up in the
+        // rich stretches and is drawn back down in the poor ones. That
+        // is the intended texture rather than an oversight, but it is
+        // why a second arm needs a second mill and not just a second
+        // storeroom.
         //
         // This used to read 54 (90 ticks), and it was never what the
         // arm actually did. Intake truncated its rate into Q8.8 and ran
