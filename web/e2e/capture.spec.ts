@@ -286,6 +286,29 @@ test("capture stills", async ({ page }) => {
     await page.evaluate(() => {
       window.__capture!.walk(3000);
     });
+
+    // And check it actually went up.
+    //
+    // This harness spent a while placing a three-wide rig at slot 6 of
+    // an eight-slot floor and photographing the tower that resulted, and
+    // it is the third script in this project to quietly measure a tower
+    // it thought it had built — the others being `siege_run.rs` failing
+    // to afford a thornwright and the golden recorder standing at a fork
+    // for half its run. Every one of them sent a command and did not
+    // look at what came back. So: look.
+    const standing = await page.evaluate(
+      ([f, s]) =>
+        window
+          .__understory!.view()
+          .tower.floors[f]?.rooms.some((r) => r.slot <= s && s < r.slot + r.width) ?? false,
+      [floor, slot] as const,
+    );
+    if (!standing) {
+      throw new Error(
+        `${room} was never built at floor ${String(floor)} slot ${String(slot)} — ` +
+          "the still would show a tower missing the thing it is about",
+      );
+    }
   }
 
   // Everything below is paused, so each still lands exactly where it
@@ -565,12 +588,13 @@ test("capture stills", async ({ page }) => {
     const hooks = window.__understory!;
     const before = hooks.view();
     const stock = (item: number) => before.stock.find((entry) => entry.item === item)?.count ?? 0;
+    // Plating first, and the order is a real decision rather than a
+    // detail: the board's best offer also takes scrap, so trading
+    // before plating can leave you two short of a hull you meant to
+    // buy. Permanent beats convertible.
+    const plate = hooks.send("Reinforce");
     const trade = hooks.send({ Trade: { offer: 0 } });
     const hire = hooks.send("Recruit");
-    // Shell work last, because it is the one that shows on the tower —
-    // salvaged metal bolted over the timber. A permanent upgrade the
-    // player cannot see is a number in a menu.
-    const plate = hooks.send("Reinforce");
     hooks.step(2);
     const after = hooks.view();
     const moved = after.stock
