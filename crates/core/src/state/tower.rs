@@ -211,6 +211,27 @@ impl Room {
 
     /// Put items on the first shelf that will take them. Returns how
     /// many were shelved.
+    /// Take up to `amount` of an item back off this room's shelves.
+    ///
+    /// The counterpart to `shelve`, and the reason a storeroom is a
+    /// buffer rather than a bin: without it, anything with no
+    /// `take_stock` consumer goes onto a shelf and stays there.
+    pub fn unshelve(&mut self, item: ItemIdx, amount: i64) -> i64 {
+        let mut taken = 0;
+        for shelf in &mut self.shelves {
+            if shelf.item != Some(item) || taken >= amount {
+                continue;
+            }
+            let want = (amount - taken).min(shelf.count);
+            shelf.count -= want;
+            taken += want;
+            if shelf.count == 0 {
+                shelf.item = None;
+            }
+        }
+        taken
+    }
+
     pub fn shelve(&mut self, item: ItemIdx, amount: i64) -> i64 {
         let mut remaining = amount;
         // Prefer a shelf already holding this item so shelves don't

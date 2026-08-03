@@ -344,10 +344,20 @@ fn collect(crew: &mut Crew, tower: &mut Tower) -> bool {
     let Some(room) = floor.rooms.iter_mut().find(|r| r.id == pickup.room) else {
         return false;
     };
-    let Some(stack) = room.outputs.iter_mut().find(|s| s.item == item) else {
-        return false;
+    // Outbox first, then the shelves. A storeroom is a buffer, not a
+    // bin: whatever goes onto a shelf has to be able to come off it
+    // again, or an item with no `take_stock` consumer — bamboo, scrap —
+    // is stranded there for the rest of the run.
+    let taken = room
+        .outputs
+        .iter_mut()
+        .find(|s| s.item == item)
+        .map_or(0, |stack| stack.withdraw(wanted));
+    let taken = if taken > 0 {
+        taken
+    } else {
+        room.unshelve(item, wanted)
     };
-    let taken = stack.withdraw(wanted);
     if taken == 0 {
         return false;
     }
@@ -474,7 +484,9 @@ fn assign_idle(
         let task = if let Some((item, held)) = crew[i].carrying {
             // Already holding something: find it a home rather than
             // picking up more. Nothing is ever dropped on the floor.
-            find_destination(tower, content, crew, i, item, held).map(
+            // Already carrying: this is a re-home, not a pickup, so a
+            // shelf is a legitimate destination.
+            find_destination(tower, content, crew, i, item, held, false).map(
                 |(destination, to_floor, to_slot, _)| HaulTask {
                     item,
                     amount: held,
@@ -567,9 +579,22 @@ fn pick_task(
 
     for floor in &tower.floors {
         for room in &floor.rooms {
-            for stack in &room.outputs {
-                let committed = committed_pickup(crew, me, room.id, stack.item);
-                let available = stack.count - committed;
+            // Outboxes, then shelves. A shelf pickup may only feed a
+            // room that eats the item — see `find_destination`'s
+            // `inbox_only`. Without that a crew member would happily
+            // carry bamboo from one shelf to another for ever.
+            let piles = room
+                .outputs
+                .iter()
+                .map(|stack| (stack.item, stack.count, false))
+                .chain(
+                    room.shelves
+                        .iter()
+                        .filter_map(|shelf| Some((shelf.item?, shelf.count, true))),
+                );
+            for (pile_item, pile_count, from_shelf) in piles {
+                let committed = committed_pickup(crew, me, room.id, pile_item);
+                let available = pile_count - committed;
                 if available <= 0 {
                     continue;
                 }
@@ -585,8 +610,9 @@ fn pick_task(
                     content,
                     crew,
                     me,
-                    stack.item,
+                    pile_item,
                     available.min(capacity),
+                    from_shelf,
                 ) else {
                     continue;
                 };
@@ -608,7 +634,7 @@ fn pick_task(
                 let score = priority * 1000 - travel;
 
                 let task = HaulTask {
-                    item: stack.item,
+                    item: pile_item,
                     amount,
                     pickup: Some(HaulPickup {
                         room: room.id,
@@ -672,6 +698,7 @@ fn find_destination(
     me: usize,
     item: ItemIdx,
     amount: i64,
+    inbox_only: bool,
 ) -> Option<(HaulDestination, FloorIdx, SlotIdx, i64)> {
     let mut best: Option<(i64, i64, HaulDestination, FloorIdx, SlotIdx)> = None;
 
@@ -701,8 +728,11 @@ fn find_destination(
                 );
             }
 
-            // 2. Shelf space.
-            if !room.shelves.is_empty() {
+            // 2. Shelf space — but never for something already on a
+            // shelf. A shelf-to-shelf haul moves nothing anywhere and
+            // would loop for ever; a shelf pickup exists only to feed
+            // a room that eats the item.
+            if !room.shelves.is_empty() && !inbox_only {
                 let destination = HaulDestination::Shelf { room: room.id };
                 let inbound = committed_delivery(crew, me, destination, item);
                 let space = room.shelf_space_for(item) - inbound;

@@ -10,8 +10,8 @@
 import { LabelLayer, type Label } from "./LabelLayer";
 import { QuadBatch } from "./QuadBatch";
 import { createContext, resizeToDisplay } from "./gl";
-import { computeLayout, hitSlot, slotX, floorY, type Layout } from "./layout";
-import { drawScene, enemyPosition, towerShape, type PlaceMode } from "./scene";
+import { computeLayout, hitSlot, slotX, floorY, worldX, type Layout } from "./layout";
+import { aheadPoint, drawScene, enemyPosition, towerShape, type PlaceMode } from "./scene";
 import type { CatalogSnapshot, ViewSnapshot } from "../bridge/types";
 
 export interface RenderInput {
@@ -113,6 +113,9 @@ export class Renderer {
  */
 function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
   const labels: Label[] = [];
+
+  labels.push(...forkLabels(view, catalog, layout));
+  labels.push(...salvageLabels(view, catalog, layout));
 
   for (const floor of view.tower.floors) {
     const y = floorY(layout, floor.index);

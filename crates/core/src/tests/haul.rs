@@ -337,3 +337,105 @@ fn the_view_reports_the_same_states_the_simulation_is_in() {
         assert_eq!(rendered.state, expected);
     }
 }
+
+#[test]
+fn a_storeroom_is_a_buffer_and_not_a_bin() {
+    // Everything a crew member could pick up used to come out of a
+    // room's *outbox*, never off a shelf. So the mill could only ever
+    // be fed straight from the cutter arm, and any bamboo that reached
+    // a shelf on the way — which is where it goes the moment the mill's
+    // inbox is full — was stranded there for the rest of the run.
+    // Nothing draws bamboo back off a shelf: `take_stock` spends poles
+    // for building and repair, and that is the only other way out.
+    //
+    // The visible form was a tower stopping with its shelves
+    // three-quarters full and no error anywhere.
+    let content = content();
+    let bamboo = item(&content, "item.bamboo");
+    let mut game = engine(4100);
+
+    // Put bamboo on the shelves and nowhere else, with an empty mill
+    // waiting for it and no arm to feed it directly.
+    {
+        let state = game.state_mut_for_test();
+        state.siege.provocation = 0;
+        state.siege.enemies.clear();
+        state.siege.next_wave_tick = u64::MAX;
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                for stack in room.outputs.iter_mut().chain(room.inputs.iter_mut()) {
+                    stack.count = 0;
+                }
+            }
+        }
+        // The arms go, so the only bamboo in the tower is the shelved
+        // kind. If the mill runs, it ran on that.
+        for floor in &mut state.tower.floors {
+            floor
+                .rooms
+                .retain(|room| content.room_rt(room.def).intake_source.is_none());
+        }
+        state.shelve(bamboo, 20);
+    }
+
+    let shelved = game.state().stock_of(bamboo);
+    assert_eq!(shelved, 20, "the test did not manage to shelve anything");
+    let crafts = game.state().stats.crafts_completed;
+
+    game.step(3000);
+
+    assert!(
+        game.state().stock_of(bamboo) < shelved,
+        "bamboo went onto a shelf and could not come off it again"
+    );
+    assert!(
+        game.state().stats.crafts_completed > crafts,
+        "the mill starved with twenty bamboo sitting on a shelf beside it"
+    );
+}
+
+#[test]
+fn nothing_carries_a_thing_from_one_shelf_to_another() {
+    // The other half of the rule. A shelf pickup exists to feed a room
+    // that eats the item; allowing a shelf as its destination too would
+    // let a crew member move bamboo between storerooms for ever, which
+    // scores as work and achieves nothing.
+    let content = content();
+    let bamboo = item(&content, "item.bamboo");
+    let mut game = engine(4101);
+    {
+        let state = game.state_mut_for_test();
+        state.siege.provocation = 0;
+        state.siege.enemies.clear();
+        state.siege.next_wave_tick = u64::MAX;
+        // No arms and no mill: nothing produces bamboo and nothing eats
+        // it, so any movement at all is a crew member going in circles.
+        for floor in &mut state.tower.floors {
+            floor.rooms.retain(|room| {
+                let rt = content.room_rt(room.def);
+                rt.intake_source.is_none() && rt.recipe_inputs.is_empty()
+            });
+        }
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                for stack in room.outputs.iter_mut().chain(room.inputs.iter_mut()) {
+                    stack.count = 0;
+                }
+            }
+        }
+        state.shelve(bamboo, 12);
+    }
+
+    let before = game.state().stats.hauls_completed;
+    game.step(3000);
+    assert_eq!(
+        game.state().stats.hauls_completed,
+        before,
+        "crew hauled something with nowhere to take it"
+    );
+    assert_eq!(
+        game.state().stock_of(bamboo),
+        12,
+        "shelved bamboo moved with nothing to consume it"
+    );
+}

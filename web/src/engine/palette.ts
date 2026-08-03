@@ -54,9 +54,35 @@ export const palette = {
   clearingNear: hex("#2b5230"),
   ruinFar: hex("#537066"),
   ruinNear: hex("#2f4442"),
+  // The drowned city's own band. Sun-struck bleached concrete over
+  // standing water — paler and colder than a ruin field, so region 2
+  // reads as somewhere else rather than as region 1 with more rubble
+  // (`SYSTEMS.md` §3.2).
+  drownedFar: hex("#8aa79b"),
+  drownedNear: hex("#23403e"),
 
   ground: hex("#11241a"),
   groundLip: hex("#3c6b43"),
+
+  // Salvage. Warm worked metal against cold wet stone: a ruin with
+  // something left in it has to be tellable from a stripped one at the
+  // distance the player first sees it, and warm-against-cold is the
+  // only cue that survives the haze the far parallax layer is washed
+  // with (`SYSTEMS.md` §3.4).
+  salvage: hex("#d9a25a"),
+  salvageLit: hex("#f5d79a"),
+  /** A ruin with nothing left: colder, lower, and taken by the green. */
+  stripped: hex("#33453e"),
+
+  // The route splitting. Warm timber and brass, because a waypost is
+  // something people put there — the one man-made thing on the strip
+  // that is not the tower.
+  wayPost: hex("#8a6b41"),
+  wayBoard: hex("#e0c07a"),
+  /** Ground the tower has not been told how to draw yet. */
+  undecided: hex("#cbd9ca"),
+  /** The far edge of the journey: open, bright, and nothing past it. */
+  farEdge: hex("#ecdfba"),
 
   // The tower: warm timber and weathered brass against all that green.
   towerShell: hex("#3a2f26"),
@@ -154,6 +180,8 @@ export function terrainColors(terrainId: string): { far: Color; near: Color } {
       return { far: palette.canopyFar, near: palette.canopyNear };
     case "terrain.ruin_field":
       return { far: palette.ruinFar, near: palette.ruinNear };
+    case "terrain.drowned_street":
+      return { far: palette.drownedFar, near: palette.drownedNear };
     default:
       return { far: palette.clearingFar, near: palette.clearingNear };
   }

@@ -279,8 +279,8 @@ fn table(runs: &[Run]) {
         print!(" {:>7}", &name[..name.len().min(7)]);
     }
     println!(
-        " {:>7} {:>6} {:>5} {:>6} {:>7} {:>5} {:>4}  {}",
-        "bamboo", "scrap", "forks", "ruins", "salvage", "prov", "off", "end"
+        " {:>7} {:>6} {:>5} {:>6} {:>7} {:>5} {:>4}  end",
+        "bamboo", "scrap", "forks", "ruins", "salvage", "prov", "off"
     );
 
     for run in runs {
@@ -337,7 +337,8 @@ fn verdict(across: &[Run], within: &[Run]) {
         values.last().copied().unwrap_or(0) - values.first().copied().unwrap_or(0)
     };
 
-    let measures: [(&str, &dyn Fn(&Run) -> i64); 3] = [
+    type Measure<'a> = (&'a str, &'a dyn Fn(&Run) -> i64);
+    let measures: [Measure; 3] = [
         ("forks offered", &|r: &Run| r.forks as i64),
         ("terrain mix (widest band)", &|r: &Run| {
             r.mix.iter().copied().max().unwrap_or(0)
@@ -347,8 +348,8 @@ fn verdict(across: &[Run], within: &[Run]) {
 
     println!("=== do two seeds differ by more than two ways of playing one? ===\n");
     println!(
-        "{:<28} {:>12} {:>12}   {}",
-        "measure", "across seeds", "within one", "verdict"
+        "{:<28} {:>12} {:>12}   verdict",
+        "measure", "across seeds", "within one"
     );
     let mut met = 0;
     for (name, of) in measures {

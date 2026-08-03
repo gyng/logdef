@@ -97,6 +97,11 @@ function installTestHooks(active: Bridge): void {
   target.__understory = {
     view: () => active.view(),
     catalog: () => active.catalog(),
+    // Anything that drives the engine without a player has to be able
+    // to answer a fork, or it walks into one and measures a parked
+    // tower with total confidence (`SYSTEMS.md` §3.3). The harnesses
+    // need a command channel for exactly that.
+    send: (cmd: GameCommand) => active.send(cmd),
     stateHash: () => active.stateHash(),
     step: (ticks: number) => {
       active.debugStep(ticks);

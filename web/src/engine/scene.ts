@@ -20,9 +20,11 @@ import type {
   CatalogSnapshot,
   CrewView,
   EnemyView,
+  FeatureView,
   FloorView,
   RoomView,
   ShaftView,
+  TerrainInfo,
   ViewSnapshot,
 } from "../bridge/types";
 
@@ -87,6 +89,8 @@ function hash01(id: number): number {
 export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
   drawSky(batch, ctx);
   drawTerrain(batch, ctx);
+  drawJourneyEdge(batch, ctx);
+  drawFork(batch, ctx);
   drawLegs(batch, ctx);
   drawTower(batch, ctx);
   drawShafts(batch, ctx);
@@ -157,6 +161,20 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
   const horizon = layout.horizonY;
   const depth = layout.groundY - horizon;
   const dark = darkness(view);
+  // Where the generated world stops, if it stops inside the frame. Past
+  // it there is nothing to draw because there is nothing decided —
+  // `drawJourneyEdge` takes over from here.
+  const edgeX = edgeScreenX(ctx);
+
+  // A base plate under the whole strip in the colour of the band
+  // underfoot. The per-band quads paint over it; this is only here so a
+  // gap between the last band's linear end and the edge — which opens
+  // up the moment the tower halts at a fork — reads as ground rather
+  // than as a hole onto the sky.
+  const underfoot = terrainColors(catalog.terrain[view.world.band ?? -1]?.id ?? "");
+  batch.push(0, horizon, edgeX, height - horizon, atNight(mix(underfoot.far, palette.haze, 0.45), dark), {
+    colorBottom: atNight(mix(underfoot.near, palette.ground, 0.75), dark),
+  });
 
   // The ground plane, running from the horizon to the bottom of the
   // frame, coloured by the band it belongs to. Perspective is faked
@@ -166,7 +184,7 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
     if (!terrain) continue;
     const colors = terrainColors(terrain.id);
     const x1 = worldX(layout, band.start, distance, 1);
-    const x2 = worldX(layout, band.end, distance, 1);
+    const x2 = Math.min(worldX(layout, band.end, distance, 1), edgeX);
     if (x2 < -60 || x1 > width + 60) continue;
     batch.push(
       x1,
@@ -215,35 +233,37 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
       const terrain = catalog.terrain[feature.band];
       if (!terrain) continue;
       const x = worldX(layout, feature.at, distance, layer.parallax);
-      if (x < -140 || x > width + 140) continue;
-      const kind = terrain.feature_kinds[feature.kind] ?? "tree";
+      if (x < -140 || x > Math.min(width, edgeX) + 140) continue;
       const colors = terrainColors(terrain.id);
       const base = layerIndex === 0 ? colors.far : colors.near;
       const tint = atNight(mix(base, layer.tint, layer.blend), dark);
       const size = depth * layer.scale * (0.45 + (feature.scale / 255) * 0.7);
-      drawFeature(batch, kind, x, layer.base, size, tint, ctx.clock, feature.at);
+      drawFeature(batch, terrain, feature, x, layer.base, size, tint, ctx.clock, dark);
     }
   }
 
   // The strip of ground the tower actually stands on, so its feet have
   // somewhere to land rather than floating over the parallax.
   const ground = atNight(palette.ground, dark);
-  batch.push(0, layout.groundY, width, height - layout.groundY, fade(ground, 0.55), {
+  batch.push(0, layout.groundY, edgeX, height - layout.groundY, fade(ground, 0.55), {
     colorBottom: ground,
   });
-  batch.push(0, layout.groundY - 2, width, 4, fade(atNight(palette.groundLip, dark), 0.7));
+  batch.push(0, layout.groundY - 2, edgeX, 4, fade(atNight(palette.groundLip, dark), 0.7));
 }
 
 function drawFeature(
   batch: QuadBatch,
-  kind: string,
+  terrain: TerrainInfo,
+  feature: FeatureView,
   x: number,
   baseY: number,
   size: number,
   tint: Color,
   clock: number,
-  seed: number,
+  dark: number,
 ): void {
+  const kind = terrain.feature_kinds[feature.kind] ?? "tree";
+  const seed = feature.at;
   // A slow sway, phase-shifted per feature so the canopy breathes
   // instead of pulsing in unison.
   const sway = Math.sin(clock * 0.6 + seed * 0.11) * 0.02;
@@ -357,10 +377,22 @@ function drawFeature(
     case "ruin": {
       // A broken wall of the old world, drowned in green: a tall
       // fragment, a shorter one beside it, and growth on every ledge.
-      const stone = mix(tint, palette.ruinFar, 0.4);
+      //
+      // From M3 a ruin is also a decision. `salvage` is what it still
+      // holds, and the difference between a ruin worth berthing at and
+      // one already picked over is the whole basis of that decision —
+      // so it is drawn as the thing itself, warm worked metal stacked
+      // against the wall, and not as a badge (`SYSTEMS.md` §3.4).
+      const isRuin = terrain.ruin_kinds[feature.kind] === true;
+      const spent = isRuin && feature.salvage <= 0;
+      const stone = mix(mix(tint, palette.ruinFar, 0.4), palette.stripped, spent ? 0.55 : 0);
       const shade = mix(stone, palette.vignette, 0.22);
       const unitW = size * 0.18;
-      const tallH = size * (0.55 + wobble(4) * 0.5);
+      // A stripped ruin has been climbed over and pulled apart. It
+      // slumps, so "nothing left here" is legible from the silhouette
+      // before the colour has resolved.
+      const slump = spent ? 0.62 : 1;
+      const tallH = size * (0.55 + wobble(4) * 0.5) * slump;
       const shortH = tallH * (0.35 + wobble(5) * 0.3);
 
       batch.push(x - unitW * 1.3, baseY - tallH, unitW * 1.2, tallH, stone, {
@@ -378,8 +410,9 @@ function drawFeature(
         { radius: 1 },
       );
       // Growth reclaiming the ledges — the reason it's called a ruin
-      // field and not rubble.
-      const moss = mix(palette.canopyFar, tint, 0.35);
+      // field and not rubble. A stripped one gets more of it: what the
+      // tower did not take, the green did.
+      const moss = mix(palette.canopyFar, tint, spent ? 0.15 : 0.35);
       batch.push(x - unitW * 1.4, baseY - tallH - size * 0.03, unitW * 1.4, size * 0.05, moss, {
         radius: size * 0.025,
       });
@@ -394,10 +427,321 @@ function drawFeature(
         Math.max(1, size * 0.02),
         moss,
       );
+      if (isRuin && feature.salvage > 0) {
+        drawSalvage(batch, x, baseY, size, feature.salvage, tallH, clock, dark, wobble);
+      }
       break;
     }
     default:
       batch.push(x - size * 0.1, baseY - size * 0.2, size * 0.2, size * 0.2, tint, { radius: 3 });
+  }
+}
+
+/**
+ * What a ruin still holds, stacked against it.
+ *
+ * The one thing on the terrain strip drawn from an economic quantity
+ * rather than from scenery, and the whole basis of the decision to
+ * stop: §3.2's ruin-richness roll only means anything if a lean city
+ * and a generous one look different from across the frame. So the heap
+ * grows with `salvage`, and the glint on it is deliberately *not* run
+ * through the layer's haze tint — the same exception the creature eye
+ * takes, for the same reason. Warm against cold is the only cue that
+ * survives being washed toward the mist at the far parallax layer, and
+ * a ruin the tower could berth at has to be legible at the distance the
+ * player first sees it, not once it is underfoot.
+ */
+function drawSalvage(
+  batch: QuadBatch,
+  x: number,
+  baseY: number,
+  size: number,
+  salvage: number,
+  wallH: number,
+  clock: number,
+  dark: number,
+  wobble: (salt: number) => number,
+): void {
+  // Against the authored ceiling: 60 units before a region's richness
+  // roll, which tops out at 140% (`assets/data/terrain/*.ron`). A ruin
+  // at the very top of both rolls fills the heap and no further.
+  const load = unit(salvage / 84);
+  const metal = atNight(palette.salvage, dark * 0.55);
+  const lit = atNight(palette.salvageLit, dark * 0.4);
+
+  // The heap itself: wider and taller the more is in it.
+  const heapW = size * (0.16 + load * 0.34);
+  const heapH = size * (0.05 + load * 0.19);
+  batch.push(x - heapW * 0.35, baseY - heapH, heapW, heapH, lit, {
+    colorBottom: metal,
+    radius: heapH * 0.4,
+  });
+
+  // Plate and beam leaning on the wall. One piece per twenty units, so
+  // counting them is a rough read of what is in there without a number
+  // ever being printed.
+  const pieces = Math.min(4, 1 + Math.floor(load * 4));
+  for (let i = 0; i < pieces; i += 1) {
+    const lean = 0.2 + wobble(20 + i) * 0.45;
+    const reach = Math.min(wallH * 0.75, size * (0.16 + load * 0.3));
+    const footX = x - heapW * 0.2 + i * heapW * 0.26;
+    batch.pushLine(
+      footX,
+      baseY,
+      footX - reach * lean,
+      baseY - reach,
+      Math.max(1.2, size * 0.035),
+      i % 2 === 0 ? metal : lit,
+    );
+  }
+
+  // And a glint off it, breathing slowly. Small, but it is the part
+  // that carries across the frame.
+  const shine = 0.45 + Math.sin(clock * 0.9 + x * 0.05) * 0.2;
+  const glow = size * (0.09 + load * 0.14);
+  batch.push(x - glow * 0.5, baseY - heapH - glow * 0.5, glow, glow, fade(lit, shine), {
+    radius: glow * 0.5,
+    softness: glow * 0.9,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The journey ahead
+// ---------------------------------------------------------------------------
+
+/**
+ * The furthest ahead the world exists, in paces.
+ *
+ * `stream_ahead_paces` in `assets/data/balance.ron` — the generator
+ * produces terrain this far in front of the tower and no further, so it
+ * is also how much warning a fork gives: fifty seconds at 1×
+ * (`SYSTEMS.md` §3.3).
+ */
+const HORIZON_PACES = 900;
+
+/**
+ * Where the approach stops compressing, in paces. Larger than the
+ * creature approach's knee because a fork is a decision made minutes
+ * out rather than a fight decided in the last thirty paces — the useful
+ * resolution is "it is coming" long before it is "it is here".
+ */
+const HORIZON_KNEE = 45;
+
+/** Where the world stops, if it stops inside the frame. */
+export interface JourneyEdge {
+  /** `fork` is undecided ground; `end` is the far edge of the journey. */
+  kind: "fork" | "end";
+  ahead: number;
+}
+
+/**
+ * Whether the generated world runs out in front of the tower.
+ *
+ * Two things stop the generator, and they are the same event as far as
+ * the strip is concerned: an unanswered fork, past which the palette
+ * depends on an answer that does not exist, and the far edge of the
+ * last region, past which there is no more journey. Both have to be
+ * drawn, because otherwise the frame simply ends in raw sky, and an
+ * answered fork must not — generation resumes the moment a branch is
+ * picked (`SYSTEMS.md` §3.3).
+ */
+export function journeyEdge(view: ViewSnapshot): JourneyEdge | null {
+  const fork = view.journey.fork;
+  if (fork && fork.answer === null) return { kind: "fork", ahead: fork.ahead };
+  if (view.journey.remaining < HORIZON_PACES) {
+    return { kind: "end", ahead: view.journey.remaining };
+  }
+  return null;
+}
+
+/**
+ * A point on the ground plane `ahead` paces in front of the tower.
+ *
+ * The same logarithmic compression the creature approach uses, and for
+ * the same reason: laid out at the scene's own `paceW` the ground in
+ * front of the tower is under thirty paces wide, so a fork nine hundred
+ * paces out would sit thirty-six thousand pixels off the right edge and
+ * then cross the whole frame in a second and a half. Compressed, it
+ * crests at the vanishing point and walks in — which is what "you can
+ * see it coming, and you have the whole streaming window to answer" has
+ * to look like.
+ *
+ * Exported because the label layer has to land on exactly the same spot
+ * the quads do.
+ */
+export function aheadPoint(
+  view: ViewSnapshot,
+  layout: Layout,
+  ahead: number,
+): { x: number; y: number; far: number } {
+  const spanX = towerShape(view).slots * layout.slotW;
+  const far = unit(
+    Math.log1p(Math.max(0, ahead) / HORIZON_KNEE) / Math.log1p(HORIZON_PACES / HORIZON_KNEE),
+  );
+  const flankX = layout.originX + spanX;
+  const margin = layout.slotW * 0.4;
+  const corridor = Math.max(0, layout.viewport.width - flankX - margin);
+  const depth = layout.groundY - layout.horizonY;
+  const farGroundY = layout.horizonY + depth * 0.06;
+  const groundLine = layout.groundY + depth * 0.14;
+  return { x: flankX + corridor * far, y: groundLine + (farGroundY - groundLine) * far, far };
+}
+
+/**
+ * Screen x the drawn ground has to stop at.
+ *
+ * Deliberately the compressed position rather than the literal one.
+ * `worldX` puts the tower's own distance at its *left* edge, so a tower
+ * halted at a fork would have the void opening under its own feet; the
+ * compressed edge keeps it at the leading flank, where the ground the
+ * tower has not walked on yet actually is.
+ */
+function edgeScreenX(ctx: SceneContext): number {
+  const edge = journeyEdge(ctx.view);
+  if (!edge) return ctx.layout.viewport.width;
+  return Math.min(ctx.layout.viewport.width, aheadPoint(ctx.view, ctx.layout, edge.ahead).x);
+}
+
+/**
+ * What is past the end of the world.
+ *
+ * An unanswered fork dissolves into mist: the way ahead has not been
+ * decided, and drawing it as undecided is the literal truth rather than
+ * a metaphor. The far edge of the journey does the opposite — it opens
+ * out into light, because standing still there is the run being over
+ * and not a decision pending, and those two must never read the same
+ * (`SYSTEMS.md` §3.3).
+ */
+function drawJourneyEdge(batch: QuadBatch, ctx: SceneContext): void {
+  const edge = journeyEdge(ctx.view);
+  if (!edge) return;
+
+  const { layout, view } = ctx;
+  const { width, height } = layout.viewport;
+  const x = edgeScreenX(ctx);
+  if (x >= width) return;
+
+  const dark = darkness(view);
+  const horizon = layout.horizonY;
+  const wash = edge.kind === "fork" ? palette.undecided : palette.farEdge;
+  const body = atNight(wash, dark);
+
+  // Everything past the edge, thinning downward so the ground does not
+  // simply stop at a hard line.
+  batch.push(x, horizon, width - x, height - horizon, fade(body, 0.92), {
+    colorBottom: fade(body, edge.kind === "fork" ? 0.72 : 0.85),
+  });
+  // A soft shoulder on the edge itself, so it reads as ground giving
+  // way to distance rather than as a cut.
+  batch.push(x - layout.slotW * 0.5, horizon, layout.slotW, height - horizon, fade(body, 0), {
+    colorBottom: fade(body, 0),
+    softness: layout.slotW * 0.5,
+  });
+  batch.push(x - layout.slotW * 0.6, horizon, layout.slotW * 1.2, height - horizon, fade(body, 0.5), {
+    softness: layout.slotW * 0.6,
+  });
+
+  if (edge.kind === "end") {
+    // The far edge gets a low band of light along the ground: nothing
+    // beyond, and nothing threatening about that.
+    batch.push(x, layout.groundY - height * 0.06, width - x, height * 0.12, fade(palette.sunlight, 0.3), {
+      softness: height * 0.05,
+    });
+  }
+}
+
+/**
+ * The split, and the two ways out of it.
+ *
+ * Drawn whether or not it has been answered, because the answer stays
+ * changeable until the tower crosses. What changes with the answer is
+ * which way is lit: the chosen track carries the tower's own lamplight
+ * and the other one goes back to being scenery.
+ *
+ * The tracks are coloured from `catalog.branches[i].terrain[0]` — the
+ * heaviest kind in that branch's own palette — so the two ways are
+ * literally painted the colour of what they are made of, and the
+ * picture cannot drift out of step with the data during tuning the way
+ * an authored blurb would.
+ */
+function drawFork(batch: QuadBatch, ctx: SceneContext): void {
+  const { view, catalog, layout, clock } = ctx;
+  const fork = view.journey.fork;
+  if (!fork) return;
+
+  const { x, y, far } = aheadPoint(view, layout, fork.ahead);
+  if (x > layout.viewport.width + 40) return;
+  const dark = darkness(view);
+  // Same curve the creature approach uses for the same job: a thing at
+  // the vanishing point is small, and a thing at your feet is not.
+  const scale = 0.3 + 0.7 * (1 - far);
+  const post = layout.slotW * 0.9 * scale;
+  const waiting = view.journey.halt === "fork";
+
+  // The two tracks, fanning out toward the horizon. Drawn from the
+  // fork rather than from the tower, so they read as the ways *out* of
+  // the decision rather than as roads the tower is already on.
+  const reach = Math.max(post * 2.2, (layout.groundY - layout.horizonY) * 0.55 * (0.4 + far * 0.9));
+  for (const [side, branchIdx] of fork.branches.entries()) {
+    const info = catalog.branches[branchIdx];
+    const terrain = info ? catalog.terrain[info.terrain[0] ?? -1] : undefined;
+    const colors = terrainColors(terrain?.id ?? "");
+    const chosen = fork.answer === side;
+    const lift = side === 0 ? -0.55 : 0.12;
+    const tone = atNight(mix(colors.near, colors.far, chosen ? 0.55 : 0.2), dark);
+    batch.pushLine(
+      x,
+      y,
+      x + reach * (0.85 + side * 0.15),
+      y + reach * lift,
+      Math.max(2, post * (chosen ? 0.34 : 0.24)),
+      fade(tone, chosen ? 0.95 : 0.5),
+    );
+    if (chosen) {
+      // Lamplight running down the way the tower has been told to
+      // take. The commitment is visible on the ground, not just on a
+      // card in the corner.
+      batch.pushLine(
+        x,
+        y,
+        x + reach * (0.85 + side * 0.15),
+        y + reach * lift,
+        Math.max(1, post * 0.1),
+        fade(palette.lamplight, 0.4),
+      );
+    }
+  }
+
+  // The waypost. Two boards on a leaning stake — the only man-made
+  // thing on the strip that is not the tower.
+  const timber = atNight(palette.wayPost, dark);
+  const board = atNight(palette.wayBoard, dark * 0.6);
+  batch.pushLine(x, y, x, y - post, Math.max(1.5, post * 0.12), timber);
+  for (const side of [0, 1]) {
+    const chosen = fork.answer === side;
+    const armY = y - post * (side === 0 ? 0.92 : 0.66);
+    batch.push(x, armY - post * 0.09, post * 0.62, post * 0.18, fade(board, chosen ? 1 : 0.6), {
+      radius: post * 0.05,
+      rotation: side === 0 ? -0.22 : 0.14,
+    });
+  }
+
+  // Waiting for you, and unmistakably so. A tower halted at a fork and
+  // a tower the player parked are the same silhouette with the same
+  // still legs, so the difference has to be somewhere — and the right
+  // somewhere is the thing that is actually waiting, lit like a lamp
+  // left on for you rather than flashed like an alarm.
+  if (waiting) {
+    const pulse = 0.3 + Math.abs(Math.sin(clock * 1.5)) * 0.35;
+    const halo = post * 2.4;
+    batch.push(x - halo / 2, y - post * 1.1 - halo * 0.35, halo, halo, fade(palette.lamplight, pulse * 0.5), {
+      radius: halo * 0.5,
+      softness: halo * 0.6,
+    });
+    batch.push(x - post * 0.09, y - post * 1.12, post * 0.18, post * 0.18, fade(palette.sunlight, 0.85), {
+      radius: post * 0.09,
+      softness: post * 0.12,
+    });
   }
 }
 
@@ -851,20 +1195,47 @@ function drawEyes(batch: QuadBatch, x: number, y: number, r: number, eye: Color)
  * Chicken legs. The gait is driven by distance walked, so the tower
  * strides when it is moving and stands still when it is paused — the
  * single clearest signal that the world is running.
+ *
+ * Standing still is four different situations, though, and they used to
+ * be one picture: a leg frozen halfway through a step, which is what a
+ * hung game looks like. So the legs answer `journey.halt`. A tower the
+ * player stopped plants both feet and settles onto them. A tower that
+ * cannot afford the step keeps trying — a foot lifts, stutters, and
+ * comes back down, which is the whole of a brown-out in one gesture.
+ * A tower at a fork stands square, weight even, facing the decision
+ * (the waypost carries the rest of that read). And a tower at the far
+ * edge has arrived: feet together, nothing left to walk to.
  */
-function drawLegs(batch: QuadBatch, { view, layout }: SceneContext): void {
+function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void {
   const shape = towerShape(view);
   const spanX = shape.slots * layout.slotW;
   const reach = layout.viewport.height - layout.groundY;
-  const hipY = layout.groundY - reach * 0.1;
+  const halt = view.journey.halt;
+  // Straighten out of mid-stride when the legs stop: a foot left in the
+  // air is the single strongest "this is frozen" cue there is.
+  const gait = halt === "walking" ? 1 : 0;
+  // Arriving settles the stance narrow and low; a fork stands square
+  // and open, ready to go either way.
+  const stanceScale = halt === "arrived" ? 0.34 : halt === "stopped" ? 0.62 : 1;
+  const settle = halt === "walking" ? 0 : halt === "arrived" ? reach * 0.06 : reach * 0.03;
+  const hipY = layout.groundY - reach * 0.1 + settle;
   const footY = layout.groundY + reach * 0.62;
   const phase = view.world.distance * 0.09;
   const thickness = layout.slotW * 0.24;
 
   for (let i = 0; i < 2; i += 1) {
     const hipX = layout.originX + spanX * (i === 0 ? 0.26 : 0.74);
-    const step = Math.sin(phase + i * Math.PI);
-    const lift = Math.max(0, Math.cos(phase + i * Math.PI)) * reach * 0.22;
+    // Off the gait while walking; a fixed open stance once halted, so
+    // the feet land somewhere deliberate rather than wherever the last
+    // pace happened to leave them.
+    const step = gait
+      ? Math.sin(phase + i * Math.PI)
+      : (i === 0 ? -0.5 : 0.5) * stanceScale;
+    // A brown-out is the legs asking and not being answered: a small
+    // stuttering lift that never becomes a step.
+    const strain =
+      halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 2.3)) ** 6 * reach * 0.05 : 0;
+    const lift = gait * Math.max(0, Math.cos(phase + i * Math.PI)) * reach * 0.22 + strain;
     const footX = hipX + step * layout.slotW * 0.9;
     const kneeX = hipX + step * layout.slotW * 0.36;
     const kneeY = (hipY + footY) / 2 - lift * 0.35;
@@ -1629,6 +2000,16 @@ function drawVignette(batch: QuadBatch, { layout, view }: SceneContext): void {
   if (view.siege.lost) {
     batch.push(0, 0, width, height, fade(palette.vignette, 0.4), {
       colorBottom: fade(palette.vignette, 0.68),
+    });
+  }
+
+  // The far edge of the journey. The other ending, and deliberately the
+  // opposite treatment: the loss wash closes the frame down, this one
+  // opens it out. Neither one grades the run — one reports a home that
+  // did not make it and the other reports how far this one got.
+  if (view.journey.arrived) {
+    batch.push(0, 0, width, height * 0.7, fade(palette.farEdge, 0.3), {
+      colorBottom: fade(palette.farEdge, 0.1),
     });
   }
 }

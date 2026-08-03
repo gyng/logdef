@@ -38,6 +38,17 @@ export type CarDirTag = "idle" | "up" | "down";
 
 export type CarStateTag = "idle" | "moving" | "dwelling";
 
+/**
+ * Why the tower is standing still.
+ *
+ * Four situations that share one silhouette — same tower, same still
+ * legs — and mean completely different things, which is why the
+ * simulation names the reason rather than leaving the renderer to infer
+ * it. `fork` in particular has to read as *waiting for you* rather than
+ * as a frozen game (`SYSTEMS.md` §3.3).
+ */
+export type HaltView = "walking" | "stopped" | "brownout" | "fork" | "arrived";
+
 // ---------------------------------------------------------------------------
 // Per-frame view
 // ---------------------------------------------------------------------------
@@ -52,6 +63,7 @@ export interface ViewSnapshot {
   world: WorldView;
   tower: TowerView;
   siege: SiegeView;
+  journey: JourneyView;
   crew: CrewView[];
   stock: StockView[];
   stats: RunStats;
@@ -109,6 +121,45 @@ export interface FeatureView {
   scale: number;
   /** Parallax depth: 0 far, 1 mid, 2 near. */
   layer: number;
+  /**
+   * Scrap still in this ruin, and zero for anything that is not one.
+   * Whether a feature is a ruin at all is `catalog.terrain[band]
+   * .ruin_kinds[kind]` — a stripped ruin is still a ruin, and has to
+   * draw like one that has nothing left rather than like scenery.
+   */
+  salvage: number;
+}
+
+/** Where the run has got to, and what it is being asked. */
+export interface JourneyView {
+  /** Indexes `catalog.regions`. */
+  region: number;
+  /** How far through the current region, in per-mille. */
+  region_permille: number;
+  /** Paces still to walk before the far edge of the journey. */
+  remaining: number;
+  /** The split ahead, if the route has one the tower has not crossed. */
+  fork: ForkView | null;
+  /** The branch being walked through, if any. Indexes `catalog.branches`. */
+  branch: number | null;
+  /** Why the tower is standing still, if it is. */
+  halt: HaltView;
+  /** Berthed at the enclave right now. */
+  at_enclave: boolean;
+  /** What the enclave has left, one entry per authored offer. */
+  offers: number[];
+  recruits: number;
+  /** The far edge of the last region, reached. The run is over. */
+  arrived: boolean;
+}
+
+export interface ForkView {
+  /** Paces from the tower to the split. */
+  ahead: number;
+  /** The two archetypes on offer. Index `catalog.branches`. */
+  branches: [number, number];
+  /** Which one the player has picked, if they have. */
+  answer: number | null;
 }
 
 export interface SiegeView {
@@ -254,6 +305,8 @@ export interface CatalogSnapshot {
   terrain: TerrainInfo[];
   dayparts: DaypartInfo[];
   enemies: EnemyInfo[];
+  regions: RegionInfo[];
+  branches: BranchInfo[];
   floor_cost: CostInfo[];
   max_floors: number;
   floor_slots: number;
@@ -335,6 +388,37 @@ export interface TerrainInfo {
   name: string;
   yield_pct: number;
   feature_kinds: string[];
+  /**
+   * Which of those kinds are ruins — a place the tower can berth at and
+   * work, rather than scenery. Parallel to `feature_kinds`.
+   */
+  ruin_kinds: boolean[];
+}
+
+export interface RegionInfo {
+  id: string;
+  name: string;
+  /** The name of the settlement in this region, if it has one. */
+  enclave: string | null;
+}
+
+/**
+ * One side of a fork.
+ *
+ * The two heaviest terrain kinds and a word for the threat are what the
+ * fork card shows, and both are *derived* from the branch's own data
+ * rather than authored alongside it — a hand-written line describing a
+ * branch drifts out of step with its palette during tuning, and a game
+ * that misdescribes the only informed choice it asks the player to make
+ * is worse than one that describes it drily.
+ */
+export interface BranchInfo {
+  id: string;
+  name: string;
+  /** Heaviest first. Indexes `catalog.terrain`. */
+  terrain: number[];
+  /** Against the region it interrupts: 100 is as usual. */
+  threat_pct: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -357,7 +441,13 @@ export type GameCommand =
         priority: ShaftPriority;
       };
     }
-  | { SetStriding: { walking: boolean } };
+  | { SetStriding: { walking: boolean } }
+  /** Take one of the enclave's posted offers, once. */
+  | { Trade: { offer: number } }
+  /** Take somebody aboard, for poles. */
+  | "Recruit"
+  /** Commit to branch 0 or 1 of the pending fork. Re-answerable. */
+  | { TakeFork: { branch: number } };
 
 /** Rust's `CommandResult`: `"Ok"` or `{ Error: … }`. */
 export type CommandResult = "Ok" | { Error: unknown };
@@ -378,6 +468,8 @@ export type SoundEvent =
   | "CarStop"
   | "Burn"
   | "BandChange"
+  | "RegionChange"
+  | "Arrived"
   | "WaveArrives"
   | "EnemyContact"
   | "Impact"
