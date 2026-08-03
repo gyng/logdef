@@ -58,32 +58,60 @@ fn main() {
 /// every time.
 fn pressure_table() {
     const DAYS: u32 = 3;
-    const LEVELS: [i64; 4] = [100, 300, 600, 1000];
+    const LEVELS: [i64; 5] = [100, 300, 500, 700, 1000];
+    /// Averaged over this many seeds a cell, because one seed does not
+    /// describe a curve. Which creatures a wave can field changes
+    /// discontinuously with provocation — `min_provocation` lets the
+    /// leaper in at 330 and the borer at 500 — so a single run reads as
+    /// non-monotonic nonsense: measured once, the starting tower was
+    /// mauled at 600 and untouched at 1,000.
+    const SEEDS: u64 = 6;
 
     println!("\n=== how much attention can a tower take? ===\n");
     println!(
-        "  provocation held, tower held fixed, {DAYS} days each. `mend` is what repair \n           managed; `bill` is what it could not.\n"
+        "  provocation held, tower held fixed, {DAYS} days a run, {SEEDS} seeds a cell.\n  \
+         `lost` is hit points still missing at the end, averaged; `worst` is the \n           unluckiest seed of the six.\n"
     );
     println!(
-        "{:<26} {:>5} {:>10} {:>7} {:>7} {:>6} {:>5} {:>9}",
-        "tower", "prov", "standing", "lost hp", "seen off", "mend", "bill", "verdict"
+        "{:<20} {:>5} {:>9} {:>7} {:>7} {:>8} {:>7}  {}",
+        "tower", "prov", "standing", "lost hp", "worst", "seen off", "mend", "verdict"
     );
 
     for shape in [Shape::Bare, Shape::Plated, Shape::Answered] {
         for level in LEVELS {
-            let (standing, lost, repelled, mended, bill) =
-                press(shape, level, DAYS, 0x0000_5EED_0000_0003);
+            let mut standing_sum = 0;
+            let mut lost_sum = 0;
+            let mut worst = 0;
+            let mut repelled_sum = 0;
+            let mut mended_sum = 0;
+            let mut deaths = 0;
+            for seed in 1..=SEEDS {
+                let (standing, lost, repelled, mended, _) = press(shape, level, DAYS, seed);
+                standing_sum += standing;
+                lost_sum += lost;
+                worst = worst.max(lost);
+                repelled_sum += repelled;
+                mended_sum += mended;
+                if standing == 0 {
+                    deaths += 1;
+                }
+            }
+            let n = i64::try_from(SEEDS).unwrap_or(1);
+            let standing = standing_sum / n;
             println!(
-                "{:<26} {level:>5} {standing:>9}‰ {lost:>7} {repelled:>7} {mended:>6} {bill:>5}                  {:>9}",
+                "{:<20} {level:>5} {standing:>8}‰ {:>7} {worst:>7} {:>8} {:>7}  {}",
                 shape.name(),
-                if standing >= 900 {
-                    "held"
-                } else if standing >= 600 {
-                    "worn"
-                } else if standing > 0 {
-                    "mauled"
+                lost_sum / n,
+                repelled_sum / u64::from(SEEDS as u32),
+                mended_sum / u64::from(SEEDS as u32),
+                if deaths > 0 {
+                    format!("LOST {deaths}/{SEEDS}")
+                } else if standing >= 950 {
+                    "held".to_string()
+                } else if standing >= 700 {
+                    "worn".to_string()
                 } else {
-                    "LOST"
+                    "mauled".to_string()
                 }
             );
         }

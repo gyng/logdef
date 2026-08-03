@@ -93,66 +93,46 @@ Dwell, dispatch, and the estimates crew use to pick a shaft. See `SYSTEMS.md` §
 
 ## Siege
 
-> **The `PLAYTESTED` grades in this section are stale, and knowingly so.** They were measured
-> with `examples/siege_run.rs` against an economy that has since changed three times in one
-> milestone: intake became per-pace, the yield multiplier started working at all (it had been
-> rounding to a no-op, so four terrain kinds behaved as two), and a storeroom stopped being a
-> one-way sink for anything without a `take_stock` consumer. Each of those was a correctness
-> fix rather than a tuning choice, and together they made the economy markedly more
-> forgiving.
+> **Re-measured, and the grades stand.** These rows were tuned with `examples/siege_run.rs`'s
+> three-tower narrative, which stopped being able to measure anything when M3 changed the
+> economy: a tower only provokes while it is consuming, so once its shopping list runs out the
+> jungle forgets it and every plan finishes untouched.
 >
-> Re-measured after all three, the three-way shape these rows were tuned to produce —
-> subsistence quiet, greed punished, defence paying for itself — **no longer appears**. Every
-> plan now finishes at full integrity with poles banked and provocation at zero, because a
-> tower whose shopping list runs out stops consuming, and a tower that stops consuming stops
-> harvesting, and a tower that stops harvesting is forgotten by the jungle. That last chain is
-> a real and rather good property; it is also not what this harness was built to measure, and
-> lengthening its shopping list until the tower runs out of *floors* did not bring the shape
-> back.
+> The harness grew a **pressure table** for that — provocation pinned rather than earned, the
+> tower's shape held fixed, poles and darts kept on the shelves, three days a run and six
+> seeds a cell. Six, because one seed does not describe a curve: `min_provocation` lets the
+> leaper in at 330 and the borer at 500, so the wave mix changes discontinuously and a single
+> run reads as nonsense. Measured once, the starting tower was mauled at 600 and untouched at
+> 1,000.
 >
-> **The instrument now exists.** `examples/siege_run.rs` grew a pressure table that pins
-> provocation instead of earning it, holds the tower's shape fixed, and stocks it so nothing
-> under measurement is waiting on the chain — three days per cell, three tower shapes against
-> four levels of attention. It asks the question these rows actually encode: at this much
-> attention, with this much built, does it hold? Two things it says straight away, both
-> needing work rather than a tweak:
+> What it says, averaged over six seeds after three days, with the fraction being seeds in
+> which the Heartseed went:
 >
-> **The curve is far too steep.** Every shape holds at provocation 300 and every shape is
-> dead at 600. There is no survivable band above a third of the dial, so 700 points of
-> `provocation_max` describe outcomes the player never sees, and the difference between
-> playing loudly and playing very loudly is nothing. `threat_per_100_provocation` at 40 turns
-> 600 provocation into 240 threat — 48 skitters a wave — which is the immediate suspect.
+> | tower | prov 100 | 300 | 500 | 700 | 1000 |
+> |---|---|---|---|---|---|
+> | as it starts | held | held | lost 1/6 | lost 3/6 | lost 5/6 |
+> | plated twice | held | held | held | lost 3/6 | lost 4/6 |
+> | battery + darts | held | held | held | lost 1/6 | lost 3/6 |
 >
-> **Plating is fine. The instrument was not.** This space held a confident finding that a
-> tower plated twice came off two to three orders of magnitude worse than a bare one, on
-> eight of eight seeds, and the offer was withdrawn from the content pack on the strength of
-> it. Both the finding and the withdrawal were wrong, and the way they were wrong is worth
-> keeping.
+> That is the shape these rows were aiming for. Quiet play is safe outright. Both upgrades buy
+> a whole band — the survivable ceiling moves from 300 to 500 — and above that the battery is
+> what keeps a tower standing, cutting deaths from three in six to one in six at 700 and from
+> five to three at 1,000. The top of the dial is close to fatal, which is right: you reach
+> `provocation_max` by playing as loudly as the game allows, and it should be the last thing
+> you do.
 >
-> The pressure harness topped the shelves up to the brim every minute to keep the chain fed.
-> A tower with no free shelf and no hungry room has nowhere to put anything a crew member
-> picks up — and a stranded carrier could not repair, because `assign_idle` gated repair on
-> empty hands and `find_destination` had nowhere to send the load. So they stood there
-> holding a crate while the wall came down. That is a real bug, now fixed: a carrier with
-> nowhere to deliver may mend, since `repair::run` never touches `carrying` and the load goes
-> on being held.
+> **Two earlier readings of this table were wrong, both for one reason.** It briefly said the
+> curve was far too steep — everything dead at 600 — and that plating was actively harmful.
+> Both were downstream of a single bug: repair was gated on empty hands, so a crew member
+> holding a load with nowhere to put it could never mend, and the harness had stuffed the
+> shelves to keep the chain fed, manufacturing exactly that dead end. With it fixed the curve
+> is the table above and plating is worse on none of eight seeds. The account is kept in the
+> `reinforce` row below, because the failure mode is more instructive than the numbers: an
+> instrument that changes the thing it measures produces a confident number, and a confident
+> number is what gets a working feature deleted.
 >
-> It also explains the plating result. Repair spends poles, poles free shelf space, and free
-> space unsticks carriers — so the tower that happened to repair slightly more repaired more
-> still, and the gap compounded. Nothing to do with armour. With the bug fixed and the
-> harness topping up to a modest level instead of stuffing, plating is worse on **0 of 8**
-> seeds: better on four and identical on four, with repair symmetric at 2,732 against 2,918
-> hit points mended.
->
-> The lesson is the one the harnesses keep teaching in different costumes. An instrument that
-> changes the thing it measures will produce a confident number, and a confident number is
-> what gets a working feature deleted.
->
-> What that needs is a balance pass with an instrument that keeps a tower genuinely
-> constrained, not another round of tuning at the end of a systems milestone. Until then the
-> reasoning in these rows is sound and the *evidence* in them describes a game three fixes
-> ago. Treat the grades as `DESIGNED` in practice and re-earn them deliberately. This is the
-> first thing to do at M4.
+> These grades rest on a scripted pressure test, not on a person playing. Nothing here has
+> been *felt* yet, and that is the honest limit on every `PLAYTESTED` in this section.
 
 
 What creatures attack, how far ahead they appear, how often waves come, the one knob
