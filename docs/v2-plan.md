@@ -418,11 +418,23 @@ all graded `PLAYTESTED`.
 
 ## 11. Remaining opens (all deferred on purpose)
 
-1. **"The Refugia"** destination name — placeholder; decide during M3 world-writing.
-2. **Unlock delivery** (enclave gifts vs Heartseed cultivars vs journal) — design at M5.
+1. ~~**"The Refugia"** destination name — placeholder; decide during M3 world-writing.~~
+   **Decided: it kept the placeholder,** which turned out to be the right word rather than a
+   stand-in for one. A refugium is where something survives a change that took everything
+   around it, which is the whole premise, and nothing better turned up in three regions of
+   world-writing. Shipped: `coast_approach.ron` ends there, the journal records reaching it, and
+   the arrival card says so.
+2. ~~**Unlock delivery** (enclave gifts vs Heartseed cultivars vs journal) — design at M5.~~
+   **Decided: a journal, kept by the crew** — `SYSTEMS.md` §5.7 has the reasoning and
+   `web/src/engine/journal.ts` has the implementation. It is the only one of the three that
+   cannot be mistaken for power, and it is player-level state that never enters `GameState` or
+   the replay, so a shared seed reproduces a run regardless of who plays it.
 3. **SoA bridge + canvas/WebGL port** — profile-gated, blueprint ready (§8), likely never
-   needed at cozy scale.
-4. **Repo rename** (`logdef` → `understory`) — cosmetic; whenever convenient.
+   needed at cozy scale. **Still open, and still not needed**: the frame budget has not been
+   the constraint at any point through M5.
+4. **Repo rename** (`logdef` → `understory`) — cosmetic; whenever convenient. **Still open by
+   choice**; `SYSTEMS.md` §5 defers it explicitly on the grounds that a release cut is the worst
+   possible moment for it.
 
 ---
 
