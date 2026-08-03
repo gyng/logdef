@@ -184,16 +184,33 @@ fn whole_run(seed: u64) {
     let mut engine = GameEngine::new(seed);
     engine.set_speed(SimSpeed::X1);
     let content = engine.content().clone();
-    let enclave_at = engine
-        .state()
-        .world
-        .enclave_at(&content)
-        .expect("the pack puts an enclave somewhere");
+    // **Every settlement, not "the enclave".** `enclave_at` answers "the
+    // next one you have not passed", which was the same thing as "the
+    // one in the drowned city" while the pack had a single settlement
+    // and stopped being so twice — once when M5 added the coast, and
+    // again when region 1 got a board of its own. A run that stops at
+    // the first one and walks past two is not measuring the journey.
+    let mut stops: Vec<i64> = content
+        .regions
+        .iter()
+        .enumerate()
+        .filter_map(|(region, def)| {
+            let enclave = def.enclave.as_ref()?;
+            Some(
+                engine
+                    .state()
+                    .world
+                    .region_start_of(understory_core::ids::RegionIdx(region as u16))
+                    + understory_core::fx::paces_from_int(enclave.at_paces),
+            )
+        })
+        .collect();
+    stops.sort_unstable();
 
     let mut traded = 0;
-    let mut recruited = false;
+    let mut recruited = 0;
     let mut crossed_at = None;
-    let mut berthed = false;
+    let mut berthed = 0usize;
 
     for tick in 0..600_000u32 {
         if let Some(fork) = engine.state().world.fork
@@ -202,20 +219,20 @@ fn whole_run(seed: u64) {
             let _ = engine.try_send(GameCommand::TakeFork { branch: 0 });
         }
 
-        // Stop at the settlement, take what it offers, move on.
+        // Stop at each settlement in turn, take what it offers, move on.
         let here = engine.state().world.distance;
-        if !berthed && here >= enclave_at {
-            berthed = true;
+        if stops.get(berthed).is_some_and(|at| here >= *at) {
+            berthed += 1;
             let _ = engine.try_send(GameCommand::SetStriding { walking: false });
             engine.step(2);
-            traded = (0..4u8)
+            traded += (0..4u8)
                 .filter(|offer| {
                     engine
                         .try_send(GameCommand::Trade { offer: *offer })
                         .is_ok()
                 })
                 .count();
-            recruited = engine.try_send(GameCommand::Recruit).is_ok();
+            recruited += usize::from(engine.try_send(GameCommand::Recruit).is_ok());
             let _ = engine.try_send(GameCommand::SetStriding { walking: true });
         }
 
@@ -246,10 +263,11 @@ fn whole_run(seed: u64) {
         state.tick / u64::from(TICKS_PER_DAY),
     );
     println!(
-        "  crossed into the drowned city at {:.0} minutes; {} trade(s) and {} at the settlement",
+        "  crossed into the drowned city at {:.0} minutes; berthed at {} of {} settlement(s), \
+         {traded} trade(s) and {recruited} recruit(s)",
         crossed_at.map_or(0.0, minutes),
-        traded,
-        if recruited { "a recruit" } else { "nobody" },
+        berthed,
+        stops.len(),
     );
     println!(
         "  ended {} paces on, {} crew, {} standing",

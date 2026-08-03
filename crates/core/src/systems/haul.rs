@@ -1198,7 +1198,8 @@ fn find_destination(
         .iter()
         .flat_map(|f| f.rooms.iter())
         .any(|room| room.active && room.inputs.iter().any(|stack| stack.item == item))
-        || content.builds_with(item);
+        || content.builds_with(item)
+        || content.settlements_take(item);
     if best.is_none() && !wanted && may_spill {
         for shaft in &tower.shafts {
             if shaft.kind != ShaftKind::Chute {

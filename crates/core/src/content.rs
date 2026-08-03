@@ -1079,6 +1079,43 @@ impl Content {
                 .any(|shaft| shaft.build_cost.iter().any(|(cost, _)| *cost == item))
     }
 
+    /// Whether any settlement in the pack will take this item — across a
+    /// trade board, a recruit's price, or a round of shell work.
+    ///
+    /// **This exists because a chute was quietly eating salvage.** A
+    /// spill is offered only for what nothing `wanted`, and `wanted`
+    /// asked two questions: does a live room's inbox take it, and does
+    /// anything cost it to build. Scrap answers no to both — its only
+    /// room consumer is the sun forge, and a tower without one has no
+    /// forge inbox to want it — and yet scrap is the whole point of
+    /// berthing at a ruin (`SYSTEMS.md` §3.4). So a player who built a
+    /// chute stopped at a ruin, woke its wardens, took the damage,
+    /// collected the scrap, and then watched their crew carry it
+    /// straight out of the tower. Nothing in the game said so.
+    ///
+    /// The missing question is this one: an enclave's `Trade`,
+    /// `Recruit` and `Reinforce` are *commands*, so what they consume
+    /// never appears in any room's inputs and is invisible to a check
+    /// that only reads rooms. Anything a settlement would take is
+    /// therefore worth keeping, whether or not one is in sight —
+    /// **"there is no buyer within forty minutes" is not a reason to
+    /// throw something away**, and a chute that reasoned that way would
+    /// be unpredictable in a way no player could plan around.
+    #[must_use]
+    pub fn settlements_take(&self, item: ItemIdx) -> bool {
+        self.region_runtime
+            .iter()
+            .filter_map(|region| region.enclave.as_ref())
+            .any(|enclave| {
+                enclave.offers.iter().any(|offer| offer.give.0 == item)
+                    || enclave.recruit_cost.iter().any(|(cost, _)| *cost == item)
+                    || enclave
+                        .reinforce
+                        .as_ref()
+                        .is_some_and(|(cost, _)| cost.iter().any(|(entry, _)| *entry == item))
+            })
+    }
+
     /// Interned index of an item by its authored string ID.
     #[must_use]
     pub fn item_idx(&self, id: &str) -> Option<ItemIdx> {

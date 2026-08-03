@@ -535,9 +535,20 @@ fn a_crew_member_holding_something_with_nowhere_to_put_it_still_mends() {
 
 /// Jam a tower the way `BALANCE.md`'s `storeroom` row describes: fill
 /// every shelf with one thing and switch off whatever eats it.
+///
+/// **Fiber, not bamboo, and the swap is the point of the fixture.** A
+/// chute may only spill what nothing wants, and "wants" now includes
+/// anything a settlement will take — so bamboo, which the drowned city
+/// buys ten at a time, is not rubbish however full the shelves are. It
+/// is also the wrong material for this test on its own terms: bamboo has
+/// a live mill waiting for it in any tower anybody would build, so
+/// jamming with it needs the mill switched off and then measures a
+/// situation that cannot occur. Fiber is what §5.4 was actually written
+/// about — harvested by a comb, eaten only by a ropery, and worthless
+/// the moment the ropery stops.
 fn jammed(seed: u64) -> (crate::engine::GameEngine, crate::ids::ItemIdx) {
     let mut game = engine(seed);
-    let bamboo = item(game.content(), "item.bamboo");
+    let fiber = item(game.content(), "item.fiber");
     // Pay for the chute *before* jamming, because a jammed tower cannot
     // pay for anything — which is the finding that moved the chute's own
     // cost off rope and onto poles alone, and is exactly why a chute
@@ -547,7 +558,7 @@ fn jammed(seed: u64) -> (crate::engine::GameEngine, crate::ids::ItemIdx) {
         let state = game.state_mut_for_test();
         for floor in &mut state.tower.floors {
             for room in &mut floor.rooms {
-                // Nothing eats bamboo any more, which is what makes it
+                // Nothing eats fiber any more, which is what makes it
                 // rubbish rather than stock.
                 room.active = false;
                 for shelf in &mut room.shelves {
@@ -558,13 +569,13 @@ fn jammed(seed: u64) -> (crate::engine::GameEngine, crate::ids::ItemIdx) {
                     if shelf.item.is_some() {
                         continue;
                     }
-                    shelf.item = Some(bamboo);
+                    shelf.item = Some(fiber);
                     shelf.count = shelf.max;
                 }
             }
         }
     }
-    (game, bamboo)
+    (game, fiber)
 }
 
 #[test]
@@ -572,11 +583,11 @@ fn without_a_chute_a_jammed_tower_stays_jammed() {
     // The control, and the thing the chute exists to change. Recorded as
     // a test rather than as a comment because "it was already broken"
     // is the claim a fix rests on.
-    let (mut game, bamboo) = jammed(4100);
-    let before = total_in_flight(game.state(), bamboo);
+    let (mut game, fiber) = jammed(4100);
+    let before = total_in_flight(game.state(), fiber);
     game.step(6000);
     assert_eq!(
-        total_in_flight(game.state(), bamboo),
+        total_in_flight(game.state(), fiber),
         before,
         "something cleared a jam with no chute in the tower"
     );
@@ -584,7 +595,7 @@ fn without_a_chute_a_jammed_tower_stays_jammed() {
 
 #[test]
 fn a_chute_empties_shelves_of_what_nothing_wants() {
-    let (mut game, bamboo) = jammed(4101);
+    let (mut game, fiber) = jammed(4101);
     crate::tests::stock_for_shaft(&mut game, "shaft.chute", 1);
     game.try_send(GameCommand::BuildShaft {
         shaft: "shaft.chute".into(),
@@ -594,11 +605,11 @@ fn a_chute_empties_shelves_of_what_nothing_wants() {
     })
     .expect("slot 7 is clear on the lower floors");
 
-    let before = total_in_flight(game.state(), bamboo);
+    let before = total_in_flight(game.state(), fiber);
     assert!(before > 0, "the fixture did not jam the tower");
     game.step(12_000);
     assert!(
-        total_in_flight(game.state(), bamboo) < before,
+        total_in_flight(game.state(), fiber) < before,
         "a chute stood in a jammed tower and nothing was thrown away"
     );
 }
@@ -638,6 +649,65 @@ fn a_chute_never_throws_away_something_a_room_is_waiting_for() {
     assert!(
         !ever_spilled,
         "a chute threw away bamboo a live mill was waiting for"
+    );
+}
+
+#[test]
+fn a_chute_never_throws_away_salvage() {
+    // **The one a player would have found the hard way.** Scrap has no
+    // room that wants it unless the tower has built a sun forge, and it
+    // is not a build cost for anything — so on the two questions
+    // `wanted` used to ask, scrap answered no twice and a chute was
+    // free to dump it.
+    //
+    // Which is the worst possible thing for it to dump. Scrap is the
+    // entire point of berthing at a ruin (`SYSTEMS.md` §3.4): the player
+    // stopped, woke the wardens, took the damage and paid the poles to
+    // mend it. Its real consumers are an enclave's `Trade`, `Recruit`
+    // and `Reinforce`, which are *commands* — nothing about them appears
+    // in any room's inputs, so a check that only reads rooms cannot see
+    // them.
+    //
+    // Caught by the screenshot harness rather than by a test, which is
+    // its own small lesson: the capture run berthed, salvaged, and then
+    // photographed an enclave board it could not afford to buy from.
+    let mut game = engine(4104);
+    let scrap = item(game.content(), "item.scrap");
+    crate::tests::stock_for_shaft(&mut game, "shaft.chute", 1);
+    game.try_send(GameCommand::BuildShaft {
+        shaft: "shaft.chute".into(),
+        low: 0,
+        high: 2,
+        slot: 7,
+    })
+    .expect("slot 7 is clear on the lower floors");
+
+    // Salvage on the shelves and nothing in the tower that eats it.
+    {
+        let state = game.state_mut_for_test();
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                room.shelve(scrap, 6);
+            }
+        }
+        assert!(
+            !state
+                .tower
+                .floors
+                .iter()
+                .flat_map(|floor| floor.rooms.iter())
+                .any(|room| room.inputs.iter().any(|stack| stack.item == scrap)),
+            "this fixture is only meaningful without a forge in the tower"
+        );
+    }
+    let before = total_in_flight(game.state(), scrap);
+    assert!(before > 0, "the fixture shelved no scrap");
+
+    game.step(12_000);
+    assert_eq!(
+        total_in_flight(game.state(), scrap),
+        before,
+        "a chute threw away salvage the tower had stopped and bled for"
     );
 }
 

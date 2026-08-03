@@ -19,6 +19,39 @@ import type { ViewSnapshot } from "../src/bridge/types";
  * and this file has hit it twice. `arm()` installs the stepping the
  * rest of the harness uses; raw `hooks.step` is only correct inside a
  * loop that answers on its own.
+ *
+ * **Known flaky: the two approach stills, and it is this file's fault
+ * rather than the game's.** `tower-approach.png` and
+ * `tower-closing.png` need a creature closing on the tower, and on some
+ * runs they come out empty. Three things were ruled out while chasing
+ * it, and they are written down so nobody chases them again:
+ *
+ * - *Not the budget.* Raising the search from 25,000 ticks to 90,000
+ *   made it worse — the tower reaches the far edge and photographs
+ *   that, which is what the budget was lowered to prevent.
+ * - *Not a missed window.* Instrumented, the search reports **zero
+ *   ticks with anything alive anywhere in the world**, so there was no
+ *   window to miss.
+ * - *Not something to provoke away.* Walking 40,000 ticks with both
+ *   arms running took provocation from 0 to **15**, against a
+ *   glean-crow's `min_provocation` of 250. This tower's storerooms fill
+ *   and its arms jam, so it harvests almost nothing and never draws
+ *   attention; the creatures that do appear are left over from waves
+ *   much earlier in the run.
+ *
+ * The actual cause is that **this harness is not deterministic.** It
+ * interleaves `hooks.step()` with real-time `waitForTimeout`s while the
+ * renderer's own frame loop is also ticking, so the same seed lands in
+ * different places on different runs — two consecutive runs berthed at
+ * the drowned city and at the coast respectively. Fixing it means
+ * freezing the frame loop for the duration, which is a bigger change
+ * than a screenshot harness has earned. Until then: if a still is
+ * empty, re-run before believing it.
+ *
+ * A chute would keep the arms clear and was tried. It does not fit —
+ * slot 7 is the only column free on every floor of this tower, and the
+ * dart battery is already there. That is the design working (a shaft is
+ * a tax on every floor it passes) rather than a bug to route around.
  */
 
 declare global {
@@ -33,6 +66,8 @@ declare global {
       freeSlot(floor: number, width: number): { x: number; y: number } | null;
       /** The first gap `width` slots wide anywhere in the tower. */
       freeSlotAny(width: number): { floor: number; slot: number } | null;
+      /** Screen point of a slot clear on every floor of a span. */
+      freeColumn(low: number, high: number): { x: number; y: number } | null;
     };
   }
 }
@@ -107,7 +142,39 @@ async function arm(page: Page): Promise<void> {
       return null;
     };
 
-    window.__capture = { walk, answer, freeSlot, freeSlotAny };
+    /**
+     * A slot free on *every* floor of a span, which is what a shaft
+     * needs and `freeSlot` does not check.
+     *
+     * `freeSlot(0, 1)` asks "is this clear on the ground floor", and a
+     * shaft claims a column on every deck it passes through — so a
+     * point it returns is very often a placement the engine then
+     * rejects with `SlotOccupied` naming a floor two decks up. That is
+     * a silent no-op in a harness: the button was enabled, the click
+     * landed, and nothing was built. Measured on seed 4242 by asking
+     * the bridge directly, seven of eight columns were blocked and only
+     * slot 7 would take a chute, while `freeSlot` cheerfully pointed at
+     * slot 4.
+     */
+    const freeColumn = (low: number, high: number): { x: number; y: number } | null => {
+      const view = hooks.view();
+      const decks = view.tower.floors.filter((deck) => deck.index >= low && deck.index <= high);
+      if (decks.length === 0) return null;
+      const slots = Math.min(...decks.map((deck) => deck.slots));
+      for (let slot = 0; slot < slots; slot += 1) {
+        const clear = decks.every(
+          (deck) =>
+            !deck.rooms.some((room) => room.slot <= slot && slot < room.slot + room.width) &&
+            !view.tower.shafts.some(
+              (shaft) => shaft.low <= deck.index && deck.index <= shaft.high && shaft.slot === slot,
+            ),
+        );
+        if (clear) return hooks.slotPoint(low, slot);
+      }
+      return null;
+    };
+
+    window.__capture = { walk, answer, freeSlot, freeSlotAny, freeColumn };
   });
 }
 
@@ -162,6 +229,8 @@ async function stepUntilWithin(page: Page, within: number): Promise<string> {
     // the far edge of the world and photographed that instead, and
     // every still after it was of a tower that had already arrived.
     let budget = 25_000;
+    let seen = 0;
+    let closest = Infinity;
     while (budget > 0) {
       const view = hooks.view();
       if (view.journey.arrived) return "the journey ended first";
@@ -170,6 +239,8 @@ async function stepUntilWithin(page: Page, within: number): Promise<string> {
         .map((enemy) => enemy.at - view.world.distance)
         .filter((gap) => gap >= 0);
       const nearest = gaps.length > 0 ? Math.min(...gaps) : null;
+      seen += view.siege.enemies.length > 0 ? 1 : 0;
+      if (nearest !== null) closest = Math.min(closest, nearest);
       // Daylight, because a silhouette against a night sky answers a
       // different question than the one being asked here.
       if (view.clock.sun_pct > 40 && nearest !== null && nearest <= limit && nearest >= floor) {
@@ -190,7 +261,9 @@ async function stepUntilWithin(page: Page, within: number): Promise<string> {
       hooks.step(stride);
       budget -= stride;
     }
-    return "nothing in frame";
+    return `nothing in frame (${seen} tick(s) with anything alive, closest approach ${
+      closest === Infinity ? "none" : Math.round(closest)
+    }p)`;
   }, within);
 }
 

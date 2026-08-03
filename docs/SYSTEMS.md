@@ -2733,6 +2733,8 @@ visible, which is a better game to add it to.
 |---|---|---|
 | chute | Shaft, 1 slot column, **6 poles, no rope**, no charge, no capacity | Cheaper than a dumbwaiter (8 poles) because it does less: one direction, no machinery, nothing comes back up. **Specced at 6 poles + 2 rope and shipped without the rope**: rope needs a ropery, a ropery needs fiber to reach it, and fiber having nowhere to go *is the jam* — so the rope made the escape hatch affordable only before you needed it. Everything else in the pack may sit behind a chain; this one may not. |
 | spill priority | below `PRIORITY_SHELF` | Never preferred to somewhere useful. A chute is where things go when there is nowhere else, and a tower with spare shelf space should never spill. |
+| what may be spilled | nothing a live inbox wants, nothing anything is **built** with, nothing a **settlement takes** | The third clause was missing and a chute was eating salvage. `wanted` asked two questions — does a live room's inbox take it, and is it a build cost — and **scrap answers no to both**: its only room consumer is the sun forge, so a tower without one has no inbox wanting it, and nothing is built from it. Yet scrap is the entire point of berthing at a ruin (§3.4). A player with a chute stopped, woke the wardens, took the damage, collected the scrap, and watched their crew carry it out of the tower, with nothing on screen saying so. The gap is structural rather than an oversight: an enclave's `Trade`, `Recruit` and `Reinforce` are **commands**, so what they consume appears in no room's inputs and is invisible to a check that only reads rooms. `Content::settlements_take` closes it. Deliberately not conditional on a settlement being *in reach* — "there is no buyer within forty minutes" is not a reason to throw something away, and a chute that reasoned that way could not be planned around. |
+| what is left spillable | fiber, darts, meals, seed bombs, charge cells | Narrow on purpose, and narrower than it looks: rope is a build cost, so it was already safe; fiber is spillable only while no ropery is running, which is exactly the case §5.4 was written about. **Caught by the screenshot harness rather than by a test** — the capture run berthed, salvaged, and then photographed an enclave board it could not afford to buy from. |
 
 ### 5.5 The rest of the taxonomy, region 3, and the Refugia
 
@@ -2770,12 +2772,32 @@ noted that a run cannot approach it, because M3's single enclave offers exactly 
 is where that stops being aspirational.
 
 - **An enclave in every region**, three in a run rather than one, each with its own board.
-- **Boards differ by region, in the direction the region does.** The jungle settlement wants
-  scrap and sells poles; the drowned city wants poles and sells scrap; the coast wants alloy and
-  sells recruits. A player carrying a surplus finds a buyer for it somewhere, which turns "I
-  have too much of this" from a jam into a plan.
+  Ropewalk in the jungle at 30,000 paces, High Water in the drowned city, Tidewatch on the coast.
+- **Boards sell what their region has and buy what it has not.** Ropewalk lays rope and cuts
+  thorn darts and has no metal at all, so it sells both for timber and buys scrap. High Water and Tidewatch
+  are the reverse: they sit on metal and want timber, alloy and produce. A player carrying a
+  surplus finds a buyer for it somewhere, which turns "I have too much of this" from a jam into a
+  plan.
+
+  *Corrected against the pack, which said the opposite.* An earlier draft here had the drowned
+  city "wanting poles and selling scrap". It does not and should not: the city's `scrap 4 →
+  poles 3` is the payoff for the salvage rig and the reason scrap exists at all (§3.4), and
+  reversing it would take the point out of berthing at a ruin. **Scrap has one price at every
+  board on purpose** — 4 for 3, everywhere — so there is nothing to buy in one region and sell in
+  the next, which is §5.11 open question 3's whole worry.
+- **Ropewalk exists so region 1 can reach the elevator.** An elevator costs six rope; rope costs
+  a ropery, a ropery costs fiber, and fiber costs a comb. That put vertical transport — the bet
+  the whole game rests on (`DESIGN.md` pillar 2) — three rooms deep on a tower twenty minutes
+  old. Six poles a pair, four pairs, is one elevator and two spare — and poles are what the shaft's own
+  frame costs, so the rope competes with the thing it unlocks. The chain stays far cheaper for a
+  tower that means to keep using rope.
 - **Recruits cost more each time**, so crew growth is a curve rather than a switch and the
-  eighth crew member is a decision about a whole run's savings.
+  eighth crew member is a decision about a whole run's savings. Ropewalk 18 poles, High Water 30,
+  Tidewatch 24 poles *and* 4 alloy, three times over.
+- **And the arithmetic has to close, which is why there are three.** `crew_cap` is 8 and a run
+  starts with 3. Two settlements offer four recruits between them, so the cap was unreachable by
+  one — a ceiling nothing can touch is a number pretending to be a decision. Five offered makes
+  eight possible for a run that spends everything on people, and nothing else.
 - **Shell work stays region-two only.** It was withdrawn once for making the tower worse and put
   back with a measurement (`BALANCE.md`'s `reinforce` row); spreading it across three enclaves
   would multiply a thing that is barely worth its price.

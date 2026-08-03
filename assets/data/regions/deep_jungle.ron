@@ -77,5 +77,101 @@ RegionDef(
             threat_pct: 130,
         ),
     ],
-    // Nobody lives out here.
+    // **Somebody does live out here, and §5.6 asked for them.**
+    //
+    // This region shipped with no settlement at all — "nobody lives out
+    // here" — while `SYSTEMS.md` §5.6 specified an enclave in every
+    // region and `BALANCE.md`'s `crew_cap` row rested on it. The
+    // arithmetic gave that away: two enclaves offer four recruits, a run
+    // starts with three crew, and the cap is eight. A ceiling nothing
+    // can reach is a number pretending to be a decision. Three
+    // settlements offer five, and eight becomes possible for a run that
+    // spends everything on people.
+    enclave: EnclaveDef(
+        id: "enclave.ropewalk",
+        // A ropewalk is the long shed where rope is laid by hand. The
+        // first people the tower meets are makers rather than traders,
+        // which is the difference between this game's settlements and a
+        // shop.
+        name: "Ropewalk",
+        // A little past halfway through the shortest roll this region
+        // can take, so it lands after a fork or two rather than in the
+        // opening minutes, and no run misses it.
+        at_paces: 30000,
+        // **What the jungle has, and what it has not.** Timber and
+        // thorn in quantity; no metal at all. So it pays in rope and
+        // darts and buys scrap, and every rate here is worse than the
+        // room that would make the same thing — a board is where a tower
+        // that lacks a room buys around the gap once (`SYSTEMS.md`
+        // §5.6), not a way to avoid building one.
+        offers: [
+            // **The one that matters, and the reason this settlement is
+            // in region 1 rather than region 2.** An elevator costs six
+            // rope, rope costs a ropery, a ropery costs fiber, and fiber
+            // costs a comb — so vertical transport, which is the whole
+            // bet of the game (`DESIGN.md` pillar 2), sat behind three
+            // rooms and a shaft's worth of poles on a tower that has
+            // been walking for twenty minutes. Six poles a pair, four
+            // pairs, is one elevator and two spare — and poles are what
+            // the elevator's own frame costs too, so buying the rope
+            // competes directly with affording the shaft.
+            //
+            // The chain is still much cheaper — two fiber a rope, and
+            // fiber is 90 paces of ground the tower was covering
+            // anyway — so a tower that means to keep using rope still
+            // builds the comb. This is for the first six.
+            //
+            // **Priced in poles rather than bamboo, and that took
+            // measuring.** A board that asks for bamboo is a board a
+            // working tower cannot shop at: stalks go from the arm's
+            // outbox to the mill's inbox and are gone, so a tower's
+            // *stock* of bamboo sits near zero at any given moment even
+            // while it harvests hundreds. Measured over a whole run, the
+            // first draft of this board sold nothing at all — the tower
+            // had eighteen poles spare for a recruit and could not
+            // afford eight bamboo. Poles are what a region-1 tower
+            // actually has going spare, being what the mill makes and
+            // what nothing consumes once the building stops.
+            OfferDef(
+                give: CostEntryDef(item: "item.poles", amount: 6),
+                take: CostEntryDef(item: "item.rope", amount: 2),
+                stock: 4,
+            ),
+            // Thorn darts, from the people who live among the thorns. A
+            // tower that has not built a thornwright can still answer
+            // the overgrown-ruins branch, which is the loudest ground in
+            // the region at 130% threat, and the branch a player chasing
+            // scrap is most likely to take.
+            //
+            // Two darts a pole, against a thornwright's three and the
+            // city's one and a half. Better than the other board because
+            // this is thorn country, still worse than the room, and
+            // available long before a tower can spare the slot for one.
+            OfferDef(
+                give: CostEntryDef(item: "item.poles", amount: 4),
+                take: CostEntryDef(item: "item.darts", amount: 8),
+                stock: 6,
+            ),
+            // And they want metal, which is the one thing a jungle has
+            // none of. Same rate as the city's board so scrap has one
+            // price everywhere and there is nothing to arbitrage
+            // (§5.11 open question 3), but a fifth of the stock: this
+            // is a village, and region 1's ruins are thin.
+            OfferDef(
+                give: CostEntryDef(item: "item.scrap", amount: 4),
+                take: CostEntryDef(item: "item.poles", amount: 3),
+                stock: 8,
+            ),
+        ],
+        // No shell work. That stays region-two only (§5.6) — it is the
+        // city's own metal that plates a hull, and a tower arriving here
+        // on day three has nothing to plate it with anyway.
+        //
+        // One pair of hands, and the cheapest of the three, because it
+        // is the first: eighteen poles against the city's thirty. Crew
+        // growth is meant to read as a curve, and a curve has to start
+        // somewhere a beginner can afford.
+        recruits: 1,
+        recruit_cost: [CostEntryDef(item: "item.poles", amount: 18)],
+    ),
 )

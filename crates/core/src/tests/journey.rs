@@ -1426,17 +1426,36 @@ fn a_wardens_grip_only_runs_out_once_the_tower_walks_away() {
 
 use crate::command::CommandError;
 
-/// Park the tower at the enclave, stopped and in reach.
+/// Park the tower at the drowned city's settlement, stopped and in
+/// reach. Most of these tests are about that board specifically — it is
+/// the only one that does shell work, and its offer 2 is the poles-for-
+/// darts trade they exercise.
 ///
 /// Walking there honestly would take the better part of an in-game
 /// week; these tests are about what happens once you arrive.
 fn berth_at_the_enclave(game: &mut crate::engine::GameEngine) {
+    berth_at(game, 1);
+}
+
+/// Park the tower at a named region's settlement.
+///
+/// **Takes the region rather than "the next one", and that distinction
+/// is load-bearing now.** When region 1 gained a settlement of its own,
+/// every test that berthed at "the enclave" silently moved from the
+/// city's board to the jungle's — same command, different goods, and
+/// four tests failed on offers that had changed underneath them. A test
+/// about a particular board should name it.
+fn berth_at(game: &mut crate::engine::GameEngine, region: usize) {
     let content = content();
-    let at = game
-        .state()
-        .world
-        .enclave_at(&content)
-        .expect("the pack puts an enclave somewhere");
+    let at = {
+        let world = &game.state().world;
+        let enclave = content.regions[region]
+            .enclave
+            .as_ref()
+            .expect("that region has a settlement");
+        world.region_start_of(crate::ids::RegionIdx(region as u16))
+            + crate::fx::paces_from_int(enclave.at_paces)
+    };
     {
         let state = game.state_mut_for_test();
         state.world.distance = at;
@@ -1696,15 +1715,36 @@ fn a_run_can_be_played_from_the_first_pace_to_the_last() {
     // Slower than the rest by a wide margin and worth every tick.
     let content = content();
     let mut game = engine(1);
-    let enclave_at = game
-        .state()
-        .world
-        .enclave_at(&content)
-        .expect("the pack puts an enclave somewhere");
+
+    // **Every settlement on the way, not "the enclave".** This used to
+    // take the first one and stop, which was the same thing while the
+    // pack had one. It is not any more, and taking the first one now
+    // means testing the jungle's board on a two-day-old tower that
+    // cannot afford anything on it — which fails for a reason that has
+    // nothing to do with what this test is for.
+    let mut stops: Vec<(usize, crate::fx::Paces)> = content
+        .regions
+        .iter()
+        .enumerate()
+        .filter_map(|(region, def)| {
+            let enclave = def.enclave.as_ref()?;
+            let at = game
+                .state()
+                .world
+                .region_start_of(crate::ids::RegionIdx(region as u16))
+                + paces_from_int(enclave.at_paces);
+            Some((region, at))
+        })
+        .collect();
+    stops.sort_by_key(|(_, at)| *at);
+    assert!(
+        stops.len() >= 2,
+        "a run that passes one settlement is not a journey"
+    );
 
     let mut crossed = false;
     let mut traded = false;
-    let mut berthed = false;
+    let mut berthed = 0usize;
 
     for _ in 0..600_000 {
         if let Some(fork) = game.state().world.fork
@@ -1714,12 +1754,14 @@ fn a_run_can_be_played_from_the_first_pace_to_the_last() {
                 .expect("a pending fork always offers a branch 0");
         }
 
-        if !berthed && game.state().world.distance >= enclave_at {
-            berthed = true;
+        if let Some(&(_, at)) = stops.get(berthed)
+            && game.state().world.distance >= at
+        {
+            berthed += 1;
             game.try_send(crate::command::GameCommand::SetStriding { walking: false })
                 .expect("always legal");
             game.step(2);
-            traded = (0..4u8).any(|offer| {
+            traded |= (0..4u8).any(|offer| {
                 game.try_send(crate::command::GameCommand::Trade { offer })
                     .is_ok()
             });
@@ -1738,8 +1780,12 @@ fn a_run_can_be_played_from_the_first_pace_to_the_last() {
     assert!(!state.siege.lost, "the run ended in the Heartseed going");
     assert!(state.arrived, "the tower never reached the far edge");
     assert!(crossed, "the tower never entered the second region");
-    assert!(berthed, "the enclave never came within reach");
-    assert!(traded, "nothing could be traded at the settlement");
+    assert_eq!(
+        berthed,
+        stops.len(),
+        "the run did not pass every settlement in the pack"
+    );
+    assert!(traded, "nothing could be traded at any settlement");
     assert_eq!(
         state.world.region.get(),
         content.regions.len() - 1,
