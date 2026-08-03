@@ -776,7 +776,12 @@ export function forkGeometry(
     // has actually run out. Further off, all there is to see is the
     // post — which is the honest picture: from half a minute out a
     // split is a marker on the path, not two roads you can make out.
-    open: edgeX < layout.viewport.width,
+    // The second clause keeps them there after an answer: generation
+    // resumes the moment a branch is picked, so the edge goes away
+    // while the tower is still standing at the line, and without this
+    // the two ways vanished at the exact instant the player chose
+    // between them.
+    open: edgeX < layout.viewport.width || fork.ahead <= 40,
     near: unit((1 - far - 0.1) / 0.4),
   };
 }
@@ -1385,7 +1390,7 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
     // A brown-out is the legs asking and not being answered: a small
     // stuttering lift that never becomes a step.
     const strain =
-      halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 2.3)) ** 6 * reach * 0.05 : 0;
+      halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 2.3)) ** 5 * reach * 0.08 : 0;
     const lift = gait * Math.max(0, Math.cos(phase + i * Math.PI)) * reach * 0.22 + strain;
     const footX = hipX + step * layout.slotW * 0.9;
     const kneeX = hipX + step * layout.slotW * 0.36;

@@ -158,6 +158,14 @@ pub struct JourneyView {
     /// look identical in the cross-section and mean entirely different
     /// things, so the renderer is told which one it is drawing.
     pub halt: HaltView,
+    /// Paces to the settlement, once it is somewhere ahead. `None`
+    /// once the tower has passed it — there is no going back down the
+    /// axis, so a settlement behind you is gone rather than distant.
+    ///
+    /// The renderer needs this to draw the place coming, which is the
+    /// only warning a player gets that stopping is about to be worth
+    /// something.
+    pub enclave_ahead: Option<f32>,
     /// Berthed at the enclave right now.
     pub at_enclave: bool,
     /// What the enclave has left, one entry per authored offer.
@@ -438,8 +446,29 @@ pub struct TerrainInfo {
 pub struct RegionInfo {
     pub id: String,
     pub name: String,
-    /// The name of the settlement in this region, if it has one.
-    pub enclave: Option<String>,
+    /// The settlement in this region, if it has one.
+    pub enclave: Option<EnclaveInfo>,
+}
+
+/// What a settlement will do for you, so a trade board can say what it
+/// is offering rather than that it is offering something.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnclaveInfo {
+    pub name: String,
+    /// How far into its region it stands.
+    pub at_paces: i64,
+    pub offers: Vec<OfferInfo>,
+    pub recruits: u8,
+    pub recruit_cost: Vec<CostInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OfferInfo {
+    pub give: CostInfo,
+    pub take: CostInfo,
+    /// How many times it could ever be taken. What is *left* is in
+    /// `journey.offers`, which is state rather than content.
+    pub stock: i64,
 }
 
 /// One side of a fork.
@@ -545,10 +574,45 @@ fn build_regions(content: &Content) -> Vec<RegionInfo> {
     content
         .regions
         .iter()
-        .map(|region| RegionInfo {
+        .enumerate()
+        .map(|(i, region)| RegionInfo {
             id: region.id.clone(),
             name: region.name.clone(),
-            enclave: region.enclave.as_ref().map(|e| e.name.clone()),
+            enclave: region.enclave.as_ref().map(|def| {
+                let rt = content
+                    .region_rt(crate::ids::RegionIdx(i as u16))
+                    .enclave
+                    .as_ref()
+                    .expect("a region with an enclave has one at runtime");
+                EnclaveInfo {
+                    name: def.name.clone(),
+                    at_paces: def.at_paces,
+                    offers: rt
+                        .offers
+                        .iter()
+                        .map(|offer| OfferInfo {
+                            give: CostInfo {
+                                item: offer.give.0.0,
+                                amount: offer.give.1,
+                            },
+                            take: CostInfo {
+                                item: offer.take.0.0,
+                                amount: offer.take.1,
+                            },
+                            stock: offer.stock,
+                        })
+                        .collect(),
+                    recruits: def.recruits,
+                    recruit_cost: rt
+                        .recruit_cost
+                        .iter()
+                        .map(|(item, amount)| CostInfo {
+                            item: item.0,
+                            amount: *amount,
+                        })
+                        .collect(),
+                }
+            }),
         })
         .collect()
 }
@@ -597,6 +661,10 @@ fn build_journey(state: &GameState, content: &Content) -> JourneyView {
         }),
         branch: world.branch.map(|branch| branch.def.0),
         halt: halt_reason(state),
+        enclave_ahead: world
+            .enclave_at(content)
+            .filter(|at| *at >= world.distance)
+            .map(|at| paces_to_f32(at - world.distance)),
         at_enclave: world.at_enclave(content, state.strode),
         offers: state.enclave_stock.clone(),
         recruits: state.enclave_recruits,

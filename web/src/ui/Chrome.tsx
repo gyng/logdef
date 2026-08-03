@@ -12,7 +12,15 @@
 import { useEffect } from "react";
 
 import type { Game, UiState } from "../engine/Game";
-import type { HaltView, RoomInfo, ShaftInfo, SimSpeed } from "../bridge/types";
+import type {
+  CatalogSnapshot,
+  CostInfo,
+  EnclaveInfo,
+  HaltView,
+  RoomInfo,
+  ShaftInfo,
+  SimSpeed,
+} from "../bridge/types";
 
 const SPEEDS: { value: SimSpeed; label: string; key: string }[] = [
   { value: "Paused", label: "❚❚", key: "Space" },
@@ -205,7 +213,9 @@ function ForkCard({ game, ui }: Props) {
         <p>
           {waiting
             ? "the tower is standing at it, waiting to be told"
-            : "say which way before you reach it and you never stop"}
+            : fork.answer !== null
+              ? "the way is chosen, and stays changeable until the tower crosses"
+              : "say which way before you reach it and you never stop"}
         </p>
         <div className="fork-closing" aria-hidden="true">
           <div className="fork-closing-fill" style={{ width: `${closing}%` }} />
@@ -251,18 +261,16 @@ function ForkCard({ game, ui }: Props) {
  * haul destination outside the tower, and that was reasoned about and
  * cut for M3. So this is the smallest honest thing.
  *
- * KNOWN GAP: `CatalogSnapshot` carries the enclave's *name* and nothing
- * else — `RegionInfo { id, name, enclave: Option<String> }`. What each
- * offer gives and takes lives in `EnclaveDef`/`OfferDef` and never
- * crosses the bridge, and neither does `recruit_cost`, so these cards
- * cannot name the goods or the price. `journey.offers` is remaining
- * stock only. Until the catalog carries the terms, an offer can be
- * counted but not read.
+ * Every offer names its own terms, in the goods themselves rather than
+ * in a price: four scrap for three poles, and how many times more they
+ * will do it. `journey.offers` carries what is *left*, which is state;
+ * the terms come from the catalog, which is content.
  */
 function EnclaveBoard({ game, ui }: Props) {
+  const catalog = game.catalogInfo();
   return (
     <aside className="enclave panel" data-testid="enclave" aria-label="The posted board">
-      <h2 className="enclave-name">{ui.enclaveName ?? "A settlement"}</h2>
+      <h2 className="enclave-name">{ui.enclave?.name ?? "A settlement"}</h2>
       <p className="enclave-note">people live here; the tower is passing through</p>
       <ul className="enclave-offers">
         {ui.offers.map((left, index) => (
@@ -274,7 +282,7 @@ function EnclaveBoard({ game, ui }: Props) {
               data-testid={`trade-${String(index)}`}
               onClick={() => game.trade(index)}
             >
-              <span className="offer-terms">an exchange</span>
+              <span className="offer-terms">{terms(catalog, ui.enclave, index)}</span>
               <span className="offer-left">{left > 0 ? `${left} to be had` : "spoken for"}</span>
             </button>
           </li>
@@ -287,7 +295,9 @@ function EnclaveBoard({ game, ui }: Props) {
         data-testid="recruit"
         onClick={() => game.recruit()}
       >
-        {ui.recruits > 0 ? "Ask someone to come aboard" : "Nobody else is coming"}
+        {ui.recruits > 0
+          ? `Ask someone to come aboard · ${costLine(catalog, ui.enclave?.recruit_cost ?? [])}`
+          : "Nobody else is coming"}
       </button>
     </aside>
   );
@@ -623,6 +633,29 @@ function Cost({ game, costs }: { game: Game; costs: { item: number; amount: numb
       {costs.map((cost) => `${cost.amount}${catalog.items[cost.item]?.glyph ?? ""}`).join(" ")}
     </span>
   );
+}
+
+/**
+ * What an offer asks and what it gives, in the goods themselves.
+ *
+ * "4⚙️ → 3🎋" rather than a price: there is no currency in this game,
+ * and inventing a unit to display would be inventing one.
+ */
+function terms(
+  catalog: CatalogSnapshot | null,
+  enclave: EnclaveInfo | null,
+  index: number,
+): string {
+  const offer = enclave?.offers[index];
+  if (!catalog || !offer) return "an exchange";
+  const side = (cost: CostInfo) => `${cost.amount}${catalog.items[cost.item]?.glyph ?? ""}`;
+  return `${side(offer.give)} → ${side(offer.take)}`;
+}
+
+/** A list of costs, in the same shorthand. */
+function costLine(catalog: CatalogSnapshot | null, costs: CostInfo[]): string {
+  if (!catalog) return "";
+  return costs.map((cost) => `${cost.amount}${catalog.items[cost.item]?.glyph ?? ""}`).join(" ");
 }
 
 function costHint(room: RoomInfo): string {

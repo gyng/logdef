@@ -144,6 +144,12 @@ export interface JourneyView {
   branch: number | null;
   /** Why the tower is standing still, if it is. */
   halt: HaltView;
+  /**
+   * Paces to the settlement, once it is somewhere ahead. Null once the
+   * tower has passed it — there is no going back down the axis, so a
+   * settlement behind you is gone rather than distant.
+   */
+  enclave_ahead: number | null;
   /** Berthed at the enclave right now. */
   at_enclave: boolean;
   /** What the enclave has left, one entry per authored offer. */
@@ -395,11 +401,28 @@ export interface TerrainInfo {
   ruin_kinds: boolean[];
 }
 
+export interface EnclaveInfo {
+  name: string;
+  /** How far into its region it stands. */
+  at_paces: number;
+  offers: OfferInfo[];
+  recruits: number;
+  recruit_cost: CostInfo[];
+}
+
+export interface OfferInfo {
+  give: CostInfo;
+  take: CostInfo;
+  /** How many times it could ever be taken. What is *left* is in
+   * `journey.offers`, which is state rather than content. */
+  stock: number;
+}
+
 export interface RegionInfo {
   id: string;
   name: string;
   /** The name of the settlement in this region, if it has one. */
-  enclave: string | null;
+  enclave: EnclaveInfo | null;
 }
 
 /**

@@ -19,6 +19,7 @@ import type { Bridge } from "../bridge";
 import { commandFailed } from "../bridge";
 import type {
   CatalogSnapshot,
+  EnclaveInfo,
   FeatureView,
   ForkView,
   GameCommand,
@@ -85,8 +86,9 @@ export interface UiState {
   /** Berthed at the enclave. */
   atEnclave: boolean;
   /** What the settlement in this region is called, if it has one. */
-  enclaveName: string | null;
+  enclave: EnclaveInfo | null;
   /** Remaining stock, one entry per posted offer. */
+  enclaveAhead: number | null;
   offers: number[];
   recruits: number;
   /** The far edge of the journey, reached. */
@@ -111,6 +113,12 @@ export class Game {
   private readonly bridge: Bridge;
   private readonly renderer: Renderer;
   private readonly catalog: CatalogSnapshot;
+
+  /** The content pack, for chrome that has to name things. */
+  catalogInfo(): CatalogSnapshot {
+    return this.catalog;
+  }
+
   private readonly listeners = new Set<(ui: UiState) => void>();
 
   private frameHandle = 0;
@@ -443,8 +451,8 @@ export class Game {
       halt: view?.journey.halt ?? "stopped",
       fork: view?.journey.fork ?? null,
       atEnclave: view?.journey.at_enclave ?? false,
-      enclaveName:
-        view === null ? null : (this.catalog.regions[view.journey.region]?.enclave ?? null),
+      enclave: view === null ? null : (this.catalog.regions[view.journey.region]?.enclave ?? null),
+      enclaveAhead: view?.journey.enclave_ahead ?? null,
       offers: view?.journey.offers ?? [],
       recruits: view?.journey.recruits ?? 0,
       arrived: view?.journey.arrived ?? false,

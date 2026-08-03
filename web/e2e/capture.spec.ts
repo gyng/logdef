@@ -529,7 +529,16 @@ test("capture stills", async ({ page }) => {
       if (close) {
         hooks.send({ SetStriding: { walking: false } });
         hooks.step(2);
-        if (hooks.view().journey.at_enclave) return "berthed";
+        if (hooks.view().journey.at_enclave) {
+          // In daylight. Berthing holds the tower in place, so waiting
+          // out the dark costs nothing and does not drift out of range.
+          let dawn = 20_000;
+          while (dawn > 0 && hooks.view().clock.sun_pct < 70) {
+            hooks.step(120);
+            dawn -= 120;
+          }
+          return "berthed";
+        }
         hooks.send({ SetStriding: { walking: true } });
       }
       window.__capture!.answer();
@@ -605,7 +614,12 @@ test("capture stills", async ({ page }) => {
   // as a frozen game.
   await page.evaluate(() => {
     const hooks = window.__understory!;
-    let budget = 4_000;
+    // Striding, explicitly: the approach above holds the tower short of
+    // the split overnight, and without this the halt loop steps a
+    // parked tower for four thousand ticks and photographs it two
+    // hundred and fifty paces from the thing it is meant to be at.
+    hooks.send({ SetStriding: { walking: true } });
+    let budget = 8_000;
     while (budget > 0 && hooks.view().journey.halt !== "fork") {
       hooks.step(20);
       budget -= 20;
@@ -694,9 +708,16 @@ test("capture stills", async ({ page }) => {
     while (budget > 0) {
       const view = hooks.view();
       if (view.journey.arrived) break;
-      if (view.journey.remaining < 26 && view.clock.sun_pct > 40) break;
+      if (view.journey.remaining < 26) break;
+      // Hold short of the last few hundred paces until morning, the
+      // same way the fork approach does: the far edge is drawn as the
+      // world opening out into light and a night crossing photographs
+      // a dark frame with a caption on it.
+      const night = view.clock.sun_pct <= 45;
+      const close = view.journey.remaining < 500;
+      hooks.send({ SetStriding: { walking: !(night && close) } });
       window.__capture!.answer();
-      const stride = view.journey.remaining < 400 ? 6 : 300;
+      const stride = close ? (night ? 120 : 6) : 300;
       hooks.step(stride);
       budget -= stride;
     }
@@ -726,7 +747,9 @@ test("capture stills", async ({ page }) => {
       ? `arrived at ${Math.round(view.world.distance)} paces on day ${view.clock.day + 1}`
       : "never got there";
   });
-  await page.waitForTimeout(400);
+  // The overlay fades up over 2.6 seconds, so a 400ms wait photographs
+  // it a third of the way in.
+  await page.waitForTimeout(3000);
   await page.screenshot({ path: "capture/halt-arrived.png" });
 
   console.log(`sighting still: ${sighted}`);

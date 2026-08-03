@@ -222,7 +222,7 @@ button {
 .readouts {
   display: flex;
   flex: 1;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
 
 .readout {
@@ -259,7 +259,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  min-width: 150px;
+  min-width: 128px;
 }
 
 .journey-place {
@@ -444,9 +444,13 @@ button {
 /* Sits over the sky to the right of the tower, on the same side of the
    frame as the split it is about — a card in the middle of the screen
    covers the cross-section and points at nothing. */
+/* High enough to clear the waypost's whole approach: the marker crests
+   near the vanishing point and walks down the ground plane toward the
+   tower's feet, so anything lower down gets collided with on the way
+   in and covers the two ways at the halt. */
 .fork {
   position: absolute;
-  top: 42%;
+  top: 23%;
   right: var(--space-4);
   display: flex;
   flex-direction: column;
@@ -552,7 +556,7 @@ button {
 .enclave {
   position: absolute;
   right: var(--space-4);
-  bottom: var(--space-8);
+  bottom: 52px;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -880,7 +884,7 @@ button {
    register, same facts, no grade (SYSTEMS.md §3.7). */
 .elegy.arrival {
   color: var(--text-primary);
-  background: rgb(30 40 28 / 62%);
+  background: rgb(16 27 20 / 74%);
 }
 
 .elegy.arrival h1 {
