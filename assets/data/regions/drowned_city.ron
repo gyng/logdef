@@ -111,47 +111,31 @@ RegionDef(
                 stock: 12,
             ),
         ],
+        // Shell work, twice, for the city's own metal. The only
+        // permanent upgrade in the game, and the one thing that gives
+        // scrap somewhere to go besides the trade board: a run that
+        // berths at the city's ruins arrives here with metal, and this
+        // turns it into hull.
+        //
+        // Sixty hit points a round is 40% of a panel, so two rounds
+        // take every floor from 150 to 270 — nearly double, which is
+        // what makes region 2's half-again threat land on a tower that
+        // can take it. Eighteen scrap a round is most of one good ruin,
+        // so plating twice means berthing at least twice and getting
+        // away with it both times.
+        //
+        // This was briefly withdrawn on a measurement that turned out
+        // to be my instrument's fault rather than the feature's; see
+        // `BALANCE.md`'s row for what actually happened.
+        reinforce: ReinforceDef(
+            cost: [CostEntryDef(item: "item.scrap", amount: 18)],
+            panel_hp: 60,
+            times: 2,
+        ),
         // One pair of hands, priced steeply. Going from two crew to
         // three moved measured throughput by ninety percent
         // (`BALANCE.md`, `starting_crew`), so a fourth is the largest
         // single change a player can buy and should cost like it.
-        // Shell work, twice, for the city's own metal.
-        //
-        // The only permanent upgrade in the game, and the one thing
-        // that gives scrap somewhere to go besides the trade board. A
-        // run that berths at the city's ruins arrives here with metal;
-        // this turns it into hull. Sixty hit points a round is 40% of
-        // a panel, so two rounds take every floor from 150 to 270 —
-        // nearly double, which is what makes region 2's half-again
-        // threat land on a tower that can take it.
-        //
-        // Eighteen scrap a round is most of one good ruin, so plating
-        // twice means berthing at least twice and getting away with it
-        // both times.
-        // NOT OFFERED. The shell work is built, tested and drawn, and
-        // it is *harmful*: measured across eight seeds, a tower plated
-        // twice ends three days at provocation 100 having lost between
-        // 958 and 2,232 hit points where the same tower unplated loses
-        // between 0 and 8. Worse on every seed tried, by two to three
-        // orders of magnitude, and it repairs less while damaged more.
-        //
-        // The mechanism is not understood — see the note at the head of
-        // `BALANCE.md`'s Siege section, and reproduce with the last
-        // section of `cargo run --release -p understory-core --example
-        // siege_run`. Until it is, this must not be purchasable: an
-        // upgrade that makes the tower worse at the one thing it is
-        // sold for is a trap, and shipping a trap is worse than
-        // shipping nothing.
-        //
-        // Restore by uncommenting. The code, the command, the tests and
-        // the plating on the hull are all in place and stay that way,
-        // so the fix is a diagnosis rather than a rebuild.
-        //
-        // reinforce: ReinforceDef(
-        //     cost: [CostEntryDef(item: "item.scrap", amount: 18)],
-        //     panel_hp: 60,
-        //     times: 2,
-        // ),
         recruits: 1,
         recruit_cost: [CostEntryDef(item: "item.poles", amount: 30)],
     ),

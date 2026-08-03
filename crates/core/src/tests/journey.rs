@@ -2183,29 +2183,42 @@ fn plating_a_breach_does_not_close_it() {
 }
 
 #[test]
-fn nobody_is_selling_shell_work_at_the_moment() {
-    // The command, the cost check, the cap and the plating are all
-    // built and tested. What is *not* live is the offer, because
-    // measurement says a plated tower comes off worse than a bare one
-    // on every seed tried — see the head of `BALANCE.md`'s Siege
-    // section, and the last part of `examples/siege_run.rs`.
-    //
-    // This test exists so the withdrawal is deliberate rather than
-    // something that quietly happened: if a settlement starts offering
-    // it again, this fails and whoever restored it has to have read
-    // why it was pulled.
+fn a_settlement_only_does_so_much_shell_work() {
     let mut game = engine(4202);
     berth_at_the_enclave(&mut game);
     let scrap = item(&content(), "item.scrap");
     game.state_mut_for_test().shelve(scrap, 60);
 
+    let times = game.state().shell_work_left;
+    assert!(times > 0, "the pack authors no shell work at all");
+    for _ in 0..times {
+        game.try_send(GameCommand::Reinforce)
+            .expect("they will do it this many times");
+    }
     let error = game
         .try_send(GameCommand::Reinforce)
-        .expect_err("no settlement in the shipped pack does hull work");
-    assert!(matches!(error, CommandError::NoShellWorkHere));
+        .expect_err("and no more");
+    assert!(matches!(error, CommandError::NoShellWorkLeft));
+}
+
+#[test]
+fn shell_work_costs_scrap_and_a_refusal_costs_nothing() {
+    let mut game = engine(4203);
+    berth_at_the_enclave(&mut game);
+    let scrap = item(&content(), "item.scrap");
+
+    let error = game
+        .try_send(GameCommand::Reinforce)
+        .expect_err("no scrap aboard");
+    assert!(matches!(error, CommandError::InsufficientStock { .. }));
     assert_eq!(
         game.state().tower.shell_bonus,
         0,
         "a refused plating still plated the tower"
     );
+
+    game.state_mut_for_test().shelve(scrap, 60);
+    let held = game.state().stock_of(scrap);
+    game.try_send(GameCommand::Reinforce).expect("affordable");
+    assert!(game.state().stock_of(scrap) < held, "the plating was free");
 }

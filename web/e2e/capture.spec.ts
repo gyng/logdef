@@ -588,10 +588,10 @@ test("capture stills", async ({ page }) => {
     const hooks = window.__understory!;
     const before = hooks.view();
     const stock = (item: number) => before.stock.find((entry) => entry.item === item)?.count ?? 0;
-    // Shell work is withdrawn from the pack for now (see
-    // `regions/drowned_city.ron`), so this is expected to be refused —
-    // kept in the harness on purpose, so the still and the log both
-    // show the board as it actually is rather than as it was designed.
+    // Plating first, and the order is a real decision rather than a
+    // detail: the board's best offer also takes scrap, so trading
+    // before plating can leave you two short of a hull you meant to
+    // buy. Permanent beats convertible.
     const plate = hooks.send("Reinforce");
     const trade = hooks.send({ Trade: { offer: 0 } });
     const hire = hooks.send("Recruit");

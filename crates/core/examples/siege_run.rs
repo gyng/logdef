@@ -234,6 +234,14 @@ fn total_hp(state: &understory_core::state::GameState) -> i64 {
 
 /// Keep poles and darts on the shelves, so nothing under measurement is
 /// waiting on the chain.
+///
+/// Topped to a *modest* level, and this matters more than it looks. An
+/// earlier version filled the shelves to the brim every minute, which
+/// left the tower with nowhere to put anything a crew member picked
+/// up — and a stranded carrier could not repair. That amplified a small
+/// difference between two towers into a fourfold gap in repair and had
+/// me withdraw a working feature. An instrument that changes the thing
+/// it measures is worse than no instrument.
 fn stock_everything(engine: &mut GameEngine) {
     let content = engine.content().clone();
     let poles = content.item_idx("item.poles");
@@ -241,8 +249,8 @@ fn stock_everything(engine: &mut GameEngine) {
     let state = engine.state_mut_for_test();
     for item in [poles, darts].into_iter().flatten() {
         let held = state.stock_of(item);
-        if held < 40 {
-            state.shelve(item, 40 - held);
+        if held < 16 {
+            state.shelve(item, 16 - held);
         }
     }
     // And the racks, so a battery is measured on its reload rather than

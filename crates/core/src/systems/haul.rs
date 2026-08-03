@@ -463,10 +463,27 @@ fn assign_idle(
             continue;
         }
 
-        // Damage outranks a new errand. A crew member already holding
-        // something finishes that first — putting a load down where it
-        // does not belong to go and mend a wall would lose the load.
-        if !crew[i].is_carrying()
+        // Damage outranks a new errand, but not a delivery already under
+        // way: a crew member holding something finishes that first,
+        // because putting a load down where it does not belong to go and
+        // mend a wall would lose the load.
+        //
+        // Unless there is nowhere to put it at all. A tower with no free
+        // shelf and no hungry room strands whoever is holding something,
+        // and a stranded carrier used to be lost to repair for the rest
+        // of the run — `is_carrying` said no and `find_destination` said
+        // no, so they stood there. Measured on a deliberately
+        // shelf-stuffed tower, that took repair down to a quarter of
+        // what the same tower managed with room to spare.
+        //
+        // Mending while holding a crate costs nothing: `repair::run`
+        // never touches `carrying`, so the load goes right on being
+        // held and is delivered when somewhere opens up.
+        let stranded = crew[i].is_carrying()
+            && crew[i].carrying.is_some_and(|(item, held)| {
+                find_destination(tower, content, crew, i, item, held, false).is_none()
+            });
+        if (!crew[i].is_carrying() || stranded)
             && let Some((target, floor, slot)) =
                 super::repair::pick_repair(tower, content, poles, crew, i, crew[i].floor())
         {

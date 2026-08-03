@@ -439,3 +439,90 @@ fn nothing_carries_a_thing_from_one_shelf_to_another() {
         "shelved bamboo moved with nothing to consume it"
     );
 }
+
+#[test]
+fn a_crew_member_holding_something_with_nowhere_to_put_it_still_mends() {
+    // Repair used to be gated on empty hands, full stop: a crew member
+    // carrying a load finished the delivery first, because putting it
+    // down somewhere it does not belong would lose it.
+    //
+    // That is right until there is nowhere to put it at all. A tower
+    // with no free shelf and no hungry room strands whoever is holding
+    // something, and a stranded carrier was then lost to repair for the
+    // rest of the run — `is_carrying` said no and `find_destination`
+    // said no, so they stood there holding a crate while the wall came
+    // down.
+    //
+    // Found by an instrument that had stuffed its own shelves to keep
+    // the chain fed, which turned a small difference between two towers
+    // into a fourfold gap in repair and nearly got a working feature
+    // withdrawn. Mending while holding a crate costs nothing:
+    // `repair::run` never touches `carrying`, so the load stays held
+    // and goes where it was going once somewhere opens up.
+    let content = content();
+    let bamboo = item(&content, "item.bamboo");
+    let poles = item(&content, "item.poles");
+    let mut game = engine(4300);
+
+    {
+        let state = game.state_mut_for_test();
+        state.siege.provocation = 0;
+        state.siege.enemies.clear();
+        state.siege.next_wave_tick = u64::MAX;
+
+        // Damage to mend, and the poles to mend it with.
+        state.tower.floor_mut(0).expect("ground floor").panel.hp -= 100;
+
+        // Fill every shelf and every input in the tower, so nothing a
+        // crew member picks up has anywhere to go.
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                for stack in room.inputs.iter_mut().chain(room.outputs.iter_mut()) {
+                    let space = stack.space();
+                    stack.deposit(space);
+                }
+                for shelf in &mut room.shelves {
+                    if shelf.item.is_none() {
+                        shelf.item = Some(bamboo);
+                    }
+                    shelf.count = shelf.max;
+                }
+            }
+        }
+        // Except the poles repair will draw on: one shelf's worth,
+        // which is the tower's stock rather than somewhere to deliver.
+        if let Some(shelf) = state
+            .tower
+            .floors
+            .iter_mut()
+            .flat_map(|floor| floor.rooms.iter_mut())
+            .flat_map(|room| room.shelves.iter_mut())
+            .next()
+        {
+            shelf.item = Some(poles);
+            shelf.count = shelf.max;
+        }
+
+        // And put a crate in somebody's hands that they cannot deliver.
+        if let Some(member) = state.crew.first_mut() {
+            member.carrying = Some((bamboo, 1));
+            member.state = crate::state::CrewState::Idle;
+            member.task = None;
+        }
+    }
+
+    let hurt = game.state().tower.floor(0).expect("ground floor").panel.hp;
+    game.step(1200);
+
+    let after = game.state().tower.floor(0).expect("ground floor").panel.hp;
+    assert!(
+        after > hurt,
+        "nobody mended the panel: {hurt} then {after}, on a tower where every \
+         crew member had their hands full and nowhere to empty them"
+    );
+    // And the load was not dropped on the floor to do it.
+    assert!(
+        game.state().stats.hp_repaired > 0,
+        "the panel healed without any repair being recorded"
+    );
+}
