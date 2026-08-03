@@ -1800,3 +1800,141 @@ fn forks_fall_on_the_interval_they_were_authored_with() {
     }
     assert!(seen >= 2, "only saw {seen} fork(s) in a whole region");
 }
+
+#[test]
+fn a_palettes_weights_are_the_proportions_it_gets() {
+    // A palette says canopy 55, clearing 30, ruin-field 15, and that is
+    // the whole of how a region is characterised — "biomass-rich and
+    // sun-poor" is not written down anywhere except as those three
+    // numbers. Nothing checked that the generator honoured them, so the
+    // weighted pick could have drifted to nearly uniform and every
+    // region would still have produced plausible-looking terrain.
+    //
+    // Measured by count over a long stretch rather than by distance,
+    // because the weights govern which kind is drawn and band lengths
+    // are rolled separately.
+    let content = content();
+    let palette = &content.region_rt(RegionIdx(0)).palette;
+
+    let mut counts = vec![0i64; content.terrain.len()];
+    let mut bands = 0i64;
+    for seed in 1..40u64 {
+        let (mut streams, mut world) = fresh(seed, &content);
+        // Region 1 only, and no branches — a branch is a different
+        // palette and would muddy the measurement.
+        for _ in 0..30 {
+            world.distance += paces_from_int(400);
+            if world.fork.is_some() {
+                break;
+            }
+            world.generate_ahead(&mut streams.world, &content);
+        }
+        for band in &world.bands {
+            counts[band.kind.get()] += 1;
+            bands += 1;
+        }
+    }
+
+    assert!(
+        bands > 500,
+        "only {bands} bands to measure — too few to tell"
+    );
+    // Asserted as an ordering rather than as percentages, because the
+    // no-repeat rule bends the distribution away from the raw weights
+    // by design: it forbids whatever came last, which suppresses the
+    // commonest kind and lifts the rarest. Canopy is authored at 55%
+    // and settles near 42% for exactly that reason, and pinning 55
+    // would be pinning a number the generator is not trying to hit.
+    //
+    // What must hold is that heavier means commoner, strictly, and that
+    // the spread survives — a weighted pick that drifted to uniform, or
+    // that inverted, fails here while any amount of no-repeat bending
+    // passes.
+    let mut ranked: Vec<(i64, i64, &str)> = palette
+        .iter()
+        .map(|(terrain, weight)| {
+            (
+                *weight,
+                counts[terrain.get()] * 100 / bands,
+                content.terrain(*terrain).id.as_str(),
+            )
+        })
+        .collect();
+    ranked.sort_by_key(|(weight, _, _)| -weight);
+    for pair in ranked.windows(2) {
+        let (heavy_w, heavy, heavy_id) = pair[0];
+        let (light_w, light, light_id) = pair[1];
+        assert!(
+            heavy > light,
+            "{heavy_id} is authored heavier than {light_id} ({heavy_w} against {light_w})              and came out rarer: {heavy}% against {light}%"
+        );
+    }
+    let (_, most, _) = ranked.first().copied().expect("a palette has entries");
+    let (_, least, _) = ranked.last().copied().expect("a palette has entries");
+    assert!(
+        most * 10 >= least * 15,
+        "the heaviest kind came out {most}% and the lightest {least}% — that is nearly          uniform, so the weights are not being read"
+    );
+
+    // And nothing outside the palette got in at all.
+    for (i, count) in counts.iter().enumerate() {
+        if *count == 0 {
+            continue;
+        }
+        let idx = crate::ids::TerrainIdx(i as u16);
+        assert!(
+            palette.iter().any(|(terrain, _)| *terrain == idx),
+            "{} appeared in region 1 and is not in its palette",
+            content.terrain(idx).id
+        );
+    }
+}
+
+#[test]
+fn the_streaming_window_stays_the_same_size_however_far_the_tower_walks() {
+    // The premise of the whole world model: terrain is a stream, not a
+    // level, so a run of any length costs the same memory. It is also
+    // the property that quietly stops holding if a boundary comparison
+    // in `generate_ahead` or `prune_behind` drifts by one — the window
+    // would creep, and nothing would fail until a long run.
+    let content = content();
+    let balance = &content.balance.world;
+    let (mut streams, mut world) = fresh(31, &content);
+
+    let mut widest = 0usize;
+    for step in 0..600 {
+        world.distance += paces_from_int(500);
+        if world.fork.is_some() {
+            world.answer_fork(&content, 0);
+        }
+        world.generate_ahead(&mut streams.world, &content);
+        world.prune_behind(&content);
+
+        // Always somewhere to stand.
+        assert!(
+            world.band_at(world.distance).is_some(),
+            "step {step}: the tower is standing on nothing at {} paces",
+            world.distance >> FX_SHIFT
+        );
+        // Always something ahead, unless a fork is holding generation.
+        assert!(
+            world.generated_to >= world.distance,
+            "step {step}: the generator fell behind the tower"
+        );
+        // And nothing kept from far behind.
+        let oldest = world.bands.first().map_or(world.distance, |b| b.start);
+        let behind = (world.distance - oldest) >> FX_SHIFT;
+        assert!(
+            behind <= balance.stream_behind_paces + balance.band_max_paces,
+            "step {step}: keeping {behind} paces of history, past the \
+             {} the window allows",
+            balance.stream_behind_paces
+        );
+        widest = widest.max(world.bands.len());
+    }
+
+    assert!(
+        widest < 40,
+        "the band window grew to {widest}, so it is not a window"
+    );
+}

@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import type {
   CatalogSnapshot,
   CommandResult,
+  FeatureView,
   GameCommand,
   ReplayReport,
   ViewSnapshot,
@@ -44,6 +45,11 @@ interface TestHooks {
   exportReplay(): string;
   /** Centre of a slot in client coordinates, from the live layout. */
   slotPoint(floor: number, slot: number): { x: number; y: number } | null;
+  /**
+   * Where the renderer would put a scattered feature, in client
+   * coordinates, for a tower standing at `distance`.
+   */
+  featurePoint(feature: FeatureView, distance: number): { x: number; y: number } | null;
 }
 
 declare global {

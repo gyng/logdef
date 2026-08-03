@@ -10,9 +10,17 @@
 import { LabelLayer, type Label } from "./LabelLayer";
 import { QuadBatch } from "./QuadBatch";
 import { createContext, resizeToDisplay } from "./gl";
-import { computeLayout, hitSlot, slotX, floorY, worldX, type Layout } from "./layout";
-import { aheadPoint, drawScene, enemyPosition, towerShape, type PlaceMode } from "./scene";
-import type { CatalogSnapshot, ViewSnapshot } from "../bridge/types";
+import { computeLayout, hitSlot, slotX, floorY, type Layout } from "./layout";
+import {
+  drawScene,
+  edgeScreenX,
+  enemyPosition,
+  featurePoint,
+  forkGeometry,
+  towerShape,
+  type PlaceMode,
+} from "./scene";
+import type { CatalogSnapshot, FeatureView, ViewSnapshot } from "../bridge/types";
 
 export interface RenderInput {
   view: ViewSnapshot;
@@ -96,6 +104,23 @@ export class Renderer {
     };
   }
 
+  /**
+   * Where a scattered feature is being drawn, in client coordinates.
+   *
+   * The same job `slotCenter` does for the tower, for the terrain: the
+   * screenshot harness has to be able to frame a ruin it wants a
+   * picture of, and the alternative is guessing at `paceW` and the
+   * parallax table from outside the renderer — which is exactly the
+   * kind of hardcoded coordinate that passes until someone changes the
+   * scale and then fails for an unrelated-looking reason.
+   */
+  featureCenter(distance: number, feature: FeatureView): { x: number; y: number } | null {
+    if (!this.layout) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const { x, y } = featurePoint(distance, this.layout, feature);
+    return { x: rect.left + x, y: rect.top + y };
+  }
+
   get quadCount(): number {
     return this.batch.queued;
   }
@@ -114,7 +139,7 @@ export class Renderer {
 function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
   const labels: Label[] = [];
 
-  labels.push(...forkLabels(view, catalog, layout));
+  labels.push(...forkLabels(view, catalog, layout, edgeScreenX(view, layout)));
   labels.push(...salvageLabels(view, catalog, layout));
 
   for (const floor of view.tower.floors) {
@@ -221,35 +246,39 @@ function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layou
  * this the card is a dialogue box about something happening off screen
  * (`SYSTEMS.md` §3.3).
  */
-function forkLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
+function forkLabels(
+  view: ViewSnapshot,
+  catalog: CatalogSnapshot,
+  layout: Layout,
+  edgeX: number,
+): Label[] {
   const fork = view.journey.fork;
-  if (!fork) return [];
-  const { x, y, far } = aheadPoint(view, layout, fork.ahead);
-  if (x > layout.viewport.width) return [];
-
+  const geometry = forkGeometry(view, layout, edgeX);
+  if (!fork || !geometry) return [];
   // Nothing at all while it is a speck at the vanishing point, fading
   // in as it comes. Same treatment the creature glyphs get, for the
   // same reason: a name over a four-pixel post is bigger than the post.
-  const near = Math.max(0, Math.min(1, (1 - far - 0.15) / 0.35));
-  if (near <= 0) return [];
-
-  const scale = 0.3 + 0.7 * (1 - far);
-  const post = layout.slotW * 0.9 * scale;
-  const reach = Math.max(post * 2.2, (layout.groundY - layout.horizonY) * 0.55 * (0.4 + far * 0.9));
+  if (geometry.near <= 0) return [];
 
   return fork.branches.flatMap((branchIdx, side) => {
     const info = catalog.branches[branchIdx];
-    if (!info) return [];
+    const tip = geometry.tips[side];
+    if (!info || !tip) return [];
     const chosen = fork.answer === side;
-    const lift = side === 0 ? -0.55 : 0.12;
+    // On the track once there is one, tucked beside the post before
+    // then — the name has to be attached to something either way.
+    const x = geometry.open ? tip.x : geometry.x + geometry.post * (0.8 + side * 0.1);
+    const y = geometry.open
+      ? tip.y - geometry.post * 0.3
+      : geometry.y - geometry.post * (side === 0 ? 1.0 : 0.7);
     return [
       {
         key: `fork-${side}`,
         text: info.name,
-        x: x + reach * (0.85 + side * 0.15),
-        y: y + reach * lift - post * 0.25,
+        x,
+        y,
         variant: chosen ? "label-way label-way-taken" : "label-way",
-        alpha: near * (chosen ? 1 : 0.75),
+        alpha: geometry.near * (chosen ? 1 : 0.8),
       },
     ];
   });
@@ -264,26 +293,33 @@ function forkLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout
  * the horizon never turns into a list of numbers (`DECISIONS.md` §8).
  */
 function salvageLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
-  const scrap = catalog.items.findIndex((item) => item.id === "item.scrap");
-  const glyph = scrap >= 0 ? (catalog.items[scrap]?.glyph ?? "") : "";
+  const glyph = catalog.items.find((item) => item.id === "item.scrap")?.glyph ?? "";
+  const shape = towerShape(view);
+  const towerLeft = layout.originX;
+  const towerRight = layout.originX + shape.slots * layout.slotW;
   const labels: Label[] = [];
 
   for (const feature of view.world.features) {
     if (feature.salvage <= 0) continue;
     const gap = feature.at - view.world.distance;
-    // Roughly the near half of the tower's own footprint either side —
-    // a berth is decided at the last moment, and this is that moment.
+    // A berth is decided at the last moment, and this is that moment.
     if (Math.abs(gap) > 90) continue;
-    const parallax = feature.layer === 0 ? 0.22 : feature.layer === 1 ? 0.55 : 1;
-    const x = worldX(layout, feature.at, view.world.distance, parallax);
+    const { x, y, size } = featurePoint(view.world.distance, layout, feature);
+    // Nothing behind the tower's own body. The heap is hidden there, so
+    // a figure floating over the cross-section would be a number with
+    // nothing to attach to — which is exactly the dashboard reading
+    // `DECISIONS.md` §8 rules out.
     if (x < 0 || x > layout.viewport.width) continue;
+    if (x > towerLeft - 12 && x < towerRight + 12) continue;
     labels.push({
       key: `salvage-${feature.at}-${feature.layer}`,
       text: `${glyph}${feature.salvage}`,
+      // Riding the ruin's own height rather than a fixed baseline, so
+      // it stays on the thing it is describing at every parallax depth.
       x,
-      y: layout.groundY + (layout.groundY - layout.horizonY) * 0.1,
+      y: y - size * 0.62,
       variant: "label-salvage",
-      alpha: Math.max(0.35, 1 - Math.abs(gap) / 90),
+      alpha: Math.max(0.4, 1 - Math.abs(gap) / 90),
     });
   }
   return labels;

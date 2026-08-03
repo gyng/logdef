@@ -19,6 +19,7 @@ import type { Bridge } from "../bridge";
 import { commandFailed } from "../bridge";
 import type {
   CatalogSnapshot,
+  FeatureView,
   ForkView,
   GameCommand,
   HaltView,
@@ -142,6 +143,14 @@ export class Game {
     if (hooks && typeof hooks === "object") {
       (hooks as Record<string, unknown>).slotPoint = (floor: number, slot: number) =>
         this.renderer.slotCenter(floor, slot);
+      // The same thing for the terrain strip: the screenshot harness
+      // has to be able to frame a ruin, and only the renderer knows
+      // where a given parallax layer put it. The distance is passed in
+      // rather than read off the last snapshot, because the harness
+      // asks from inside a stepping loop that no frame has rendered
+      // during — `this.latest` there is thousands of paces stale.
+      (hooks as Record<string, unknown>).featurePoint = (feature: FeatureView, distance: number) =>
+        this.renderer.featureCenter(distance, feature);
     }
   }
 
