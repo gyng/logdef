@@ -155,8 +155,8 @@ cargo test                    # test the workspace
 # Regenerate the golden replay fixture (crates/core/examples/record_golden.rs)
 cargo run -p understory-core --example record_golden
 
-# Mutation testing on the core crate (occasional, not part of make check — slow)
-cargo mutants
+# Mutation testing (occasional, not part of make check — an hour a file)
+cargo mutants --package understory-core --file crates/core/src/systems/siege.rs
 
 # Frontend (from web/) — ts7 (tsgo) / oxfmt / oxlint, not tsc/prettier/eslint
 npm run typecheck             # tsgo — type-checks without emitting
@@ -166,6 +166,27 @@ npm run format                # oxfmt — write
 
 See `DECISIONS.md` §10 for why the frontend toolchain is ts7/oxfmt/oxlint rather than the
 tsc/prettier/eslint stack v1 used, and why the renderer is custom WebGL2 rather than SVG.
+
+### Mutation testing, and two ways it will lie to you
+
+Scope it to a file — a whole-crate run is hours. Read `mutants.out/missed.txt` rather than
+the tail of the command, which truncates.
+
+**Never pass `--in-place`.** It mutates your working tree instead of a copy, so a run that
+is interrupted can leave a mutant in your source. There is no reason to want this.
+
+**A survivor may be a stale report.** Results are only as fresh as the tree the run copied
+at *start*, and a long run finishing after you have added tests will list mutants those
+tests already kill. Before believing a survivor, hand-apply it and run the tests: that takes
+a minute and settles it. Doing exactly this is how the note in `BALANCE.md` about the
+`discard_generation_past` mutants got corrected — the tool said alive, the hand check said
+caught.
+
+**And a survivor is often not a gap.** A guard no shipped content can trigger, a comparison
+where validation already forbids the other side, an arithmetic change that a
+self-correcting loop absorbs — all report as missed and none of them are worth a test. The
+useful question is not "is this caught" but "would a player notice if this were wrong".
+Write down the ones you decide to leave, and why.
 
 ---
 
