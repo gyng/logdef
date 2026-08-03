@@ -1486,6 +1486,38 @@ the kind of thing a list like this is bad at catching.
 
 - [x] `make check` and the smoke suite green — 237 Rust tests, 7 Playwright.
 
+**The sprint question — run pacing, and does route-is-your-power-mix actually bite?**
+
+Pacing: yes, 48 to 61 minutes to the drowned city, median 54.
+
+The power mix: **partly, and the half that does not show is worth naming.** Measured on one
+seed with two policies that differ only in which branch they take at every fork — one always
+the shadiest on offer, one always the most open (`Policy::Forager` and `Policy::Sunseeker`
+in `examples/journey.rs`, both picking on the branch palette's own sunlight rather than on
+its name):
+
+| | shadiest route | most open route |
+|---|---|---|
+| mean exposure | 34% | 39% |
+| canopy walked | 42% | 37% |
+| ruin field walked | 15% | 27% |
+| salvage in the path | 21,142 | 38,063 |
+
+Five points of sunlight and eighty per cent more salvage, from nothing but the choice at
+four forks. The sun half of the argument is live, and it comes with a second axis nobody
+designed deliberately: the open route is also the ruin-rich one, so choosing sunlight is
+also choosing more to stop for.
+
+The biomass half does not show, and the reason is not the route. Both towers harvest
+exactly 100 bamboo, because a tower that builds nothing has no consumer for the poles its
+mill makes, so the shelves fill, the mill's outbox backs up, and the arm stalls — long
+before the difference between a 140% band and a 50% one could accumulate into anything. The
+yields *are* distinct in the simulation now (§3.6, and `every_authored_yield_is_a_different_harvest_rate`
+guards it), but a starting tower cannot spend fast enough to feel them. That is a real
+answer rather than a null result: the biomass axis needs somewhere for biomass to go, which
+is what M4's meals and M5's tier-two chains are. Until then, the route is a power mix in
+the literal sense — sunlight — and a salvage mix, but not yet a food one.
+
 **Deferred out of M3:**
 
 - **Region 3, the coast approach, and the Refugia arrival.** Named non-goals in

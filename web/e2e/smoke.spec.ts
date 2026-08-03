@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import type { CatalogSnapshot, ReplayReport, ViewSnapshot } from "../src/bridge/types";
+import type {
+  CatalogSnapshot,
+  CommandResult,
+  GameCommand,
+  ReplayReport,
+  ViewSnapshot,
+} from "../src/bridge/types";
 
 /**
  * The M0 smoke path.
@@ -26,6 +32,12 @@ const SEED = 4242;
 interface TestHooks {
   view(): ViewSnapshot;
   catalog(): CatalogSnapshot;
+  /**
+   * Anything that drives the engine without a player has to be able to
+   * answer a fork, or it walks into one and photographs a parked tower
+   * (`SYSTEMS.md` §3.3).
+   */
+  send(cmd: GameCommand): CommandResult;
   stateHash(): string;
   step(ticks: number): void;
   verifyGolden(): ReplayReport;
@@ -104,6 +116,35 @@ test("the chain runs unattended and the tower walks", async ({ page }) => {
   expect(after.stats.items_harvested).toBeGreaterThan(0);
   expect(after.stats.hauls_completed).toBeGreaterThan(0);
   expect(after.stats.crafts_completed).toBeGreaterThan(0);
+
+  // The tower halts at a fork it has not been given an answer for, and
+  // an unattended harness that never answers measures a parked tower
+  // with total confidence — the exact failure mode `SYSTEMS.md` §3.3
+  // records this project having had already. So the smoke path walks
+  // into one deliberately, checks the halt is a fork rather than a
+  // hang, answers it, and checks the legs start again.
+  const halted = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    let budget = 60_000;
+    while (budget > 0 && hooks.view().journey.halt !== "fork") {
+      hooks.step(120);
+      budget -= 120;
+    }
+    return hooks.view();
+  });
+  expect(halted.journey.halt).toBe("fork");
+  expect(halted.journey.fork?.answer ?? null).toBeNull();
+
+  const walking = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    hooks.send({ TakeFork: { branch: 0 } });
+    const at = hooks.view().world.distance;
+    hooks.step(300);
+    const now = hooks.view();
+    return { moved: now.world.distance - at, halt: now.journey.halt };
+  });
+  expect(walking.moved).toBeGreaterThan(0);
+  expect(walking.halt).not.toBe("fork");
 });
 
 test("speed controls drive the clock", async ({ page }) => {

@@ -18,16 +18,25 @@
     // assumes the classic runtime and would be a permanent false
     // positive on every component file.
     "react/react-in-jsx-scope": "off",
-    // Double-underscore marks the two things that are deliberately
-    // outside the module system: Vite's compile-time `define`
-    // constants, and the single test hook the Playwright suite drives
-    // the engine through. The prefix is the signal that they are not
-    // ordinary API, so allowlist them by name rather than switching
-    // the rule off and losing it everywhere else.
+    // Double-underscore marks the things that are deliberately outside
+    // the module system: Vite's compile-time `define` constants, the
+    // test hook the Playwright suite drives the engine through, and
+    // the fork-answering stepping the capture harness installs on top
+    // of it (`e2e/capture.spec.ts` — a harness that steps without
+    // answering forks photographs a parked tower, `SYSTEMS.md` §3.3).
+    // The prefix is the signal that they are not ordinary API, so
+    // allowlist them by name rather than switching the rule off and
+    // losing it everywhere else.
     "no-underscore-dangle": [
       "error",
       {
-        "allow": ["__BUILD_TIME__", "__BUILD_COMMIT__", "__BUILD_DIRTY__", "__understory"]
+        "allow": [
+          "__BUILD_TIME__",
+          "__BUILD_COMMIT__",
+          "__BUILD_DIRTY__",
+          "__understory",
+          "__capture"
+        ]
       }
     ]
   },

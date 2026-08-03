@@ -36,7 +36,11 @@ fn main() {
     table(&across);
 
     println!("\n=== one seed, three ways of playing it ===\n");
-    let within: Vec<Run> = [Policy::Walker, Policy::Dawdler, Policy::Prepared]
+    println!(
+        "  forager takes the shadiest branch each time, sunseeker the most open.\n\
+         If the route is the power mix, those two towers should not look alike.\n"
+    );
+    let within: Vec<Run> = [Policy::Forager, Policy::Sunseeker, Policy::Prepared]
         .into_iter()
         .map(|policy| play(1, policy))
         .collect();
@@ -61,8 +65,12 @@ enum Policy {
     /// an earlier version of this one berthed until the ruin was empty
     /// and lost the Heartseed inside a day, every time.
     Prepared,
-    /// Walks, but takes the quieter branch every time it is offered.
-    Dawdler,
+    /// Takes the shadiest branch on offer every time: biomass-rich,
+    /// sun-poor. One half of "your route is your power mix".
+    Forager,
+    /// Takes the most open branch every time: sun-rich, biomass-poor.
+    /// The other half.
+    Sunseeker,
 }
 
 impl Policy {
@@ -70,7 +78,8 @@ impl Policy {
         match self {
             Self::Walker => "walker",
             Self::Prepared => "prepared",
-            Self::Dawdler => "dawdler",
+            Self::Forager => "forager",
+            Self::Sunseeker => "sunseeker",
         }
     }
 }
@@ -85,11 +94,13 @@ struct Run {
     mix: Vec<i64>,
     harvested: u64,
     salvaged: i64,
+    /// Mean sunlight reaching the sails, in percent, over the run.
+    exposure: i64,
+    /// Ticks the tower could not afford to walk.
+    brownout: u32,
     forks: usize,
     branches: Vec<String>,
-    ruins_in_reach: usize,
     salvage_seen: i64,
-    provocation: i64,
     repelled: u64,
     days: u32,
     died: bool,
@@ -142,7 +153,6 @@ fn play(seed: u64, policy: Policy) -> Run {
 
     let mut mix = vec![0i64; content.terrain.len()];
     let mut branches = Vec::new();
-    let mut ruins_in_reach = 0usize;
     // Every ruin the region put in the tower's path, counted as it goes
     // by — a property of the world rather than of how it was played, so
     // that "was this city worth stopping at" is comparable between a
@@ -152,6 +162,8 @@ fn play(seed: u64, policy: Policy) -> Run {
     let mut seen_ruin: Option<i64> = None;
     let mut halted = 0u32;
     let mut ticks = 0u32;
+    let mut exposure_total = 0i64;
+    let mut brownout = 0u32;
 
     while ticks < PATIENCE && engine.state().world.distance < boundary && !engine.state().siege.lost
     {
@@ -160,7 +172,8 @@ fn play(seed: u64, policy: Policy) -> Run {
             && fork.answer.is_none()
         {
             let pick = match policy {
-                Policy::Dawdler => quieter(&content, fork.branches),
+                Policy::Forager => shadier(&content, fork.branches, true),
+                Policy::Sunseeker => shadier(&content, fork.branches, false),
                 _ => 0,
             };
             for idx in fork.branches {
@@ -177,9 +190,6 @@ fn play(seed: u64, policy: Policy) -> Run {
                 Some(i) => {
                     let held = engine.state().world.features[i].salvage;
                     if seen_ruin != Some(held) {
-                        if seen_ruin.is_none() {
-                            ruins_in_reach += 1;
-                        }
                         seen_ruin = Some(held);
                     }
                     // Walking away is the answer to what a berth wakes
@@ -212,6 +222,10 @@ fn play(seed: u64, policy: Policy) -> Run {
         engine.step(1);
         ticks += 1;
         let state = engine.state();
+        exposure_total += understory_core::systems::power::exposure_pct(state, &content);
+        if state.walking && !state.strode {
+            brownout += 1;
+        }
 
         for feature in &state.world.features {
             if feature.salvage > 0 && feature.at > counted_to && feature.at <= state.world.distance
@@ -237,6 +251,8 @@ fn play(seed: u64, policy: Policy) -> Run {
         halted,
         mix: mix.iter().map(|n| n * 100 / walked).collect(),
         harvested: state.stats.items_harvested,
+        exposure: exposure_total / i64::from(ticks.max(1)),
+        brownout,
         salvaged: state.stock_of(
             content
                 .item_idx("item.scrap")
@@ -244,23 +260,40 @@ fn play(seed: u64, policy: Policy) -> Run {
         ),
         forks: branches.len() / 2,
         branches,
-        ruins_in_reach,
         salvage_seen,
-        provocation: state.siege.provocation,
         repelled: state.siege.repelled,
         days: ticks / TICKS_PER_DAY,
         died: state.siege.lost,
     }
 }
 
-/// Which of a fork's two branches is the quieter one.
-fn quieter(
+/// Which of a fork's two branches is the shadier one, by the sunlight
+/// its palette lets through — or the more open one, if `shade` is
+/// false.
+///
+/// The whole "route is your power mix" argument rests on this choice,
+/// so the policies that exercise it pick on exactly the quantity the
+/// argument is about, rather than on a branch's name or its threat.
+fn shadier(
     content: &understory_core::content::Content,
     pair: [understory_core::ids::BranchIdx; 2],
+    shade: bool,
 ) -> u8 {
-    let a = content.branch(pair[0]).threat_pct;
-    let b = content.branch(pair[1]).threat_pct;
-    u8::from(b < a)
+    let sun = |idx: understory_core::ids::BranchIdx| -> i64 {
+        let palette = &content.branch_rt(idx).palette;
+        let total: i64 = palette.iter().map(|(_, w)| *w).sum::<i64>().max(1);
+        palette
+            .iter()
+            .map(|(terrain, weight)| content.terrain(*terrain).sun_pct * weight)
+            .sum::<i64>()
+            / total
+    };
+    let (a, b) = (sun(pair[0]), sun(pair[1]));
+    if shade {
+        u8::from(b < a)
+    } else {
+        u8::from(b > a)
+    }
 }
 
 fn table(runs: &[Run]) {
@@ -279,8 +312,8 @@ fn table(runs: &[Run]) {
         print!(" {:>7}", &name[..name.len().min(7)]);
     }
     println!(
-        " {:>7} {:>6} {:>5} {:>6} {:>7} {:>5} {:>4}  end",
-        "bamboo", "scrap", "forks", "ruins", "salvage", "prov", "off"
+        " {:>4} {:>6} {:>7} {:>6} {:>5} {:>7} {:>4}  end",
+        "sun", "brown", "bamboo", "scrap", "forks", "salvage", "off"
     );
 
     for run in runs {
@@ -292,13 +325,13 @@ fn table(runs: &[Run]) {
             print!(" {pct:>6}%");
         }
         println!(
-            " {:>7} {:>6} {:>5} {:>6} {:>7} {:>5} {:>4}  {}",
+            " {:>3}% {:>6} {:>7} {:>6} {:>5} {:>7} {:>4}  {}",
+            run.exposure,
+            run.brownout,
             run.harvested,
             run.salvaged,
             run.forks,
-            run.ruins_in_reach,
             run.salvage_seen,
-            run.provocation,
             run.repelled,
             if run.died { "LOST" } else { "reached" }
         );
