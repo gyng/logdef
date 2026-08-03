@@ -79,15 +79,24 @@ fn run(plan: Plan) {
             "room.thornwright",
         ],
     };
-    // Two storerooms at the end of every list: somewhere for the chain
-    // to put things, and a standing reason to want poles for something
-    // other than repairs.
-    list.push("room.storeroom");
-    list.push("room.storeroom");
+    // And then storerooms, indefinitely.
+    //
+    // Not padding: a tower only provokes while it is *consuming*, and
+    // it only consumes while it is building. Once a shopping list runs
+    // out, poles pile up on the shelves, the mill's outbox fills, the
+    // arms stall, and the jungle forgets the tower exists — measured,
+    // all three plans finishing at full integrity with provocation
+    // zero, which says nothing about any of them. A player does not
+    // stop wanting things on day two, so neither does the harness. A
+    // storeroom is the cheapest standing reason to want poles, so it is
+    // what the list keeps buying.
     list.reverse();
+    for _ in 0..40 {
+        list.insert(0, "room.storeroom");
+    }
 
     println!("\n=== {} ===", plan.name());
-    println!(" day  prov  standing  poles  mended  spent  repelled  bill  built");
+    println!(" day  prov  standing  poles  mended  spent  repelled  bill  built  walked");
 
     // Look the index up rather than assuming one. Items are interned
     // in sorted-id order, so `ItemIdx(0)` is bamboo, and a harness that
@@ -100,6 +109,7 @@ fn run(plan: Plan) {
     let mut last_mended = 0;
     let mut last_spent = 0;
     let mut last_repelled = 0;
+    let mut last_paces = 0i64;
     let mut deferred = 0;
 
     for day in 1..=DAYS {
@@ -110,9 +120,31 @@ fn run(plan: Plan) {
             };
             if build_anywhere(&mut engine, next) {
                 list.pop();
-            } else {
-                deferred += 1;
+                continue;
             }
+            // Out of floor, not out of money: a tower with poles banked
+            // and no free slot is one a player would build upward. The
+            // sails go back on the new roof straight away, because
+            // growing taller shades the old ones and a tower that stops
+            // making charge stops walking, harvesting and everything
+            // else within the minute.
+            if engine.try_send(GameCommand::BuildFloor).is_ok() {
+                let top = engine.state().tower.top_floor();
+                for slot in 0..engine.content().balance.tower.floor_slots {
+                    if engine
+                        .try_send(GameCommand::PlaceRoom {
+                            room: "room.canopy_sails".into(),
+                            floor: top,
+                            slot,
+                        })
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+                continue;
+            }
+            deferred += 1;
         }
 
         {
@@ -188,7 +220,7 @@ fn run(plan: Plan) {
         let spent = state.stats.repair_poles_spent;
         let repelled = state.siege.repelled;
         println!(
-            "{day:4}  {:4}  {:7}‰  {:5}  {:6}  {:5}  {:8}  {:4}  {:5}",
+            "{day:4}  {:4}  {:7}‰  {:5}  {:6}  {:5}  {:8}  {:4}  {:5}  {:6}",
             state.siege.provocation,
             tower_integrity_permille(state),
             state.stock_of(poles),
@@ -197,10 +229,17 @@ fn run(plan: Plan) {
             repelled - last_repelled,
             understory_core::systems::repair::outstanding_repair_cost(state, engine.content()),
             rooms(&engine),
+            // Paces this day. Zero means the legs stopped, and with
+            // per-pace intake (`SYSTEMS.md` §3.6) a tower that is not
+            // walking is not harvesting either — so a run that goes
+            // quiet here has usually browned out rather than made
+            // peace with the jungle.
+            (state.world.distance >> 8) - last_paces,
         );
         last_mended = mended;
         last_spent = spent;
         last_repelled = repelled;
+        last_paces = state.world.distance >> 8;
     }
 
     let state = engine.state();

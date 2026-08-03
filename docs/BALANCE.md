@@ -93,6 +93,30 @@ Dwell, dispatch, and the estimates crew use to pick a shaft. See `SYSTEMS.md` §
 
 ## Siege
 
+> **The `PLAYTESTED` grades in this section are stale, and knowingly so.** They were measured
+> with `examples/siege_run.rs` against an economy that has since changed three times in one
+> milestone: intake became per-pace, the yield multiplier started working at all (it had been
+> rounding to a no-op, so four terrain kinds behaved as two), and a storeroom stopped being a
+> one-way sink for anything without a `take_stock` consumer. Each of those was a correctness
+> fix rather than a tuning choice, and together they made the economy markedly more
+> forgiving.
+>
+> Re-measured after all three, the three-way shape these rows were tuned to produce —
+> subsistence quiet, greed punished, defence paying for itself — **no longer appears**. Every
+> plan now finishes at full integrity with poles banked and provocation at zero, because a
+> tower whose shopping list runs out stops consuming, and a tower that stops consuming stops
+> harvesting, and a tower that stops harvesting is forgotten by the jungle. That last chain is
+> a real and rather good property; it is also not what this harness was built to measure, and
+> lengthening its shopping list until the tower runs out of *floors* did not bring the shape
+> back.
+>
+> What that needs is a balance pass with an instrument that keeps a tower genuinely
+> constrained, not another round of tuning at the end of a systems milestone. Until then the
+> reasoning in these rows is sound and the *evidence* in them describes a game three fixes
+> ago. Treat the grades as `DESIGNED` in practice and re-earn them deliberately. This is the
+> first thing to do at M4.
+
+
 What creatures attack, how far ahead they appear, how often waves come, the one knob
 (provocation) that scales all of it, and what putting the tower back together costs. See
 `SYSTEMS.md` §2.
