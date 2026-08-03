@@ -28,7 +28,11 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
 
     for index in 0..state.tower.shafts.len() {
         match state.tower.shafts[index].kind {
-            ShaftKind::Stairs => {}
+            // Neither of these is driven. Stairs are climbed under a
+            // crew member's own power, and a chute is gravity: things
+            // fall down it the moment they are let go, so there is
+            // nothing to advance between ticks.
+            ShaftKind::Stairs | ShaftKind::Chute => {}
             ShaftKind::Elevator => run_elevator(state, content, index, daypart, sounds),
             ShaftKind::Dumbwaiter => run_dumbwaiter(state, content, index, sounds),
         }
@@ -714,6 +718,12 @@ pub fn estimated_trip_ticks(
     let balance = &content.balance.transport;
 
     match shaft.kind {
+        // Nobody travels on a chute, so nothing should ever ask how long
+        // it would take. `best_shaft` filters chutes out before this is
+        // reached; the arm exists so that a future caller which forgets
+        // to gets an answer that reads as "never" rather than a panic or
+        // an accidental free ride.
+        ShaftKind::Chute => u32::MAX,
         ShaftKind::Stairs => {
             let climb = content.balance.crew.climb_ticks_per_floor * floors;
             // Everyone ahead of you climbs before you do. Occupancy

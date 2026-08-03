@@ -1,0 +1,27 @@
+// Makes mechanisms, which are what an elevator is really made of.
+//
+// The first recipe in the game drawing two inputs from two different
+// chains, and the first build cost that is not poles alone. Both of
+// those are the tier-two point: by the time a tower can run a fitter it
+// has a bamboo chain, a fiber chain and a scrap chain all working, which
+// is a different kind of tower from one that has a mill.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.fitter",
+    name: "Fitter",
+    short: "FIT",
+    category: Production,
+    width: 2,
+    build_cost: [
+        CostEntryDef(item: "item.poles", amount: 6),
+        CostEntryDef(item: "item.rope", amount: 4),
+    ],
+    recipe: RecipeDef(
+        craft_ticks: 300,
+        inputs: [
+            IoEntryDef(item: "item.alloy", amount: 1, buffer_max: 4),
+            IoEntryDef(item: "item.poles", amount: 2, buffer_max: 8),
+        ],
+        outputs: [IoEntryDef(item: "item.mechanisms", amount: 1, buffer_max: 4)],
+    ),
+)

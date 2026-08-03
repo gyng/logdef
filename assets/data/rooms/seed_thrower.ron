@@ -1,0 +1,43 @@
+// The second emplacement, and deliberately not a better one.
+//
+// A dart battery kills one creature at a time and is the right answer to
+// a root-borer at a shaft column. A thrower scatters across a band and
+// is the right answer to four skitters on a panel. **Neither is an
+// upgrade of the other**, which is the only way a second anything is
+// allowed to exist here — two emplacements with different failure modes
+// is what makes "what do I build" a question rather than a purchase
+// order (`SYSTEMS.md` §5.3).
+//
+// It is also the fourth kind of work, which §4.9 said role priorities
+// would need before they were worth a screen. §5.10 records that the
+// answer is still no.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.seed_thrower",
+    name: "Seed Thrower",
+    short: "THR",
+    category: Defence,
+    width: 2,
+    // Twice a dart battery's width and dearer in three materials, so it
+    // is a late build that a tower commits to rather than an opening
+    // move. The mechanisms are what make it tier two.
+    build_cost: [
+        CostEntryDef(item: "item.poles", amount: 6),
+        CostEntryDef(item: "item.rope", amount: 3),
+        CostEntryDef(item: "item.mechanisms", amount: 2),
+    ],
+    defence: DefenceDef(
+        ammo: "item.seed_bombs",
+        ammo_per_shot: 1,
+        buffer_max: 8,
+        // Half a dart's 15. A thrower does not put anything down on its
+        // own; it wears a wave while the battery picks off what matters.
+        damage: 8,
+        // Slower than a battery's 40, because the ground it seeds takes
+        // a moment to grow.
+        reload_ticks: 90,
+        // Half the battery's 60. A thrower answers what is already close
+        // rather than what is still coming.
+        range_paces: 30,
+    ),
+)

@@ -11,10 +11,14 @@ use crate::snapshot::CrewStateTag;
 use crate::state::{CarState, CrewState, ShaftPriority};
 use crate::tests::{content, engine, item};
 
-/// Build a shaft, banking enough poles first.
+/// Build a shaft, banking whatever it costs first.
+///
+/// Reads the cost off the pack rather than assuming poles: the elevator
+/// became a tier-two building at M5 and a helper that hands out poles
+/// would quietly stop building elevators.
 fn with_shaft(seed: u64, shaft: &str, low: u8, high: u8, slot: u8) -> crate::engine::GameEngine {
     let mut game = engine(seed);
-    crate::tests::stock_poles(&mut game, 20);
+    crate::tests::stock_for_shaft(&mut game, shaft, 1);
     game.try_send(GameCommand::BuildShaft {
         shaft: shaft.into(),
         low,
@@ -30,6 +34,14 @@ fn an_elevator_can_be_built_and_costs_stock() {
     let content = content();
     let poles = item(&content, "item.poles");
     let mut game = engine(800);
+    // Rope and mechanisms **before** the chain runs, not after. From M5
+    // they are the other half of an elevator's cost and this tower has
+    // no forge, so they have to be handed over — and a shelf holds one
+    // kind, so by six thousand ticks in there is no free shelf to hand
+    // them to. Stocking at tick zero claims a shelf while shelves are
+    // still going spare. Poles are still earned, because that is the
+    // half of the cost this test is actually about.
+    crate::tests::stock_for_shaft(&mut game, "shaft.elevator", 1);
     game.step(6000);
 
     let before = game.state().stock_of(poles);
@@ -468,6 +480,17 @@ fn adding_a_shaft_measurably_improves_throughput() {
 
     let mut cramped = engine(900);
     let mut relieved = engine(900);
+    // The elevator costs rope from M5 and neither of these towers runs a
+    // ropery, so the parts are handed over — **to both of them, before
+    // the warm-up.** Both halves of that matter and both were learnt the
+    // hard way. Stocking afterwards silently failed, because a shelf
+    // holds one kind and a tower a day into a run has none spare.
+    // Stocking only the tower that builds the shaft handed it a claimed
+    // shelf its twin did not have, which is a second difference between
+    // them and exactly the thing a controlled comparison may not have.
+    for tower in [&mut cramped, &mut relieved] {
+        crate::tests::stock_for_shaft(tower, "shaft.elevator", 1);
+    }
 
     // Both towers bank the same poles over the same warm-up, so the
     // only difference between them is the shaft — and both enter the

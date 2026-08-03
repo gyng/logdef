@@ -73,6 +73,54 @@ fn main() {
     // that skipped it recorded a tower standing still being eaten,
     // which exercises far less of the simulation than one that walks.
     place_when_affordable(&mut engine, "room.canopy_sails", 4, 1);
+    // **Rope, because from M5 that is what an elevator is partly made
+    // of** — and a chute, because fiber is about to become the fifth
+    // material wanting a shelf and the storeroom has four.
+    //
+    // The chute has to be standing *before* the jam rather than after
+    // it: measured, a recorder that waited until it noticed could never
+    // build its way out, because by then there were no poles on any
+    // shelf to pay with — they were stuck in a mill whose outbox had
+    // nowhere to empty to. A chute prevents; it does not resurrect.
+    place_when_affordable(&mut engine, "room.fiber_comb", 1, 4);
+    place_when_affordable(&mut engine, "room.ropery", 2, 1);
+    // **And switched off again once there is rope for a shaft.**
+    //
+    // Rope's only consumer is a build cost, and a build cost is a
+    // *one-off*. Left running, a ropery fills the tower with something
+    // nothing eats and starves everything else of shelf space:
+    // measured, 140 rope across every shelf, no poles anywhere, and an
+    // elevator that could never be afforded even though rope was the
+    // only thing the tower had. A chute does not save you from this and
+    // should not — rope is a material the tower builds with, so it is
+    // *wanted*, and a chute that threw away wanted materials is the
+    // version of this that lost the economy instead (see
+    // `haul::find_destination`).
+    //
+    // **A room whose consumer is a one-off is a room you turn off**, and
+    // that is a real thing this economy asks of a player rather than a
+    // quirk of the fixture. `SYSTEMS.md` §5.11 carries it as an open
+    // question, because "remember to switch it off" is a poor answer.
+    off_when_stocked(&mut engine, "room.ropery", "item.rope", 24);
+    // And the comb behind it, one material along and for exactly the
+    // same reason: with the ropery off, fiber's consumer is gone too,
+    // and an intake room with no consumer fills shelves precisely as
+    // fast as a production room with none. **This is a pattern, not two
+    // incidents.**
+    off_when_stocked(&mut engine, "room.fiber_comb", "item.fiber", 8);
+    // **No chute in the fixture, and the reason is structural rather
+    // than incidental.** A shaft needs one free column on every floor it
+    // spans, and once the Heartseed, the cutter arm, a cell bank, two
+    // storerooms, a mill, a ropery and a comb are placed there is
+    // exactly one full-height column left — which the elevator has. Two
+    // shafts want the same slot and only one can have it, which is
+    // `DESIGN.md` pillar 2 working as designed and not something a
+    // fixture should paper over.
+    //
+    // Chute and spill behaviour is covered by `tests/haul.rs` instead,
+    // which is the better home for it: a spill is a haul decision, and
+    // testing it needs a deliberately jammed tower rather than a healthy
+    // one that happens to own a chute.
     // Beds, on the new top floor. Two of them, which at a three-crew
     // tower with everybody on the day shift is one short — deliberately,
     // so the fixture records both halves of sleep: somebody in a
@@ -168,7 +216,7 @@ fn main() {
     // Floor 2 rather than floor 1: the elevator's column took slot 7 on
     // every floor it spans, and floor 1's remaining two-wide gap is the
     // only place on the two ground floors a salvage rig can stand.
-    place_when_affordable(&mut engine, "room.dart_battery", 2, 1);
+    place_when_affordable(&mut engine, "room.dart_battery", 1, 6);
     step_walking(&mut engine, 9000);
 
     // A berth. The rig goes in the last two-wide gap on the ground
@@ -179,7 +227,21 @@ fn main() {
     // into the fixture. It also records the one situation in the game
     // where a wave cannot be walked away from, because walking away is
     // what ends the salvage.
-    place_when_affordable(&mut engine, "room.salvage_rig", 1, 4);
+    // **No salvage rig in the fixture from M5, and the reason is a slot
+    // problem worth writing down.**
+    //
+    // Three rooms reach the ground and therefore carry `max_floor: 1` —
+    // the cutter arm, the salvage rig and now the fiber comb — and
+    // between the Heartseed, the cell bank, a storeroom and the
+    // elevator's column there are not two floors' worth of room for all
+    // three. Something had to go, and it is the rig: berthing, wardens
+    // and ruin intake are covered by `tests/journey.rs` end to end,
+    // while the chute, the comb and the ropery are covered nowhere else
+    // and are what M5 added. The fixture trades M3 coverage it
+    // duplicates for M5 coverage it does not.
+    //
+    // That three ground rooms do not fit on two ground floors is a real
+    // tension rather than a fixture problem — see `SYSTEMS.md` §5.11.
     let reach = rig_reach(&engine);
     for _ in 0..40_000 {
         answer_any_fork(&mut engine);
@@ -200,10 +262,15 @@ fn main() {
     // What the berth actually produced, asserted rather than assumed. A
     // fixture that walked past a ruin, stopped, and extracted nothing
     // would still be a valid recording — of a tower standing still.
+    // **No rig in the fixture from M5, so no scrap and no wardens.**
+    // The berth is still recorded — the tower still stops with a ruin in
+    // reach, which exercises the halt, the world state and the intake
+    // system's berthed branch — but there is nothing aboard to extract
+    // with. See the note above the walk for why the rig lost its slot,
+    // and `tests/journey.rs` for where ruin intake and wardens are
+    // covered end to end.
     let scrap = scrap_held(&engine);
     let roused = wardens_out(&engine);
-    assert!(scrap > 0, "the berth put no scrap in the fixture");
-    assert!(roused > 0, "the ruin gave up scrap without waking anything");
 
     // And that the home half of M4 is actually in the recording. A
     // fixture with a canteen the crew never reached and bunks nobody
@@ -325,6 +392,37 @@ fn step_walking(engine: &mut GameEngine, ticks: u32) {
     }
 }
 
+/// Switch a room off once the tower holds enough of what it makes.
+///
+/// The scripted version of a decision a player makes by looking: a chain
+/// whose consumer is a one-off build cost has to be stopped by hand, or
+/// it fills the shelves with something nothing eats.
+fn off_when_stocked(engine: &mut GameEngine, room: &str, item: &str, enough: i64) {
+    let Some(idx) = engine.content().item_idx(item) else {
+        return;
+    };
+    for _ in 0..400 {
+        if engine.state().stock_of(idx) >= enough {
+            break;
+        }
+        step_walking(engine, 300);
+    }
+    let found = engine.state().tower.floors.iter().find_map(|floor| {
+        floor
+            .rooms
+            .iter()
+            .find(|r| engine.content().room(r.def).id == room)
+            .map(|r| (floor.index, r.slot))
+    });
+    if let Some((floor, slot)) = found {
+        let _ = engine.try_send(GameCommand::SetRoomActive {
+            floor,
+            slot,
+            active: false,
+        });
+    }
+}
+
 /// Place `room` as soon as the tower can pay for it, so the script's
 /// shopping list survives a change to how fast the chain runs.
 ///
@@ -369,7 +467,24 @@ fn build_shaft_when_affordable(engine: &mut GameEngine, shaft: &str, low: u8, hi
             Err(other) => panic!("could not build {shaft} at slot {slot}: {other}"),
         }
     }
-    panic!("{shaft} never became affordable");
+    let state = engine.state();
+    let held: Vec<String> = engine
+        .content()
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, def)| {
+            format!(
+                "{}={}",
+                def.name,
+                state.stock_of(understory_core::ids::ItemIdx(i as u16))
+            )
+        })
+        .collect();
+    panic!(
+        "{shaft} never became affordable; shelves hold {}",
+        held.join(" ")
+    );
 }
 
 /// Take the left-hand branch of whatever fork is pending, if any.

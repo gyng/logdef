@@ -19,7 +19,13 @@ RoomDef(
     width: 1,
     // Same tier as the mill and the burner — a first battery should be
     // an easy, early build, not a late-game investment.
-    build_cost: [CostEntryDef(item: "item.poles", amount: 6)],
+    build_cost: [
+        CostEntryDef(item: "item.poles", amount: 6),
+        // Rope, from M5. Every emplacement is partly rope, so defence
+        // and transport draw on the same second currency and compete
+        // for it.
+        CostEntryDef(item: "item.rope", amount: 2),
+    ],
     defence: DefenceDef(
         ammo: "item.darts",
         ammo_per_shot: 1,

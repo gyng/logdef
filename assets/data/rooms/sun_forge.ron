@@ -1,0 +1,37 @@
+// Melts scrap into alloy, and eats charge doing it.
+//
+// **The room that finally gives scrap a consumer.** Scrap has been
+// harvestable since M3 and dead-ended at the enclave's trade board,
+// which is why `SYSTEMS.md` §3.11 could not answer whether stopping at a
+// ruin is ever genuinely "it depends" — the answer was "yes, if you
+// happen to be passing". With a forge aboard, a ruin is the input to
+// both things that gate the tower's ceiling.
+//
+// It is also by far the largest charge sink in the game. A forge running
+// flat out costs more across a day than continuous striding, so *running
+// the forge* and *walking far* stop being separate decisions. That is
+// the keystone doing its job (`DESIGN.md` §2 insight 2).
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.sun_forge",
+    name: "Sun-forge",
+    short: "FRG",
+    category: Production,
+    width: 2,
+    // A salvage rig's price. If you are buying one you are probably
+    // buying both, and the pair is what a ruin-going tower commits to.
+    build_cost: [CostEntryDef(item: "item.poles", amount: 8)],
+    // Four times the thornwright's 1. Sustained, that is 57,600 charge
+    // across a full day — well over continuous striding's 2,880 and
+    // beyond what two sail rooms make in good sun, so a forge is
+    // something a tower runs in bursts and plans around rather than
+    // leaves on.
+    power_draw: 4,
+    recipe: RecipeDef(
+        // Eight seconds a bar: visibly the slowest thing in the chain,
+        // which is what a forge should look like.
+        craft_ticks: 240,
+        inputs: [IoEntryDef(item: "item.scrap", amount: 3, buffer_max: 9)],
+        outputs: [IoEntryDef(item: "item.alloy", amount: 1, buffer_max: 6)],
+    ),
+)

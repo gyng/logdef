@@ -1,0 +1,19 @@
+// What scrap becomes, and the only thing that consumes it.
+//
+// Scrap has been harvestable since M3 and until now dead-ended at the
+// enclave's trade board — a fine thing for a material to also do and a
+// poor thing for it to only do. That is why `SYSTEMS.md` §3.11 could
+// not answer whether stopping at a ruin is ever genuinely "it depends":
+// scrap bought poles and nothing else, so the answer was "yes, if you
+// happen to be passing".
+//
+// Alloy is the input to both things that gate the tower's ceiling — the
+// elevator, through mechanisms, and charge capacity, through cells — so
+// a ruin is now worth a decision rather than a shrug.
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.alloy",
+    name: "Alloy",
+    glyph: "🔩",
+    order: 26,
+)

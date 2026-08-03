@@ -7,7 +7,14 @@ ShaftDef(
     name: "Dumbwaiter",
     short: "DUM",
     kind: Dumbwaiter,
-    build_cost: [CostEntryDef(item: "item.poles", amount: 8)],
+    build_cost: [
+        CostEntryDef(item: "item.poles", amount: 8),
+        // Rope, from M5, so vertical transport stops being answerable
+        // with bamboo alone. Fiber comes from the middle bands, which
+        // makes the tower that can move things up and down the one that
+        // walked through ordinary country.
+        CostEntryDef(item: "item.rope", amount: 3),
+    ],
     min_span: 2,
     max_span: 3,
     // Not a crew capacity — a dumbwaiter never carries a body. Kept at

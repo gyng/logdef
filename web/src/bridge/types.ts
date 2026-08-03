@@ -52,7 +52,17 @@ export type EnemyStateTag = "approach" | "attack" | "dying" | "leaving";
 
 export type EnemyApproach = "Ground" | "Canopy" | "Burrow";
 
-export type ShaftKind = "Stairs" | "Dumbwaiter" | "Elevator";
+export type ShaftKind =
+  | "Stairs"
+  | "Dumbwaiter"
+  | "Elevator"
+  /**
+   * One way, down, and out. No cars, no capacity, no charge and no
+   * riders — things fall. Whatever goes in leaves the tower, which is
+   * the escape hatch for the shelf-typing deadlock `BALANCE.md`'s
+   * `storeroom` row has described since M2.
+   */
+  | "Chute";
 
 export type ShaftPriority = "Balanced" | "FreightFirst" | "CrewFirst";
 
@@ -588,6 +598,12 @@ export type SoundEvent =
   | "MealServed"
   /** The rota turned over — the only reliable way to *hear* the time. */
   | "ShiftChange"
+  /**
+   * A load went down a chute and out of the tower. Deliberately not
+   * `Deliver`: something the chain worked for has just been thrown
+   * away, and a tower that is spilling is telling you about itself.
+   */
+  | "Spill"
   /**
    * Something lost its grip and walked away. Distinct from `EnemyDown`
    * on purpose: only one of the two counts as having been seen off, and

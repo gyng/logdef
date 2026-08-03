@@ -111,6 +111,13 @@ pub enum SoundEvent {
     /// The rota turned over. The tower's one daily ritual, and the only
     /// reliable way to *hear* what time it is.
     ShiftChange,
+    /// A load went down a chute and out of the tower.
+    ///
+    /// Deliberately distinct from `Deliver`: something the chain worked
+    /// for has just been thrown away, and a tower that is spilling is
+    /// telling you something about itself. Never celebratory, never an
+    /// alarm — a thing falling a long way.
+    Spill,
     /// Something lost its grip and walked away.
     ///
     /// Distinct from `EnemyDown` on purpose. `Leaving` and `Dying` are

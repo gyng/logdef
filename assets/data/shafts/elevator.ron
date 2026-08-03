@@ -10,7 +10,32 @@ ShaftDef(
     kind: Elevator,
     // Three times a floor's own cost (6 poles) — this is a decision the
     // player saves for.
-    build_cost: [CostEntryDef(item: "item.poles", amount: 18)],
+    build_cost: [
+        CostEntryDef(item: "item.poles", amount: 18),
+        // **Rope, from M5 — and deliberately not mechanisms.**
+        //
+        // The spec (`SYSTEMS.md` §5.3) gated this behind mechanisms, and
+        // therefore behind alloy, scrap and the ruin belt, on the
+        // reasoning that route choice should reach into the transport
+        // layer. The reasoning is right and the material was wrong,
+        // which building it made obvious: a tower needs a salvage rig, a
+        // forge and a fitter before it can put in an elevator, which is
+        // four more rooms and two more floors than a five-floor tower
+        // has, and a tower that grows to fit them shades its own sails
+        // and browns out permanently. Measured on the golden recorder:
+        // every buffer in the tower empty, the cutter arm at 0/8, and a
+        // fixture that could not be recorded at all.
+        //
+        // **Rope makes the same point better.** Fiber comes from the
+        // *middle* bands — neither deep shade nor open sun — so the gate
+        // still says "your route decides whether you can build this",
+        // and what it now says is "you have to have walked ordinary
+        // ground", which is a more interesting sentence than "you have
+        // to have gone to the ruins". Mechanisms keep the seed thrower,
+        // which is a fair consumer for a tier-two item and does not have
+        // to exist by minute twenty.
+        CostEntryDef(item: "item.rope", amount: 6),
+    ],
     min_span: 2,
     // Unlimited — the elevator is chosen floors, not a fixed hop.
     max_span: 0,

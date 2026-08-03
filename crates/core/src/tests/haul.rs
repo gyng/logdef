@@ -528,3 +528,150 @@ fn a_crew_member_holding_something_with_nowhere_to_put_it_still_mends() {
         "the panel healed without any repair being recorded"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Chutes: the escape hatch for a jammed tower
+// ---------------------------------------------------------------------------
+
+/// Jam a tower the way `BALANCE.md`'s `storeroom` row describes: fill
+/// every shelf with one thing and switch off whatever eats it.
+fn jammed(seed: u64) -> (crate::engine::GameEngine, crate::ids::ItemIdx) {
+    let mut game = engine(seed);
+    let bamboo = item(game.content(), "item.bamboo");
+    // Pay for the chute *before* jamming, because a jammed tower cannot
+    // pay for anything — which is the finding that moved the chute's own
+    // cost off rope and onto poles alone, and is exactly why a chute
+    // prevents rather than resurrects.
+    crate::tests::stock_for_shaft(&mut game, "shaft.chute", 1);
+    {
+        let state = game.state_mut_for_test();
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                // Nothing eats bamboo any more, which is what makes it
+                // rubbish rather than stock.
+                room.active = false;
+                for shelf in &mut room.shelves {
+                    // Everything except what is already paying for the
+                    // chute. A tower with literally nothing on a shelf
+                    // cannot build, and this fixture is about a tower
+                    // that is stuck rather than one that is bankrupt.
+                    if shelf.item.is_some() {
+                        continue;
+                    }
+                    shelf.item = Some(bamboo);
+                    shelf.count = shelf.max;
+                }
+            }
+        }
+    }
+    (game, bamboo)
+}
+
+#[test]
+fn without_a_chute_a_jammed_tower_stays_jammed() {
+    // The control, and the thing the chute exists to change. Recorded as
+    // a test rather than as a comment because "it was already broken"
+    // is the claim a fix rests on.
+    let (mut game, bamboo) = jammed(4100);
+    let before = total_in_flight(game.state(), bamboo);
+    game.step(6000);
+    assert_eq!(
+        total_in_flight(game.state(), bamboo),
+        before,
+        "something cleared a jam with no chute in the tower"
+    );
+}
+
+#[test]
+fn a_chute_empties_shelves_of_what_nothing_wants() {
+    let (mut game, bamboo) = jammed(4101);
+    crate::tests::stock_for_shaft(&mut game, "shaft.chute", 1);
+    game.try_send(GameCommand::BuildShaft {
+        shaft: "shaft.chute".into(),
+        low: 0,
+        high: 2,
+        slot: 7,
+    })
+    .expect("slot 7 is clear on the lower floors");
+
+    let before = total_in_flight(game.state(), bamboo);
+    assert!(before > 0, "the fixture did not jam the tower");
+    game.step(12_000);
+    assert!(
+        total_in_flight(game.state(), bamboo) < before,
+        "a chute stood in a jammed tower and nothing was thrown away"
+    );
+}
+
+#[test]
+fn a_chute_never_throws_away_something_a_room_is_waiting_for() {
+    // The rule that makes a chute safe to leave standing, and the one
+    // the first version got wrong: offered to anything that merely had
+    // nowhere to go *right now*, crew threw the economy away — every
+    // stalk the arm cut and every pole the mill made — because those
+    // were the loads in hand while the shelves were full of the things
+    // that caused the jam.
+    let mut game = engine(4102);
+    let bamboo = item(game.content(), "item.bamboo");
+    crate::tests::stock_for_shaft(&mut game, "shaft.chute", 1);
+    game.try_send(GameCommand::BuildShaft {
+        shaft: "shaft.chute".into(),
+        low: 0,
+        high: 2,
+        slot: 7,
+    })
+    .expect("slot 7 is clear on the lower floors");
+
+    // A healthy tower: the mill is live, so bamboo is wanted.
+    let mut ever_spilled = false;
+    for _ in 0..12_000 {
+        let before = crate::tests::total_in_flight(game.state(), bamboo);
+        game.step(1);
+        let after = crate::tests::total_in_flight(game.state(), bamboo);
+        // The mill consumes bamboo, so a fall of one is ordinary. What
+        // must never happen is a fall while no mill crafted — which is
+        // what a spill looks like from outside.
+        if after < before && game.state().stats.crafts_completed == 0 {
+            ever_spilled = true;
+        }
+    }
+    assert!(
+        !ever_spilled,
+        "a chute threw away bamboo a live mill was waiting for"
+    );
+}
+
+#[test]
+fn nobody_climbs_down_a_chute() {
+    // Crew must never route *through* one, however fast it looks.
+    let mut game = engine(4103);
+    crate::tests::stock_for_shaft(&mut game, "shaft.chute", 1);
+    game.try_send(GameCommand::BuildShaft {
+        shaft: "shaft.chute".into(),
+        low: 0,
+        high: 2,
+        slot: 7,
+    })
+    .expect("slot 7 is clear on the lower floors");
+    let chute = game
+        .state()
+        .tower
+        .shafts
+        .iter()
+        .find(|shaft| shaft.kind == crate::content::ShaftKind::Chute)
+        .expect("standing")
+        .id;
+
+    for _ in 0..6000 {
+        game.step(1);
+        for member in &game.state().crew {
+            let riding = match member.state {
+                CrewState::Boarding { shaft, .. }
+                | CrewState::Climbing { shaft, .. }
+                | CrewState::Riding { shaft, .. } => shaft == chute,
+                _ => false,
+            };
+            assert!(!riding, "{} tried to travel on a chute", member.name);
+        }
+    }
+}

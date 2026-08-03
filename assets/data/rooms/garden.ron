@@ -1,0 +1,39 @@
+// Grows produce in the light, and keeps growing while the tower stands
+// still.
+//
+// **The first intake that does not measure ground covered**, and that is
+// the entire point of it. The cutter arm, the fiber comb and the salvage
+// rig between them mean a stopped tower harvests nothing at all
+// (`SYSTEMS.md` §3.6) — which makes berthing at a ruin a pure cost and
+// standing at a fork a pure loss. A garden accrues per tick scaled by
+// the sun actually reaching the tower, so it is the one thing a parked
+// tower does at full rate.
+//
+// It is also the sun axis finally buying something that is not charge.
+// Deep shade is biomass-rich and sun-poor, and since M1 the open
+// branches have paid only in charge — a means rather than an end. Now
+// they grow the material a thrower scatters.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.garden",
+    name: "Garden",
+    short: "GRD",
+    category: Intake,
+    width: 2,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
+    // **Roof only.** A garden under three floors of tower is a garden in
+    // the dark, and making that a rule rather than a slow trickle keeps
+    // it honest — and puts it in direct competition with the canopy
+    // sails for the one deck that sees the sky. Growing taller costs you
+    // one or the other (`v2-plan.md` §6.3).
+    top_floor_only: true,
+    intake: IntakeDef(
+        item: "item.produce",
+        // 260 ticks at full sun — about 8.7 seconds a crop — falling to
+        // nearly nothing under dense canopy. Scaled by exposure, which
+        // is sun *after* terrain, so the same number that decides what
+        // the sails make decides what the garden grows.
+        source: Sun(ticks_per_item: 260),
+        buffer_max: 8,
+    ),
+)

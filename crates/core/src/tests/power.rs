@@ -135,6 +135,9 @@ fn a_cell_bank_raises_capacity() {
 
     // Bank enough poles to afford one, then build it.
     game.step(6000);
+    // A cell bank costs charge cells from M5, not poles. This test is
+    // about capacity, not about the cellwright chain, so it buys them.
+    crate::tests::stock_for(&mut game, "room.cell_bank", 2);
     let placed = game.try_send(GameCommand::PlaceRoom {
         room: "room.cell_bank".into(),
         floor: 3,

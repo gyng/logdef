@@ -1,0 +1,32 @@
+// Combs fiber off the ground as the tower walks, the way the cutter arm
+// takes bamboo.
+//
+// The cutter arm's sibling, and deliberately not its rival: fiber is
+// weighted to the *middle* bands, where bamboo is only fair and sun is
+// only fair. That placement is the whole design of the material. Rope is
+// what every shaft and every emplacement is partly made of, so the tower
+// that can build transport is the one that walked through ordinary
+// country rather than optimising for either end of the route axis
+// (`SYSTEMS.md` §5.3).
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.fiber_comb",
+    name: "Fiber Comb",
+    short: "FIB",
+    category: Intake,
+    width: 2,
+    // A pole under a cutter arm. It reaches for what is already lying
+    // there rather than cutting anything down.
+    build_cost: [CostEntryDef(item: "item.poles", amount: 4)],
+    // Same rule as the arm: on the two lowest floors only. Anything that
+    // reaches the ground has to be near it.
+    max_floor: 1,
+    intake: IntakeDef(
+        item: "item.fiber",
+        // 90 paces against the arm's 78 — a shade slower, because fiber
+        // is the *second* thing a band gives up rather than the first.
+        // At 0.6 paces a tick that is 150 ticks on neutral ground.
+        source: Terrain(paces_per_item: 90),
+        buffer_max: 8,
+    ),
+)

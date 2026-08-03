@@ -1,0 +1,53 @@
+// One way, down, and out.
+//
+// **The answer to the shelf-typing deadlock**, which `BALANCE.md`'s
+// `storeroom` row has described since M2 and handed forward twice. A
+// shelf takes whichever item lands on it first and holds only that
+// until it empties, so a material arriving faster than it is consumed
+// claims shelf after shelf until nothing else can be put down and the
+// chain stops with the shelves apparently three-quarters full.
+//
+// A chute is the infrastructural answer rather than the settings-screen
+// one (`SYSTEMS.md` §5.4): a thing you build, costing a slot column on
+// every floor it spans like every other shaft, and what goes down it is
+// gone. Surplus bamboo dumped is bamboo not milled later — the fix has
+// an ongoing price, and you can *watch* the overflow leave, which puts
+// the deadlock's cause on screen instead of leaving it to be inferred
+// from a chain that quietly stopped.
+#![enable(implicit_some)]
+ShaftDef(
+    id: "shaft.chute",
+    name: "Chute",
+    short: "CHU",
+    kind: Chute,
+    // **Poles alone, and that took finding out.**
+    //
+    // `SYSTEMS.md` §5.4 specified 6 poles and 2 rope, on the reasoning
+    // that the rope stopped a chute being the trivially correct first
+    // build. That reasoning is fine and the cost was wrong, which the
+    // golden recorder demonstrated the first time it ran: the tower
+    // jammed on shelves exactly as designed, and then could not build
+    // the chute, because rope needs a ropery, and a ropery needs fiber
+    // to reach it, and fiber has nowhere to go — which is the jam.
+    //
+    // **An escape hatch you can only afford before you need it is not an
+    // escape hatch.** Everything else in the pack may be gated behind a
+    // chain; this one may not, because it is the thing you reach for
+    // when the chain has stopped. Six poles and a slot column on every
+    // floor it spans is cost enough — and a tower that is not jammed
+    // gains nothing at all from owning one.
+    build_cost: [CostEntryDef(item: "item.poles", amount: 6)],
+    // Reaches from anywhere down to the ground, so a spill gate is
+    // always at the bottom of it.
+    min_span: 2,
+    max_span: 14,
+    // Nothing rides a chute and nothing queues for one. Kept at the
+    // schema minimum; neither field is read for this kind.
+    capacity: 1,
+    ticks_per_floor: 1,
+    // Free. Things fall (`v2-plan.md` §6.2 — stairs, ladders and chutes
+    // are the transports that cost no charge).
+    charge_per_floor: 0,
+    cars: 0,
+    batch: 0,
+)

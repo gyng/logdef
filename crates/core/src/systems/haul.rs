@@ -230,10 +230,21 @@ fn advance(
                 };
                 return;
             }
+            let spilling = matches!(
+                crew.task.as_ref().map(|task| task.destination),
+                Some(HaulDestination::Spill { .. })
+            );
             let delivered = deposit(crew, tower);
             if delivered > 0 {
                 *hauls += 1;
-                sounds.push(SoundEvent::Deliver);
+                // A spill is not a delivery and must not sound like one.
+                // Something the tower worked for has just been thrown
+                // away, and the player should hear that happen.
+                sounds.push(if spilling {
+                    SoundEvent::Spill
+                } else {
+                    SoundEvent::Deliver
+                });
             }
             crew.task = None;
             crew.state = CrewState::Idle;
@@ -333,8 +344,9 @@ fn best_shaft(
         .shafts
         .iter()
         .enumerate()
-        // Crew cannot ride a dumbwaiter, however convenient it looks.
-        .filter(|(_, shaft)| shaft.kind != ShaftKind::Dumbwaiter)
+        // Crew cannot ride a dumbwaiter, however convenient it looks —
+        // nor throw themselves down a chute, however fast it would be.
+        .filter(|(_, shaft)| shaft.kind != ShaftKind::Dumbwaiter && shaft.kind != ShaftKind::Chute)
         .filter(|(_, shaft)| shaft.serves_trip(from, to, daypart))
         .min_by_key(|(index, shaft)| {
             let queued = queues.get(*index).copied().unwrap_or(0);
@@ -435,6 +447,24 @@ fn deposit(crew: &mut Crew, tower: &mut Tower) -> i64 {
             deposit_inbox(tower, task.to_floor, room, input as usize, item, held)
         }
         HaulDestination::Shelf { room } => deposit_shelf(tower, task.to_floor, room, item, held),
+        // Down the chute and gone. The only place in the game where a
+        // carried item is destroyed, and it is destroyed *deliberately*,
+        // by a piece of infrastructure the player built and a crew
+        // member who walked to it — which is what makes it a decision
+        // rather than the silent drop `haul.rs`'s invariant forbids.
+        HaulDestination::Spill { shaft } => {
+            if tower
+                .shaft(shaft)
+                .is_some_and(|s| s.kind == ShaftKind::Chute)
+            {
+                held
+            } else {
+                // The chute was torn out while they walked to it. Keep
+                // hold of the load; the assignment pass finds it
+                // somewhere else, or they carry it.
+                0
+            }
+        }
     };
 
     let left = held - placed;
@@ -489,6 +519,13 @@ fn deposit_shelf(
 const PRIORITY_INBOX: i64 = 3;
 /// Priority of putting something on a shelf.
 const PRIORITY_SHELF: i64 = 2;
+/// Priority of throwing something away.
+///
+/// Below a shelf, so **a tower with anywhere useful to put a load never
+/// spills one.** A chute is where something goes when there is nowhere
+/// for it to go, and nothing else — which is what keeps it an escape
+/// hatch rather than a policy.
+const PRIORITY_SPILL: i64 = 1;
 
 /// The priority ladder for an idle crew member:
 ///
@@ -1070,6 +1107,88 @@ fn find_destination(
                     );
                 }
             }
+        }
+    }
+
+    // 3. A chute — but only for something the tower has no use for.
+    //
+    // **The escape hatch for a jammed tower.** `BALANCE.md`'s
+    // `storeroom` row has described the deadlock since M2: a shelf takes
+    // whichever item lands on it first, so a material arriving faster
+    // than it is consumed claims shelf after shelf until nothing else
+    // can be put down and the chain stops — permanently, because
+    // affording the way out needs the poles that are stuck in the mill.
+    //
+    // **`wanted` is what makes this safe, and the first version without
+    // it was a disaster.** Offered to anything that merely had nowhere
+    // to go *right now*, crew threw the economy away: measured, a tower
+    // whose shelves had been squatted by fiber and rope spilled every
+    // stalk of bamboo the arm cut and every pole the mill made, because
+    // those were the loads in hand and the shelves were full of the
+    // things that had caused the jam. The chute destroyed the useful
+    // materials and left the useless ones sitting there.
+    //
+    // So: **you may only throw away what nothing in the tower wants.**
+    // An item is spillable when no room has a live inbox for it — no
+    // mill for bamboo, no thornwright for poles, no ropery for fiber.
+    // That is legible as a rule ("the chute takes what nobody needs"),
+    // it makes a chute safe to leave standing, and it means switching a
+    // room off is also how you tell the tower to stop hoarding its
+    // input. Rope, whose only consumer is a one-off build cost, is
+    // spillable always — which is exactly right.
+    //
+    // **And it is offered to shelf pickups too, which is the whole cure
+    // rather than half of it.** `inbox_only` stops a shelf pickup being
+    // re-shelved, because a shelf-to-shelf haul moves nothing and loops
+    // for ever. A spill is not a loop — the item leaves — and refusing
+    // it here meant the chute could prevent a jam and never clear one:
+    // measured, a tower with fiber and rope squatting six shelves stayed
+    // squatted for ever, because the only loads crew ever considered
+    // spilling were the ones they had just picked up from a room. What
+    // the player needs is exactly the opposite: a way to get rid of the
+    // stuff that is *already stuck*.
+    //
+    // Safe because of `wanted`: crew will empty a shelf of something
+    // nothing eats, and will never touch a shelf of something a live
+    // room is waiting for.
+    // Wanted by a live inbox, **or by anything the player could still
+    // build**. The second half is not optional: rope's only consumer is
+    // a build cost, so without it a chute cheerfully threw away every
+    // coil the ropery made and an elevator became unbuildable in a tower
+    // that had a chute — which is a worse failure than the one the chute
+    // was added to fix. The same is true of poles the moment the last
+    // thornwright is switched off.
+    //
+    // Read off the content pack rather than off any pending intent,
+    // because there is no such thing as a pending intent here: a player
+    // decides to build by sending a command, and until then the only
+    // honest statement is "this is a material the tower builds with".
+    let wanted = tower
+        .floors
+        .iter()
+        .flat_map(|f| f.rooms.iter())
+        .any(|room| room.active && room.inputs.iter().any(|stack| stack.item == item))
+        || content.builds_with(item);
+    if best.is_none() && !wanted {
+        for shaft in &tower.shafts {
+            if shaft.kind != ShaftKind::Chute {
+                continue;
+            }
+            let inbound =
+                committed_delivery(crew, me, HaulDestination::Spill { shaft: shaft.id }, item);
+            // A chute never fills, but two crew both routing to one is
+            // still two loads thrown away where one would have done.
+            if inbound > 0 {
+                continue;
+            }
+            consider(
+                &mut best,
+                PRIORITY_SPILL,
+                amount,
+                HaulDestination::Spill { shaft: shaft.id },
+                shaft.low,
+                shaft.slot,
+            );
         }
     }
 

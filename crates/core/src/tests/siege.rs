@@ -1123,6 +1123,9 @@ fn a_borer_moves_on_to_the_column_that_is_still_whole() {
 
     let mut game = engine(1054);
     crate::tests::stock_poles(&mut game, 20);
+    // The elevator costs rope and mechanisms from M5, and this tower
+    // has no forge — it is here to be cut through, not to be built.
+    crate::tests::stock_for_shaft(&mut game, "shaft.elevator", 1);
     game.try_send(GameCommand::BuildShaft {
         shaft: "shaft.elevator".into(),
         low: 0,
@@ -1407,6 +1410,9 @@ fn cutting_one_shaft_leaves_the_crew_on_the_other_one_alone() {
     // milestone exists to produce would have nobody left to make it.
     let mut game = engine(1052);
     crate::tests::stock_poles(&mut game, 20);
+    // The elevator costs rope and mechanisms from M5, and this tower
+    // has no forge — it is here to be cut through, not to be built.
+    crate::tests::stock_for_shaft(&mut game, "shaft.elevator", 1);
     game.try_send(GameCommand::BuildShaft {
         shaft: "shaft.elevator".into(),
         low: 0,
@@ -1749,6 +1755,9 @@ fn a_severed_shaft_forces_a_live_reroute() {
     // that is left rather than stalling.
     let mut game = engine(1014);
     crate::tests::stock_poles(&mut game, 20);
+    // The elevator costs rope and mechanisms from M5, and this tower
+    // has no forge — it is here to be cut through, not to be built.
+    crate::tests::stock_for_shaft(&mut game, "shaft.elevator", 1);
     game.try_send(GameCommand::BuildShaft {
         shaft: "shaft.elevator".into(),
         low: 0,

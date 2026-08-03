@@ -1,0 +1,23 @@
+// Twists fiber into rope. The mill's opposite number.
+//
+// Priced and paced exactly like the mill on purpose: the two are
+// siblings, one at each end of the tower's construction economy, and
+// they should feel like the same kind of room doing the same kind of
+// work on a different material.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.ropery",
+    name: "Ropery",
+    short: "ROP",
+    category: Production,
+    width: 2,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 4)],
+    recipe: RecipeDef(
+        craft_ticks: 120,
+        // Two fiber a coil against the mill's one bamboo a pole: rope is
+        // dearer than poles, which is what stops it being a formality
+        // and makes "can I afford a shaft" a real question.
+        inputs: [IoEntryDef(item: "item.fiber", amount: 2, buffer_max: 6)],
+        outputs: [IoEntryDef(item: "item.rope", amount: 1, buffer_max: 6)],
+    ),
+)

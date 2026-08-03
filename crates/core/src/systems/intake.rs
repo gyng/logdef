@@ -1,12 +1,19 @@
-//! Intake — the tower strips what it walks past, and what it stops at.
+//! Intake — the tower strips what it walks past, what it stops at, and
+//! what it grows.
 //!
-//! Two sources, and they are exact opposites (`SYSTEMS.md` §3.4). A
+//! Three sources. Two of them are exact opposites (`SYSTEMS.md` §3.4): a
 //! `Terrain` source accrues against the ground actually covered, so a
-//! stopped tower harvests nothing at all. A `Ruin` source accrues per
-//! tick, and only while the tower is stopped with a ruin inside the
+//! stopped tower harvests nothing at all, while a `Ruin` source accrues
+//! per tick and only while the tower is stopped with a ruin inside the
 //! rig's reach. **Walking harvests bamboo; stopping harvests scrap** —
 //! so the stop/go decision is also an intake-mix decision, which is the
 //! cleanest statement of what M3 is for.
+//!
+//! `Sun` is the third, and it is the one that does not take a side
+//! (§5.2). It accrues per tick scaled by the sun actually reaching the
+//! tower, moving or not, which is what stops every stop being a pure
+//! loss — and it is the sun axis finally buying something that is not
+//! charge.
 //!
 //! Either way the room accumulates *effort* — Q8.8 paces of ground for
 //! a terrain source, Q8.8 ticks of work for a ruin — and every time
@@ -31,6 +38,10 @@ use super::SoundEvent;
 
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     let yield_pct = state.world.current_yield_pct(content);
+    // Sun after terrain — literally the figure the sails are paid on,
+    // read from the same function, so a garden and a sail can never
+    // disagree about how much light there is.
+    let exposure = super::power::exposure_pct(state, content);
     let tick = state.tick;
 
     // Both of these are one tick old, deliberately. Intake runs fourth
@@ -89,6 +100,30 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                     // of measuring the ground rather than the clock.
                     let needed = terrain_effort(paces_per_item, yield_pct);
                     room.intake_acc += Fx(i32::try_from(paces).unwrap_or(i32::MAX));
+                    while room.intake_acc >= needed && room.outputs[slot].deposit(1) == 1 {
+                        room.intake_acc -= needed;
+                        harvested += 1;
+                        sounds.push(SoundEvent::Harvest);
+                    }
+                }
+
+                IntakeSource::Sun { ticks_per_item } => {
+                    // One tick of work, thresholded by how much sun is
+                    // reaching the tower. Exposure is sun *after*
+                    // terrain, so a garden under dense canopy grows
+                    // almost nothing and the same figure the sails read
+                    // is the one the crops read.
+                    //
+                    // No `berthed` check and no `paces` term: this is
+                    // the source that does not care.
+                    let needed = sun_effort(ticks_per_item, exposure);
+                    if needed >= Fx(i32::MAX) {
+                        // Full shade. Nothing grows, and holding the
+                        // accumulator means what was grown in the light
+                        // survives the walk through the dark.
+                        continue;
+                    }
+                    room.intake_acc += Fx::ONE;
                     while room.intake_acc >= needed && room.outputs[slot].deposit(1) == 1 {
                         room.intake_acc -= needed;
                         harvested += 1;
@@ -180,4 +215,34 @@ pub fn terrain_effort(paces_per_item: i64, yield_pct: i64) -> Fx {
 #[must_use]
 pub fn ruin_effort(ticks_per_item: u32) -> Fx {
     Fx::from_int(i32::try_from(ticks_per_item).unwrap_or(i32::MAX).max(1))
+}
+
+/// Work one crop costs, in Q8.8 ticks, at this much sun.
+///
+/// **Scales the threshold, never the per-tick step**, which is the same
+/// rule `terrain_effort` exists to enforce and for the same reason. The
+/// shape that broke intake before M3 was accruing a *fraction of an
+/// item* per tick and scaling that: `Fx::ratio(1, 90)` is `Fx(2)` in
+/// Q8.8, and `Fx(2) * 1.40` is also `Fx(2)`, so four authored terrain
+/// yields behaved as two and the flagship contrast of `DESIGN.md`
+/// pillar 1 was simply absent from the simulation. Here the accrual is
+/// a flat `Fx::ONE` a tick and *this* is what moves, so a garden in
+/// half sun genuinely takes twice as long and there is no rounding to
+/// fall off.
+///
+/// Returns `Fx(i32::MAX)` in full shade rather than dividing by zero.
+/// The caller reads that as "nothing grows" and holds the accumulator,
+/// so a crop part-grown in the light survives the walk through the dark.
+#[must_use]
+pub fn sun_effort(ticks_per_item: u32, exposure_pct: i64) -> Fx {
+    if exposure_pct <= 0 {
+        return Fx(i32::MAX);
+    }
+    let ticks = i64::from(ticks_per_item.max(1));
+    let scaled = crate::fx::paces_from_int(ticks) * 100 / exposure_pct;
+    let effort = Fx(i32::try_from(scaled).unwrap_or(i32::MAX));
+    // One tick a crop is the floor, for the same reason one pace an item
+    // is: a room cheaper than that fills its buffer in a handful of
+    // ticks and stops meaning anything.
+    if effort < Fx::ONE { Fx::ONE } else { effort }
 }

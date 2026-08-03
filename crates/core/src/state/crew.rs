@@ -25,6 +25,12 @@ pub enum HaulDestination {
     Inbox { room: RoomId, input: u8 },
     /// A storeroom shelf. Overflow, and the construction stock.
     Shelf { room: RoomId },
+    /// A chute. The load leaves the tower and does not come back.
+    ///
+    /// Last in the enum and last in priority, because this is where
+    /// something goes when there is nowhere for it to go. A tower with a
+    /// free shelf never spills — see `haul::find_destination`.
+    Spill { shaft: ShaftId },
 }
 
 /// Where a load is collected from.

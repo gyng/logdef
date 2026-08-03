@@ -10,7 +10,14 @@ RoomDef(
     category: Energy,
     // One slot. A rack of cells stacks upward rather than outward.
     width: 1,
-    build_cost: [CostEntryDef(item: "item.poles", amount: 8)],
+    // **Cells, not poles, from M5.** This used to be 8 poles, which
+    // made "I keep browning out at night" a problem you spent your way
+    // out of. Costing cells means the answer runs through the
+    // sun-forge, which is the largest charge sink in the tower — so
+    // raising your charge ceiling costs charge. The first place in the
+    // game where fixing a problem costs the resource the problem is
+    // about (`SYSTEMS.md` §5.3).
+    build_cost: [CostEntryDef(item: "item.charge_cells", amount: 2)],
     bank: BankDef(
         // A full night's worst case (striding, lights, one continuous
         // thornwright, no sun) costs on the order of 6,000 charge —

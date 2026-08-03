@@ -234,7 +234,10 @@ fn play(seed: u64, policy: Policy) -> Run {
         .iter()
         .find_map(|room| match room.intake.as_ref()?.source {
             understory_core::content::IntakeSource::Ruin { range_paces, .. } => Some(range_paces),
-            understory_core::content::IntakeSource::Terrain { .. } => None,
+            understory_core::content::IntakeSource::Terrain { .. }
+            // A garden takes from the sky rather than from a ruin, so
+            // it is not what this is looking for.
+            | understory_core::content::IntakeSource::Sun { .. } => None,
         })
         .unwrap_or(60);
 

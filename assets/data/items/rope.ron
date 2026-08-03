@@ -1,0 +1,13 @@
+// The second construction currency.
+//
+// Not a tier so much as an answer to poles being the answer to
+// everything: from M5 every shaft and every emplacement costs rope as
+// well, so a tower's ability to build *transport* depends on ground it
+// walked rather than only on how long it milled.
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.rope",
+    name: "Rope",
+    glyph: "🪢",
+    order: 22,
+)

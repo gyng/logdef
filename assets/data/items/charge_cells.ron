@@ -1,0 +1,14 @@
+// Storage, built rather than bought.
+//
+// A cell bank used to cost 8 poles, which made "I keep browning out at
+// night" a problem you spent your way out of. Costing cells instead
+// means the answer is to run the forge — which costs charge — so it is
+// the first place in the game where fixing a problem costs the resource
+// the problem is about (`SYSTEMS.md` §5.3).
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.charge_cells",
+    name: "Charge cells",
+    glyph: "🔋",
+    order: 44,
+)

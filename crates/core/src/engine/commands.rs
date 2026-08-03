@@ -471,6 +471,10 @@ fn remove_room(
                 || match task.destination {
                     crate::state::HaulDestination::Inbox { room, .. }
                     | crate::state::HaulDestination::Shelf { room } => room == removed_id,
+                    // A spill names a shaft, not a room, so tearing out
+                    // a room can never invalidate one. Tearing out the
+                    // *chute* is handled where shafts are removed.
+                    crate::state::HaulDestination::Spill { .. } => false,
                 }
         });
         if stale {

@@ -114,6 +114,20 @@ pub enum IntakeSource {
         ticks_per_item: u32,
         range_paces: i64,
     },
+    /// Accrues per tick, scaled by the sun actually reaching the tower.
+    ///
+    /// **The first source that does not care whether the tower is
+    /// moving**, and that is the whole design of it. `Terrain` measures
+    /// ground covered and `Ruin` requires a stop, so between them a
+    /// tower is always giving something up: berthing at a ruin costs the
+    /// harvest, and walking past one costs the salvage. A `Sun` source
+    /// runs at full rate either way, which is what finally makes
+    /// standing still cost less than everything (`SYSTEMS.md` §5.2).
+    ///
+    /// Scaled by *exposure* — sun after terrain — so the same number
+    /// that decides what the sails make decides what a garden grows, and
+    /// the open branches buy something that is not charge.
+    Sun { ticks_per_item: u32 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,6 +237,16 @@ pub enum ShaftKind {
     Dumbwaiter,
     /// The machine: cars, queues, dwell, and a programmable schedule.
     Elevator,
+    /// One way, down, and out.
+    ///
+    /// No cars, no capacity, no charge and no riders — things fall. It
+    /// ends at a spill gate on the ground floor and whatever goes in is
+    /// gone, which is the point: `BALANCE.md`'s `storeroom` row has
+    /// described the shelf-typing deadlock since M2 and handed the fix
+    /// forward twice, and this is it (`SYSTEMS.md` §5.4). A surplus that
+    /// has claimed every shelf can be thrown away, visibly, by a piece
+    /// of infrastructure the player chose to build.
+    Chute,
 }
 
 /// A kind of vertical transport, as authored. Making these content
@@ -1012,6 +1036,24 @@ impl Content {
             })
     }
 
+    /// Does anything in the pack cost this item to build?
+    ///
+    /// The other half of "wanted" in `haul::find_destination`. A material
+    /// whose only consumer is a build cost has no inbox anywhere and
+    /// would otherwise read as rubbish to a chute — which is how a tower
+    /// with a chute in it managed to throw away all its rope and lose
+    /// the ability to build an elevator.
+    #[must_use]
+    pub fn builds_with(&self, item: ItemIdx) -> bool {
+        self.room_runtime
+            .iter()
+            .any(|room| room.build_cost.iter().any(|(cost, _)| *cost == item))
+            || self
+                .shaft_runtime
+                .iter()
+                .any(|shaft| shaft.build_cost.iter().any(|(cost, _)| *cost == item))
+    }
+
     /// Interned index of an item by its authored string ID.
     #[must_use]
     pub fn item_idx(&self, id: &str) -> Option<ItemIdx> {
@@ -1580,6 +1622,27 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
                         message: format!(
                             "{ticks_per_item} ticks an item is longer than fixed point can \
                              carry, so the room would not extract at the rate it asks for"
+                        ),
+                    });
+                }
+                IntakeSource::Sun { ticks_per_item: 0 } => {
+                    errors.push(LoadError {
+                        path: path.clone(),
+                        message: "a sun intake needs a positive rate".into(),
+                    });
+                }
+                // Same far-end clamp as the other two. A sun source is
+                // scaled *down* by exposure at runtime, so the threshold
+                // it is checked against here is the best case; if the
+                // best case does not fit, nothing will.
+                IntakeSource::Sun { ticks_per_item }
+                    if intake::sun_effort(ticks_per_item, 100) >= Fx(i32::MAX) =>
+                {
+                    errors.push(LoadError {
+                        path: path.clone(),
+                        message: format!(
+                            "{ticks_per_item} ticks an item is longer than fixed point can \
+                             carry, so the room would not grow at the rate it asks for"
                         ),
                     });
                 }
