@@ -81,6 +81,10 @@ const RATE_LIMIT: Partial<Record<SoundEvent, number>> = {
   EnemyDown: 6,
   EnemyLeaves: 4,
   EnemyContact: 5,
+  // A jammed tower spills steadily, and a steady spill must not become
+  // a drone. Slow enough that it reads as punctuation.
+  Spill: 2,
+  Steal: 4,
 };
 /** Anything not named above may fire at most this often a second. */
 const DEFAULT_RATE = 3;
@@ -460,6 +464,20 @@ export class AudioManager {
         // The warmest moment in the tower, and the audible confirmation
         // that the kitchen chain is alive. A small warm third.
         this.chime(now, [392, 494], 0.9, 0.05);
+        break;
+      case "Spill":
+        // Something the chain worked for, falling a long way and not
+        // coming back. Deliberately not `Deliver`'s little wooden knock
+        // — a descending sweep, so a tower that is spilling is audibly
+        // losing something rather than putting it away.
+        this.sweep(now, 420, 90, 0.5, 0.07);
+        break;
+      case "Steal":
+        // A rustle and a wingbeat going away from you. Not `Impact`:
+        // nothing was hit and nothing needs mending, and it should not
+        // sound like a blow.
+        this.hiss(now, 0.35, 0.07, 3200);
+        this.blip(now + 0.06, 900, 0.07, 0.05, "triangle");
         break;
       case "ShiftChange":
         // The handover: the tower's one daily ritual, and the only

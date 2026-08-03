@@ -103,6 +103,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                     while room.intake_acc >= needed && room.outputs[slot].deposit(1) == 1 {
                         room.intake_acc -= needed;
                         harvested += 1;
+                        credit(&mut state.stats, item);
                         sounds.push(SoundEvent::Harvest);
                     }
                 }
@@ -127,6 +128,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                     while room.intake_acc >= needed && room.outputs[slot].deposit(1) == 1 {
                         room.intake_acc -= needed;
                         harvested += 1;
+                        credit(&mut state.stats, item);
                         sounds.push(SoundEvent::Harvest);
                     }
                 }
@@ -154,6 +156,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                         room.intake_acc -= needed;
                         state.world.features[ruin].salvage = held - 1;
                         salvaged += 1;
+                        credit(&mut state.stats, item);
                         sounds.push(SoundEvent::Harvest);
 
                         if !state.world.features[ruin].roused {
@@ -209,6 +212,17 @@ pub fn terrain_effort(paces_per_item: i64, yield_pct: i64) -> Fx {
     // run would strip a band bare in a handful of ticks.
     let effort = Fx(i32::try_from(scaled).unwrap_or(i32::MAX));
     if effort < Fx::ONE { Fx::ONE } else { effort }
+}
+
+/// Credit one harvest to the material it actually was.
+///
+/// `items_harvested` is a sum and a sum cannot see a change in the
+/// *mix*, which is the whole of what M5's second route axis adds — see
+/// `RunStats::harvested_by_item`.
+fn credit(stats: &mut crate::state::RunStats, item: crate::ids::ItemIdx) {
+    if let Some(slot) = stats.harvested_by_item.get_mut(item.0 as usize) {
+        *slot += 1;
+    }
 }
 
 /// Work one item of salvage costs, in Q8.8 ticks.

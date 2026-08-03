@@ -183,6 +183,12 @@ struct Run {
     /// Percentage of distance spent in each terrain kind, by index.
     mix: Vec<i64>,
     harvested: u64,
+    /// Bamboo and produce separately — the two ends of the route axis.
+    /// The total cannot see a change in the *mix*, which is the whole of
+    /// what M5 added, so it stopped being the number this instrument is
+    /// about (`SYSTEMS.md` §5.2).
+    bamboo: u64,
+    produce: u64,
     /// Meals eaten over the run. The kitchen chain's own throughput,
     /// and the number that says whether the biomass axis is alive: a
     /// tower that ate nothing has nothing to do with bamboo, which is
@@ -203,6 +209,18 @@ struct Run {
 
 /// Put `room` in the first slot on the lowest floor that will take it.
 /// False if the tower cannot pay for it or has nowhere to put it.
+/// How much of one material a run actually pulled out of the ground.
+fn harvested_of(
+    content: &understory_core::content::Content,
+    state: &understory_core::state::GameState,
+    id: &str,
+) -> u64 {
+    content
+        .item_idx(id)
+        .and_then(|idx| state.stats.harvested_by_item.get(idx.0 as usize).copied())
+        .unwrap_or(0)
+}
+
 fn place_anywhere(
     engine: &mut GameEngine,
     content: &understory_core::content::Content,
@@ -269,8 +287,31 @@ fn play(seed: u64, policy: Policy) -> Run {
         list.push("room.dart_battery");
         list.push("room.thornwright");
     }
+    // **The garden first, because it is the only room that needs the
+    // roof.** Everything else fits anywhere, so anything bought before
+    // it can take the one deck that sees the sky — and a garden that
+    // never got built reports produce 0, which reads as "the sun axis
+    // buys nothing" and means "the harness never tested it".
+    list.push("room.garden");
     list.push("room.canteen");
     list.push("room.bunk");
+    // **And M5's chain, because a harness without a milestone's rooms in
+    // it measures the previous milestone with total confidence.** Third
+    // time this has been written down (`SYSTEMS.md` §3.9, §4.8, §5.9).
+    // The garden in particular changes what this instrument is *for*: it
+    // is the first intake that runs while the tower is stopped, so a
+    // policy that berths is no longer paying for it with its whole
+    // harvest.
+    list.push("room.fiber_comb");
+    list.push("room.ropery");
+    // **And a consumer for the produce, or the sun axis measures
+    // nothing.** A garden with nowhere to send its crop fills its buffer
+    // and stops, so both routes report the same number and the harness
+    // concludes the route does not matter — which is exactly the shape
+    // of M3's original finding, one material along. A bombary eats
+    // produce continuously; a thrower eats what the bombary makes.
+    list.push("room.bombary");
+    list.push("room.seed_thrower");
 
     // **And then storerooms, indefinitely — which is what finally moved
     // this instrument's headline number.**
@@ -415,6 +456,8 @@ fn play(seed: u64, policy: Policy) -> Run {
         halted,
         mix: mix.iter().map(|n| n * 100 / walked).collect(),
         harvested: state.stats.items_harvested,
+        bamboo: harvested_of(&content, state, "item.bamboo"),
+        produce: harvested_of(&content, state, "item.produce"),
         meals: state.stats.meals_eaten,
         exposure: exposure_total / i64::from(ticks.max(1)),
         brownout,
@@ -477,8 +520,8 @@ fn table(runs: &[Run]) {
         print!(" {:>7}", &name[..name.len().min(7)]);
     }
     println!(
-        " {:>4} {:>6} {:>7} {:>6} {:>6} {:>5} {:>7} {:>4}  end",
-        "sun", "brown", "bamboo", "meals", "scrap", "forks", "salvage", "off"
+        " {:>4} {:>6} {:>5} {:>7} {:>8} {:>6} {:>6} {:>5} {:>7} {:>4}  end",
+        "sun", "brown", "all", "bamboo", "produce", "meals", "scrap", "forks", "salvage", "off"
     );
 
     for run in runs {
@@ -490,10 +533,12 @@ fn table(runs: &[Run]) {
             print!(" {pct:>6}%");
         }
         println!(
-            " {:>3}% {:>6} {:>7} {:>6} {:>6} {:>5} {:>7} {:>4}  {}",
+            " {:>3}% {:>6} {:>5} {:>7} {:>8} {:>6} {:>6} {:>5} {:>7} {:>4}  {}",
             run.exposure,
             run.brownout,
             run.harvested,
+            run.bamboo,
+            run.produce,
             run.meals,
             run.salvaged,
             run.forks,

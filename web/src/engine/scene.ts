@@ -2327,6 +2327,32 @@ function drawShafts(batch: QuadBatch, ctx: SceneContext): void {
         if (inGap(ty) || hash01(shaft.id + i * 6151) < hurt * 0.7) continue;
         batch.push(x + 4, ty, layout.slotW - 8, 1.5, fade(rail, busy ? 0.75 : 0.4));
       }
+    } else if (shaft.kind === "Chute") {
+      // **A chute reads as a hole, not as machinery.** No treads, no
+      // rails, no car — a dark throat with a spill gate at the bottom
+      // and the odd thing dropping down it. It has to be immediately
+      // tellable from an elevator, because one of them moves your
+      // people and the other one destroys your stock, and mistaking
+      // them would be an expensive misread.
+      batch.push(x + 3, top, layout.slotW - 6, bottom - top, palette.wreck, {
+        radius: 2,
+      });
+      // The gate: a lip at the very bottom, open to the jungle.
+      batch.push(x + 1, bottom - 3, layout.slotW - 2, 3, palette.brass, { radius: 1.5 });
+      // Something falling, on a loop keyed to the shaft rather than to
+      // the clock alone, so two chutes never drop in unison. Pure
+      // cosmetic motion with no state behind it — the simulation has no
+      // notion of a thing part-way down, because falling is instant.
+      const drop = (clock * 0.9 + hash01(shaft.id * 7717)) % 1;
+      const size = Math.max(2, layout.slotW * 0.14);
+      batch.push(
+        x + layout.slotW / 2 - size / 2,
+        top + (bottom - top - size) * drop,
+        size,
+        size,
+        fade(palette.cargo, 0.5 * (1 - drop)),
+        { radius: size * 0.4 },
+      );
     } else {
       // Guide rails rather than treads, and a counterweight cable, so
       // a shaft with a car in it never gets mistaken for a staircase.

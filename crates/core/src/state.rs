@@ -68,6 +68,20 @@ pub struct RunStats {
     /// starving tower and a tower with no canteen at all look identical
     /// from every other counter.
     pub meals_eaten: u64,
+    /// What was harvested, per item.
+    ///
+    /// **`items_harvested` stopped being a useful number at M5**, and
+    /// this is why: with bamboo from the shade, produce from the sun and
+    /// fiber from the middle, two routes that harvest completely
+    /// different things now report the same *total*. Measured on
+    /// `examples/journey.rs`, a shade-seeking run and a sun-seeking one
+    /// came out at 369 against 374 — which reads as "the route does not
+    /// matter" and means the opposite. A sum over materials cannot see a
+    /// change in the mix, and the mix is the whole of what M5 added.
+    ///
+    /// Indexed by `ItemIdx`, sized at run start, so it stays a pure
+    /// function of the content pack.
+    pub harvested_by_item: Vec<u64>,
     /// Loads taken out of an outbox by a thief. Not damage and not a
     /// haul — work the tower did and did not get to keep.
     pub items_stolen: u64,
@@ -174,7 +188,12 @@ impl GameState {
             // spurious `ShiftChange` for a handover that already
             // happened before the run began.
             shift_now: Shift::Day,
-            stats: RunStats::default(),
+            stats: RunStats {
+                // One slot per item in the pack, so a harvest counter is
+                // never a lookup that can miss.
+                harvested_by_item: vec![0; content.items.len()],
+                ..RunStats::default()
+            },
             rng,
             next_room_id: 1,
             next_crew_id: 1,

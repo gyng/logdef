@@ -2854,16 +2854,39 @@ Not a task list — the places where existing code assumes something M5 stops be
 
 - [ ] **A full run to the Refugia in 2–4 hours**, played rather than scripted, ending as an
       arrival rather than a score.
-- [ ] **A shared seed reproduces it.** Same seed, same commands, same run — with unlocks
-      changing what the player may build and not what the world generates.
-- [ ] **The second tier changed a decision.** The specific test: a tower that walked shaded
-      branches all the way cannot build an elevator, and knows why. If mechanisms turn out to be
-      something every route gets anyway, the tier is breadth and the gate has failed.
-- [ ] **Stopping at a ruin is sometimes the wrong call and sometimes the right one** — §3.11's
-      open question, now answerable, because scrap finally buys something.
+- [x] **A shared seed reproduces it.** Unlocks are player-level, never touch `GameState` and
+      never enter the replay, so a veteran's recording replays exactly for somebody who has
+      unlocked nothing — they watch a tower build a room they could not build themselves. The seed
+      crosses the bridge as a *string*, because it is 64 bits and JavaScript numbers are not, and
+      a seed that does not round-trip is a seed that cannot be shared.
+- [~] **The second tier changed a decision** — but not the decision this said it would, and the
+      gate moved because building it proved the specced one wrong.
+
+      Gating the elevator behind *mechanisms* put it behind alloy, scrap and the ruin belt, which
+      means a rig, a forge and a fitter: four rooms and two floors more than a five-floor tower
+      holds, and a tower that grows to fit them shades its own sails and browns out for good.
+      Measured on the golden recorder — every buffer empty, the cutter arm at 0/8, a fixture that
+      could not be recorded. The gate is **rope** now, which comes from the middle bands, so it
+      still says "your route decides whether you can build this" and now says "you have to have
+      walked ordinary ground" rather than "you have to have gone to the ruins". Better sentence,
+      reachable tower.
+
+      What is *not* demonstrated is the tier changing a decision in play, because open question 0
+      swallows it: with every chain terminating in a buffer, a route that is richer in a material
+      does not end up with more of it.
+- [~] **Stopping at a ruin is sometimes the wrong call and sometimes the right one.** Scrap now
+      buys something — the forge is real and alloy gates the charge ceiling — and the garden makes
+      berthing cost less than it did, because it is the first intake that runs while the legs are
+      off. Whether the answer is ever genuinely "it depends" still needs somebody playing; the
+      instruments can say the ingredients are there and not that the question is live.
 - [ ] **Every constant in `BALANCE.md` graded `PLAYTESTED`**, from run logs rather than from
-      scripted harnesses.
-- [ ] Golden replay regenerated; hash parity green natively and in wasm.
+      scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
+      §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
+- [x] Golden replay regenerated; hash parity green natively and in wasm. The fixture lost its
+      salvage rig on the way: three rooms reach the ground and carry `max_floor: 1`, and two
+      ground floors do not hold all three once the Heartseed, a cell bank and a storeroom have
+      taken theirs. It trades M3 coverage `tests/journey.rs` duplicates for M5 coverage that
+      exists nowhere else.
 - [ ] `make check` and the smoke suite green.
 - [ ] An itch.io build a stranger can open and play without being told anything.
 
@@ -2881,6 +2904,48 @@ Not a task list — the places where existing code assumes something M5 stops be
   release cut is the worst possible moment for it.
 
 ### 5.11 Open questions
+
+0. **The big one, found by building it: every chain in this game
+   terminates in a buffer, and a chain that terminates in a buffer cannot
+   make terrain matter.**
+
+   `examples/journey.rs` measures a shade-seeking route against a
+   sun-seeking one, and after M5 it reports **exactly 219 bamboo and 68
+   produce for both** — on routes 7 percentage points apart in canopy
+   cover. That is M3's original finding (§3.10) returning in a new place,
+   and M4's fix explains why: the canteen worked because meals have a
+   *true* sink — crew eat three a day, for ever, and no buffer can hold
+   the demand. Nothing else in the pack does.
+
+   Poles have a near-sink (construction, repair) that dries up when a
+   tower is finished. Darts have one only while something is attacking.
+   Rope, alloy, mechanisms, charge cells and seed bombs all terminate in
+   a buffer that fills and stops, and so, one step upstream, do fiber,
+   scrap and produce. **A tower's harvest is therefore capped by its
+   consumption, and its consumption is fixed** — so the ground underfoot
+   changes only how fast it *could* have harvested, never how much it
+   did. Every terrain yield in `BALANCE.md` is, in the steady state,
+   decorative.
+
+   This is not a tuning problem and no number fixes it. The shapes that
+   would are structural, and each is a real design decision rather than a
+   patch:
+
+   - **A sink that scales with the run**, the way meals scale with the
+     crew. The tower's own upkeep is the obvious candidate: a structure
+     that needs maintaining in materials rather than only in poles-after-
+     damage would make every material's demand continuous.
+   - **Somewhere to put a surplus that is worth something.** The enclave
+     boards are exactly this and are one-shot; a standing buyer would
+     turn "I have too much fiber" into a reason to walk a route.
+   - **Or accept it**, and say plainly that route choice is about *sun,
+     scrap and danger* rather than about yield — in which case
+     `yield_pct` should stop being four distinct numbers pretending to
+     matter.
+
+   Recorded at length because it is the single most important thing this
+   milestone found, it was invisible until three tiers existed to make it
+   visible, and the temptation will be to fix the instrument.
 
 1. **Does gating the elevator behind the ruin belt make the shaded route a trap?** The argument
    in §5.3 is that it makes route choice reach into the transport layer. The risk is that it
