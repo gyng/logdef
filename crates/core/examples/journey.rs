@@ -29,6 +29,11 @@ const TICKS_PER_DAY: u32 = 14_400;
 /// Long enough for the longest region-1 roll at a walking pace, with
 /// room for a policy that stops a lot.
 const PATIENCE: u32 = 400_000;
+/// Just over seven and a half days — long enough for a tower to finish
+/// its shopping list, jam if it is going to, and settle into a steady
+/// state, and short enough that every seed's region-1 roll outlasts it.
+/// The route comparison runs to this rather than to the region edge.
+const FIXED_BUDGET: u32 = 109_520;
 
 fn main() {
     println!("=== one policy, {SEEDS} seeds ===\n");
@@ -49,8 +54,76 @@ fn main() {
     println!();
     verdict(&across, &within);
 
+    route_pays();
+
     println!("\n=== the whole way ===\n");
     whole_run(1);
+}
+
+/// What the tower is carrying when the route comparison runs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tower {
+    /// A kitchen and a bunk and nothing else. What M3 measured.
+    Bare,
+    /// M5's chain with no way to get rid of what it makes.
+    Clogged,
+    /// The same, plus the chute.
+    Full,
+}
+
+/// Does the route pay, and what does a chute buy?
+///
+/// **The section above cannot answer the first question, and it took two
+/// milestones to notice.** It compares two policies on *one seed*, and
+/// the noise in that is enormous: per seed, the shade-against-sun gap on
+/// one unchanged tower ranges from **-3.9% to +71.9%**. Every finding
+/// this instrument has reported about the route — "exactly 100 each",
+/// "219 against 219", "579 against 530" — was a coin flip written down
+/// as a result, and two of them went into `SYSTEMS.md` as open
+/// questions. So this totals both policies across every seed, which is
+/// the least it can do and still be measuring the route.
+///
+/// It runs three towers, because the interesting number turned out not
+/// to be the route at all:
+///
+/// - **Bare against clogged is the chute's case.** A tower with a comb
+///   and a ropery is harvesting materials nothing terminally consumes;
+///   they claim shelf after shelf, bamboo has nowhere to go, the mill
+///   backs up and the cutter arm stalls. That is worth roughly a third
+///   of the tower's whole harvest, and a chute gets most of it back.
+/// - **Shade against sun is the route's case, and it is small.**
+///   Consistent in direction — shade wins on all three towers — and
+///   about one to two percent, which no player will ever perceive. The
+///   honest reading is that yield is a weak lever; see `SYSTEMS.md`
+///   §5.11 open question 0, which stays open on the strength of exactly
+///   this table.
+fn route_pays() {
+    println!("\n=== does the route pay? (every seed, three towers) ===\n");
+    println!(
+        "  Bamboo harvested in {FIXED_BUDGET} ticks, shade route against sun.\n\
+         One seed cannot answer this: the per-seed gap swings -4% to +72%.\n"
+    );
+    println!("tower                 shade      sun      gap");
+    for tower in [Tower::Bare, Tower::Clogged, Tower::Full] {
+        let (mut shade, mut sun) = (0u64, 0u64);
+        for seed in 1..=SEEDS {
+            shade += play_tower(seed, Policy::Forager, tower, true).bamboo;
+            sun += play_tower(seed, Policy::Sunseeker, tower, true).bamboo;
+        }
+        println!(
+            "{:<19} {shade:>6}   {sun:>6}   {:>+6.1}%",
+            match tower {
+                Tower::Bare => "bare",
+                Tower::Clogged => "+chain, no chute",
+                Tower::Full => "+chain +chute",
+            },
+            (shade as i64 - sun as i64) as f64 * 100.0 / sun.max(1) as f64
+        );
+    }
+    println!(
+        "\n  The gap column is the route; the rows are the chute. Read down, not\n\
+         across — a stockpile with no way out costs more than the ground does."
+    );
 }
 
 /// One seed, start to finish, through both regions and the enclave.
@@ -221,6 +294,29 @@ fn harvested_of(
         .unwrap_or(0)
 }
 
+/// Put up a room *or* a shaft, whichever the id names.
+fn build_anywhere(
+    engine: &mut GameEngine,
+    content: &understory_core::content::Content,
+    id: &str,
+) -> bool {
+    if id.starts_with("shaft.") {
+        let slots = content.balance.tower.floor_slots;
+        let high = (engine.state().tower.floors.len() as u8).saturating_sub(1);
+        return (0..slots).any(|slot| {
+            engine
+                .try_send(GameCommand::BuildShaft {
+                    shaft: id.into(),
+                    low: 0,
+                    high,
+                    slot,
+                })
+                .is_ok()
+        });
+    }
+    place_anywhere(engine, content, id)
+}
+
 fn place_anywhere(
     engine: &mut GameEngine,
     content: &understory_core::content::Content,
@@ -241,6 +337,17 @@ fn place_anywhere(
 }
 
 fn play(seed: u64, policy: Policy) -> Run {
+    play_tower(seed, policy, Tower::Full, false)
+}
+
+/// `full` puts up M5's chain — a garden, a comb, a ropery and the chute
+/// that keeps them from strangling the mill. `false` leaves a bare
+/// tower with a kitchen, which is the tower M3 measured.
+///
+/// `fixed_ticks` stops on the clock rather than at the region edge; see
+/// the loop condition for why a route comparison needs that and nothing
+/// else does.
+fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run {
     let mut engine = GameEngine::new(seed);
     engine.set_speed(SimSpeed::X1);
     let content = engine.content().clone();
@@ -292,7 +399,26 @@ fn play(seed: u64, policy: Policy) -> Run {
     // it can take the one deck that sees the sky — and a garden that
     // never got built reports produce 0, which reads as "the sun axis
     // buys nothing" and means "the harness never tested it".
-    list.push("room.garden");
+    // **The chute first of all**, ahead even of the garden, and the
+    // ordering is the finding rather than a detail.
+    //
+    // A second harvested material with no consumer claims shelf after
+    // shelf, bamboo runs out of anywhere to go, the cutter arm stalls,
+    // and harvest collapses to whatever the tower's buffers hold — a
+    // property of the *tower*, and so identical whichever way it walked.
+    // That is how this instrument spent a milestone reporting that the
+    // route did not matter. A chute is the cure, and it was in this list
+    // for a whole session doing nothing, because it sat behind a seed
+    // thrower that costs mechanisms the tower can never make: **this
+    // loop stops at the first thing it cannot afford, so anything behind
+    // a blocker is not "built later", it is not built at all.** Cheap
+    // and load-bearing first; anything that can block goes last.
+    if tower == Tower::Full {
+        list.push("shaft.chute");
+    }
+    if tower != Tower::Bare {
+        list.push("room.garden");
+    }
     list.push("room.canteen");
     list.push("room.bunk");
     // **And M5's chain, because a harness without a milestone's rooms in
@@ -302,16 +428,18 @@ fn play(seed: u64, policy: Policy) -> Run {
     // is the first intake that runs while the tower is stopped, so a
     // policy that berths is no longer paying for it with its whole
     // harvest.
-    list.push("room.fiber_comb");
-    list.push("room.ropery");
-    // **And a consumer for the produce, or the sun axis measures
-    // nothing.** A garden with nowhere to send its crop fills its buffer
-    // and stops, so both routes report the same number and the harness
-    // concludes the route does not matter — which is exactly the shape
-    // of M3's original finding, one material along. A bombary eats
-    // produce continuously; a thrower eats what the bombary makes.
-    list.push("room.bombary");
-    list.push("room.seed_thrower");
+    if tower != Tower::Bare {
+        list.push("room.fiber_comb");
+        list.push("room.ropery");
+    }
+    // **No bombary and no thrower**, deliberately. A thrower costs
+    // mechanisms, mechanisms cost a fitter, a fitter costs a forge and a
+    // rig — none of which a route-comparison tower has any business
+    // building — so a list containing one simply *stops there*, and
+    // every item behind it goes unbuilt. That is how the chute ended up
+    // never being built at all on the first attempt, which is the item
+    // this whole comparison turns on. **Put the cheap, load-bearing
+    // things first; anything that can block belongs at the end.**
 
     // **And then storerooms, indefinitely — which is what finally moved
     // this instrument's headline number.**
@@ -349,13 +477,30 @@ fn play(seed: u64, policy: Policy) -> Run {
     let mut exposure_total = 0i64;
     let mut brownout = 0u32;
 
-    while ticks < PATIENCE && engine.state().world.distance < boundary && !engine.state().siege.lost
+    // **A route comparison stops on the clock; everything else stops at
+    // the boundary.**
+    //
+    // Running each route until it reaches the region edge lets the two
+    // routes walk for *different lengths of time* — a branch draw is not
+    // the same distance as its alternative — so the shade tower and the
+    // sun tower get different numbers of ticks in which to harvest, and
+    // the difference between them is then partly a difference in how
+    // long they ran. That is a confound sitting directly on the axis
+    // being measured, and it is worth about seven points: the same
+    // comparison reads +9.7% on a fixed clock and +2.1% run to the
+    // boundary. Everything else here is *about* the boundary — minutes
+    // to it, terrain mix on the way — so only the route comparison takes
+    // the fixed budget.
+    let deadline = if fixed_ticks { FIXED_BUDGET } else { PATIENCE };
+    while ticks < deadline
+        && (fixed_ticks || engine.state().world.distance < boundary)
+        && !engine.state().siege.lost
     {
         // Work the shopping list, one item at a time, whenever the
         // poles are there. Checked every tick and cheap when the list
         // is empty, which it is for most of a run.
         if let Some(next) = list.last().copied()
-            && place_anywhere(&mut engine, &content, next)
+            && build_anywhere(&mut engine, &content, next)
         {
             list.pop();
             // **Deliberately no `BuildFloor` here**, unlike

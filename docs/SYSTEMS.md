@@ -2731,7 +2731,7 @@ visible, which is a better game to add it to.
 
 | Thing | Target | The arithmetic |
 |---|---|---|
-| chute | Shaft, 1 slot column, 6 poles + 2 rope, no charge, no capacity | Cheaper than a dumbwaiter (8 poles) because it does less: one direction, no machinery, nothing comes back up. The rope is what stops it being the trivially correct first build. |
+| chute | Shaft, 1 slot column, **6 poles, no rope**, no charge, no capacity | Cheaper than a dumbwaiter (8 poles) because it does less: one direction, no machinery, nothing comes back up. **Specced at 6 poles + 2 rope and shipped without the rope**: rope needs a ropery, a ropery needs fiber to reach it, and fiber having nowhere to go *is the jam* — so the rope made the escape hatch affordable only before you needed it. Everything else in the pack may sit behind a chain; this one may not. |
 | spill priority | below `PRIORITY_SHELF` | Never preferred to somewhere useful. A chute is where things go when there is nowhere else, and a tower with spare shelf space should never spill. |
 
 ### 5.5 The rest of the taxonomy, region 3, and the Refugia
@@ -2905,9 +2905,17 @@ Not a task list — the places where existing code assumes something M5 stops be
 
 ### 5.11 Open questions
 
-0. **The big one, found by building it: every chain in this game
-   terminates in a buffer, and a chain that terminates in a buffer cannot
-   make terrain matter.**
+0. **Does terrain yield change a decision, or is it decoration?**
+
+   > **Still open, and now measured — read the numbers at the end before
+   > acting on anything in the middle.** Two diagnoses recorded below
+   > ("every chain terminates in a buffer", and "the tower is
+   > crew-limited") are both wrong. What was actually breaking the
+   > *instrument* was a jammed shelf, which the chute (§5.4) fixes. The
+   > question itself survives that fix: terrain yield is worth about 2%,
+   > and the honest answer may be to stop pretending otherwise. The
+   > reasoning is kept in full because the wrong turns are the useful
+   > part.
 
    `examples/journey.rs` measures a shade-seeking route against a
    sun-seeking one, and after M5 it reports **exactly 219 bamboo and 68
@@ -2970,27 +2978,62 @@ Not a task list — the places where existing code assumes something M5 stops be
    None of that is an argument against doing it; all of it is an
    argument for it being chosen rather than slipped in.
 
-   **And on a complicated tower it stopped working, which is the next
-   layer down and matters whether or not overgrowth is ever shipped.** The same comparison on a tower that also runs a garden,
-   a fiber comb, a ropery and a bombary reports 76 against 76 — flat
-   again — and the reason is not demand any more. It is *crew*. Three
-   people can haul, mend, eat and sleep only so much, and past a certain
-   number of rooms every chain in the tower is waiting on the same pair
-   of hands, which is identical whichever way the tower walked. Raising
-   the crew to six or eight lifts the ceiling and then **inverts** the
-   result (406 against 411, 426 against 436), because upkeep is higher in
-   shade and with enough hands to pay it the shade route's extra harvest
-   goes straight back out again.
+   **Measured properly at last. Two separate things were tangled
+   together here, one of them a real defect that is now fixed, and the
+   other this question — which stays open, and whose answer is looking
+   like the third option.**
 
-   So the honest statement, and the thing the next person needs: **route
-   choice is legible on a supply-limited tower and invisible on a
-   crew-limited one, and this game becomes crew-limited quite early.**
-   That is not obviously wrong — "everything competes for the same
-   people" is `DESIGN.md` insight 1, and a tower where the answer to
-   every problem is *more hands* is a tower playing the game it says it
-   is. But it means terrain yield is a mid-game lever rather than a
-   permanent one, and `BALANCE.md`'s four distinct yields should be read
-   in that light rather than as a promise about the whole run.
+   `examples/journey.rs` now totals both policies across all twelve
+   seeds, on three towers, for a fixed 109,520 ticks. Bamboo harvested:
+
+   | tower | shade | sun | gap |
+   | --- | --- | --- | --- |
+   | bare, with a kitchen | 6502 | 6419 | +1.3% |
+   | + garden, comb, ropery | 2924 | 2846 | +2.7% |
+   | + the same, **with a chute** | 3970 | 3901 | +1.8% |
+
+   **Read down, not across.** The rows are worth a third of the tower's
+   harvest; the column is worth one to two percent.
+
+   *The defect: a stockpile with no way out costs more than the ground
+   does.* Adding a comb and a ropery — harvested materials nothing
+   terminally consumes — costs the tower **55% of its bamboo**, because
+   fiber and rope claim shelf after shelf, bamboo runs out of anywhere to
+   go, the mill's outbox backs up and the cutter arm stalls. A chute
+   (§5.4) recovers **36%** of what that destroyed. That is a large,
+   reproducible effect and it is the justification for the escape hatch
+   shipping at all.
+
+   *The question: terrain yield is still a weak lever.* The route gap is
+   1.3%, 2.7% and 1.8% — consistent in direction across every tower
+   measured, and small enough in every one of them that no player will
+   perceive it. **The chute does not unlock the yield axis**; it fixes a
+   different problem that was masking how small the yield axis is. So of
+   the three shapes above, the third — *say plainly that route choice is
+   about sun, scrap and danger, and stop having four `yield_pct` values
+   pretend to matter* — is now the leading answer rather than the
+   fallback.
+
+   **Three corrections to what is written above, worth more than the
+   finding.**
+
+   *The buffer diagnosis was not the cause.* "Every chain terminates in a
+   buffer" is a true observation about the pack and it is not why the
+   route read flat; a jammed shelf was.
+
+   *The crew-limited diagnosis was wrong.* An earlier draft concluded a
+   complicated tower is bound by hands rather than by ground. It is not:
+   adding crew made the flat reading **worse**, 219 down to 150, which is
+   the tell — a crew-limited tower improves when you add crew.
+
+   *And every single-seed number in this section is worthless.* Per seed,
+   the shade-against-sun gap on one unchanged tower swings from **−3.9%
+   to +71.9%**. So 219/219, 364/346, 76/76 and 579/530 are coin flips
+   written down as findings, and this section spent two milestones
+   arguing with its own noise. An eight-seed total was not enough either:
+   it gave +9.7% on the strength of two outlier seeds, and twelve gives
+   +1.8%. **If a comparison here cannot survive changing the seed set, it
+   was never measuring the route.**
 
 1. **Does gating the elevator behind the ruin belt make the shaded route a trap?** The argument
    in §5.3 is that it makes route choice reach into the transport layer. The risk is that it

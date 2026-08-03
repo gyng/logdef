@@ -626,7 +626,9 @@ fn assign_idle(
         // up, which is the invariant that actually matters.
         let stranded = crew[i].is_carrying()
             && crew[i].carrying.is_some_and(|(item, held)| {
-                find_destination(tower, content, crew, i, item, held, false).is_none()
+                // A chute counts here: somebody holding something they
+                // can throw away is not stranded.
+                find_destination(tower, content, crew, i, item, held, false, true).is_none()
             });
         let free_to_choose = !crew[i].is_carrying() || stranded;
 
@@ -683,7 +685,10 @@ fn assign_idle(
             // picking up more. Nothing is ever dropped on the floor.
             // Already carrying: this is a re-home, not a pickup, so a
             // shelf is a legitimate destination.
-            find_destination(tower, content, crew, i, item, held, false).map(
+            // Already holding it, so a chute is a legitimate home — this
+            // is the escape hatch for a carrier the tower has no room
+            // for.
+            find_destination(tower, content, crew, i, item, held, false, true).map(
                 |(destination, to_floor, to_slot, _)| HaulTask {
                     item,
                     amount: held,
@@ -973,6 +978,10 @@ fn pick_task(
                     pile_item,
                     available.min(capacity),
                     from_shelf,
+                    // Only what is already on a shelf may be thrown
+                    // away. A fresh pickup from an outbox never can, or
+                    // the room it came from never stalls.
+                    from_shelf,
                 ) else {
                     continue;
                 };
@@ -1051,6 +1060,7 @@ fn travel_cost(
 
 /// Best home for `amount` of `item`: a hungry recipe first, a shelf
 /// second. Returns the destination plus its priority.
+#[allow(clippy::too_many_arguments)]
 fn find_destination(
     tower: &Tower,
     content: &Content,
@@ -1059,6 +1069,7 @@ fn find_destination(
     item: ItemIdx,
     amount: i64,
     inbox_only: bool,
+    may_spill: bool,
 ) -> Option<(HaulDestination, FloorIdx, SlotIdx, i64)> {
     let mut best: Option<(i64, i64, HaulDestination, FloorIdx, SlotIdx)> = None;
 
@@ -1137,20 +1148,39 @@ fn find_destination(
     // input. Rope, whose only consumer is a one-off build cost, is
     // spillable always — which is exactly right.
     //
-    // **And it is offered to shelf pickups too, which is the whole cure
-    // rather than half of it.** `inbox_only` stops a shelf pickup being
-    // re-shelved, because a shelf-to-shelf haul moves nothing and loops
-    // for ever. A spill is not a loop — the item leaves — and refusing
-    // it here meant the chute could prevent a jam and never clear one:
-    // measured, a tower with fiber and rope squatting six shelves stayed
-    // squatted for ever, because the only loads crew ever considered
-    // spilling were the ones they had just picked up from a room. What
-    // the player needs is exactly the opposite: a way to get rid of the
-    // stuff that is *already stuck*.
+    // **`may_spill` is what keeps a chute a relief valve instead of a
+    // drain, and getting it wrong cost the game its best mechanic.**
     //
-    // Safe because of `wanted`: crew will empty a shelf of something
-    // nothing eats, and will never touch a shelf of something a live
-    // room is waiting for.
+    // A spill is offered for a load taken off a *shelf* — clearing a
+    // stockpile nothing wants, which is the jam this exists to fix — and
+    // for a load already in hand with nowhere to go. It is **never**
+    // offered for a load a crew member has just collected from a room's
+    // outbox, and that exclusion is the whole of the rule.
+    //
+    // Without it, a chute quietly disables backpressure. A ropery makes
+    // rope, nothing consumes rope, crew carry it straight from the
+    // ropery's outbox to the chute, the outbox therefore never fills,
+    // the ropery therefore never stalls, and it goes on eating fiber
+    // for ever — so a comb goes on harvesting fiber for ever, and crew
+    // spend the run ferrying a dead chain into the jungle while the mill
+    // starves.
+    //
+    // A full outbox stalling its room is the oldest rule in the chain
+    // (`intake.rs`, `production.rs`) and it is how a tower tells you a
+    // branch is pointless. A chute must not be able to answer that
+    // question on the player's behalf.
+    //
+    // What the shelf side is worth, from `examples/journey.rs` totalled
+    // over twelve seeds: a tower with a comb and a ropery and no chute
+    // harvests **2,924 bamboo against a bare tower's 6,502** — the dead
+    // branch costs it 55% of its harvest — and a chute recovers that to
+    // **3,970, a third of the way back**. Adding *more crew* made it
+    // worse rather than better, which is the tell that this was never
+    // crew scarcity.
+    //
+    // Still safe on the shelf side because of `wanted`: crew empty a
+    // shelf of something nothing eats, and never touch a shelf of
+    // something a live room is waiting for.
     // Wanted by a live inbox, **or by anything the player could still
     // build**. The second half is not optional: rope's only consumer is
     // a build cost, so without it a chute cheerfully threw away every
@@ -1169,7 +1199,7 @@ fn find_destination(
         .flat_map(|f| f.rooms.iter())
         .any(|room| room.active && room.inputs.iter().any(|stack| stack.item == item))
         || content.builds_with(item);
-    if best.is_none() && !wanted {
+    if best.is_none() && !wanted && may_spill {
         for shaft in &tower.shafts {
             if shaft.kind != ShaftKind::Chute {
                 continue;

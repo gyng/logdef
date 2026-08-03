@@ -22,31 +22,39 @@ having the table; being wrong *quietly* is what the grade prevents.
 
 The tower's gait and how far it can see.
 
+> **How much the `yield_pct` numbers below actually buy: about two percent.**
+>
+> Measured by `examples/journey.rs`, totalling both route policies across all twelve seeds
+> for a fixed 109,520 ticks — bamboo harvested, shade-seeking route against sun-seeking:
+>
+> | tower | shade | sun | gap |
+> | --- | --- | --- | --- |
+> | bare, with a kitchen | 6502 | 6419 | +1.3% |
+> | + garden, comb, ropery | 2924 | 2846 | +2.7% |
+> | + the same, with a chute | 3970 | 3901 | +1.8% |
+>
+> **Read down, not across.** The gap column is what these four numbers buy: consistent in
+> direction — shade wins on every tower — and small enough that no player will perceive it.
+> The rows are worth a third of the tower's harvest, and they are about shelf space rather
+> than about the ground. `SYSTEMS.md` §5.11 open question 0 stays open on the strength of
+> this table, and its third option — collapse `yield_pct` to fewer distinct values and say
+> route choice is about sun, scrap and danger — is now the leading answer.
+>
+> **Three cautions for anyone tuning these.** Per seed the same comparison swings from −3.9%
+> to +71.9%, so a single-seed reading is a coin flip. Eight seeds is not enough either — it
+> gave +9.7% on two outliers where twelve gives +1.8%. And letting each route run to the
+> region edge rather than for a fixed tick count lets the two walk different distances, which
+> is a confound sitting directly on the axis being measured.
+>
+> A different fix — continuous overgrowth, giving poles a sink that scales with the tower the
+> way meals scale with the crew — was **prototyped, measured and left out**: it means a tower
+> is never quite whole, so "something is attacking" and "it is Tuesday" stop being
+> distinguishable on the standing readout. That is an owner's call rather than a balance one,
+> and the measurement is recorded so the call can be made without redoing it. Commit
+> `4a4683a` has the implementation.
+
 | Constant | Value | Grade | Reasoning |
 |---|---:|---|---|
-> **Read `SYSTEMS.md` §5.11 open question 0 before trusting any `yield_pct` below.**
->
-> Every chain in this game terminates in a buffer, so a tower's harvest is capped by its
-> consumption rather than by the ground, and its consumption is fixed — which makes the four
-> distinct terrain yields, in the steady state, decorative. Meals are the sole exception,
-> because crew eat three a day for ever and no buffer holds that demand, and that is exactly
-> why M4's canteen fix worked where nothing since has.
->
-> A fix was **prototyped and measured and is not shipped**: continuous overgrowth, giving poles
-> a sink that scales with the tower the way meals scale with the crew, scaled by the band's own
-> yield so the ground that grows bamboo fastest grows over you fastest. On a simple tower it
-> works — a shade route harvested **364 bamboo against a sun route's 346**, where both had
-> previously reported the same number to the unit. On a complicated one it does not, and the
-> reason turned out to be the layer underneath: past a certain number of rooms the tower is
-> *crew*-limited rather than supply-limited, three pairs of hands are identical whichever way
-> you walked, and at six or eight crew the result **inverts**, because with enough hands to pay
-> the higher upkeep the shade route's extra harvest goes straight back out again.
->
-> It is unshipped rather than tuned because it changes the feel of the whole game — a tower is
-> then never quite whole, so "something is attacking" and "it is Tuesday" stop being
-> distinguishable on the standing readout — and that is an owner's call rather than a balance
-> one. The measurements are here so the call can be made without redoing them.
-
 | `stride_paces_per_100_ticks` | 60 | DESIGNED | 0.6 paces/tick, 18 a second. Fast enough that the horizon changes while you watch a chain run; slow enough that terrain feels like somewhere rather than something flickering past. Becomes a player throttle in M3. |
 | `band_min_paces` | 300 | DESIGNED | ~16 s in a band at 1×. Below this, terrain changes faster than a haul round-trip, so route choice could never bite. |
 | `band_max_paces` | 900 | DESIGNED | ~50 s at 1×, ~12 s at 4×. Long enough that a rich band is worth noticing and a barren one is worth waiting out. |
