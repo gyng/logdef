@@ -216,7 +216,7 @@ fn a_battery_shoots_the_nearest_thing_first() {
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
         floor: 1,
-        slot: 1,
+        slot: 5,
     })
     .expect("affordable");
     game.try_send(GameCommand::SetStriding { walking: false })
@@ -404,7 +404,7 @@ fn a_battery_shoots_what_is_in_reach_and_nothing_further() {
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
         floor: 1,
-        slot: 1,
+        slot: 5,
     })
     .expect("affordable");
     top_up(&mut game, darts);
@@ -479,7 +479,7 @@ fn a_battery_with_nothing_to_shoot_at_still_reloads() {
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
         floor: 1,
-        slot: 1,
+        slot: 5,
     })
     .expect("affordable");
     game.try_send(GameCommand::SetStriding { walking: false })
@@ -576,7 +576,7 @@ fn a_battery_fires_no_faster_than_it_reloads() {
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
         floor: 1,
-        slot: 1,
+        slot: 5,
     })
     .expect("affordable");
     provoke_fully(&mut game);
@@ -729,10 +729,10 @@ fn harvesting_hard_draws_attention_and_walking_quietly_sheds_it() {
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.cutter_arm".into(),
-        floor: 0,
+        floor: 1,
         slot: 6,
     })
-    .expect("room for a second arm on the ground floor");
+    .expect("floor 1 has room for a second arm, and arms reach from there too");
 
     game.step(12_000);
     let provoked = game.state().siege.provocation;
@@ -742,8 +742,8 @@ fn harvesting_hard_draws_attention_and_walking_quietly_sheds_it() {
     );
 
     // Tear both arms out and the attention should bleed off.
-    for slot in [4, 6] {
-        game.try_send(GameCommand::RemoveRoom { floor: 0, slot })
+    for (floor, slot) in [(0, 5), (1, 6)] {
+        game.try_send(GameCommand::RemoveRoom { floor, slot })
             .expect("a cutter arm is removable");
     }
     game.step(12_000);
@@ -1064,7 +1064,7 @@ fn a_creature_whose_target_is_torn_out_from_under_it_finds_another() {
         .panel
         .hp = 0;
     let store_whole = room_hp(&game, top, 1);
-    let sails_whole = room_hp(&game, top, 3);
+    let sails_whole = room_hp(&game, top, 4);
     place_creature(&mut game, leaper, 0);
 
     // Wait until it has its teeth into the nearer of the two rooms.
@@ -1088,7 +1088,7 @@ fn a_creature_whose_target_is_torn_out_from_under_it_finds_another() {
     let mut moved_on = false;
     for _ in 0..600 {
         game.step(1);
-        if room_hp(&game, top, 3) < sails_whole {
+        if room_hp(&game, top, 4) < sails_whole {
             moved_on = true;
             break;
         }
@@ -1526,7 +1526,7 @@ fn a_fed_battery_sees_creatures_off() {
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
         floor: 1,
-        slot: 1,
+        slot: 5,
     })
     .expect("affordable after 200 seconds");
 
@@ -1566,7 +1566,7 @@ fn a_dry_battery_is_as_quiet_as_a_starved_mill() {
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
         floor: 1,
-        slot: 1,
+        slot: 5,
     })
     .expect("affordable");
     provoke_fully(&mut game);
@@ -1590,7 +1590,7 @@ fn a_dry_battery_is_as_quiet_as_a_starved_mill() {
         .floors
         .iter()
         .flat_map(|floor| floor.rooms.iter())
-        .find(|room| room.slot == 1 && room.def == battery_def(&game))
+        .find(|room| room.slot == 5 && room.def == battery_def(&game))
         .expect("the battery is still standing");
     assert!(
         battery.stalled,

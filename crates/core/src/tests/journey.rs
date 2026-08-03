@@ -999,19 +999,20 @@ use crate::fx::Paces;
 use crate::state::{EnemyState, Feature};
 use crate::tests::{item, step_quietly, stock_poles, total_in_flight};
 
-/// Build the one rig the pack ships, on the ground floor.
+/// Build the one rig the pack ships.
 ///
-/// Slot 6 is the only two-wide gap floor 0 has left once the stairs,
-/// the Heartseed and the cutter arm have taken theirs — which is the
-/// shape of the real decision, not a convenience.
+/// Floor 1 slot 4 is the only three-wide gap the opening tower has, and
+/// the rig is three wide — so this is not a convenient corner, it is
+/// the single place the room fits without tearing something out. Which
+/// is the shape of the real decision.
 fn build_rig(game: &mut GameEngine) {
     stock_poles(game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.salvage_rig".into(),
-        floor: 0,
-        slot: 6,
+        floor: 1,
+        slot: 4,
     })
-    .expect("floor 0 slot 6 is clear and a rig reaches the ground");
+    .expect("floor 1 slot 4 is the rig-shaped gap in the opening tower");
 }
 
 /// Stop, and let stride report the stop.

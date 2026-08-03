@@ -138,7 +138,7 @@ fn a_cell_bank_raises_capacity() {
     let placed = game.try_send(GameCommand::PlaceRoom {
         room: "room.cell_bank".into(),
         floor: 3,
-        slot: 5,
+        slot: 1,
     });
     assert!(placed.is_ok(), "{placed:?}");
     game.step(1);
@@ -199,7 +199,7 @@ fn a_burner_turns_bamboo_into_charge() {
     game.try_send(GameCommand::PlaceRoom {
         room: "room.burner".into(),
         floor: 1,
-        slot: 1,
+        slot: 4,
     })
     .expect("affordable");
 
@@ -236,7 +236,7 @@ fn switching_a_room_off_stops_it() {
     game.try_send(GameCommand::PlaceRoom {
         room: "room.burner".into(),
         floor: 1,
-        slot: 1,
+        slot: 4,
     })
     .expect("affordable");
     {
@@ -255,7 +255,7 @@ fn switching_a_room_off_stops_it() {
 
     game.try_send(GameCommand::SetRoomActive {
         floor: 1,
-        slot: 1,
+        slot: 4,
         active: false,
     })
     .expect("the burner is there");
@@ -353,7 +353,7 @@ fn a_powered_room_stalls_without_charge() {
     game.try_send(GameCommand::PlaceRoom {
         room: "room.thornwright".into(),
         floor: 1,
-        slot: 1,
+        slot: 4,
     })
     .expect("affordable");
 
@@ -416,7 +416,7 @@ fn a_burn_consumes_exactly_its_fuel_and_yields_exactly_its_charge() {
     game.try_send(GameCommand::PlaceRoom {
         room: "room.burner".into(),
         floor: 1,
-        slot: 1,
+        slot: 4,
     })
     .expect("affordable");
 

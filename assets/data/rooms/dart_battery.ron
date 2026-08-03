@@ -11,7 +11,12 @@ RoomDef(
     name: "Dart Battery",
     short: "DRT",
     category: Defence,
-    width: 2,
+    // One slot. Deliberately the smallest thing in the pack: defence
+    // competes for floor with the chain that pays for it, and an
+    // emplacement that cost two slots was a decision most towers
+    // declined. Cheap in space, expensive in ammo, is the trade worth
+    // having.
+    width: 1,
     // Same tier as the mill and the burner — a first battery should be
     // an easy, early build, not a late-game investment.
     build_cost: [CostEntryDef(item: "item.poles", amount: 6)],

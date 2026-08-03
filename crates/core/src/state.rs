@@ -180,14 +180,34 @@ impl GameState {
     /// the cutter arm is on the ground and the mill it feeds is two
     /// floors up. Sails go on the roof, where they will keep needing to
     /// be moved every time the tower grows.
+    ///
+    /// The slots are chosen to leave awkward gaps rather than tidy
+    /// ones. Rooms are one, two or three wide, the stairs take slot 0
+    /// off every floor, and what fits beside what is the layout
+    /// question the whole tower pillar rests on — a starting tower that
+    /// packed perfectly would teach the player it never has to be
+    /// thought about.
+    ///
+    /// There is exactly one three-wide gap in the opening tower, on
+    /// floor 1. That is deliberate: the salvage rig is three wide and
+    /// wants a low floor, so a player who decides to work ruins finds
+    /// there is precisely one place for it and has to give that place
+    /// up for something else later. The ground floor has no such gap at
+    /// all — the Heartseed and a cutter arm see to that — so the rig
+    /// competes with the chain for the same scarce low deck.
+    ///
+    /// Nothing sits at slot 7 on any floor. A shaft costs a slot column
+    /// on every floor it spans (`DESIGN.md` pillar 2), and the outboard
+    /// edge is where one naturally goes — a starting tower that blocked
+    /// it would make the first elevator a demolition job.
     fn place_starting_rooms(&mut self, content: &Content) {
         const LAYOUT: [(&str, u8, u8); 6] = [
             ("room.heartseed", 0, 1),
-            ("room.cutter_arm", 0, 4),
-            ("room.storeroom", 1, 3),
-            ("room.cell_bank", 1, 5),
+            ("room.cutter_arm", 0, 5),
+            ("room.storeroom", 1, 2),
+            ("room.cell_bank", 1, 1),
             ("room.mill", 2, 3),
-            ("room.canopy_sails", 3, 3),
+            ("room.canopy_sails", 3, 4),
         ];
         for (room_id, floor, slot) in LAYOUT {
             let Some(idx) = content.room_idx(room_id) else {

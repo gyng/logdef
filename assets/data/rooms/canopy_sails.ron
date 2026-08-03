@@ -8,7 +8,12 @@ RoomDef(
     name: "Canopy Sails",
     short: "SAI",
     category: Energy,
-    width: 2,
+    // Three slots, and roof-only. Power is the widest thing the
+    // tower carries: the roof is the scarcest floor there is, growing
+    // taller shades what is on it, and a sail spread wide enough to
+    // matter is most of a roof. That is the cost of the charge economy
+    // stated in floor space instead of poles.
+    width: 3,
     top_floor_only: true,
     build_cost: [CostEntryDef(item: "item.poles", amount: 6)],
     solar: SolarDef(

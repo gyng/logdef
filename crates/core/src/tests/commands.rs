@@ -258,9 +258,11 @@ fn removing_a_room_clears_the_crew_tasks_that_pointed_at_it() {
 #[test]
 fn removing_nothing_is_an_error_not_a_silent_success() {
     let mut game = engine(12);
+    // Slot 1 rather than 5: the roof's sails are three wide and cover
+    // 4 to 6, so slot 5 has something in it now.
     let error = game
-        .try_send(GameCommand::RemoveRoom { floor: 3, slot: 5 })
-        .expect_err("floor 3 is empty");
+        .try_send(GameCommand::RemoveRoom { floor: 3, slot: 1 })
+        .expect_err("nothing stands on floor 3 slot 1");
     assert!(matches!(error, CommandError::NoRoomThere { .. }));
 }
 

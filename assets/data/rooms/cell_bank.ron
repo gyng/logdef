@@ -8,7 +8,8 @@ RoomDef(
     name: "Cell Bank",
     short: "BNK",
     category: Energy,
-    width: 2,
+    // One slot. A rack of cells stacks upward rather than outward.
+    width: 1,
     build_cost: [CostEntryDef(item: "item.poles", amount: 8)],
     bank: BankDef(
         // A full night's worst case (striding, lights, one continuous

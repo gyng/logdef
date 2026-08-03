@@ -6,6 +6,9 @@ RoomDef(
     name: "Heartseed",
     short: "❤",
     category: Heart,
-    width: 2,
+    // Three slots. It is the tower's reason for walking and the
+    // thing everything else is arranged around, so it should take up
+    // the room a hearth takes up.
+    width: 3,
     unique: true,
 )

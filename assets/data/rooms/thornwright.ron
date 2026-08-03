@@ -8,7 +8,10 @@ RoomDef(
     name: "Thornwright",
     short: "THN",
     category: Production,
-    width: 2,
+    // One slot. A bench, not a mill — small enough to tuck into the
+    // gap a three-wide room leaves behind, which is most of where it
+    // will end up.
+    width: 1,
     build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
     power_draw: 1,
     recipe: RecipeDef(

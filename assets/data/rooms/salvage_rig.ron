@@ -20,7 +20,10 @@ RoomDef(
     name: "Salvage Rig",
     short: "SLV",
     category: Intake,
-    width: 2,
+    // Three slots. A boom long enough to reach into a ruin from the
+    // deck, and a real commitment of a low floor — which is the same
+    // floor the cutter arms want.
+    width: 3,
     // Reaches the ground, like the cutter arm it mirrors.
     max_floor: 1,
     // Priced above a mill (4 poles) and below a dumbwaiter (8): a rig

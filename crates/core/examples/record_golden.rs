@@ -121,12 +121,12 @@ fn main() {
     // script has just spent a stretch of it standing still, and a
     // stopped tower harvests nothing now, so what it could afford
     // before the legs stopped is not what it can afford after.
-    place_when_affordable(&mut engine, "room.thornwright", 4, 3);
+    place_when_affordable(&mut engine, "room.thornwright", 4, 5);
     step_walking(&mut engine, 1800);
 
     // And a demolition, so the stale-task path is covered too.
     engine
-        .try_send(GameCommand::RemoveRoom { floor: 4, slot: 3 })
+        .try_send(GameCommand::RemoveRoom { floor: 4, slot: 5 })
         .expect("the thornwright placed above should still be there");
     step_walking(&mut engine, 900);
 
@@ -148,7 +148,7 @@ fn main() {
     // into the fixture. It also records the one situation in the game
     // where a wave cannot be walked away from, because walking away is
     // what ends the salvage.
-    place_when_affordable(&mut engine, "room.salvage_rig", 1, 1);
+    place_when_affordable(&mut engine, "room.salvage_rig", 1, 4);
     let reach = rig_reach(&engine);
     for _ in 0..40_000 {
         answer_any_fork(&mut engine);

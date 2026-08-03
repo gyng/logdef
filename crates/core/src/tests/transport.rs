@@ -60,7 +60,9 @@ fn a_shaft_column_blocks_its_slot_on_every_floor_it_spans() {
         let blocked = game.state().tower.slot_range_blocked(floor, 7, 1);
         assert!(blocked, "floor {floor} slot 7 should be taken by the shaft");
     }
-    // And a room cannot be dropped on top of it.
+    // And a room cannot be dropped on top of it. Slot 6 with a two-wide
+    // room reaches into 7, which is the column — the overlap is the
+    // point of the placement, not an accident of where there was room.
     let error = game.try_send(GameCommand::PlaceRoom {
         room: "room.storeroom".into(),
         floor: 3,
