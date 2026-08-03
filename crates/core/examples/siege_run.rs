@@ -62,7 +62,7 @@ fn run(plan: Plan) {
     engine.set_speed(SimSpeed::X1);
 
     // A minute to get the chain turning before anyone builds anything.
-    engine.step(1800);
+    step_walking(&mut engine, 1800);
 
     // A shopping list, worked through in order as poles allow. Buying
     // the whole plan at tick 1800 is not something a player could do —
@@ -104,7 +104,7 @@ fn run(plan: Plan) {
 
     for day in 1..=DAYS {
         for _ in 0..12 {
-            engine.step(TICKS_PER_DAY / 12);
+            step_walking(&mut engine, TICKS_PER_DAY / 12);
             let Some(next) = list.last().copied() else {
                 continue;
             };
@@ -214,6 +214,31 @@ fn run(plan: Plan) {
     );
     if state.siege.lost {
         println!("  the Heartseed is gone");
+    }
+}
+
+/// Step, taking whichever branch a fork offers first.
+///
+/// This harness drives the engine with no player, and a tower with an
+/// unanswered fork in front of it stands still indefinitely
+/// (`SYSTEMS.md` §3.9). Left alone it would spend the back half of the
+/// five days parked — and from M3 a parked tower harvests nothing, so
+/// it would report a starved tower's siege curve with total confidence.
+/// The branch taken does not matter here; that a branch is taken does.
+fn step_walking(engine: &mut GameEngine, ticks: u32) {
+    let mut left = ticks;
+    while left > 0 {
+        if engine
+            .state()
+            .world
+            .fork
+            .is_some_and(|fork| fork.answer.is_none())
+        {
+            let _ = engine.try_send(GameCommand::TakeFork { branch: 0 });
+        }
+        let chunk = left.min(300);
+        engine.step(chunk);
+        left -= chunk;
     }
 }
 

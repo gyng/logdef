@@ -194,3 +194,62 @@ fn mill_input_count(game: &crate::engine::GameEngine, item: crate::ids::ItemIdx)
         .map(|stack| stack.count)
         .sum()
 }
+
+#[test]
+fn every_authored_yield_is_a_different_harvest_rate() {
+    // The test above compared canopy against ruin field — the two
+    // extremes — and passed for years while the middle of the range was
+    // collapsed. Intake used to accrue a truncated per-tick *fraction
+    // of an item*: `Fx::ratio(1, 90)` is `Fx(2)` in Q8.8, and
+    // `Fx(2) * 1.40` is also `Fx(2)`, so dense canopy (140%) and open
+    // clearing (100%) harvested at exactly the same rate, as did ruin
+    // field (50%) and drowned street (60%). Four authored kinds behaved
+    // as two, and the flagship contrast of the route being the power
+    // mix (`DESIGN.md` pillar 1) was not in the simulation at all.
+    //
+    // So this walks every terrain in the pack and insists the ordering
+    // by `yield_pct` is the ordering by what comes out of the ground,
+    // with no ties. Any future arithmetic that flattens two bands
+    // together fails here rather than in somebody's play session.
+    // Measured per thousand paces rather than per tick, because the
+    // two are not the same thing and the difference is a real system
+    // rather than noise: a barren band is usually a sunny one, so its
+    // tower banks more charge, walks further, and can out-harvest a
+    // richer band on raw totals. That trade is the design working. What
+    // this test is about is the yield alone, so it divides it out.
+    let content = content();
+    let mut measured: Vec<(i64, i64, &str)> = Vec::new();
+
+    for (i, def) in content.terrain.iter().enumerate() {
+        let kind = crate::ids::TerrainIdx(i as u16);
+        let mut game = engine(201);
+        // Re-forced as it goes: `force_single_band` only rewrites the
+        // bands that exist, and the tower walks into freshly generated
+        // ones within the first thousand paces. Forcing once and
+        // stepping for a minute measures mostly ordinary terrain, which
+        // is why the older test above only ever compared the two
+        // extremes and still passed while the middle was collapsed.
+        for _ in 0..36 {
+            force_single_band(&mut game, kind);
+            game.step(100);
+        }
+        let paces = game.state().world.distance >> crate::fx::FX_SHIFT;
+        assert!(paces > 0, "{} never walked anywhere", def.id);
+        measured.push((
+            content.terrain_runtime[i].yield_pct,
+            game.state().stats.items_harvested as i64 * 1000 / paces,
+            def.id.as_str(),
+        ));
+    }
+
+    measured.sort_by_key(|(yield_pct, _, _)| *yield_pct);
+    for pair in measured.windows(2) {
+        let (poor_pct, poor, poor_id) = pair[0];
+        let (rich_pct, rich, rich_id) = pair[1];
+        assert!(
+            rich > poor,
+            "{rich_id} ({rich_pct}%) harvested {rich} and {poor_id} ({poor_pct}%) \
+             harvested {poor} — two different yields came out the same"
+        );
+    }
+}

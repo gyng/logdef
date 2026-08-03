@@ -21,6 +21,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         .band_at(state.world.distance)
         .map(|band| band.kind);
 
+    let from = state.world.distance;
     state.strode = power::pay_for_stride(state, content);
     if state.strode {
         let step = paces_from_fx(stride_per_tick(content));
@@ -33,6 +34,14 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         cross_fork(state, content);
         cross_region(state, content, sounds);
     }
+
+    // Ground actually covered, for intake to accrue against next tick.
+    // Measured rather than assumed, so the last stride into a fork line
+    // reports the short step it really took. Zero when the legs did not
+    // run, which is the whole of "a stopped tower harvests nothing"
+    // (`SYSTEMS.md` §3.6) — see `GameState::paces_last` for why intake
+    // reads it a tick late instead of stride running earlier.
+    state.paces_last = state.world.distance - from;
 
     // Terrain keeps streaming whether or not the legs are running: the
     // horizon has to already exist when the tower starts moving again.

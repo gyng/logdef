@@ -124,7 +124,9 @@ pub struct Room {
     pub shelves: Vec<Shelf>,
     /// Ticks accumulated toward the current craft.
     pub progress: u32,
-    /// Sub-item intake accumulation, Q8.8.
+    /// Sub-item intake accumulation, Q8.8. Partial work survives a
+    /// stall, and — for a `Terrain` source — survives a stop: a tower
+    /// that halts mid-stalk finishes it when it sets off again.
     pub intake_acc: Fx,
     /// Switched on. Mostly matters for the burner, where "should this
     /// be running right now" is a real decision every night — but any

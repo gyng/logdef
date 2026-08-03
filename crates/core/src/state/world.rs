@@ -308,6 +308,39 @@ impl World {
         self.bands.iter().find(|band| band.contains(at))
     }
 
+    /// The nearest ruin with anything left in it, within `range_paces`
+    /// of where the tower stands.
+    ///
+    /// This is the whole of berthing (`SYSTEMS.md` §3.4). There is no
+    /// `Berth` command and no berthed flag: a tower that has stopped
+    /// with a working rig whose reach covers a ruin is berthing, and
+    /// one that walks on is not. Reach belongs to the rig rather than
+    /// to the world, the way a dart battery's does, so a longer-reaching
+    /// rig is a thing content can author.
+    ///
+    /// Returns an index rather than a reference, because the caller
+    /// draws the ruin down. Ties go to the earlier feature and
+    /// `features` is kept sorted, so two rigs of the same reach always
+    /// pick the same ruin.
+    #[must_use]
+    pub fn ruin_in_reach(&self, range_paces: i64) -> Option<usize> {
+        let reach = paces_from_int(range_paces);
+        let mut best: Option<(usize, Paces)> = None;
+        for (i, feature) in self.features.iter().enumerate() {
+            if feature.salvage <= 0 {
+                continue;
+            }
+            let gap = (feature.at - self.distance).abs();
+            if gap > reach {
+                continue;
+            }
+            if best.is_none_or(|(_, closest)| gap < closest) {
+                best = Some((i, gap));
+            }
+        }
+        best.map(|(i, _)| i)
+    }
+
     /// Yield multiplier, in percent, of the terrain under the tower.
     /// 100 means "as authored"; a barren ruin-field is lower.
     #[must_use]

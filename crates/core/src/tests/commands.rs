@@ -3,7 +3,7 @@
 
 use crate::command::{CommandError, GameCommand};
 use crate::state::SimSpeed;
-use crate::tests::{content, engine, item};
+use crate::tests::{content, engine, item, stock_poles};
 
 #[test]
 fn speed_round_trips() {
@@ -124,8 +124,15 @@ fn the_floor_limit_holds() {
     let max = content.balance.tower.max_floors;
     let mut game = engine(4);
 
-    // Run long enough to bank plenty of poles, building as we go.
-    for _ in 0..400 {
+    // Poles straight onto the shelves, rather than earned. This used to
+    // run the economy for twelve thousand ticks, which worked only
+    // because a parked tower kept harvesting: stacking floors buries
+    // the canopy sails, the tower browns out, and from M3 a tower that
+    // cannot walk cannot harvest either (`SYSTEMS.md` §3.6). Earning
+    // the poles now means never reaching the limit — but the limit is
+    // what this test is about, and that spiral has tests of its own.
+    for _ in 0..max {
+        stock_poles(&mut game, 12);
         game.step(30);
         let _ = game.send(GameCommand::BuildFloor);
         if game.state().tower.floors.len() >= max as usize {

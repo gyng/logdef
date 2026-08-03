@@ -1659,12 +1659,32 @@ fn repair_without_poles_does_not_happen() {
         // something arriving rather than left alone unrepaired.
         state.siege.provocation = 0;
         state.siege.enemies.clear();
-        // Strip the shelves bare and stop anything refilling them.
-        let held = state.stock_of(poles);
-        state.take_stock(poles, held);
+        // Strip every pole in the tower, not only the shelved ones,
+        // and stop anything making more. Emptying the shelves alone
+        // used to be enough; it stopped being enough the moment intake
+        // sped up, because the mill's outbox still held poles a crew
+        // member could shelve during the window — and the test would
+        // then be measuring how fast the chain runs rather than what
+        // repair does without materials.
         for floor in &mut state.tower.floors {
             for room in &mut floor.rooms {
                 room.active = false;
+                for stack in room.inputs.iter_mut().chain(room.outputs.iter_mut()) {
+                    if stack.item == poles {
+                        stack.count = 0;
+                    }
+                }
+                for shelf in &mut room.shelves {
+                    if shelf.item == Some(poles) {
+                        shelf.item = None;
+                        shelf.count = 0;
+                    }
+                }
+            }
+        }
+        for member in &mut state.crew {
+            if member.carrying.is_some_and(|(item, _)| item == poles) {
+                member.carrying = None;
             }
         }
     }

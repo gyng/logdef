@@ -11,18 +11,22 @@ RoomDef(
     build_cost: [CostEntryDef(item: "item.poles", amount: 4)],
     intake: IntakeDef(
         item: "item.bamboo",
-        // Per pace, not per tick. The description above was already
-        // making this claim — per-tick intake meant a parked tower
-        // stripped bamboo out of ground it had already stripped,
-        // indefinitely, which was invisible until M3 gave players three
-        // reasons to stop on purpose (`SYSTEMS.md` §3.6).
+        // 78 paces a stalk — 130 ticks at the shipped stride, a little
+        // slower than the mill's 120 ticks a pole, so one arm very
+        // nearly keeps one mill busy and never outruns it.
         //
-        // 54 paces is exactly the old 90 ticks converted at the tower's
-        // 0.6 paces/tick, so a tower that never stops harvests at
-        // precisely the rate it did before: one stalk per 3 seconds of
-        // walking at ordinary yield, 2.1 s under canopy, 6 s across a
-        // ruin-field.
-        source: Terrain(paces_per_item: 54),
+        // This used to read 54 (90 ticks), and it was never what the
+        // arm actually did. Intake truncated its rate into Q8.8 and ran
+        // at 128 ticks, and the whole M2 economy was measured against
+        // that figure — an arm marginally slower than the mill, so
+        // bamboo never piled up. Fixing the truncation without fixing
+        // this number made the arm 33% faster than the mill could
+        // consume: bamboo claimed every shelf in the storeroom, and
+        // because a shelf holds one kind, poles then had nowhere to go
+        // and the chain stopped with the shelves three-quarters full.
+        // 78 states the rate the game was balanced around instead of
+        // leaving it to a rounding error.
+        source: Terrain(paces_per_item: 78),
         buffer_max: 8,
     ),
 )

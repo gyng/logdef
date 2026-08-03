@@ -200,25 +200,33 @@ Balance(
         // fraction of. Round, so "a third" (canopy leaper) and "half"
         // (root-borer) land on clean gate values.
         provocation_max: 1000,
-        // Three points an item, calibrated against the decay below so
-        // that one cutter arm breaks even and the second one is what
-        // provokes.
+        // 2.4 points an item, calibrated so that one cutter arm in
+        // region 1 breaks even against the decay below and the second
+        // one is what provokes.
         //
-        // The first calibration here assumed an arm's nominal rate (one
-        // stalk per 90 ticks, ~158 a day) and set gain and decay to
-        // roughly cancel at that figure. Measured, a starting tower
-        // strips about 101 a day, because throughput is bounded by
-        // shelf space and crew legs rather than by the arm — and once
-        // the storerooms fill it stops entirely. Against a decay tuned
-        // for the nominal rate the dial could never turn: a two-arm
-        // tower peaked at 14 points and bled back to zero the moment
-        // it jammed.
+        // Was 300, set when a one-arm tower was measured at ~101 items
+        // a day. Two things moved that figure at M3 and both pushed the
+        // same way. Intake used to truncate its rate into Q8.8 and run
+        // the arm at 128 ticks rather than its authored 90; fixing that
+        // meant authoring the arm at the rate it had really been
+        // running (78 paces, 130 ticks — see rooms/cutter_arm.ron), so
+        // the rate itself barely moved. What did move is that the yield
+        // multiplier started working at all: `Fx(2) * 1.40` had been
+        // `Fx(2)`, so dense canopy and open clearing harvested
+        // identically, and region 1's palette is 55% canopy. A
+        // subsistence tower gained about 15% more a day overnight, and
+        // at 300 that was enough to tip it from quiet into climbing —
+        // measured, provocation 221 and 824 per-mille standing by day
+        // five, for a tower that had done nothing but exist.
         //
-        // At three points an item a flowing two-arm tower nets about
-        // +318 a day and draws its first wave inside the first two
-        // minutes; one arm nets about +15, which is noise. Expansion
-        // draws attention; subsistence does not.
-        provocation_per_100_harvested: 300,
+        // At 240 the three-way shape holds and is sharper than it was:
+        // subsistence ends whole with 180 poles banked and never draws a
+        // wave; greedy peaks at 216 provocation, degrades to 860
+        // per-mille and goes pole-broke; answered holds 992 per-mille,
+        // sees off 63 creatures and still banks 83 poles. Defence pays
+        // for itself, plainly. Measured with
+        // `cargo run --release -p understory-core --example siege_run`.
+        provocation_per_100_harvested: 240,
         // The burner run through one full night stretch (~4,750 ticks
         // below night_light_threshold, see the Clock section above, /
         // 100 ticks per burn = ~47 burns) raises provocation by

@@ -40,6 +40,14 @@ impl Patched {
     fn errors(&self) -> Vec<LoadError> {
         Content::load(self).expect_err("the patched pack should not have loaded")
     }
+
+    /// Whether the patch loads cleanly. The counterpart to `errors`,
+    /// for the tests that are about a value being *allowed* — a
+    /// validation rule with no test for what it lets through grows
+    /// stricter than anyone intended.
+    fn loads(&self) -> bool {
+        Content::load(self).is_ok()
+    }
 }
 
 impl DataSource for Patched {
@@ -299,9 +307,13 @@ fn walking_harvests_and_stopping_salvages() {
 
 #[test]
 fn the_cutter_arm_converts_one_for_one_from_the_old_tick_rate() {
-    // §3.6's whole claim: a tower that never stops harvests at exactly
-    // the M2 rate. 54 paces at 0.6 paces/tick is 90 ticks, the rate the
-    // arm shipped with.
+    // §3.6's claim, corrected: a tower that never stops harvests at
+    // exactly the rate M2 was *measured* at. That was never the 90
+    // ticks the arm was authored with — intake truncated it to 128 —
+    // so keeping the authored figure at 54 would have meant shipping a
+    // 42% faster arm under a promise that nothing had changed. 78 paces
+    // at 0.6 paces a tick is 130 ticks, which is that measured rate
+    // written down where a designer can see it.
     let content = content();
     let cutter = content.room_idx("room.cutter_arm").expect("cutter arm");
     let Some(IntakeSource::Terrain { paces_per_item }) = content.room_rt(cutter).intake_source
@@ -309,7 +321,7 @@ fn the_cutter_arm_converts_one_for_one_from_the_old_tick_rate() {
         panic!("the cutter arm draws from the terrain");
     };
     let stride = content.balance.world.stride_paces_per_100_ticks;
-    assert_eq!(paces_per_item * 100 / stride, 90);
+    assert_eq!(paces_per_item * 100 / stride, 130);
 }
 
 #[test]
@@ -518,6 +530,55 @@ fn a_forking_region_with_nothing_to_choose_between_is_a_load_error() {
     assert!(
         reports(&errors, "at least 2 branch archetypes"),
         "expected a branch error, got {errors:?}"
+    );
+}
+
+#[test]
+fn an_intake_rate_too_far_for_fixed_point_is_a_load_error() {
+    // Intake accumulates effort against a threshold, so a slow rate is
+    // simply a large threshold — there is no longer a rate so fine it
+    // rounds away to nothing, which is what this check used to guard.
+    // The remaining cliff is the other end: a threshold past what Q8.8
+    // can hold clamps, and the room then works at the clamp rather than
+    // at what it was authored to. Silently, and forever, which is the
+    // one thing a content pack must never do.
+    let arm = r#"#![enable(implicit_some)]
+        RoomDef(
+            id: "room.distant_arm",
+            name: "Distant Arm",
+            short: "DST",
+            category: Intake,
+            width: 2,
+            intake: IntakeDef(
+                item: "item.bamboo",
+                source: Terrain(paces_per_item: 9000000),
+                buffer_max: 8,
+            ),
+        )"#;
+    let errors = Patched::new("rooms/distant_arm.ron", arm).errors();
+    assert!(
+        reports(&errors, "further than fixed point can carry"),
+        "expected a rate-precision error, got {errors:?}"
+    );
+
+    // And the rate that used to be refused now loads, because it works:
+    // 400 paces an item is slow, not impossible.
+    let slow = r#"#![enable(implicit_some)]
+        RoomDef(
+            id: "room.slow_arm",
+            name: "Slow Arm",
+            short: "SLW",
+            category: Intake,
+            width: 2,
+            intake: IntakeDef(
+                item: "item.bamboo",
+                source: Terrain(paces_per_item: 400),
+                buffer_max: 8,
+            ),
+        )"#;
+    assert!(
+        Patched::new("rooms/slow_arm.ron", slow).loads(),
+        "400 paces an item is slow, not impossible, and should load"
     );
 }
 
@@ -918,5 +979,376 @@ fn standing_at_a_fork_costs_nothing_to_run_the_legs() {
         game.state().power.charge >= before,
         "a tower standing at a fork spent charge on its legs: {before} then {}",
         game.state().power.charge
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Walking, stopping, and berthing
+// ---------------------------------------------------------------------------
+//
+// The four opposed forces of `SYSTEMS.md` §3.6 come down to one binary
+// choice, and two of the four are what this section is about: walking
+// harvests and stopping does not, stopping salvages and walking does
+// not. Everything here goes through the engine — command in, state out
+// — because "is the tower berthed" is not a flag anybody sets, it is a
+// consequence of having stopped somewhere.
+
+use crate::command::GameCommand;
+use crate::engine::GameEngine;
+use crate::fx::Paces;
+use crate::state::{EnemyState, Feature};
+use crate::tests::{item, step_quietly, stock_poles, total_in_flight};
+
+/// Build the one rig the pack ships, on the ground floor.
+///
+/// Slot 6 is the only two-wide gap floor 0 has left once the stairs,
+/// the Heartseed and the cutter arm have taken theirs — which is the
+/// shape of the real decision, not a convenience.
+fn build_rig(game: &mut GameEngine) {
+    stock_poles(game, 20);
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.salvage_rig".into(),
+        floor: 0,
+        slot: 6,
+    })
+    .expect("floor 0 slot 6 is clear and a rig reaches the ground");
+}
+
+/// Stop, and let stride report the stop.
+///
+/// Intake reads `strode` and `paces_last` one tick late (`SYSTEMS.md`
+/// §3.8), so the tick a player halts on is still a walking tick as far
+/// as the arms are concerned. A test that did not allow for that would
+/// be measuring the lag rather than the rule.
+fn halt(game: &mut GameEngine) {
+    game.try_send(GameCommand::SetStriding { walking: false })
+        .expect("halting is always legal");
+    game.step(2);
+}
+
+/// Put a ruin holding `salvage` exactly where the tower stands, and
+/// clear every other feature so nothing else is in reach.
+///
+/// Walking to a real one takes thousands of ticks and lands the tower
+/// on whatever the seed happened to scatter. What a berth *is* has
+/// already been property-tested against the generator above; these
+/// tests are about what the rig does once there is a ruin beside it.
+fn plant_ruin(game: &mut GameEngine, salvage: i64) -> Paces {
+    let state = game.state_mut_for_test();
+    let at = state.world.distance;
+    state.world.features.clear();
+    state.world.features.push(Feature {
+        at,
+        kind: 0,
+        scale: 128,
+        layer: 1,
+        salvage,
+        roused: false,
+    });
+    at
+}
+
+fn ruin(game: &GameEngine, at: Paces) -> &Feature {
+    game.state()
+        .world
+        .features
+        .iter()
+        .find(|feature| feature.at == at)
+        .expect("the planted ruin should still be in the window")
+}
+
+fn warden(game: &GameEngine) -> crate::ids::EnemyIdx {
+    game.content()
+        .enemy_idx("enemy.feral_warden")
+        .expect("the pack ships a warden")
+}
+
+fn wardens_out(game: &GameEngine) -> usize {
+    let warden = warden(game);
+    game.state()
+        .siege
+        .enemies
+        .iter()
+        .filter(|enemy| enemy.def == warden)
+        .count()
+}
+
+#[test]
+fn a_walking_tower_strips_the_terrain_and_a_stopped_one_strips_nothing() {
+    // The change that makes the stop/go decision bite (`SYSTEMS.md`
+    // §3.6). Per-tick intake meant a parked tower stripped bamboo out
+    // of ground it had already stripped, indefinitely.
+    let mut game = engine(9001);
+    step_quietly(&mut game, 600);
+
+    let before = game.state().stats.items_harvested;
+    step_quietly(&mut game, 900);
+    let walked = game.state().stats.items_harvested - before;
+    assert!(walked > 0, "a walking tower harvested nothing at all");
+
+    halt(&mut game);
+    let stopped_from = game.state().stats.items_harvested;
+    step_quietly(&mut game, 900);
+    assert_eq!(
+        game.state().stats.items_harvested,
+        stopped_from,
+        "a parked tower stripped ground it had already walked over"
+    );
+}
+
+#[test]
+fn a_cutter_arm_harvests_at_the_rate_it_was_authored_to() {
+    // 78 paces an item at the shipped stride of 0.6 paces a tick is
+    // 130 ticks an item, and that is what the arm now does — the rate
+    // the M2 economy was actually measured against, stated in the
+    // content instead of arrived at by accident.
+    //
+    // It used to be authored at 54 (90 ticks) and *run* at 128, because
+    // intake accrued a truncated per-tick fraction of an item —
+    // `Fx::ratio(1, 90)` is `Fx(2)` in Q8.8 — so every authored rate
+    // was quietly rounded to whatever 1/256ths could express.
+    //
+    // Pinned as a number, because the number is the point: if it moves
+    // again, that is a balance change and wants the siege rows
+    // re-measured with it.
+    let content = content();
+    let ticks_to_first_stalk = |terrain: &str| -> u32 {
+        let mut game = engine(9002);
+        let kind = content.terrain_idx(terrain).expect("a shipped band");
+        {
+            let state = game.state_mut_for_test();
+            state.crew.clear();
+            for band in &mut state.world.bands {
+                band.kind = kind;
+            }
+        }
+        for tick in 1..=900u32 {
+            game.step(1);
+            if game.state().stats.items_harvested > 0 {
+                return tick;
+            }
+        }
+        panic!("{terrain}: the arm never harvested at all");
+    };
+
+    // Two ticks over the authored 90: one is the lag intake spends
+    // waiting for stride's first report (`GameState::paces_last`), and
+    // one is the tick the crossing itself lands on.
+    assert_eq!(ticks_to_first_stalk("terrain.clearing"), 132);
+    // Rich ground is faster and poor ground slower, in proportion —
+    // 140% of the rate and 50% of it, which is the thread §3.2's region
+    // palettes pull on and which the old arithmetic flattened away.
+    assert_eq!(ticks_to_first_stalk("terrain.canopy"), 95);
+    assert_eq!(ticks_to_first_stalk("terrain.ruin_field"), 263);
+}
+
+#[test]
+fn a_berthed_rig_draws_a_ruin_down_and_nothing_else_does() {
+    let content = content();
+    let scrap = item(&content, "item.scrap");
+    let mut game = engine(9003);
+    build_rig(&mut game);
+    halt(&mut game);
+    let at = plant_ruin(&mut game, 40);
+
+    game.step(600);
+    let taken = 40 - ruin(&game, at).salvage;
+    assert!(taken > 0, "a berthed rig extracted nothing");
+    assert_eq!(
+        total_in_flight(game.state(), scrap),
+        taken,
+        "scrap appeared from somewhere other than the ruin"
+    );
+}
+
+#[test]
+fn a_tower_that_walks_past_a_ruin_leaves_it_alone() {
+    // Range is a property of the rig, and a berth is a stop. A rig on a
+    // walking tower is an ornament.
+    let content = content();
+    let scrap = item(&content, "item.scrap");
+    let mut game = engine(9004);
+    build_rig(&mut game);
+    let at = plant_ruin(&mut game, 40);
+
+    game.step(400);
+    assert_eq!(ruin(&game, at).salvage, 40, "a walking tower salvaged");
+    assert_eq!(total_in_flight(game.state(), scrap), 0);
+    assert_eq!(wardens_out(&game), 0, "walking past woke something");
+}
+
+#[test]
+fn stopping_beside_a_ruin_with_no_rig_does_nothing_at_all() {
+    // There is no `Berth` command, so there is nothing to reject: no
+    // extraction, no rousing, and no error. The empty space in the
+    // build menu is the affordance.
+    let mut game = engine(9005);
+    halt(&mut game);
+    let at = plant_ruin(&mut game, 40);
+
+    game.step(900);
+    assert_eq!(ruin(&game, at).salvage, 40);
+    assert!(!ruin(&game, at).roused);
+    assert_eq!(wardens_out(&game), 0);
+    assert_eq!(game.state().siege.provocation, 0);
+}
+
+#[test]
+fn a_ruin_rouses_its_wardens_once_and_never_again() {
+    // What a ruin has instead of a lock — and `Feature.roused` is what
+    // stops it being a toll charged every time you come back to one you
+    // half emptied.
+    let mut game = engine(9006);
+    build_rig(&mut game);
+    halt(&mut game);
+    let at = plant_ruin(&mut game, 60);
+
+    game.step(300);
+    assert!(ruin(&game, at).roused, "the ruin gave up scrap in silence");
+    let first = wardens_out(&game);
+    assert!(first > 0, "nothing came out of the ruin");
+    // 60 units at 120 threat per 100 buys two of a warden's 30.
+    assert_eq!(first, 2, "the wave was not sized against what it held");
+    let distance = game.state().world.distance;
+    assert!(
+        game.state()
+            .siege
+            .enemies
+            .iter()
+            .all(|enemy| enemy.at > distance),
+        "a warden woke on top of the tower rather than out in the ground"
+    );
+
+    game.state_mut_for_test().siege.enemies.clear();
+    game.step(900);
+    assert_eq!(
+        wardens_out(&game),
+        0,
+        "the same ruin roused a second time; coming back to one is a trap"
+    );
+}
+
+#[test]
+fn a_worked_out_ruin_stops_giving() {
+    let content = content();
+    let scrap = item(&content, "item.scrap");
+    let mut game = engine(9007);
+    build_rig(&mut game);
+    halt(&mut game);
+    let at = plant_ruin(&mut game, 3);
+
+    game.step(1200);
+    assert_eq!(ruin(&game, at).salvage, 0, "a ruin went into overdraft");
+    assert_eq!(total_in_flight(game.state(), scrap), 3);
+}
+
+#[test]
+fn a_rig_with_a_full_outbox_stalls_and_the_ruin_keeps_the_rest() {
+    // The same stall every intake room has (§0.7), and the ruin keeps
+    // whatever it has not given up rather than being drained into
+    // nowhere.
+    let content = content();
+    let scrap = item(&content, "item.scrap");
+    let mut game = engine(9008);
+    build_rig(&mut game);
+    game.state_mut_for_test().crew.clear();
+    halt(&mut game);
+    let at = plant_ruin(&mut game, 40);
+
+    game.step(3000);
+    let held = total_in_flight(game.state(), scrap);
+    let buffer = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .flat_map(|room| room.outputs.iter())
+        .find(|stack| stack.item == scrap)
+        .expect("the rig has an outbox")
+        .max;
+    assert_eq!(held, buffer, "the rig did not stall at a full outbox");
+    assert_eq!(
+        ruin(&game, at).salvage,
+        40 - buffer,
+        "the ruin gave up more than the rig could hold"
+    );
+}
+
+#[test]
+fn salvaging_draws_attention_the_way_cutting_does() {
+    // Closing M2's forward reference in §2.6. A stopped tower harvests
+    // nothing, so anything the dial reads here came out of the ruin.
+    let mut game = engine(9009);
+    build_rig(&mut game);
+    halt(&mut game);
+    plant_ruin(&mut game, 60);
+    game.step(1200);
+    let with_a_rig = game.state().siege.provocation;
+    assert!(
+        with_a_rig > 0,
+        "taking a ruin apart went completely unnoticed"
+    );
+
+    let mut quiet = engine(9009);
+    halt(&mut quiet);
+    plant_ruin(&mut quiet, 60);
+    quiet.step(1200);
+    assert_eq!(
+        quiet.state().siege.provocation,
+        0,
+        "a stopped tower with no rig provoked something"
+    );
+}
+
+#[test]
+fn a_wardens_grip_only_runs_out_once_the_tower_walks_away() {
+    // The best thing in the milestone, asserted (`SYSTEMS.md` §3.4,
+    // `DECISIONS.md` §11). A creature's grip counts down only while the
+    // legs are running, and berthing is the one time the tower cannot
+    // walk away — not because a rule forbids it, but because walking
+    // away is what ends the salvage. No new mechanic produces this.
+    let mut game = engine(9010);
+    build_rig(&mut game);
+    halt(&mut game);
+    plant_ruin(&mut game, 60);
+
+    let warden = warden(&game);
+    let mut arrived = false;
+    for _ in 0..3000 {
+        game.step(1);
+        arrived = game.state().siege.enemies.iter().any(|enemy| {
+            enemy.def == warden && matches!(enemy.state, EnemyState::Attacking { .. })
+        });
+        if arrived {
+            break;
+        }
+    }
+    assert!(arrived, "no warden ever reached the berthed tower");
+
+    let grip = |game: &GameEngine| {
+        game.state()
+            .siege
+            .enemies
+            .iter()
+            .filter(|enemy| enemy.def == warden)
+            .map(|enemy| enemy.cling_left)
+            .max()
+            .unwrap_or(0)
+    };
+    let held = grip(&game);
+    game.step(600);
+    assert_eq!(
+        grip(&game),
+        held,
+        "a warden lost its grip on a tower that was standing still"
+    );
+
+    game.try_send(GameCommand::SetStriding { walking: true })
+        .expect("setting off again is always legal");
+    game.step(600);
+    assert!(
+        grip(&game) < held,
+        "walking away did not start shaking the warden off"
     );
 }

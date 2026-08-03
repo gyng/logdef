@@ -14,6 +14,7 @@ pub mod world;
 use serde::{Deserialize, Serialize};
 
 use crate::content::Content;
+use crate::fx::Paces;
 use crate::ids::{CrewId, ItemIdx, RoomId, ShaftId};
 use crate::rng::RngStreams;
 
@@ -82,6 +83,20 @@ pub struct GameState {
     /// player's intent; a tower that cannot afford the charge still
     /// stands still, and things clinging to it are not shaken off.
     pub strode: bool,
+    /// How far the legs actually carried the tower last tick, in Q8.8
+    /// paces. Zero whenever `strode` is false.
+    ///
+    /// The quantitative sibling of `strode`, and read the same way:
+    /// one tick late. Intake accrues against ground covered
+    /// (`SYSTEMS.md` §3.6) but runs fourth in the tick, while stride
+    /// runs eleventh — and stride's place at the end is not
+    /// negotiable, because tick order *is* charge priority and walking
+    /// is the first thing a tower short of power gives up (§1.6). So
+    /// stride writes this and intake reads it on the following tick.
+    /// The lag is deterministic and imperceptible at 30 Hz; moving
+    /// stride earlier to close it would reorder charge priority and
+    /// invalidate every golden replay.
+    pub paces_last: Paces,
     pub stats: RunStats,
     /// Monotonic allocators. Never reuse an ID, even after removal —
     /// a stale reference should fail to resolve, not silently alias.
@@ -111,6 +126,7 @@ impl GameState {
             crew: Vec::new(),
             walking: true,
             strode: false,
+            paces_last: 0,
             stats: RunStats::default(),
             rng,
             next_room_id: 1,

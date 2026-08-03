@@ -50,6 +50,13 @@ fn measure(label: &str, build_shaft: bool) -> Sample {
     let mut peak_wait = 0;
     let mut brownout_ticks = 0;
     for _ in 0..WINDOW {
+        // Nobody is playing, so nobody answers the fork the route
+        // eventually offers — and a tower with an unanswered fork in
+        // front of it stands still (`SYSTEMS.md` §3.9). The window
+        // stops a few hundred paces short of the first one today, which
+        // is close enough that a band-length roll could make this
+        // harness quietly measure a parked tower.
+        answer_any_fork(&mut game);
         game.step(1);
         let state = game.state();
         if state.crew.iter().any(|member| {
@@ -81,6 +88,18 @@ fn measure(label: &str, build_shaft: bool) -> Sample {
         queued_ticks,
         peak_wait,
         brownout_ticks,
+    }
+}
+
+/// Take the left-hand branch of whatever fork is pending, if any.
+fn answer_any_fork(game: &mut GameEngine) {
+    if game
+        .state()
+        .world
+        .fork
+        .is_some_and(|fork| fork.answer.is_none())
+    {
+        let _ = game.try_send(GameCommand::TakeFork { branch: 0 });
     }
 }
 

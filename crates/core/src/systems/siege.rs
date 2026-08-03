@@ -12,7 +12,7 @@
 //! already moved this tick rather than at where they used to be.
 
 use crate::content::{Approach, Content};
-use crate::fx::{Fx, paces_from_fx, paces_from_int, paces_to_int};
+use crate::fx::{Fx, Paces, paces_from_fx, paces_from_int, paces_to_int};
 use crate::ids::EnemyIdx;
 use crate::state::siege::{DamageTarget, Enemy, EnemyState};
 use crate::state::{GameState, Health};
@@ -123,12 +123,85 @@ fn maybe_spawn_wave(state: &mut GameState, content: &Content, sounds: &mut Vec<S
     // Past that point a wave is never a token single creature.
     let budget = scaled.max(balance.base_threat);
 
-    // Fill the budget with whatever fits, cheapest-first as a fallback
-    // so a small budget still produces something rather than nothing.
+    if fill_budget(state, content, &eligible, budget, None) > 0 {
+        sounds.push(SoundEvent::WaveArrives);
+    }
+}
+
+/// Wake what a ruin has instead of a lock.
+///
+/// Called by `intake` the first time a rig takes anything out of a given
+/// ruin (`SYSTEMS.md` §3.4), in exactly the shape [`provoke_hundredths`]
+/// is called in — the price lands next to the act, so it is impossible
+/// to add a new way of disturbing a ruin and forget to make it wake.
+/// `held` is what the ruin still had at that moment, which is what the
+/// wave is sized against; `at` is where the ruin stands.
+///
+/// **This is the counterweight to the cling rule, and it needs no new
+/// mechanic.** `DECISIONS.md` §11 counts a creature's grip down only
+/// while the tower is actually striding, so walking is a real, free
+/// answer to a wave. A berthed tower has `strode == false` — stopping
+/// is what the berth *is* — so nothing clinging to it loses its grip.
+/// The one place in the game worth stopping for is the one place the
+/// escape hatch is shut, and it shuts itself: no rule forbids walking
+/// away, walking away simply ends the salvage.
+pub fn rouse_wardens(
+    state: &mut GameState,
+    content: &Content,
+    at: Paces,
+    held: i64,
+    sounds: &mut Vec<SoundEvent>,
+) {
+    // Whatever the pack says an ordinary wave may not draw. A creature
+    // excluded from the provocation pool is by definition summoned some
+    // other way, and berthing is the only other way there is.
+    let wardens: Vec<EnemyIdx> = content
+        .enemies
+        .iter()
+        .enumerate()
+        .filter(|(_, def)| !def.wave_eligible && def.threat > 0)
+        .map(|(i, _)| EnemyIdx(i as u16))
+        .collect();
+    let Some(cheapest) = wardens.iter().map(|idx| content.enemy(*idx).threat).min() else {
+        return;
+    };
+
+    let balance = &content.balance.journey;
+    // Floored at a single warden: a ruin with anything in it is guarded,
+    // and one that holds a great deal is guarded in proportion.
+    let budget = (held * balance.warden_threat_per_100_salvage / 100).max(cheapest);
+
+    // Out of the ruin rather than off the usual horizon, offset so
+    // there are a few seconds between the ground moving and the first
+    // bite. Never nearer than that offset even when the ruin is behind
+    // the tower, because a creature that woke level with the tower
+    // would be biting before the player had seen it.
+    let wake = paces_from_int(balance.warden_wake_paces);
+    let from = (at + wake).max(state.world.distance + wake);
+
+    if fill_budget(state, content, &wardens, budget, Some(from)) > 0 {
+        sounds.push(SoundEvent::WaveArrives);
+    }
+}
+
+/// Spend a threat budget on whatever fits, cheapest-first as a fallback
+/// so a small budget still produces something rather than nothing.
+///
+/// `at` is where the creatures appear: `None` scatters them over the
+/// last stretch of the ordinary approach, so a wave trickles in rather
+/// than arriving as a wall; `Some` puts them all in one place, which so
+/// far means all out of the same roused ruin. Returns how many came.
+fn fill_budget(
+    state: &mut GameState,
+    content: &Content,
+    pool: &[EnemyIdx],
+    budget: i64,
+    at: Option<Paces>,
+) -> u32 {
     let mut remaining = budget;
     let mut spawned = 0;
     while remaining > 0 {
-        let affordable: Vec<EnemyIdx> = eligible
+        let affordable: Vec<EnemyIdx> = pool
             .iter()
             .copied()
             .filter(|idx| content.enemy(*idx).threat <= remaining)
@@ -141,7 +214,15 @@ fn maybe_spawn_wave(state: &mut GameState, content: &Content, sounds: &mut Vec<S
         };
         let def = affordable[pick];
         remaining -= content.enemy(def).threat;
-        spawn(state, content, def);
+        let from = match at {
+            Some(at) => at,
+            None => {
+                let ahead = content.balance.siege.spawn_paces_ahead;
+                let jitter = state.rng.sim.range(0, ahead / 4);
+                state.world.distance + paces_from_int(ahead + jitter)
+            }
+        };
+        spawn_at(state, content, def, from);
         spawned += 1;
         // A hard stop, so a pathological budget cannot allocate
         // unboundedly and stall the tick.
@@ -149,18 +230,10 @@ fn maybe_spawn_wave(state: &mut GameState, content: &Content, sounds: &mut Vec<S
             break;
         }
     }
-
-    if spawned > 0 {
-        sounds.push(SoundEvent::WaveArrives);
-    }
+    spawned
 }
 
-fn spawn(state: &mut GameState, content: &Content, def: EnemyIdx) {
-    let balance = &content.balance.siege;
-    // Scatter arrivals over the last stretch of the approach so a wave
-    // trickles in rather than appearing as a wall.
-    let jitter = state.rng.sim.range(0, balance.spawn_paces_ahead / 4);
-    let at = state.world.distance + paces_from_int(balance.spawn_paces_ahead + jitter);
+fn spawn_at(state: &mut GameState, content: &Content, def: EnemyIdx, at: Paces) {
     let id = state.alloc_enemy_id();
     let hp = content.enemy(def).hp;
     state.siege.enemies.push(Enemy {

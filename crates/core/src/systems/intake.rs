@@ -1,30 +1,67 @@
-//! Intake — the tower strips what it walks past.
+//! Intake — the tower strips what it walks past, and what it stops at.
 //!
-//! An intake room accrues at the rate its `IntakeSource` authorises,
-//! scaled by the terrain yield underfoot, into a fixed-point
-//! accumulator. Every time the
-//! accumulator crosses 1.0 it pushes one item into the room's outbox.
+//! Two sources, and they are exact opposites (`SYSTEMS.md` §3.4). A
+//! `Terrain` source accrues against the ground actually covered, so a
+//! stopped tower harvests nothing at all. A `Ruin` source accrues per
+//! tick, and only while the tower is stopped with a ruin inside the
+//! rig's reach. **Walking harvests bamboo; stopping harvests scrap** —
+//! so the stop/go decision is also an intake-mix decision, which is the
+//! cleanest statement of what M3 is for.
+//!
+//! Either way the room accumulates *effort* — Q8.8 paces of ground for
+//! a terrain source, Q8.8 ticks of work for a ruin — and every time
+//! that crosses the effort one item costs, it pushes an item into the
+//! outbox.
+//!
+//! Accumulating effort against a threshold, rather than accumulating a
+//! per-tick fraction of an item, is what makes the yield multiplier
+//! mean anything. See `paces_per_item` for what the old shape cost.
 //!
 //! A full outbox stalls the accumulator rather than discarding the
 //! overflow: the arm visibly stops, and nothing vanishes silently. That
 //! stall is the feedback — the room goes quiet because nobody is
-//! collecting from it.
+//! collecting from it. A stalled rig leaves the ruin whatever it has
+//! not given up.
 
 use crate::content::{Content, IntakeSource};
-use crate::fx::{FX_ONE, Fx};
+use crate::fx::Fx;
 use crate::state::GameState;
 
 use super::SoundEvent;
 
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
-    let yield_mul = Fx::ratio(state.world.current_yield_pct(content) as i32, 100);
+    let yield_pct = state.world.current_yield_pct(content);
     let tick = state.tick;
-    let mut harvested = 0u64;
 
-    for floor in &mut state.tower.floors {
+    // Both of these are one tick old, deliberately. Intake runs fourth
+    // and stride runs eleventh, because tick order *is* charge priority
+    // and walking is the first thing a tower short of power gives up
+    // (`SYSTEMS.md` §3.8), so intake cannot know how far the tower has
+    // moved on the tick it is running in. `paces_last` is the
+    // quantitative sibling of `strode`, which siege's cling logic has
+    // been reading one tick late since M2. What must not happen is
+    // someone moving stride earlier to close the lag: that reorders
+    // charge priority and invalidates every golden replay, to fix
+    // something nobody can perceive at 30 Hz.
+    let paces = state.paces_last;
+    // Berthing is implicit — there is no `Berth` command. A tower that
+    // is not walking is berthed at whatever happens to be in reach, and
+    // one with nothing in reach is simply stopped. The same flag is what
+    // siege reads to decide whether anything clinging to the tower loses
+    // its grip, which is not a coincidence: see `siege::rouse_wardens`.
+    let berthed = !state.strode;
+
+    let mut harvested = 0i64;
+    let mut salvaged = 0i64;
+
+    // The floors come out of the tower for the loop: extracting from a
+    // ruin writes to the world and wakes what lives in it, and neither
+    // is reachable through a borrow of the floors.
+    let mut floors = std::mem::take(&mut state.tower.floors);
+    for floor in &mut floors {
         for room in &mut floor.rooms {
             let rt = content.room_rt(room.def);
-            let Some(item) = rt.intake_item else {
+            let (Some(item), Some(source)) = (rt.intake_item, rt.intake_source) else {
                 continue;
             };
             let Some(slot) = room.outputs.iter().position(|s| s.item == item) else {
@@ -43,42 +80,104 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                 continue;
             }
 
-            // The per-pace accrual `SYSTEMS.md` §3.6 specifies is not
-            // wired yet — that needs `paces_last`, written by stride.
-            // Until it is, a Terrain source accrues per tick at exactly
-            // the equivalent of its authored pace rate, which is the
-            // same one-for-one conversion §3.6 uses: at 0.6 paces/tick,
-            // 54 paces an item is 90 ticks an item. Behaviour is
-            // unchanged for a tower that never stops, which is the
-            // whole point of that conversion.
-            let Some(source) = rt.intake_source else {
-                continue;
-            };
-            let ticks_per_item = match source {
+            match source {
                 IntakeSource::Terrain { paces_per_item } => {
-                    paces_per_item * 100 / content.balance.world.stride_paces_per_100_ticks.max(1)
+                    // Credit the ground actually covered, and spend it
+                    // against what an item costs in this band. A stopped
+                    // tower adds nothing because `paces_last` is zero —
+                    // no special case says so, which is the whole point
+                    // of measuring the ground rather than the clock.
+                    let needed = terrain_effort(paces_per_item, yield_pct);
+                    room.intake_acc += Fx(i32::try_from(paces).unwrap_or(i32::MAX));
+                    while room.intake_acc >= needed && room.outputs[slot].deposit(1) == 1 {
+                        room.intake_acc -= needed;
+                        harvested += 1;
+                        sounds.push(SoundEvent::Harvest);
+                    }
                 }
-                // Berthing is not built, so a ruin source draws nothing
-                // rather than quietly drawing per tick everywhere.
-                IntakeSource::Ruin { .. } => continue,
-            };
 
-            let base = Fx::ratio(1, ticks_per_item.max(1) as i32);
-            room.intake_acc += base * yield_mul;
+                IntakeSource::Ruin {
+                    ticks_per_item,
+                    range_paces,
+                } => {
+                    if !berthed {
+                        continue;
+                    }
+                    let Some(ruin) = state.world.ruin_in_reach(range_paces) else {
+                        continue;
+                    };
+                    // One tick of work, and never scaled by the band's
+                    // yield: a rig is not drawing from the terrain, and
+                    // what is inside a ruin is not growing.
+                    let needed = ruin_effort(ticks_per_item);
+                    room.intake_acc += Fx::ONE;
+                    while room.intake_acc >= needed {
+                        let held = state.world.features[ruin].salvage;
+                        if held <= 0 || room.outputs[slot].deposit(1) != 1 {
+                            break;
+                        }
+                        room.intake_acc -= needed;
+                        state.world.features[ruin].salvage = held - 1;
+                        salvaged += 1;
+                        sounds.push(SoundEvent::Harvest);
 
-            while room.intake_acc.0 >= FX_ONE && room.outputs[slot].deposit(1) == 1 {
-                room.intake_acc -= Fx::ONE;
-                harvested += 1;
-                sounds.push(SoundEvent::Harvest);
+                        if !state.world.features[ruin].roused {
+                            state.world.features[ruin].roused = true;
+                            let at = state.world.features[ruin].at;
+                            super::siege::rouse_wardens(state, content, at, held, sounds);
+                        }
+                    }
+                }
             }
         }
     }
+    state.tower.floors = floors;
 
-    state.stats.items_harvested += harvested;
+    state.stats.items_harvested += (harvested + salvaged) as u64;
 
-    // Stripping the terrain is noticed. The cost lands next to the act
-    // rather than in a separate bookkeeping pass, so it is impossible
-    // to add a new way of harvesting and forget to make it provoking.
-    let per_100 = content.balance.siege.provocation_per_100_harvested;
-    super::siege::provoke_hundredths(state, content, harvested as i64 * per_100);
+    // Stripping the terrain is noticed, and so is taking a ruin apart.
+    // Both costs land next to the act rather than in a separate
+    // bookkeeping pass, so it is impossible to add a new way of pulling
+    // things out of the world and forget to make it provoking.
+    let balance = &content.balance.siege;
+    let noise = harvested * balance.provocation_per_100_harvested
+        + salvaged * balance.provocation_per_100_salvaged;
+    super::siege::provoke_hundredths(state, content, noise);
+}
+
+/// Ground one item costs in a band of this yield, in Q8.8 paces.
+///
+/// Richer ground costs fewer paces an item, which is the direction that
+/// makes `yield_pct` read the way a designer expects.
+///
+/// **This is the arithmetic that used to be wrong, and it mattered more
+/// than it looks.** Intake accrued a per-tick *fraction of an item*
+/// instead: `Fx::ratio(1, 90)`, which in Q8.8 is `Fx(2)` — one item per
+/// 128 ticks rather than the authored 90, a 42% shortfall that
+/// `BALANCE.md` had put down to shelf space and crew legs. Worse,
+/// scaling that truncated fraction was very nearly a no-op:
+/// `Fx(2) * 1.40` is `Fx(2)`, so dense canopy and open clearing
+/// harvested at *identical* rates, and ruin field and drowned street
+/// collapsed together too. Four authored terrain kinds behaved as two,
+/// and the flagship contrast of the route being the power mix
+/// (`DESIGN.md` pillar 1) did not exist in the simulation at all.
+///
+/// Accumulating effort against a threshold keeps the precision where it
+/// is needed: the threshold is a large number, so its single division
+/// rounds by about a thousandth of a pace, and the per-tick credit is
+/// exact because `paces_last` is already Q8.8.
+#[must_use]
+pub fn terrain_effort(paces_per_item: i64, yield_pct: i64) -> Fx {
+    let paces = crate::fx::paces_from_int(paces_per_item.max(1));
+    let scaled = paces * 100 / yield_pct.max(1);
+    // One pace an item is the floor: a room that cost less than that to
+    // run would strip a band bare in a handful of ticks.
+    let effort = Fx(i32::try_from(scaled).unwrap_or(i32::MAX));
+    if effort < Fx::ONE { Fx::ONE } else { effort }
+}
+
+/// Work one item of salvage costs, in Q8.8 ticks.
+#[must_use]
+pub fn ruin_effort(ticks_per_item: u32) -> Fx {
+    Fx::from_int(i32::try_from(ticks_per_item).unwrap_or(i32::MAX).max(1))
 }

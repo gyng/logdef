@@ -21,9 +21,13 @@ use ron::de::from_bytes;
 use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh3::Xxh3;
 
+use crate::fx::Fx;
+// Validation asks the two intake systems what a rate comes out as,
+// rather than restating their arithmetic and letting the two drift.
 use crate::ids::{
     BranchIdx, DaypartIdx, EnemyIdx, ItemIdx, RegionIdx, RoomIdx, ShaftIdx, TerrainIdx,
 };
+use crate::systems::intake;
 
 static EMBEDDED_DATA: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../assets/data");
 
@@ -1354,11 +1358,39 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
                     message: "an intake room needs somewhere to put what it takes".into(),
                 });
             }
+            // A rate has to be positive, and it also has to survive
+            // Q8.8. Intake accrues a fraction of an item per tick, and
+            // a fraction finer than 1/256 truncates to nothing — so a
+            // rate slow enough to round away is a room that harvests
+            // literally never, silently, forever. That is the failure
+            // `Power::buy_block` was written to avoid, and this is the
+            // version of it a designer can walk into by typing a bigger
+            // number. Catch it at load, where a broken pack is a build
+            // error (`AGENTS.md` §IV), rather than in play.
             match intake.source {
                 IntakeSource::Terrain { paces_per_item } if paces_per_item <= 0 => {
                     errors.push(LoadError {
                         path: path.clone(),
                         message: "intake paces_per_item must be positive".into(),
+                    });
+                }
+                // The old cliff here was a rate so slow it rounded to
+                // zero and harvested nothing, silently and forever.
+                // Intake accumulates effort against a threshold now, so
+                // a slow rate is just a large threshold and there is no
+                // rounding to fall off. What remains is the far end of
+                // the same axis: a threshold too large for Q8.8 clamps,
+                // and the room would then work at whatever the clamp
+                // happens to be rather than at what it was authored to.
+                IntakeSource::Terrain { paces_per_item }
+                    if intake::terrain_effort(paces_per_item, 100) >= Fx(i32::MAX) =>
+                {
+                    errors.push(LoadError {
+                        path: path.clone(),
+                        message: format!(
+                            "{paces_per_item} paces an item is further than fixed point can \
+                             carry, so the room would not harvest at the rate it asks for"
+                        ),
                     });
                 }
                 IntakeSource::Ruin {
@@ -1368,6 +1400,17 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
                     errors.push(LoadError {
                         path: path.clone(),
                         message: "a ruin intake needs a positive rate and a reach".into(),
+                    });
+                }
+                IntakeSource::Ruin { ticks_per_item, .. }
+                    if intake::ruin_effort(ticks_per_item) >= Fx(i32::MAX) =>
+                {
+                    errors.push(LoadError {
+                        path: path.clone(),
+                        message: format!(
+                            "{ticks_per_item} ticks an item is longer than fixed point can \
+                             carry, so the room would not extract at the rate it asks for"
+                        ),
                     });
                 }
                 _ => {}
