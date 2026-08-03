@@ -1938,3 +1938,147 @@ fn the_streaming_window_stays_the_same_size_however_far_the_tower_walks() {
         "the band window grew to {widest}, so it is not a window"
     );
 }
+
+#[test]
+fn a_fork_that_would_land_on_the_enclave_is_moved_along() {
+    // `fork_edge_margin_paces` keeps a decision from competing with a
+    // boundary or a berth for the same stretch of horizon. Nothing in
+    // the shipped pack triggers it — region 2's enclave sits 8,000 in
+    // and its first fork 15,000 in, which clears the 5,000 margin — so
+    // the guard has never once run in anger, and mutation testing found
+    // every comparison in it alive.
+    //
+    // Content changes. A pack where a fork *does* land on the enclave
+    // is one edit away, and the failure would be two things happening
+    // at the same place with no error anywhere. So this puts the
+    // enclave exactly on the first fork and insists the fork moves.
+    let region = r#"#![enable(implicit_some)]
+        RegionDef(
+            id: "region.drowned_city",
+            name: "The Drowned City",
+            order: 1,
+            length_min_paces: 40000,
+            length_max_paces: 40000,
+            ruin_richness_min_pct: 100,
+            ruin_richness_max_pct: 100,
+            palette: [
+                TerrainWeight(terrain: "terrain.drowned_street", weight: 40),
+                TerrainWeight(terrain: "terrain.ruin_field", weight: 35),
+                TerrainWeight(terrain: "terrain.clearing", weight: 25),
+            ],
+            threat_pct: 150,
+            fork_interval_paces: 10000,
+            branches: [
+                BranchDef(
+                    id: "branch.flooded_boulevard",
+                    name: "Flooded Boulevard",
+                    length_paces: 6000,
+                    palette: [
+                        TerrainWeight(terrain: "terrain.drowned_street", weight: 60),
+                        TerrainWeight(terrain: "terrain.ruin_field", weight: 25),
+                        TerrainWeight(terrain: "terrain.clearing", weight: 15),
+                    ],
+                    threat_pct: 100,
+                ),
+                BranchDef(
+                    id: "branch.green_terraces",
+                    name: "Green Terraces",
+                    length_paces: 6000,
+                    palette: [
+                        TerrainWeight(terrain: "terrain.canopy", weight: 50),
+                        TerrainWeight(terrain: "terrain.clearing", weight: 25),
+                        TerrainWeight(terrain: "terrain.drowned_street", weight: 25),
+                    ],
+                    threat_pct: 80,
+                ),
+            ],
+            enclave: EnclaveDef(
+                id: "enclave.high_water",
+                name: "High Water",
+                at_paces: 10000,
+                offers: [
+                    OfferDef(
+                        give: CostEntryDef(item: "item.scrap", amount: 4),
+                        take: CostEntryDef(item: "item.poles", amount: 3),
+                        stock: 20,
+                    ),
+                ],
+                recruits: 1,
+                recruit_cost: [CostEntryDef(item: "item.poles", amount: 30)],
+            ),
+        )"#;
+
+    let patched = Patched::new("regions/drowned_city.ron", region);
+    let content = std::sync::Arc::new(
+        Content::load(&patched).expect("the patched pack is legal, just awkwardly placed"),
+    );
+    let margin = paces_from_int(content.balance.journey.fork_edge_margin_paces);
+
+    let mut streams = RngStreams::new(77);
+    let mut world = World::new(&mut streams.world, &content);
+    let city = RegionIdx(1);
+    let city_start = world.region_start_of(city);
+    let berth = city_start + paces_from_int(10_000);
+
+    // Walk into the drowned city and past its far side, answering
+    // everything, and check no fork ever crowds the settlement.
+    world.distance = city_start;
+    world.enter_region(&content, city);
+    let mut seen = 0;
+    for _ in 0..200 {
+        world.distance += paces_from_int(400);
+        if let Some(fork) = world.fork {
+            assert!(
+                (fork.at - berth).abs() >= margin,
+                "a fork landed {} paces from the settlement, inside the {} margin",
+                ((fork.at - berth).abs()) >> FX_SHIFT,
+                content.balance.journey.fork_edge_margin_paces
+            );
+            seen += 1;
+            world.answer_fork(&content, 0);
+        }
+        world.generate_ahead(&mut streams.world, &content);
+    }
+    assert!(
+        seen > 0,
+        "the region never forked at all, so nothing was skipped past — the test proves nothing"
+    );
+}
+
+#[test]
+fn every_region_that_says_it_forks_actually_does() {
+    // `schedule_first_fork` is one addition, and an addition that went
+    // wrong would not fail loudly: a region would simply never split,
+    // and the only sign would be a run that felt oddly featureless.
+    // Region 2 is the one this would go unnoticed in, since almost
+    // nothing routinely plays that far.
+    let content = content();
+    for (i, def) in content.regions.iter().enumerate() {
+        if def.fork_interval_paces <= 0 {
+            continue;
+        }
+        let region = RegionIdx(i as u16);
+        let mut streams = RngStreams::new(500 + i as u64);
+        let mut world = World::new(&mut streams.world, &content);
+        world.distance = world.region_start_of(region);
+        world.enter_region(&content, region);
+
+        let mut forked = false;
+        for _ in 0..300 {
+            world.distance += paces_from_int(400);
+            if world.fork.is_some() {
+                forked = true;
+                world.answer_fork(&content, 0);
+            }
+            world.generate_ahead(&mut streams.world, &content);
+            if world.region_at(world.distance) != region {
+                break;
+            }
+        }
+        assert!(
+            forked,
+            "{} authors a {}-pace fork interval and never split",
+            def.id, def.fork_interval_paces
+        );
+    }
+}
