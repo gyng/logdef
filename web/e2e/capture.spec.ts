@@ -87,6 +87,27 @@ async function arm(page: Page): Promise<void> {
 }
 
 /**
+ * Where the run has got to, on the console.
+ *
+ * A screenshot harness that has silently walked off the end of the
+ * world takes perfectly good pictures of nothing in particular, so
+ * every phase reports the tick, the distance, the region and the halt
+ * it finished at. Cheap, and it is what turns "the still is wrong" into
+ * "the still is of tick 190,000".
+ */
+async function where(page: Page, label: string): Promise<void> {
+  const at = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const view = hooks.view();
+    const region = hooks.catalog().regions[view.journey.region]?.name ?? "?";
+    return `tick ${view.tick}, ${Math.round(view.world.distance)} paces, ${region} ${Math.round(
+      view.journey.region_permille / 10,
+    )}%, ${view.journey.halt}, standing ${Math.round(view.siege.integrity_permille / 10)}%`;
+  });
+  console.log(`${label}: ${at}`);
+}
+
+/**
  * Step until a wave is `within` paces of the tower in daylight, and
  * stop it there. Reports what was in frame when it stopped.
  *
@@ -207,6 +228,10 @@ test("capture stills", async ({ page }) => {
     ["room.storeroom", 3, 5],
     ["room.thornwright", 3, 1],
     ["room.dart_battery", 1, 1],
+    // Built here rather than next to the ruin stills below, because by
+    // then the tower is deep enough into the journey that the arrival
+    // overlay can be up, and an overlay eats the click.
+    ["room.salvage_rig", 0, 6],
   ] as const) {
     await page.getByTestId(`build-${room}`).click();
     const spot = await page.evaluate(([f, s]) => window.__understory!.slotPoint(f, s), [
@@ -256,7 +281,7 @@ test("capture stills", async ({ page }) => {
   // seventy thousand ticks and photograph an empty jungle.
   const standing = await page.evaluate(() => {
     const hooks = window.__understory!;
-    let budget = 200_000;
+    let budget = 40_000;
     while (budget > 0) {
       const view = hooks.view();
       const daylight = view.clock.sun_pct > 40;
@@ -275,23 +300,98 @@ test("capture stills", async ({ page }) => {
   });
   await page.waitForTimeout(400);
   await page.screenshot({ path: "capture/tower-siege.png" });
+  await where(page, "after the siege stills");
 
   // ── M3 ────────────────────────────────────────────────────────────
   //
   // Left paused throughout: every one of these is a question about a
   // specific moment, and the render loop would have walked past it in
   // the time a screenshot takes.
+  //
+  // Every budget below is in ticks and every loop stops on arrival.
+  // A journey is 86,000–114,000 paces end to end, which is under
+  // 200,000 ticks — so a loop with a 200,000-tick budget and no
+  // arrival guard does not fail, it silently photographs the far edge
+  // of the world instead of whatever it was looking for. That is how
+  // the first run of this file ended.
 
-  // The split, seen coming. §3.11's first open question is whether a
-  // player notices it in time, and the answer to that is a picture, not
-  // a paragraph.
-  const sightedFork = await page.evaluate(() => {
+  // Ruins, before anything has been taken out of them: the strip has to
+  // say which ones are worth the stop.
+  const berth = await page.evaluate(() => {
     const hooks = window.__understory!;
-    let budget = 200_000;
+    hooks.send({ SetStriding: { walking: true } });
+    let budget = 60_000;
     while (budget > 0) {
       const view = hooks.view();
+      if (view.journey.arrived) break;
+      const rich = view.world.features.filter((f) => f.salvage > 0);
+      const near = rich.filter((f) => Math.abs(f.at - view.world.distance) <= 35);
+      if (near.length > 0 && view.clock.sun_pct > 40) {
+        hooks.send({ SetStriding: { walking: false } });
+        hooks.step(2);
+        return rich.map((f) => f.salvage).join("/");
+      }
+      const ahead = rich.map((f) => f.at - view.world.distance).filter((gap) => gap > 20);
+      const nearest = ahead.length > 0 ? Math.min(...ahead) : null;
+      const stride = nearest === null ? 200 : Math.max(4, Math.round(((nearest - 25) / 0.6) * 0.5));
+      window.__capture!.answer();
+      hooks.step(stride);
+      budget -= stride;
+    }
+    return "none in reach";
+  });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: "capture/ruin-rich.png" });
+  // The same frame is a tower the player stopped: still legs, planted
+  // feet, and nothing waiting on an answer. It has to be tellable from
+  // the two fork stills below.
+  await page.screenshot({ path: "capture/halt-stopped.png" });
+
+  // Now strip one, and photograph it next to the ones still holding
+  // something. This is the whole read: a lean drowned city and a
+  // generous one are the same ruins in the same places with different
+  // amounts in them (`SYSTEMS.md` §3.4).
+  const stripped = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const start = hooks.view();
+    const gap = (f: { at: number }) => Math.abs(f.at - start.world.distance);
+    const target = start.world.features
+      .filter((f) => f.salvage > 0)
+      .reduce<(typeof start.world.features)[number] | null>(
+        (best, f) => (best === null || gap(f) < gap(best) ? f : best),
+        null,
+      );
+    if (!target) return "nothing in reach";
+    let budget = 20_000;
+    while (budget > 0) {
+      const here = hooks
+        .view()
+        .world.features.find((f) => Math.abs(f.at - target.at) < 0.01 && f.layer === target.layer);
+      if (!here || here.salvage <= 0) break;
+      hooks.step(60);
+      budget -= 60;
+    }
+    const view = hooks.view();
+    return `${target.salvage} held; left standing near the tower: ${view.world.features
+      .filter((f) => Math.abs(f.at - view.world.distance) < 120)
+      .map((f) => f.salvage)
+      .join("/")}`;
+  });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: "capture/ruin-stripped.png" });
+  await where(page, "after the ruin stills");
+
+  // The split, seen coming. §3.11's first open question is whether a
+  // player notices it in time, and the answer to that is a picture.
+  const sightedFork = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    hooks.send({ SetStriding: { walking: true } });
+    let budget = 60_000;
+    while (budget > 0) {
+      const view = hooks.view();
+      if (view.journey.arrived) break;
       const fork = view.journey.fork;
-      if (fork && fork.answer === null && fork.ahead <= 300 && view.clock.sun_pct > 40) {
+      if (fork && fork.answer === null && fork.ahead <= 260 && view.clock.sun_pct > 40) {
         return `${Math.round(fork.ahead)}p out`;
       }
       const stride = fork && fork.answer === null ? 30 : 240;
@@ -307,7 +407,7 @@ test("capture stills", async ({ page }) => {
   // as a frozen game.
   await page.evaluate(() => {
     const hooks = window.__understory!;
-    let budget = 20_000;
+    let budget = 4_000;
     while (budget > 0 && hooks.view().journey.halt !== "fork") {
       hooks.step(20);
       budget -= 20;
@@ -322,84 +422,137 @@ test("capture stills", async ({ page }) => {
   await page.waitForTimeout(300);
   await page.screenshot({ path: "capture/fork-taken.png" });
 
-  // A tower the player stopped. Same silhouette, same still legs, and
-  // it has to be tellable from the two above.
-  await page.evaluate(() => {
+  // Wanting to walk and not being able to afford it. Forced rather than
+  // waited for — shut the sails at dusk and keep the legs asking, which
+  // is the same corner a player backs into by building one bank too few
+  // (`SYSTEMS.md` §3.6).
+  const brownout = await page.evaluate(() => {
     const hooks = window.__understory!;
-    window.__capture!.walk(1200, 120);
-    hooks.send({ SetStriding: { walking: false } });
-    hooks.step(30);
+    const catalog = hooks.catalog();
+    const solar = catalog.rooms.findIndex((room) => room.solar);
+    const view = hooks.view();
+    for (const floor of view.tower.floors) {
+      for (const room of floor.rooms) {
+        if (room.def === solar) {
+          hooks.send({
+            SetRoomActive: { floor: floor.index, slot: room.slot, active: false },
+          });
+        }
+      }
+    }
+    hooks.send({ SetStriding: { walking: true } });
+    let budget = 40_000;
+    while (budget > 0) {
+      const now = hooks.view();
+      if (now.journey.halt === "brownout") return `charge ${now.power.charge}`;
+      if (now.journey.arrived) break;
+      window.__capture!.answer();
+      hooks.step(30);
+      budget -= 30;
+    }
+    return "never ran dry";
   });
   await page.waitForTimeout(300);
-  await page.screenshot({ path: "capture/halt-stopped.png" });
+  await page.screenshot({ path: "capture/halt-brownout.png" });
 
-  // Ruins, before anything has been taken out of them: the strip should
-  // say which ones are worth the stop.
-  const berth = await page.evaluate(() => {
+  // Sails back on, or the rest of the journey is spent in the dark.
+  await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const catalog = hooks.catalog();
+    const solar = catalog.rooms.findIndex((room) => room.solar);
+    const view = hooks.view();
+    for (const floor of view.tower.floors) {
+      for (const room of floor.rooms) {
+        if (room.def === solar) {
+          hooks.send({ SetRoomActive: { floor: floor.index, slot: room.slot, active: true } });
+        }
+      }
+    }
+  });
+  await where(page, "after the halt stills");
+
+  // The enclave. Its position never crosses the bridge — `at_enclave`
+  // is the only signal there is, and it is false while the legs are
+  // running — so the only way to find it is to stop and ask. A player
+  // has exactly the same problem, which is the gap this harness is
+  // documenting as much as working around.
+  const enclave = await page.evaluate(() => {
     const hooks = window.__understory!;
     hooks.send({ SetStriding: { walking: true } });
-    let budget = 200_000;
+    // Region 2 is 34,000–46,000 paces long and the enclave sits 8,000
+    // into it, so it is somewhere past 170 per-mille. Nothing to find
+    // before then.
+    let budget = 260_000;
     while (budget > 0) {
       const view = hooks.view();
-      const rich = view.world.features.filter((f) => f.salvage > 0);
-      const near = rich.filter((f) => Math.abs(f.at - view.world.distance) <= 35);
-      if (near.length > 0 && view.clock.sun_pct > 40) {
+      if (view.journey.arrived) return "walked past it";
+      const close = view.journey.region >= 1 && view.journey.region_permille >= 150;
+      if (close) {
         hooks.send({ SetStriding: { walking: false } });
-        return rich.map((f) => f.salvage).join("/");
+        hooks.step(2);
+        if (hooks.view().journey.at_enclave) return "berthed";
+        hooks.send({ SetStriding: { walking: true } });
       }
-      const ahead = rich.map((f) => f.at - view.world.distance).filter((gap) => gap > 20);
-      const nearest = ahead.length > 0 ? Math.min(...ahead) : null;
-      const stride = nearest === null ? 200 : Math.max(4, Math.round(((nearest - 25) / 0.6) * 0.5));
       window.__capture!.answer();
+      // 36 paces a check inside the 160-pace berth window, so it cannot
+      // be stepped over.
+      const stride = close ? 60 : 600;
       hooks.step(stride);
       budget -= stride;
     }
-    return "none in reach";
+    return "never got there";
+  });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: "capture/enclave.png" });
+
+  // And the two things the board can actually do.
+  const traded = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const before = hooks.view();
+    const stock = (item: number) => before.stock.find((entry) => entry.item === item)?.count ?? 0;
+    const trade = hooks.send({ Trade: { offer: 0 } });
+    const hire = hooks.send("Recruit");
+    hooks.step(2);
+    const after = hooks.view();
+    const moved = after.stock
+      .filter((entry) => entry.count !== stock(entry.item))
+      .map(
+        (entry) =>
+          `${hooks.catalog().items[entry.item]?.id ?? "?"} ${entry.count - stock(entry.item)}`,
+      )
+      .join(", ");
+    return `trade ${JSON.stringify(trade)}, recruit ${JSON.stringify(hire)}, crew ${after.crew.length}, shelves moved: ${moved || "nothing"}`;
   });
   await page.waitForTimeout(300);
-  await page.screenshot({ path: "capture/ruin-rich.png" });
+  await page.screenshot({ path: "capture/enclave-after.png" });
+  await where(page, "after the enclave");
 
-  // Now strip one, and photograph it next to the ones still holding
-  // something. This is the whole read: a lean drowned city and a
-  // generous one are the same ruins in the same places with different
-  // amounts in them (`SYSTEMS.md` §3.4).
-  await page.getByTestId("build-room.salvage_rig").click();
-  const rigPoint = await page.evaluate(() => window.__capture!.freeSlot(0, 1));
-  if (rigPoint) await page.mouse.click(rigPoint.x, rigPoint.y);
-
-  const stripped = await page.evaluate(() => {
+  // The far edge. Standing still here is the run being over rather than
+  // a decision pending, and it has to read that way.
+  const arrival = await page.evaluate(() => {
     const hooks = window.__understory!;
-    const start = hooks.view();
-    const gap = (f: { at: number }) => Math.abs(f.at - start.world.distance);
-    const target = start.world.features
-      .filter((f) => f.salvage > 0)
-      .reduce<(typeof start.world.features)[number] | null>(
-        (best, f) => (best === null || gap(f) < gap(best) ? f : best),
-        null,
-      );
-    if (!target) return "nothing in reach";
-    let budget = 40_000;
-    while (budget > 0) {
-      const here = hooks
-        .view()
-        .world.features.find((f) => Math.abs(f.at - target.at) < 0.01 && f.layer === target.layer);
-      if (!here || here.salvage <= 0) break;
-      hooks.step(60);
-      budget -= 60;
+    hooks.send({ SetStriding: { walking: true } });
+    let budget = 200_000;
+    while (budget > 0 && !hooks.view().journey.arrived) {
+      window.__capture!.answer();
+      hooks.step(300);
+      budget -= 300;
     }
     const view = hooks.view();
-    return `${target.salvage} taken; still standing: ${view.world.features
-      .filter((f) => Math.abs(f.at - view.world.distance) < 120)
-      .map((f) => f.salvage)
-      .join("/")}`;
+    return view.journey.arrived
+      ? `arrived at ${Math.round(view.world.distance)} paces on day ${view.clock.day + 1}`
+      : "never got there";
   });
-  await page.waitForTimeout(300);
-  await page.screenshot({ path: "capture/ruin-stripped.png" });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: "capture/halt-arrived.png" });
 
   console.log(`sighting still: ${sighted}`);
   console.log(`closing still: ${closing}`);
   console.log(`siege still captured at ${standing} per-mille standing`);
-  console.log(`fork sighted: ${sightedFork}; took: ${taken ?? "already answered"}`);
   console.log(`ruins in reach: ${berth}`);
   console.log(`salvage: ${stripped}`);
+  console.log(`fork sighted: ${sightedFork}; took: ${taken ?? "already answered"}`);
+  console.log(`brownout: ${brownout}`);
+  console.log(`enclave: ${enclave} — ${traded}`);
+  console.log(`arrival: ${arrival}`);
 });

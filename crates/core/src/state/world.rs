@@ -241,6 +241,18 @@ impl World {
         &content.region_rt(self.region_at(at)).palette
     }
 
+    /// The palette at a distance, for tests that need to see which side
+    /// of a branch boundary a pace falls on.
+    #[cfg(test)]
+    #[must_use]
+    pub fn palette_at_for_test<'a>(
+        &self,
+        content: &'a Content,
+        at: Paces,
+    ) -> &'a [(TerrainIdx, i64)] {
+        self.palette_at(content, at)
+    }
+
     /// Put the region's first fork on the schedule, or push the marker
     /// past the region's end if it has none.
     fn schedule_first_fork(&mut self, content: &Content) {

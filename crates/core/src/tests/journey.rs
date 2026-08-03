@@ -1679,3 +1679,124 @@ fn a_run_can_be_played_from_the_first_pace_to_the_last() {
         "the run finished somewhere other than the last region"
     );
 }
+
+#[test]
+fn a_region_boundary_belongs_to_the_region_after_it() {
+    // Off by one here is a tower standing on the line and being told it
+    // is still in the region behind it, which means the wrong palette
+    // generated ahead of it and the crossing event never firing. It is
+    // one comparison and nothing else in the simulation would notice.
+    let content = content();
+    let (_, world) = fresh(9, &content);
+    let first_end = world.journey[0].end;
+
+    assert_eq!(world.region_at(first_end - 1).get(), 0, "just short of it");
+    assert_eq!(
+        world.region_at(first_end).get(),
+        1,
+        "the first pace of a region is the region's own"
+    );
+    assert_eq!(world.region_at(0).get(), 0, "the very first pace");
+
+    // Past the end of the last region — the finish line — clamps rather
+    // than running off the end of the journey.
+    let beyond = world.journey_end() + paces_from_int(10_000);
+    assert_eq!(
+        world.region_at(beyond).get(),
+        content.regions.len() - 1,
+        "past the far edge should clamp to the last region"
+    );
+}
+
+#[test]
+fn a_region_starts_where_the_one_before_it_ended() {
+    // `region_start_of` is what every piece of fork arithmetic is
+    // measured from, so a version of it that always answered zero would
+    // put region 2's forks at region 1's distances — and only in region
+    // 2, which is the half of the journey least often played.
+    let content = content();
+    let (_, world) = fresh(10, &content);
+
+    assert_eq!(world.region_start_of(RegionIdx(0)), 0);
+    for i in 1..content.regions.len() {
+        assert_eq!(
+            world.region_start_of(RegionIdx(i as u16)),
+            world.journey[i - 1].end,
+            "region {i} does not start where region {} ended",
+            i - 1
+        );
+    }
+    assert!(
+        world.region_start_of(RegionIdx(1)) > 0,
+        "the second region starts at zero, so nothing downstream can be right"
+    );
+}
+
+#[test]
+fn a_branch_covers_exactly_the_ground_it_was_authored_for() {
+    // A branch is a palette override for a stretch, and the stretch has
+    // to end where it says. One pace either way is terrain drawn from
+    // the wrong side of a decision.
+    let content = content();
+    let (mut streams, mut world) = fresh(4242, &content);
+    for _ in 0..300 {
+        world.distance += paces_from_int(200);
+        world.generate_ahead(&mut streams.world, &content);
+        if world.fork.is_some() {
+            break;
+        }
+    }
+    world.answer_fork(&content, 0);
+    let branch = world.branch.expect("answering sets the branch");
+    let authored = paces_from_int(content.branch(branch.def).length_paces);
+    assert_eq!(
+        branch.to - branch.from,
+        authored,
+        "the branch does not span its authored length"
+    );
+
+    // The palette switches back on the pace the branch ends, not after.
+    let region_palette = &content.region_rt(world.region_at(branch.to)).palette;
+    let inside = world.palette_at_for_test(&content, branch.to - 1);
+    let outside = world.palette_at_for_test(&content, branch.to);
+    assert_ne!(
+        inside, region_palette,
+        "the last pace of a branch is already using the region's palette"
+    );
+    assert_eq!(
+        outside, region_palette,
+        "the first pace past a branch is still using the branch's palette"
+    );
+}
+
+#[test]
+fn forks_fall_on_the_interval_they_were_authored_with() {
+    // Fork spacing is content, and deliberately so — predictable
+    // punctuation is what lets a player see one coming. If the
+    // arithmetic that places them drifted, they would still appear, and
+    // still be answerable, and be somewhere else entirely.
+    let content = content();
+    let interval = content.region(RegionIdx(0)).fork_interval_paces;
+    assert!(interval > 0, "region 1 is supposed to fork");
+
+    let (mut streams, mut world) = fresh(21, &content);
+    let mut seen = 0;
+    for _ in 0..400 {
+        world.distance += paces_from_int(300);
+        if let Some(fork) = world.fork {
+            let from_start =
+                (fork.at - world.region_start_of(world.region_at(fork.at))) >> FX_SHIFT;
+            assert_eq!(
+                from_start % interval,
+                0,
+                "a fork at {from_start} paces into its region is not on the {interval}-pace \
+                 interval"
+            );
+            assert!(from_start > 0, "a fork landed on the region's first pace");
+            seen += 1;
+            world.answer_fork(&content, 0);
+        }
+        world.generate_ahead(&mut streams.world, &content);
+    }
+    assert!(seen >= 2, "only saw {seen} fork(s) in a whole region");
+}
