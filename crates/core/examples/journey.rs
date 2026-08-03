@@ -69,60 +69,106 @@ enum Tower {
     Clogged,
     /// The same, plus the chute.
     Full,
+    /// The same again, plus a burner — the one room in the pack that
+    /// turns a harvested material into something consumed for ever.
+    Burning,
+    /// A bare tower with every stalk of bamboo teleported out of it ten
+    /// times a second, so the cutter arm can never stall for want of
+    /// somewhere to put one.
+    ///
+    /// **Not a tower anybody could play: a ceiling.** Whatever a
+    /// standing buyer, a second chute, a bigger storeroom or any other
+    /// sink could be worth, it is worth no more than this, because
+    /// nothing here ever waited for anywhere to put anything. It is the
+    /// only honest way to ask what `yield_pct` is worth, and it settles
+    /// `SYSTEMS.md` §5.11 open question 0 without needing to build the
+    /// answer first.
+    Uncapped,
 }
 
-/// Does the route pay, and what does a chute buy?
+/// Does the route pay? **It does not, in bamboo, and that is the design
+/// working rather than failing.**
 ///
-/// **The section above cannot answer the first question, and it took two
-/// milestones to notice.** It compares two policies on *one seed*, and
-/// the noise in that is enormous: per seed, the shade-against-sun gap on
-/// one unchanged tower ranges from **-3.9% to +71.9%**. Every finding
-/// this instrument has reported about the route — "exactly 100 each",
-/// "219 against 219", "579 against 530" — was a coin flip written down
-/// as a result, and two of them went into `SYSTEMS.md` as open
-/// questions. So this totals both policies across every seed, which is
-/// the least it can do and still be measuring the route.
+/// The section above this one cannot answer the question, and it took
+/// two milestones to notice. It compares two policies on *one seed*, and
+/// per seed the shade-against-sun gap on one unchanged tower ranges from
+/// **-3.9% to +71.9%**. Every finding this instrument ever reported
+/// about the route — "exactly 100 each", "219 against 219", "579 against
+/// 530" — was a coin flip written down as a result, and two of them
+/// became open questions in `SYSTEMS.md`. So this totals both policies
+/// across every seed, which is the least it can do and still be
+/// measuring anything.
 ///
-/// It runs three towers, because the interesting number turned out not
-/// to be the route at all:
+/// The last row is the one that settles it. **`Uncapped` is a tower
+/// whose buffers are bottomless** — nothing in it can ever be full, so
+/// the cutter arm never stalls and its harvest is whatever the ground
+/// and the legs allowed. It is not playable and it is not meant to be;
+/// it is a ceiling. Whatever a standing buyer, a second chute, a bigger
+/// storeroom or any other sink could ever be worth, it is worth no more
+/// than that row.
 ///
-/// - **Bare against clogged is the chute's case.** A tower with a comb
-///   and a ropery is harvesting materials nothing terminally consumes;
-///   they claim shelf after shelf, bamboo has nowhere to go, the mill
-///   backs up and the cutter arm stalls. That is worth roughly a third
-///   of the tower's whole harvest, and a chute gets most of it back.
-/// - **Shade against sun is the route's case, and it is small.**
-///   Consistent in direction — shade wins on all three towers — and
-///   about one to two percent, which no player will ever perceive. The
-///   honest reading is that yield is a weak lever; see `SYSTEMS.md`
-///   §5.11 open question 0, which stays open on the strength of exactly
-///   this table.
+/// What the rows say, in order:
+///
+/// - **Uncapping is worth about a quarter.** 6,501 to 7,988 on a bare
+///   tower. So the cap is real, and a sink is worth building if more
+///   harvest is what you want.
+/// - **It buys nothing at all on the route.** The gap at the ceiling is
+///   **-1.4% — the sun route ahead** — so no sink will make terrain
+///   yield legible, because the yield was never what was binding.
+/// - **Because yield and sun cancel, on purpose.** `TerrainDef.sun_pct`
+///   says it outright: "deliberately opposed to `yield_pct`… it only
+///   works if no band is good at both." Yield scales harvest per pace;
+///   charge decides how many paces you get, because a browned-out tower
+///   stops walking and terrain intake is paid in ground covered. Shade
+///   gives richer ground and less power to cross it. Measured, those two
+///   cancel to within two percent — which is a dead heat, and a dead
+///   heat is what "no band is good at both" asks for.
+///
+/// So route choice is legible in what it *costs* — charge, threat, what
+/// there is to salvage — and not in total bamboo, and `SYSTEMS.md` §5.11
+/// open question 0 closes on that rather than on a new mechanic.
 fn route_pays() {
-    println!("\n=== does the route pay? (every seed, three towers) ===\n");
+    println!("\n=== does the route pay? (every seed, five towers) ===\n");
     println!(
         "  Bamboo harvested in {FIXED_BUDGET} ticks, shade route against sun.\n\
-         One seed cannot answer this: the per-seed gap swings -4% to +72%.\n"
+         One seed cannot answer this: the per-seed gap swings -4% to +72%.\n\
+         The last row is a ceiling — bottomless buffers, so nothing can jam.\n"
     );
     println!("tower                 shade      sun      gap");
-    for tower in [Tower::Bare, Tower::Clogged, Tower::Full] {
+    for tower in [
+        Tower::Bare,
+        Tower::Clogged,
+        Tower::Full,
+        Tower::Burning,
+        Tower::Uncapped,
+    ] {
         let (mut shade, mut sun) = (0u64, 0u64);
+        let (mut deaths, mut ticks) = (0u32, 0u32);
         for seed in 1..=SEEDS {
-            shade += play_tower(seed, Policy::Forager, tower, true).bamboo;
-            sun += play_tower(seed, Policy::Sunseeker, tower, true).bamboo;
+            let a = play_tower(seed, Policy::Forager, tower, true);
+            let b = play_tower(seed, Policy::Sunseeker, tower, true);
+            shade += a.bamboo;
+            sun += b.bamboo;
+            deaths += u32::from(a.died) + u32::from(b.died);
+            ticks += a.ticks + b.ticks;
         }
+        let ticks = ticks / (SEEDS as u32 * 2);
         println!(
-            "{:<19} {shade:>6}   {sun:>6}   {:>+6.1}%",
+            "{:<19} {shade:>6}   {sun:>6}   {:>+6.1}%   ({deaths} died, {ticks} ticks)",
             match tower {
                 Tower::Bare => "bare",
                 Tower::Clogged => "+chain, no chute",
                 Tower::Full => "+chain +chute",
+                Tower::Burning => "+chain +chute +burner",
+                Tower::Uncapped => "bare, cannot jam",
             },
             (shade as i64 - sun as i64) as f64 * 100.0 / sun.max(1) as f64
         );
     }
     println!(
-        "\n  The gap column is the route; the rows are the chute. Read down, not\n\
-         across — a stockpile with no way out costs more than the ground does."
+        "\n  Read down, not across. Uncapping a tower is worth about a quarter of\n\
+         its harvest; the route is worth nothing, because shade's richer ground\n\
+         and sun's extra paces cancel — which is what `sun_pct` was written to do."
     );
 }
 
@@ -413,10 +459,20 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
     // loop stops at the first thing it cannot afford, so anything behind
     // a blocker is not "built later", it is not built at all.** Cheap
     // and load-bearing first; anything that can block goes last.
-    if tower == Tower::Full {
+    // **Defences before the burner, or there is no measurement.**
+    // Burner smoke is provocation, provocation is waves, and an
+    // undefended three-crew tower dies: measured, 24 runs out of 24, at
+    // a mean of 25,384 ticks. That is the design working — burning is
+    // supposed to cost something — but it means the tower that would
+    // burn has to be the tower that can afford to.
+    if tower == Tower::Burning {
+        list.push("room.thornwright");
+        list.push("room.dart_battery");
+    }
+    if tower == Tower::Full || tower == Tower::Burning {
         list.push("shaft.chute");
     }
-    if tower != Tower::Bare {
+    if !matches!(tower, Tower::Bare | Tower::Uncapped) {
         list.push("room.garden");
     }
     list.push("room.canteen");
@@ -428,9 +484,14 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
     // is the first intake that runs while the tower is stopped, so a
     // policy that berths is no longer paying for it with its whole
     // harvest.
-    if tower != Tower::Bare {
+    if !matches!(tower, Tower::Bare | Tower::Uncapped) {
         list.push("room.fiber_comb");
         list.push("room.ropery");
+    }
+    // Last, because it is the thing being measured and everything else
+    // has to be standing before it starts drawing attention.
+    if tower == Tower::Burning {
+        list.push("room.burner");
     }
     // **No bombary and no thrower**, deliberately. A thrower costs
     // mechanisms, mechanisms cost a fitter, a fitter costs a forge and a
@@ -496,13 +557,33 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
         && (fixed_ticks || engine.state().world.distance < boundary)
         && !engine.state().siege.lost
     {
-        // Work the shopping list, one item at a time, whenever the
-        // poles are there. Checked every tick and cheap when the list
-        // is empty, which it is for most of a run.
-        if let Some(next) = list.last().copied()
-            && build_anywhere(&mut engine, &content, next)
+        // Work the shopping list whenever the poles are there. Checked
+        // every tick and cheap when the list is empty, which it is for
+        // most of a run.
+        //
+        // **Every item is tried, not just the front one, and that is a
+        // scar rather than a refinement.** A strict queue stops dead at
+        // the first thing it cannot afford, so anything behind a blocker
+        // is never built at all — and the blocker is usually something
+        // whose cost is *made by a room further down the same list*. It
+        // has cost three separate measurements now: a seed thrower
+        // needing mechanisms hid the chute for a whole session and this
+        // harness reported the route as flat; a dart battery needing two
+        // rope sat in front of the ropery that makes rope, and the tower
+        // harvested 725 bamboo instead of 4,000. Both looked like
+        // findings about the game and were findings about this loop.
+        // Order should be a hint here, never a gate.
+        // Once a sim-second rather than every tick: scanning a whole
+        // list across every floor and slot is ~1,500 rejected commands,
+        // and at 30 Hz over twelve seeds and four towers that is the
+        // difference between a minute and an hour. A build arriving up
+        // to 29 ticks late changes nothing being measured here.
+        if ticks.is_multiple_of(30)
+            && let Some(at) = (0..list.len())
+                .rev()
+                .find(|&at| build_anywhere(&mut engine, &content, list[at]))
         {
-            list.pop();
+            list.remove(at);
             // **Deliberately no `BuildFloor` here**, unlike
             // `siege_run.rs`, which does grow its towers when they run
             // out of slots. A new top floor displaces the canopy sail
@@ -571,6 +652,33 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
         let before = engine.state().world.distance;
         engine.step(1);
         ticks += 1;
+
+        // **The ceiling experiment**: give every buffer in the tower a
+        // bottomless capacity, so nothing anywhere is ever full and the
+        // cutter arm never once stalls for want of somewhere to put a
+        // stalk.
+        //
+        // Enlarging the buffers rather than emptying them, and the
+        // difference is the whole experiment. Deleting the bamboo *also*
+        // starves the mill that turns it into poles, so the tower cannot
+        // afford a kitchen, the crew starve, the legs brown out and it
+        // stops walking — measured, 1,531 stalks against a bare tower's
+        // 6,501. That is a measurement of starvation, not of the ground.
+        if tower == Tower::Uncapped && ticks.is_multiple_of(30) {
+            const BOTTOMLESS: i64 = 1_000_000;
+            let state = engine.state_mut_for_test();
+            for floor in &mut state.tower.floors {
+                for room in &mut floor.rooms {
+                    for stack in room.outputs.iter_mut().chain(room.inputs.iter_mut()) {
+                        stack.max = BOTTOMLESS;
+                    }
+                    for shelf in &mut room.shelves {
+                        shelf.max = BOTTOMLESS;
+                    }
+                }
+            }
+        }
+
         let state = engine.state();
         exposure_total += understory_core::systems::power::exposure_pct(state, &content);
         if state.walking && !state.strode {

@@ -2780,6 +2780,62 @@ is where that stops being aspirational.
   back with a measurement (`BALANCE.md`'s `reinforce` row); spreading it across three enclaves
   would multiply a thing that is barely worth its price.
 
+#### 5.6.1 The wayhouse — proposed, and **not yet decided**
+
+> **Read §5.11 open question 0 first.** This section was drafted to answer that question and it
+> does not answer it. The measurement that closed the question also showed that **a buyer would
+> raise a tower's harvest by about a quarter and change the route comparison by nothing at all**,
+> because yield and sun were already cancelling on purpose. So a wayhouse has to be justified as
+> a mechanic somebody wants to play, not as a fix for a defect — there is no defect. Recorded in
+> full because the design is sound and the reasoning behind its shape is still worth having.
+
+**Three enclaves with finite boards are three events.** The §5.6 bullet above promises that a
+player carrying a surplus "finds a buyer for it somewhere, which turns 'I have too much of this'
+from a jam into a plan," and a buyer that does that has to be there when the jam happens — on the
+road, continuously, for the whole run. That much stands regardless of open question 0.
+
+The constraints on its shape are real and were expensive to find:
+
+- **A buyer that pays in items moves the jam one step along.** Poles leave, whatever came back
+  fills a shelf instead, and the mill stalls a week later rather than a day later.
+- **A sink bounded by crew count is bounded.** That is why the canteen fixed meals and fixed
+  nothing else: crew eat three a day for ever, but four people only eat twelve.
+- **A sink that scales with tower size × time is unbounded, and is the overgrowth prototype**
+  (`4a4683a`), which works and is not shipped because a tower that is never quite whole cannot
+  tell you the difference between "something is attacking" and "it is Tuesday."
+
+That leaves one axis: **distance walked.** A buyer that recurs down the road has a total appetite
+that grows with the run, without any single one of them being a bottomless pit.
+
+**The proposal: a wayhouse, and a deck to trade from.**
+
+- **A wayhouse is a world feature**, generated per band the way ruins are, in every region. Each
+  carries a finite pool the way a ruin carries salvage, and depletes as it is traded with. They
+  recur, so what scales is the run rather than the building.
+- **Berthing stays implicit** (`room.salvage_rig`'s comment is the precedent): a tower stopped
+  within range of a wayhouse, with a deck that works, is trading. There is no Berth command and
+  no Trade command here — stopping next to a wayhouse with no deck does nothing, and the empty
+  space in the build menu is the affordance.
+- **It buys, it never sells.** One direction only. `Trade` at an enclave stays what it is — an
+  event, with unique goods and finite stock — and the wayhouse is the routine, boring counterpart
+  that is always there. Nothing has two prices anywhere, so there is nothing to arbitrage, which
+  is open question 3's whole worry.
+- **What it pays in is charge.** Charge is the only resource in the game consumed continuously
+  and for ever, by the legs, every tick, so it is the one payment that cannot back up into a
+  shelf and re-create the jam. It also points the mechanic at the trade the game is already
+  making: shade gives ground and takes power, and a wayhouse lets a shade route convert what the
+  ground gave it back into power. **This does not widen the route gap** — the ceiling measurement
+  in §5.11 rules that out — but it does let a player *choose* which side of the opposition to
+  lean on, which is a different and better claim than the one this section originally made.
+- **It costs the same hands as everything else.** Poles reach the deck by crew haul, on the same
+  stairs, competing with every other errand (`DESIGN.md` insight 1). A wayhouse is not a drain
+  bolted to the side of the tower; it is another mouth on the same shift.
+
+**The trade this creates, stated plainly:** stop, and spend walking time to convert timber into
+power. Walk on, and keep the time but leave the surplus jamming your shelves. That is the same
+stop-or-walk decision the salvage rig introduced at M3, pointed at the other end of the chain,
+and it is why the deck is a built room rather than a free action.
+
 ### 5.7 Unlocks, and how they arrive
 
 `v2-plan.md` §11 open #2 asks for a decision between enclave gifts, Heartseed cultivars and a
@@ -2906,16 +2962,18 @@ Not a task list — the places where existing code assumes something M5 stops be
 ### 5.11 Open questions
 
 0. **Does terrain yield change a decision, or is it decoration?**
+   *(Answered: neither — it is half of a balanced pair. See the end.)*
 
-   > **Still open, and now measured — read the numbers at the end before
-   > acting on anything in the middle.** Two effects were being read as
-   > one. A jammed shelf was costing a complicated tower 55% of its
-   > harvest, and the chute (§5.4) fixes that. Underneath it, the
-   > diagnosis this question was filed under — every chain terminates in
-   > a buffer — is correct, and terrain yield is worth about 2%. The
-   > "crew-limited" diagnosis recorded below is simply wrong. The
+   > **Answered — and the answer is that nothing is broken. Read the end
+   > before acting on anything in the middle.** Terrain yield is not
+   > decorative and it is not weak; it is one half of a deliberate
+   > opposition with `sun_pct`, and the two cancel to within two percent
+   > on purpose. Every diagnosis recorded below — chains terminating in
+   > buffers, crew scarcity, jammed shelves — was a description of the
+   > *harness*, and each one was withdrawn by the next measurement. The
    > reasoning is kept in full because the wrong turns are the useful
-   > part.
+   > part, and because this question generated four confident wrong
+   > answers before the right one.
 
    `examples/journey.rs` measures a shade-seeking route against a
    sun-seeking one, and after M5 it reports **exactly 219 bamboo and 68
@@ -2978,77 +3036,76 @@ Not a task list — the places where existing code assumes something M5 stops be
    None of that is an argument against doing it; all of it is an
    argument for it being chosen rather than slipped in.
 
-   **Measured properly at last. Two separate things were tangled
-   together here, one of them a real defect that is now fixed, and the
-   other this question — which stays open, and whose answer is looking
-   like the third option.**
+   **Answered, and every paragraph above this one is wrong. The ground
+   is not decorative; it is exactly half of a balanced pair, and it was
+   built that way on purpose.**
 
-   `examples/journey.rs` now totals both policies across all twelve
-   seeds, on three towers, for a fixed 109,520 ticks. Bamboo harvested:
+   The measurement that settles it asks the question in a form no harness
+   detail can distort: **take the cap off and see what is left.**
+   `examples/journey.rs`'s `Uncapped` tower has bottomless buffers, so
+   nothing in it can ever be full, the cutter arm never stalls, and its
+   harvest is whatever the ground and the legs allowed. It is not
+   playable — it is a ceiling. Whatever a standing buyer, a second chute,
+   a bigger storeroom or any other sink could ever be worth, it is worth
+   no more than that row. Bamboo over twelve seeds, both route policies,
+   a fixed 109,520 ticks:
 
    | tower | shade | sun | gap |
    | --- | --- | --- | --- |
-   | bare, with a kitchen | 6502 | 6419 | +1.3% |
-   | + garden, comb, ropery | 2924 | 2846 | +2.7% |
-   | + the same, **with a chute** | 3970 | 3901 | +1.8% |
+   | bare, with a kitchen | 6501 | 6412 | +1.4% |
+   | + garden, comb, ropery | 5596 | 5702 | −1.9% |
+   | + the same, with a chute | 3568 | 3632 | −1.8% |
+   | + the same, with a burner | 3672 | 3601 | +2.0% |
+   | **bare, bottomless buffers** | **7988** | **8099** | **−1.4%** |
 
-   **Read down, not across.** The rows are worth a third of the tower's
-   harvest; the column is worth one to two percent.
+   **Uncapping a tower is worth about a quarter of its harvest, and
+   nothing at all on the route.** 6,501 to 7,988 says the cap is real and
+   a sink would be worth building if more harvest is what you want. The
+   −1.4% at the ceiling — *the sun route ahead* — says no sink will ever
+   make terrain yield legible, because yield was never the thing binding.
 
-   *The defect: a stockpile with no way out costs more than the ground
-   does.* Adding a comb and a ropery — harvested materials nothing
-   terminally consumes — costs the tower **55% of its bamboo**, because
-   fiber and rope claim shelf after shelf, bamboo runs out of anywhere to
-   go, the mill's outbox backs up and the cutter arm stalls. A chute
-   (§5.4) recovers **36%** of what that destroyed. That is a large,
-   reproducible effect and it is the justification for the escape hatch
-   shipping at all.
+   **Why: yield and sun cancel, and `TerrainDef.sun_pct` says so in as
+   many words** — *"deliberately opposed to `yield_pct`: shade is
+   biomass-rich and sun-poor… that opposition is the whole of 'your route
+   is your power mix', and it only works if no band is good at both."*
+   Terrain intake is paid in **ground covered**, not in ticks, and a
+   browned-out tower stops walking. So shade buys richer ground and less
+   power to cross it, sun buys the reverse, and measured across every
+   tower shape here the two cancel to within two percent. That is a dead
+   heat, and a dead heat is precisely what "no band is good at both" asks
+   for. The pair was tuned correctly and this question was reading one
+   half of it in isolation.
 
-   *The question: terrain yield is still a weak lever.* The route gap is
-   1.3%, 2.7% and 1.8% — consistent in direction across every tower
-   measured, and small enough in every one of them that no player will
-   perceive it. **The chute does not unlock the yield axis**; it fixes a
-   different problem that was masking how small the yield axis is. So of
-   the three shapes above, the third — *say plainly that route choice is
-   about sun, scrap and danger, and stop having four `yield_pct` values
-   pretend to matter* — is now the leading answer rather than the
-   fallback.
+   **So the answer is none of the three shapes above.** Route choice is
+   legible in what it *costs* — charge, threat, what there is to salvage
+   — and not in total bamboo, and `BALANCE.md`'s four yield values are
+   load-bearing rather than decorative: they are what makes the shade
+   side of the trade worth taking at all. Collapsing them would break the
+   opposition, not tidy it.
 
-   **Three corrections to what is written above, worth more than the
-   finding.**
+   **What this question actually produced, which is worth more than the
+   answer: four confident wrong findings in a row, every one of them a
+   property of the harness.**
 
-   *The buffer diagnosis was right about the small number and wrong
-   about the big one.* Two effects were being read as one. The collapse
-   from 6,502 to 2,924 was a jammed shelf, and the chute fixes it. The
-   residual 1–2% is the buffer argument, and nothing fixes it: **bamboo
-   is always `wanted`** — the mill's inbox is a live consumer — so a
-   chute never spills it, and harvest stays capped by what the mill eats
-   plus what the shelves hold, both properties of the tower. Richer
-   ground only reaches that cap sooner. Note what that means for the fix
-   list above: a chute is the wrong shape of answer for this question,
-   because the material the question is about is the one material a chute
-   will never touch.
+   - *"Every chain terminates in a buffer, so terrain cannot matter."*
+     A true observation about the pack, and not the cause.
+   - *"The tower is crew-limited."* Wrong, and the tell was in the
+     measurement all along: adding crew made the flat reading **worse**,
+     219 down to 150. A crew-limited tower improves when you add crew.
+   - *"A jammed shelf costs 55% of the harvest and a chute recovers a
+     third of it."* An artifact of a shopping list that stopped at the
+     first thing it could not afford, so the jammed tower never built its
+     storerooms either. With a list that skips blockers, the jam is worth
+     14%, and the chute — whose slot column displaces the storerooms that
+     were doing the real work — comes out *behind*.
+   - *"The route is worth +9.7%."* Two outlier seeds out of eight. Per
+     seed the gap swings **−3.9% to +71.9%**; twelve seeds give −1.4%.
 
-   It is not dilution, either, which was the other candidate. Branches
-   are about a third of a region and the two policies differ only on that
-   third — but a canopy branch is 70% canopy against a ruins branch's
-   ruin field, weighted yields of roughly 123 against 75, so even
-   undiluted the difference would be worth a few percent rather than
-   sixty. The cap is real and it is where the yield goes.
-
-   *The crew-limited diagnosis was wrong.* An earlier draft concluded a
-   complicated tower is bound by hands rather than by ground. It is not:
-   adding crew made the flat reading **worse**, 219 down to 150, which is
-   the tell — a crew-limited tower improves when you add crew.
-
-   *And every single-seed number in this section is worthless.* Per seed,
-   the shade-against-sun gap on one unchanged tower swings from **−3.9%
-   to +71.9%**. So 219/219, 364/346, 76/76 and 579/530 are coin flips
-   written down as findings, and this section spent two milestones
-   arguing with its own noise. An eight-seed total was not enough either:
-   it gave +9.7% on the strength of two outlier seeds, and twelve gives
-   +1.8%. **If a comparison here cannot survive changing the seed set, it
-   was never measuring the route.**
+   The standing lesson, which cost a milestone: **this harness has
+   produced more findings about itself than about the game.** Before any
+   number here becomes a design decision, change something that should
+   not matter — the seed set, the build order, the storeroom count — and
+   check the number survives it.
 
 1. **Does gating the elevator behind the ruin belt make the shaded route a trap?** The argument
    in §5.3 is that it makes route choice reach into the transport layer. The risk is that it

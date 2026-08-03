@@ -22,40 +22,42 @@ having the table; being wrong *quietly* is what the grade prevents.
 
 The tower's gait and how far it can see.
 
-> **How much the `yield_pct` numbers below actually buy: about two percent.**
+> **`yield_pct` and `sun_pct` are one constant in two columns. Never tune either alone.**
 >
-> Measured by `examples/journey.rs`, totalling both route policies across all twelve seeds
-> for a fixed 109,520 ticks — bamboo harvested, shade-seeking route against sun-seeking:
+> They are deliberately opposed — shade is biomass-rich and sun-poor, open ruin field the
+> reverse — and `SYSTEMS.md` §5.11 open question 0 spent a milestone reading one half of that
+> pair in isolation and concluding the ground was decorative. It is not. Terrain intake is
+> paid in **ground covered**, not in ticks, and a browned-out tower stops walking: shade buys
+> richer ground and less power to cross it. Measured across twelve seeds and both route
+> policies, bamboo harvested in a fixed 109,520 ticks:
 >
 > | tower | shade | sun | gap |
 > | --- | --- | --- | --- |
-> | bare, with a kitchen | 6502 | 6419 | +1.3% |
-> | + garden, comb, ropery | 2924 | 2846 | +2.7% |
-> | + the same, with a chute | 3970 | 3901 | +1.8% |
+> | bare, with a kitchen | 6501 | 6412 | +1.4% |
+> | + garden, comb, ropery | 5596 | 5702 | −1.9% |
+> | + the same, with a chute | 3568 | 3632 | −1.8% |
+> | + the same, with a burner | 3672 | 3601 | +2.0% |
+> | **bare, bottomless buffers** | **7988** | **8099** | **−1.4%** |
 >
-> **Read down, not across.** The gap column is what these four numbers buy: consistent in
-> direction — shade wins on every tower — and small enough that no player will perceive it.
-> The rows are worth a third of the tower's harvest, and they are about shelf space rather
-> than about the ground.
->
-> The cap is the mill. Bamboo is always wanted by a live inbox, so a chute never spills it
-> and harvest stays bounded by what the mill eats plus what the shelves hold — richer ground
-> only reaches that bound sooner. `SYSTEMS.md` §5.11 open question 0 stays open on the
-> strength of this table, and its third option — collapse `yield_pct` to fewer distinct
-> values and say route choice is about sun, scrap and danger — is now the leading answer.
+> The last row is a ceiling: buffers so large nothing can ever jam, so the cutter arm never
+> stalls. **Uncapping a tower is worth a quarter of its harvest and nothing on the route.**
+> The two sides cancel to within two percent on every tower shape, which is a dead heat, and
+> a dead heat is exactly what the opposition was written to produce. Raising a `yield_pct`
+> without lowering the matching `sun_pct` does not make that band better — it makes the pair
+> stop being a trade.
 >
 > **Three cautions for anyone tuning these.** Per seed the same comparison swings from −3.9%
-> to +71.9%, so a single-seed reading is a coin flip. Eight seeds is not enough either — it
-> gave +9.7% on two outliers where twelve gives +1.8%. And letting each route run to the
-> region edge rather than for a fixed tick count lets the two walk different distances, which
-> is a confound sitting directly on the axis being measured.
+> to +71.9%, so a single-seed reading is a coin flip; eight seeds is not enough either, having
+> given +9.7% on two outliers. Let each route run for a fixed tick count, not to the region
+> edge, or the two walk different distances — a confound sitting on the axis being measured.
+> And change something that should not matter (build order, storeroom count) to check a number
+> survives it: `journey.rs` has produced more findings about itself than about the game.
 >
-> A different fix — continuous overgrowth, giving poles a sink that scales with the tower the
-> way meals scale with the crew — was **prototyped, measured and left out**: it means a tower
-> is never quite whole, so "something is attacking" and "it is Tuesday" stop being
-> distinguishable on the standing readout. That is an owner's call rather than a balance one,
-> and the measurement is recorded so the call can be made without redoing it. Commit
-> `4a4683a` has the implementation.
+> A sink for the surplus — continuous overgrowth, giving poles demand that scales with the
+> tower the way meals scale with the crew — was **prototyped, measured and left out**: it
+> means a tower is never quite whole, so "something is attacking" and "it is Tuesday" stop
+> being distinguishable on the standing readout. Commit `4a4683a` has the implementation. It
+> would raise harvest; the table above says it would not change the route.
 
 | Constant | Value | Grade | Reasoning |
 |---|---:|---|---|
