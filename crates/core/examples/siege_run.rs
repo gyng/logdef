@@ -161,15 +161,11 @@ fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64,
         }
     }
     if shape == Shape::Plated {
-        let twice = content
-            .regions
-            .iter()
-            .find_map(|region| region.enclave.as_ref())
-            .and_then(|enclave| enclave.reinforce.as_ref())
-            .map_or((0, 0), |work| (work.panel_hp, work.times));
-        for _ in 0..twice.1 {
-            engine.state_mut_for_test().tower.reinforce(twice.0);
-        }
+        // The figures the enclave *would* charge for, applied directly.
+        // Read from here rather than from content because the offer is
+        // currently withdrawn — see `regions/drowned_city.ron`, and see
+        // the last section of this harness for why.
+        engine.state_mut_for_test().tower.reinforce(120);
     }
     // Stock it so the chain is never the limiting factor — this is a
     // measurement of the siege, not of the economy.

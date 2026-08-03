@@ -128,11 +128,30 @@ RegionDef(
         // Eighteen scrap a round is most of one good ruin, so plating
         // twice means berthing at least twice and getting away with it
         // both times.
-        reinforce: ReinforceDef(
-            cost: [CostEntryDef(item: "item.scrap", amount: 18)],
-            panel_hp: 60,
-            times: 2,
-        ),
+        // NOT OFFERED. The shell work is built, tested and drawn, and
+        // it is *harmful*: measured across eight seeds, a tower plated
+        // twice ends three days at provocation 100 having lost between
+        // 958 and 2,232 hit points where the same tower unplated loses
+        // between 0 and 8. Worse on every seed tried, by two to three
+        // orders of magnitude, and it repairs less while damaged more.
+        //
+        // The mechanism is not understood — see the note at the head of
+        // `BALANCE.md`'s Siege section, and reproduce with the last
+        // section of `cargo run --release -p understory-core --example
+        // siege_run`. Until it is, this must not be purchasable: an
+        // upgrade that makes the tower worse at the one thing it is
+        // sold for is a trap, and shipping a trap is worse than
+        // shipping nothing.
+        //
+        // Restore by uncommenting. The code, the command, the tests and
+        // the plating on the hull are all in place and stay that way,
+        // so the fix is a diagnosis rather than a rebuild.
+        //
+        // reinforce: ReinforceDef(
+        //     cost: [CostEntryDef(item: "item.scrap", amount: 18)],
+        //     panel_hp: 60,
+        //     times: 2,
+        // ),
         recruits: 1,
         recruit_cost: [CostEntryDef(item: "item.poles", amount: 30)],
     ),
