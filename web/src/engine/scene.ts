@@ -172,9 +172,16 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
   // up the moment the tower halts at a fork — reads as ground rather
   // than as a hole onto the sky.
   const underfoot = terrainColors(catalog.terrain[view.world.band ?? -1]?.id ?? "");
-  batch.push(0, horizon, edgeX, height - horizon, atNight(mix(underfoot.far, palette.haze, 0.45), dark), {
-    colorBottom: atNight(mix(underfoot.near, palette.ground, 0.75), dark),
-  });
+  batch.push(
+    0,
+    horizon,
+    edgeX,
+    height - horizon,
+    atNight(mix(underfoot.far, palette.haze, 0.45), dark),
+    {
+      colorBottom: atNight(mix(underfoot.near, palette.ground, 0.75), dark),
+    },
+  );
 
   // The ground plane, running from the horizon to the bottom of the
   // frame, coloured by the band it belongs to. Perspective is faked
@@ -637,16 +644,30 @@ function drawJourneyEdge(batch: QuadBatch, ctx: SceneContext): void {
     colorBottom: fade(body, 0),
     softness: layout.slotW * 0.5,
   });
-  batch.push(x - layout.slotW * 0.6, horizon, layout.slotW * 1.2, height - horizon, fade(body, 0.5), {
-    softness: layout.slotW * 0.6,
-  });
+  batch.push(
+    x - layout.slotW * 0.6,
+    horizon,
+    layout.slotW * 1.2,
+    height - horizon,
+    fade(body, 0.5),
+    {
+      softness: layout.slotW * 0.6,
+    },
+  );
 
   if (edge.kind === "end") {
     // The far edge gets a low band of light along the ground: nothing
     // beyond, and nothing threatening about that.
-    batch.push(x, layout.groundY - height * 0.06, width - x, height * 0.12, fade(palette.sunlight, 0.3), {
-      softness: height * 0.05,
-    });
+    batch.push(
+      x,
+      layout.groundY - height * 0.06,
+      width - x,
+      height * 0.12,
+      fade(palette.sunlight, 0.3),
+      {
+        softness: height * 0.05,
+      },
+    );
   }
 }
 
@@ -734,14 +755,28 @@ function drawFork(batch: QuadBatch, ctx: SceneContext): void {
   if (waiting) {
     const pulse = 0.3 + Math.abs(Math.sin(clock * 1.5)) * 0.35;
     const halo = post * 2.4;
-    batch.push(x - halo / 2, y - post * 1.1 - halo * 0.35, halo, halo, fade(palette.lamplight, pulse * 0.5), {
-      radius: halo * 0.5,
-      softness: halo * 0.6,
-    });
-    batch.push(x - post * 0.09, y - post * 1.12, post * 0.18, post * 0.18, fade(palette.sunlight, 0.85), {
-      radius: post * 0.09,
-      softness: post * 0.12,
-    });
+    batch.push(
+      x - halo / 2,
+      y - post * 1.1 - halo * 0.35,
+      halo,
+      halo,
+      fade(palette.lamplight, pulse * 0.5),
+      {
+        radius: halo * 0.5,
+        softness: halo * 0.6,
+      },
+    );
+    batch.push(
+      x - post * 0.09,
+      y - post * 1.12,
+      post * 0.18,
+      post * 0.18,
+      fade(palette.sunlight, 0.85),
+      {
+        radius: post * 0.09,
+        softness: post * 0.12,
+      },
+    );
   }
 }
 
@@ -1228,9 +1263,7 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
     // Off the gait while walking; a fixed open stance once halted, so
     // the feet land somewhere deliberate rather than wherever the last
     // pace happened to leave them.
-    const step = gait
-      ? Math.sin(phase + i * Math.PI)
-      : (i === 0 ? -0.5 : 0.5) * stanceScale;
+    const step = gait ? Math.sin(phase + i * Math.PI) : (i === 0 ? -0.5 : 0.5) * stanceScale;
     // A brown-out is the legs asking and not being answered: a small
     // stuttering lift that never becomes a step.
     const strain =

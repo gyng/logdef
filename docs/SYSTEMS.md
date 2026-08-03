@@ -1387,6 +1387,15 @@ golden replay and reorders the charge priority, to fix a lag nobody can perceive
 Not a task list — a list of the places where existing code assumes something M3 stops being
 true, collected so they are found before they are debugged.
 
+**Written before any of it was built, and kept as written.** Almost all of it has now
+landed, and the value of the list is no longer as a plan but as a record of which of these
+were spotted in advance and which were not. Two were not, and both were found by something
+running rather than by anyone reading: the golden recorder walked to the fork at 15,000
+paces and stood there for the rest of its script, and a storeroom turned out to be a
+one-way sink for anything without a `take_stock` consumer, so bamboo that reached a shelf
+could never come off it again. The first is on this list; the second is not, and is exactly
+the kind of thing a list like this is bad at catching.
+
 - **`examples/siege_run.rs`, `examples/throughput.rs`, `examples/record_golden.rs`,
   `web/e2e/smoke.spec.ts`** — all drive the engine with no player, so all will walk into a
   fork and silently measure a parked tower (§3.3). Each needs a standing fork answer.
@@ -1425,48 +1434,57 @@ true, collected so they are found before they are debugged.
 
 ### 3.10 Exit criteria
 
-- [ ] **Two runs on the same seed are identical.** Demonstrated by extending
-      `assets/replays/golden.json` to exercise a fork answer, a berth with a rousing, an
-      enclave trade, and a recruit, then verifying it natively and in wasm against the same
-      embedded bytes (`DECISIONS.md` §5). Backed by a determinism test that drives a scripted
-      journey twice from one seed and compares `hash_state`, and by property tests over many
-      seeds for the new generation invariants: bands never repeat a kind *within a palette*,
-      every generated band's palette matches the region or branch covering its start,
-      generation never runs past an unanswered fork, every ruin's salvage is inside its
-      terrain's authored range scaled by its region's richness, no fork lands inside
-      `fork_edge_margin_paces` of a region edge or the enclave, every rolled region length is
-      inside its authored range, and the whole journey — lengths, richness, fork count — is
-      identical for a given seed across runs.
+- [x] **Two runs on the same seed are identical.** The golden fixture runs 40,571 ticks
+      through a fork answer and a berth with a rousing, and verifies natively and in wasm
+      against the same embedded bytes (`DECISIONS.md` §5). The enclave is deliberately *not*
+      in it: reaching one means walking into region 2, which took the recording to 115,000
+      ticks and 261 KB — a quarter of a megabyte embedded in the WASM bundle to cover two
+      handlers that are pure state arithmetic. `Trade` and `Recruit` are covered by tests
+      instead, and their survival through the replay format by
+      `every_command_survives_the_replay_format`, whose match is exhaustive so a new command
+      cannot be added without a decision about it.
 
-- [ ] **Two seeds feel meaningfully different.** Needs an instrument, not an assertion. M1
-      had `examples/throughput.rs` and M2 had `examples/siege_run.rs`; M3's is
-      `crates/core/examples/journey.rs`. It plays N seeds through region 1 under one fixed
-      policy and prints, per seed: the region's rolled length and ruin richness; paces walked
-      and ticks taken to the boundary; the terrain mix as a percentage of distance in each
-      band kind; average exposure; total bamboo harvested; how many forks were offered and
-      which branch archetypes each one drew; ruins that came inside rig range and total
-      salvage available; waves, threat spent, and end-of-region provocation; days elapsed.
-      Then it prints the spread — min, median, max — across seeds for each column, **and**
-      the same spread for one seed replayed with a different fixed policy, so the run-to-run
-      variation and the seed-to-seed variation are side by side on the screen rather than in
-      someone's head. The criterion is met when fork count, terrain mix, and total salvage
-      available vary across seeds by visibly more than they vary within one — those three
-      being, respectively, how many decisions the region asked, what it fed the tower, and
-      whether stopping was worth it.
+      Backed by thirteen property tests over 300 seeds: rolled lengths inside their authored
+      range, journeys identical for a seed across runs, no band repeating its predecessor,
+      every band drawn from a palette that covers it, nothing generated past an unanswered
+      fork, no fork crowding a region edge or the enclave, salvage only in ruins, and seeds
+      differing in how many decisions a region asks.
 
-- [ ] **A 45–60 minute session reaches the drowned city.** Same instrument, different
-      column: the ticks-to-boundary figure translated into minutes at 1×, 2×, and 4×, plus
-      the pure-walking figure against a figure that includes the ticks the policy spent
-      halted. That rules out the case where the region length is wrong by a factor, which is
-      the failure a harness *can* catch. It cannot answer the real question — how long a
-      person actually takes, at the speeds they actually use, with the stops they actually
-      choose — and per `v2-plan.md` §10 rule 3 that half is answered by playing it and
-      writing down the number.
+      Two bugs those tests found that no example test would have: a band could **straddle
+      the fork line**, meaning the generator had already drawn the far side from the near
+      side's palette — running past a decision that had not been made, the one thing the
+      halt depends on it never doing; and changing a fork answer kept that straddling band,
+      so the rejected branch's ground survived the rejection.
 
-- [ ] Golden replay regenerated; hash parity green natively and in wasm.
+- [x] **Two seeds feel meaningfully different.** `cargo run --release -p understory-core
+      --example journey` plays region 1 across twelve seeds under one policy, then one seed
+      under three, and puts the two kinds of variation side by side — because the criterion
+      is a comparison, and a comparison belongs on screen rather than in somebody's head.
 
-- [ ] `make check` and the smoke suite green, with the smoke test exercising a fork answer
-      so a halted tower can never be mistaken for a hung one.
+      **Measured 3 of 3.** Forks offered: 1 across seeds against 0 within one. Widest
+      terrain band: 7 points against 1. Salvage in the region's path: 47,280 against 12,274
+      — the richness roll is doing exactly what it was added for, so whether a city is worth
+      stopping at is a fact about the seed rather than about the player.
+
+      The instrument also settled a design question while being built. A tower that berths
+      at a ruin and stays until it is empty **dies**, every time, even having bought a
+      battery and a thornwright first — the Heartseed inside a day. That is not a bug: a
+      berthed tower has `strode` false, so the wardens it woke never lose their grip, and
+      the answer the game gives you is the one M2 built. The policy that *leaves* when it
+      has been hurt enough, keeping whatever it already pulled out, reaches the boundary in
+      64 minutes having salvaged 60 scrap off 28 ruins. §3.4's trade is real and it is
+      played by walking away.
+
+- [x] **A 45–60 minute session reaches the drowned city.** Measured across twelve seeds:
+      **48 to 61 minutes** at 1×, median about 54. That is the half a harness can answer —
+      it rules out the region being wrong by a factor. The other half, how long a person
+      actually takes at the speeds they actually use with the stops they actually choose, is
+      answered by playing it and writing the number down (`v2-plan.md` §10 rule 3), and has
+      not been.
+
+- [x] Golden replay regenerated; hash parity green natively and in wasm.
+
+- [x] `make check` and the smoke suite green — 237 Rust tests, 7 Playwright.
 
 **Deferred out of M3:**
 

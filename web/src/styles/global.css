@@ -156,6 +156,27 @@ button {
   color: var(--status-bad);
 }
 
+/* The two ways out of a fork, named on the ground they lead onto. */
+.label-way {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-wide);
+  color: rgb(255 255 255 / 88%);
+}
+
+.label-way.label-way-taken {
+  color: var(--accent-brass);
+}
+
+/* What a ruin holds, for the ones near enough to be a live decision.
+   The heap on the strip is the primary read; this is the precision
+   layer on top of it (DECISIONS.md §8). */
+.label-salvage {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--accent-brass);
+}
+
 /* ── Chrome ──────────────────────────────────────────────── */
 
 .chrome {
@@ -225,6 +246,54 @@ button {
 
 .readout dd.warn {
   color: var(--status-warn);
+}
+
+/* Journey -------------------------------------------------- */
+
+/* Which region, how far through, how far walked. The palette already
+   says *which* — the drowned city does not look like the deep jungle —
+   so the only thing here that the strip cannot say is the progress
+   line, and it carries no number. */
+
+.journey {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 150px;
+}
+
+.journey-place {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  letter-spacing: var(--tracking-wide);
+  color: var(--text-primary);
+}
+
+.journey-branch {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--accent-brass);
+}
+
+.journey-bar {
+  height: 3px;
+  overflow: hidden;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-full);
+}
+
+.journey-fill {
+  height: 100%;
+  background: var(--accent-leaf);
+  border-radius: var(--radius-full);
+  transition: width var(--duration-normal) var(--ease-smooth);
+}
+
+.journey-paces {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 /* Charge --------------------------------------------------- */
@@ -342,9 +411,217 @@ button {
     border-color var(--duration-fast) var(--ease-smooth);
 }
 
-.stride-toggle.walking {
+.stride-toggle.stride-walking {
   color: var(--accent-leaf);
   border-color: var(--accent-leaf);
+}
+
+/* Wanting to walk and not being able to afford it. The frame is already
+   pulsing dark; this says which of the four stillnesses it is. */
+.stride-toggle.stride-brownout {
+  color: var(--status-bad);
+  border-color: var(--status-bad);
+}
+
+.stride-toggle.stride-fork {
+  color: var(--accent-brass);
+  border-color: var(--accent-brass);
+}
+
+.stride-toggle.stride-arrived {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+/* Fork ----------------------------------------------------- */
+
+/* Not a modal and not a pause: it sits low over the strip, the tower
+   keeps walking toward the split behind it, and answering early means
+   never stopping at all. Nothing here dims the game underneath
+   (SYSTEMS.md §3.3). */
+
+.fork {
+  position: absolute;
+  bottom: var(--space-6);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(460px, calc(100% - 620px));
+  padding: var(--space-3) var(--space-4);
+  transform: translateX(-50%);
+}
+
+.fork-head h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-normal);
+  color: var(--text-primary);
+}
+
+.fork-head p {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.fork-closing {
+  height: 2px;
+  overflow: hidden;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-full);
+}
+
+.fork-closing-fill {
+  height: 100%;
+  background: var(--accent-brass);
+  border-radius: var(--radius-full);
+}
+
+.fork-ways {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.fork-way {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  background: var(--bg-raised);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  transition: border-color var(--duration-fast) var(--ease-smooth);
+}
+
+.fork-way:hover {
+  border-color: var(--border-default);
+}
+
+.fork-way[aria-pressed="true"] {
+  background: rgb(217 173 94 / 14%);
+  border-color: var(--accent-brass);
+}
+
+.fork-name {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  color: var(--text-primary);
+}
+
+.fork-ground {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.fork-threat {
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.fork-threat.threat-quieter {
+  color: var(--accent-verdigris);
+}
+
+.fork-threat.threat-louder {
+  color: var(--accent-heart);
+}
+
+/* Standing at it, waiting to be told. A lamp left on, not an alarm —
+   the waypost on the strip is doing the same thing. */
+.fork-waiting {
+  border-color: var(--border-strong);
+  box-shadow:
+    var(--shadow-panel),
+    0 0 28px rgb(255 201 120 / 22%);
+}
+
+/* Enclave -------------------------------------------------- */
+
+/* The berth is diegetic and the transaction is not, and the spec says
+   so (SYSTEMS.md §3.5). Small, plain, and gone the moment the tower
+   walks on. */
+
+.enclave {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 240px;
+  padding: var(--space-4);
+}
+
+.enclave-name {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-normal);
+  color: var(--accent-brass);
+}
+
+.enclave-note {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.enclave-offers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.enclave-offer {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  background: var(--bg-raised);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+
+.enclave-offer:hover:not(:disabled) {
+  border-color: var(--border-default);
+}
+
+.enclave-offer:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.offer-terms {
+  font-size: var(--text-sm);
+}
+
+.offer-left {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.enclave-recruit {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--accent-leaf);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.enclave-recruit:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* Speed --------------------------------------------------- */
@@ -593,6 +870,18 @@ button {
   background: rgb(8 21 14 / 78%);
   backdrop-filter: blur(3px);
   animation: elegy-in 2.6s var(--ease-smooth) both;
+}
+
+/* Arrival is the elegy's sibling, and takes the opposite light: the
+   loss wash closes the frame down, this one opens it out. Same
+   register, same facts, no grade (SYSTEMS.md §3.7). */
+.elegy.arrival {
+  color: var(--text-primary);
+  background: rgb(30 40 28 / 62%);
+}
+
+.elegy.arrival h1 {
+  color: var(--accent-brass);
 }
 
 .elegy h1 {

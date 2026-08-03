@@ -12,7 +12,7 @@
 import { useEffect } from "react";
 
 import type { Game, UiState } from "../engine/Game";
-import type { RoomInfo, ShaftInfo, SimSpeed } from "../bridge/types";
+import type { HaltView, RoomInfo, ShaftInfo, SimSpeed } from "../bridge/types";
 
 const SPEEDS: { value: SimSpeed; label: string; key: string }[] = [
   { value: "Paused", label: "❚❚", key: "Space" },
@@ -33,6 +33,8 @@ export function Chrome({ game, ui }: Props) {
     <div className="chrome">
       <TopBar game={game} ui={ui} />
       <Sidebar game={game} ui={ui} />
+      {ui.fork && <ForkCard game={game} ui={ui} />}
+      {ui.atEnclave && <EnclaveBoard game={game} ui={ui} />}
       <div className="diagnostics">
         <span>tick {ui.tick}</span>
         <span>{ui.fps} fps</span>
@@ -44,6 +46,7 @@ export function Chrome({ game, ui }: Props) {
         </div>
       )}
       {ui.lost && <Elegy ui={ui} />}
+      {ui.arrived && !ui.lost && <Arrival ui={ui} />}
     </div>
   );
 }
@@ -53,9 +56,9 @@ function TopBar({ game, ui }: Props) {
   return (
     <header className="topbar panel">
       <span className="brand">Understory</span>
+      <Journey ui={ui} />
       <dl className="readouts">
         <Readout label="Day" value={`${ui.day + 1} · ${ui.daypart}`} />
-        <Readout label="Distance" value={`${ui.distance} paces`} />
         <Readout label="Terrain" value={ui.terrain} />
         <Readout label="Yield" value={`${ui.yieldPct}%`} warn={ui.yieldPct < 100} />
         <Readout label="Sun" value={`${ui.exposurePct}%`} warn={ui.exposurePct < 30} />
@@ -76,13 +79,13 @@ function TopBar({ game, ui }: Props) {
       <ChargeGauge ui={ui} />
       <button
         type="button"
-        className={ui.walking ? "stride-toggle walking" : "stride-toggle"}
+        className={`stride-toggle stride-${ui.halt}`}
         aria-pressed={ui.walking}
         title="Halting the legs banks the charge they would burn (W)"
         data-testid="stride-toggle"
         onClick={() => game.setStriding(!ui.walking)}
       >
-        {ui.walking ? "Striding" : "Halted"}
+        {HALT_WORDS[ui.halt]}
       </button>
       <div className="speeds" role="group" aria-label="Simulation speed">
         {SPEEDS.map((speed) => (
@@ -99,6 +102,233 @@ function TopBar({ game, ui }: Props) {
         ))}
       </div>
     </header>
+  );
+}
+
+/**
+ * Why the tower is standing still, in one word on the control that
+ * stopped it.
+ *
+ * Four states share one silhouette and the cross-section carries the
+ * difference (`scene.ts` draws each of them differently), but the
+ * toggle used to say "Halted" for all four — including the two the
+ * player did not choose. A brown-out is not the same answer to "why
+ * aren't we moving" as a fork is, and this is the control they would
+ * reach for to find out.
+ */
+const HALT_WORDS: Record<HaltView, string> = {
+  walking: "Striding",
+  stopped: "Halted",
+  brownout: "No charge",
+  fork: "At the fork",
+  arrived: "Arrived",
+};
+
+/**
+ * Where the run has got to.
+ *
+ * The palette says which region the tower is in — the drowned city does
+ * not look like the deep jungle and is not supposed to need a caption.
+ * What the strip genuinely cannot say is *how far through* it you are,
+ * because there is no horizon feature for "two thirds of the way", so
+ * that is the one thing here that earns chrome: an unlabelled line, no
+ * percentage, next to the name of the place and the paces walked.
+ */
+function Journey({ ui }: { ui: UiState }) {
+  const through = Math.max(0, Math.min(100, ui.regionPermille / 10));
+  return (
+    <div className="journey" data-testid="journey">
+      <span className="journey-place">
+        {ui.region}
+        {ui.branch && <span className="journey-branch"> · {ui.branch}</span>}
+      </span>
+      <div
+        className="journey-bar"
+        role="meter"
+        aria-label="Through this region"
+        aria-valuenow={Math.round(through)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div className="journey-fill" style={{ width: `${through}%` }} />
+      </div>
+      <span className="journey-paces">{ui.distance} paces</span>
+    </div>
+  );
+}
+
+/**
+ * A word for how loud a branch is, never a number.
+ *
+ * `threat_pct` multiplies the region's own, so 100 is "the same as
+ * around here" rather than an absolute. Three words is the whole
+ * vocabulary: the choice is which way to go, not which multiplier to
+ * prefer (`SYSTEMS.md` §3.3).
+ */
+function threatWord(pct: number): string {
+  if (pct < 100) return "quieter";
+  if (pct > 100) return "louder";
+  return "as usual";
+}
+
+/**
+ * The fork.
+ *
+ * Not a modal and not a pause — the tower keeps walking toward it while
+ * this is up, and a player who answers early never stops at all. It
+ * appears the moment the split does, roughly fifty seconds out at 1×,
+ * and stays answerable until the tower crosses.
+ *
+ * There is deliberately no authored description of either way. The card
+ * is built out of the branch's own palette and threat multiplier, so it
+ * cannot drift out of step with what the branch actually does during
+ * tuning — a game that misdescribes the only informed choice it asks
+ * for is worse than one that describes it drily (`SYSTEMS.md` §3.3).
+ */
+function ForkCard({ game, ui }: Props) {
+  const fork = ui.fork;
+  if (!fork) return null;
+  const catalog = game.getCatalog();
+  const waiting = ui.halt === "fork";
+  // Against `stream_ahead_paces`: the fork exists from the moment the
+  // generator can see it, and this fills as the tower closes on it.
+  const closing = Math.max(0, Math.min(100, (1 - fork.ahead / 900) * 100));
+
+  return (
+    <section
+      className={waiting ? "fork panel fork-waiting" : "fork panel"}
+      data-testid="fork"
+      aria-label="The way splits"
+    >
+      <header className="fork-head">
+        <h2>The way splits</h2>
+        <p>
+          {waiting
+            ? "the tower is standing at it, waiting to be told"
+            : "say which way before you reach it and you never stop"}
+        </p>
+        <div className="fork-closing" aria-hidden="true">
+          <div className="fork-closing-fill" style={{ width: `${closing}%` }} />
+        </div>
+      </header>
+      <div className="fork-ways">
+        {fork.branches.map((index, side) => {
+          const info = catalog.branches[index];
+          if (!info) return null;
+          const ground = info.terrain
+            .slice(0, 2)
+            .map((terrain) => catalog.terrain[terrain]?.name ?? "?")
+            .join(" and ");
+          return (
+            <button
+              key={info.id}
+              type="button"
+              className="fork-way"
+              aria-pressed={fork.answer === side}
+              data-testid={`fork-${String(side)}`}
+              onClick={() => game.takeFork(side)}
+            >
+              <span className="fork-name">{info.name}</span>
+              <span className="fork-ground">{ground}</span>
+              <span className={`fork-threat threat-${threatWord(info.threat_pct)}`}>
+                {threatWord(info.threat_pct)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The enclave's posted board.
+ *
+ * The berth itself is diegetic — the tower stops next to a place and
+ * walking on ends it — but the transaction is not, and `SYSTEMS.md`
+ * §3.5 says so outright: taking an offer is a button on a board and the
+ * goods appear on the shelves. The genuinely diegetic version needs a
+ * haul destination outside the tower, and that was reasoned about and
+ * cut for M3. So this is the smallest honest thing.
+ *
+ * KNOWN GAP: `CatalogSnapshot` carries the enclave's *name* and nothing
+ * else — `RegionInfo { id, name, enclave: Option<String> }`. What each
+ * offer gives and takes lives in `EnclaveDef`/`OfferDef` and never
+ * crosses the bridge, and neither does `recruit_cost`, so these cards
+ * cannot name the goods or the price. `journey.offers` is remaining
+ * stock only. Until the catalog carries the terms, an offer can be
+ * counted but not read.
+ */
+function EnclaveBoard({ game, ui }: Props) {
+  return (
+    <aside className="enclave panel" data-testid="enclave" aria-label="The posted board">
+      <h2 className="enclave-name">{ui.enclaveName ?? "A settlement"}</h2>
+      <p className="enclave-note">people live here; the tower is passing through</p>
+      <ul className="enclave-offers">
+        {ui.offers.map((left, index) => (
+          <li key={index}>
+            <button
+              type="button"
+              className="enclave-offer"
+              disabled={left <= 0}
+              data-testid={`trade-${String(index)}`}
+              onClick={() => game.trade(index)}
+            >
+              <span className="offer-terms">an exchange</span>
+              <span className="offer-left">{left > 0 ? `${left} to be had` : "spoken for"}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        className="enclave-recruit"
+        disabled={ui.recruits <= 0}
+        data-testid="recruit"
+        onClick={() => game.recruit()}
+      >
+        {ui.recruits > 0 ? "Ask someone to come aboard" : "Nobody else is coming"}
+      </button>
+    </aside>
+  );
+}
+
+/**
+ * The other end of a run.
+ *
+ * The Elegy's sibling and deliberately the same register: it reports
+ * where the tower got to and does not grade it. Region 2's far edge is
+ * a placeholder finish line — M5 adds the third region and the actual
+ * Refugia — so there is nothing here to congratulate anybody for, and
+ * pretending otherwise would be the wrong tone twice over
+ * (`SYSTEMS.md` §3.7, `DECISIONS.md` §8).
+ */
+function Arrival({ ui }: { ui: UiState }) {
+  return (
+    <div className="elegy arrival" role="status" data-testid="arrival">
+      <h1>The far edge</h1>
+      <p>
+        The ground runs out here. The tower stands where the walk ended, and the green carries on
+        without it.
+      </p>
+      <dl className="elegy-facts">
+        <div>
+          <dt>Stood</dt>
+          <dd>{ui.day + 1} days</dd>
+        </div>
+        <div>
+          <dt>Walked</dt>
+          <dd>{ui.distance} paces</dd>
+        </div>
+        <div>
+          <dt>Reached</dt>
+          <dd>{ui.region}</dd>
+        </div>
+      </dl>
+      <button type="button" className="elegy-again" onClick={walkAgain}>
+        walk again
+      </button>
+    </div>
   );
 }
 
