@@ -285,7 +285,15 @@ impl World {
             let too_near_end = end - self.next_fork_at < margin;
             let too_near_enclave =
                 enclave_at.is_some_and(|at| (self.next_fork_at - at).abs() < margin);
-            if !(too_near_start || too_near_end || too_near_enclave) {
+            // And it has to be somewhere the tower has not already
+            // been. A fork scheduled behind the tower is opened the
+            // instant the generator notices it, sits at a distance
+            // already walked, and blocks the legs for the rest of the
+            // run — the tower waiting for a decision about ground
+            // behind it. Reachable whenever a region is entered from
+            // anywhere but its first pace.
+            let already_passed = self.next_fork_at <= self.distance;
+            if !(too_near_start || too_near_end || too_near_enclave || already_passed) {
                 return;
             }
             self.next_fork_at += paces_from_int(interval);
@@ -339,6 +347,36 @@ impl World {
             }
         }
         best.map(|(i, _)| i)
+    }
+
+    /// Where the enclave stands, absolutely, if the run has one.
+    ///
+    /// A region's enclave is authored as an offset from that region's
+    /// own start, so this needs the journey roll to place it.
+    #[must_use]
+    pub fn enclave_at(&self, content: &Content) -> Option<Paces> {
+        content.regions.iter().enumerate().find_map(|(i, region)| {
+            let enclave = region.enclave.as_ref()?;
+            let region = RegionIdx(i as u16);
+            Some(self.region_start_of(region) + paces_from_int(enclave.at_paces))
+        })
+    }
+
+    /// Whether the tower is berthed at the enclave — stopped, and near
+    /// enough. Berthing is implicit here for the same reason it is at a
+    /// ruin: there is no docking mechanic, only a tower that stopped in
+    /// the right place.
+    ///
+    /// A tower that walks past has lost it. There is no going back down
+    /// the axis, which is what makes deciding to stop cost something.
+    #[must_use]
+    pub fn at_enclave(&self, content: &Content, strode: bool) -> bool {
+        if strode {
+            return false;
+        }
+        let reach = paces_from_int(content.balance.journey.enclave_berth_paces);
+        self.enclave_at(content)
+            .is_some_and(|at| (at - self.distance).abs() <= reach)
     }
 
     /// Yield multiplier, in percent, of the terrain under the tower.

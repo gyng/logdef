@@ -179,6 +179,18 @@ fn main() {
         .expect("always legal");
     step_walking(&mut engine, 3000);
 
+    // The enclave is deliberately **not** in this fixture. Reaching it
+    // means walking into region 2, which took the recording from 40,000
+    // ticks to 115,000 and the file from 90 KB to 260 KB — a third of a
+    // second of every `cargo test`, three times the browser check, and
+    // a quarter of a megabyte embedded in the WASM bundle, all to cover
+    // two command handlers that are pure state arithmetic.
+    //
+    // What the fixture is for is native/wasm parity of the simulation,
+    // and that is already covered by the chain, the elevator, a fork, a
+    // berth, a waking and a siege. `Trade` and `Recruit` are covered by
+    // the tests in `tests/journey.rs`, and their survival through the
+    // replay format by `every_command_survives_the_replay_format`.
     let replay = engine.export_replay();
     let path = fixture_path();
     std::fs::create_dir_all(path.parent().expect("fixture has a parent directory"))

@@ -56,6 +56,8 @@ pub struct RunStats {
     pub hauls_completed: u64,
     pub crafts_completed: u64,
     pub items_harvested: u64,
+    /// Items taken in trade at an enclave.
+    pub traded: u64,
     pub hp_repaired: u64,
     /// Poles consumed putting the tower back together. Tracked rather
     /// than derived, because a shift that finishes a nearly-mended
@@ -97,6 +99,21 @@ pub struct GameState {
     /// stride earlier to close it would reorder charge priority and
     /// invalidate every golden replay.
     pub paces_last: Paces,
+    /// The tower has reached the far edge of the last region.
+    ///
+    /// One of the two ways a run ends, and the only one that is not a
+    /// loss. Presented as an arrival rather than a victory — the game
+    /// reports where the tower got to, it does not grade it
+    /// (`DECISIONS.md` §8).
+    pub arrived: bool,
+    /// What the enclave has left, one entry per authored offer, and how
+    /// many people are still willing to come aboard.
+    ///
+    /// Held in state rather than read from content because a trade
+    /// spends it: an enclave is somewhere a run passes through once,
+    /// not a shop that restocks.
+    pub enclave_stock: Vec<i64>,
+    pub enclave_recruits: u8,
     pub stats: RunStats,
     /// Monotonic allocators. Never reuse an ID, even after removal —
     /// a stale reference should fail to resolve, not silently alias.
@@ -133,6 +150,22 @@ impl GameState {
             next_crew_id: 1,
             next_shaft_id: 2,
             next_enemy_id: 1,
+            arrived: false,
+            // Sized from whichever region carries the enclave. One
+            // region has one, so there is one list; when a second
+            // enclave lands this becomes a list per enclave and the
+            // commands index by berth rather than by offer.
+            enclave_stock: content
+                .regions
+                .iter()
+                .find_map(|region| region.enclave.as_ref())
+                .map(|enclave| enclave.offers.iter().map(|offer| offer.stock).collect())
+                .unwrap_or_default(),
+            enclave_recruits: content
+                .regions
+                .iter()
+                .find_map(|region| region.enclave.as_ref())
+                .map_or(0, |enclave| enclave.recruits),
         };
 
         state.place_starting_rooms(content);
@@ -171,20 +204,42 @@ impl GameState {
     }
 
     fn place_starting_crew(&mut self, content: &Content) {
+        for _ in 0..content.balance.crew.starting_crew {
+            self.add_crew();
+        }
+    }
+
+    /// Take somebody aboard, wherever they came from.
+    ///
+    /// Shared by the starting crew and by the enclave's recruit, so a
+    /// hired hand is the same kind of thing as one the tower set out
+    /// with — no second construction path to drift.
+    pub fn add_crew(&mut self) {
         // Names are placeholders until M4 gives the crew personalities.
         const NAMES: [&str; 8] = [
             "Wren", "Odile", "Bakri", "Sena", "Toma", "Ilay", "Rook", "Mira",
         ];
-        for i in 0..content.balance.crew.starting_crew {
-            let id = CrewId(self.next_crew_id);
-            self.next_crew_id += 1;
-            let fidget = (self.rng.cosmetic.next_u32() & 0xFFFF) as u16;
-            self.crew.push(Crew::new(
-                id,
-                NAMES[i as usize % NAMES.len()].to_string(),
-                fidget,
-            ));
+        let id = CrewId(self.next_crew_id);
+        self.next_crew_id += 1;
+        let index = (self.next_crew_id as usize).saturating_sub(2) % NAMES.len();
+        let fidget = (self.rng.cosmetic.next_u32() & 0xFFFF) as u16;
+        self.crew
+            .push(Crew::new(id, NAMES[index].to_string(), fidget));
+    }
+
+    /// Put `amount` of an item on whatever shelves will take it.
+    /// Returns how much landed; the rest stays where it was.
+    pub fn shelve(&mut self, item: ItemIdx, amount: i64) -> i64 {
+        let mut remaining = amount;
+        for floor in &mut self.tower.floors {
+            for room in &mut floor.rooms {
+                remaining -= room.shelve(item, remaining);
+                if remaining == 0 {
+                    return amount;
+                }
+            }
         }
+        amount - remaining
     }
 
     fn stock_starting_shelves(&mut self, content: &Content) {

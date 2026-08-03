@@ -33,6 +33,7 @@ pub struct ViewSnapshot {
     pub world: WorldView,
     pub tower: TowerView,
     pub siege: SiegeView,
+    pub journey: JourneyView,
     pub crew: Vec<CrewView>,
     /// Summed across every storeroom shelf — what construction spends.
     pub stock: Vec<StockView>,
@@ -133,6 +134,63 @@ pub struct FeatureView {
     pub kind: u8,
     pub scale: u8,
     pub layer: u8,
+    /// Scrap still in this ruin, and zero for anything that is not one.
+    /// A ruin worth stopping at and one already stripped are drawn
+    /// differently, so this has to cross the bridge.
+    pub salvage: i64,
+}
+
+/// Where the run has got to, and what it is being asked.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JourneyView {
+    /// Indexes `catalog.regions`.
+    pub region: u16,
+    /// How far through the current region, in per-mille.
+    pub region_permille: i64,
+    /// Paces still to walk before the far edge of the journey.
+    pub remaining: f32,
+    /// The split ahead, if the route has one the tower has not crossed.
+    pub fork: Option<ForkView>,
+    /// The branch the tower is walking through, if any. Indexes
+    /// `catalog.branches`.
+    pub branch: Option<u16>,
+    /// Why the tower is standing still, if it is. The three reasons
+    /// look identical in the cross-section and mean entirely different
+    /// things, so the renderer is told which one it is drawing.
+    pub halt: HaltView,
+    /// Berthed at the enclave right now.
+    pub at_enclave: bool,
+    /// What the enclave has left, one entry per authored offer.
+    pub offers: Vec<i64>,
+    pub recruits: u8,
+    /// The far edge of the last region, reached. The run is over.
+    pub arrived: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForkView {
+    /// Paces from the tower to the split.
+    pub ahead: f32,
+    /// The two archetypes on offer. Index `catalog.branches`.
+    pub branches: [u16; 2],
+    /// Which one the player has picked, if they have.
+    pub answer: Option<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HaltView {
+    /// The legs are running.
+    Walking,
+    /// The player stopped it.
+    Stopped,
+    /// Out of charge, though the player asked for the legs.
+    Brownout,
+    /// Standing at a fork with no answer. Waiting for the player, and
+    /// it must not read as a freeze.
+    Fork,
+    /// The far edge of the journey.
+    Arrived,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -279,6 +337,8 @@ pub struct CatalogSnapshot {
     pub terrain: Vec<TerrainInfo>,
     pub dayparts: Vec<DaypartInfo>,
     pub enemies: Vec<EnemyInfo>,
+    pub regions: Vec<RegionInfo>,
+    pub branches: Vec<BranchInfo>,
     pub floor_cost: Vec<CostInfo>,
     pub max_floors: u8,
     pub floor_slots: u8,
@@ -369,6 +429,35 @@ pub struct TerrainInfo {
     pub name: String,
     pub yield_pct: i64,
     pub feature_kinds: Vec<String>,
+    /// Which of those kinds are ruins — a place the tower can berth at
+    /// and work, rather than scenery.
+    pub ruin_kinds: Vec<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegionInfo {
+    pub id: String,
+    pub name: String,
+    /// The name of the settlement in this region, if it has one.
+    pub enclave: Option<String>,
+}
+
+/// One side of a fork.
+///
+/// The two heaviest terrain kinds and a word for the threat are what
+/// the fork card shows, and both are *derived* from the branch's own
+/// data rather than authored alongside it — a hand-written line
+/// describing a branch drifts out of step with its palette during
+/// tuning, and a game that misdescribes the only informed choice it
+/// asks the player to make is worse than one that describes it drily.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BranchInfo {
+    pub id: String,
+    pub name: String,
+    /// Heaviest first. Indexes `catalog.terrain`.
+    pub terrain: Vec<u16>,
+    /// Against the region it interrupts: 100 is as usual.
+    pub threat_pct: i64,
 }
 
 // ---------------------------------------------------------------------------
@@ -391,6 +480,7 @@ pub fn build_view(state: &GameState, content: &Content, alpha: f32) -> ViewSnaps
         world: build_world(state, content),
         tower: build_tower(state, content),
         siege: build_siege(state, content),
+        journey: build_journey(state, content),
         crew: build_crew(state, content),
         stock: build_stock(state),
         stats: state.stats.clone(),
@@ -451,6 +541,97 @@ fn build_power(state: &GameState) -> PowerView {
     }
 }
 
+fn build_regions(content: &Content) -> Vec<RegionInfo> {
+    content
+        .regions
+        .iter()
+        .map(|region| RegionInfo {
+            id: region.id.clone(),
+            name: region.name.clone(),
+            enclave: region.enclave.as_ref().map(|e| e.name.clone()),
+        })
+        .collect()
+}
+
+fn build_branches(content: &Content) -> Vec<BranchInfo> {
+    content
+        .branches
+        .iter()
+        .enumerate()
+        .map(|(i, branch)| {
+            let mut palette = content
+                .branch_rt(crate::ids::BranchIdx(i as u16))
+                .palette
+                .clone();
+            // Heaviest first, ties by index so the order is a pure
+            // function of the pack.
+            palette.sort_by_key(|(idx, weight)| (-weight, idx.0));
+            BranchInfo {
+                id: branch.id.clone(),
+                name: branch.name.clone(),
+                terrain: palette.iter().map(|(idx, _)| idx.0).collect(),
+                threat_pct: branch.threat_pct,
+            }
+        })
+        .collect()
+}
+
+fn build_journey(state: &GameState, content: &Content) -> JourneyView {
+    let world = &state.world;
+    let region = world.region_at(world.distance);
+    let start = world.region_start_of(region);
+    let end = world
+        .journey
+        .get(region.get())
+        .map_or(start, |roll| roll.end);
+    let span = (end - start).max(1);
+
+    JourneyView {
+        region: region.0,
+        region_permille: ((world.distance - start) * 1000 / span).clamp(0, 1000),
+        remaining: paces_to_f32((world.journey_end() - world.distance).max(0)),
+        fork: world.fork.map(|fork| ForkView {
+            ahead: paces_to_f32((fork.at - world.distance).max(0)),
+            branches: [fork.branches[0].0, fork.branches[1].0],
+            answer: fork.answer,
+        }),
+        branch: world.branch.map(|branch| branch.def.0),
+        halt: halt_reason(state),
+        at_enclave: world.at_enclave(content, state.strode),
+        offers: state.enclave_stock.clone(),
+        recruits: state.enclave_recruits,
+        arrived: state.arrived,
+    }
+}
+
+/// Why the tower is standing still.
+///
+/// All four reasons look identical in the cross-section — same
+/// silhouette, same still legs — and mean completely different things.
+/// A tower waiting at a fork in particular has to read as *waiting for
+/// you* rather than as a frozen game, so the renderer is told which one
+/// it is drawing instead of having to infer it.
+fn halt_reason(state: &GameState) -> HaltView {
+    if state.strode {
+        return HaltView::Walking;
+    }
+    if state.arrived {
+        return HaltView::Arrived;
+    }
+    if state
+        .world
+        .fork
+        .is_some_and(|fork| fork.answer.is_none() && state.world.distance >= fork.at)
+    {
+        return HaltView::Fork;
+    }
+    if state.walking {
+        // The player asked for the legs and did not get them.
+        return HaltView::Brownout;
+    }
+    HaltView::Stopped
+}
+
 fn build_world(state: &GameState, content: &Content) -> WorldView {
     let world = &state.world;
 
@@ -482,6 +663,7 @@ fn build_world(state: &GameState, content: &Content) -> WorldView {
             kind: feature.kind,
             scale: feature.scale,
             layer: feature.layer,
+            salvage: feature.salvage,
         });
     }
 
@@ -805,13 +987,17 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
         terrain: content
             .terrain
             .iter()
-            .map(|band| TerrainInfo {
+            .enumerate()
+            .map(|(i, band)| TerrainInfo {
                 id: band.id.clone(),
                 name: band.name.clone(),
                 yield_pct: band.yield_pct,
                 feature_kinds: band.feature_kinds.clone(),
+                ruin_kinds: content.terrain_runtime[i].ruin_feature.clone(),
             })
             .collect(),
+        regions: build_regions(content),
+        branches: build_branches(content),
         floor_cost: content
             .balance
             .tower

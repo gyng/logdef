@@ -168,3 +168,81 @@ fn the_golden_fixture_verifies() {
     assert!(report.checked > 10, "the fixture is too short to be useful");
     assert!(report.final_tick >= 1800, "the fixture is too short");
 }
+
+#[test]
+fn every_command_survives_the_replay_format() {
+    // A replay is a seed and a command stream, so a command that does
+    // not survive JSON is a run that cannot be shared, and it fails
+    // silently — the replay loads, it just does something else.
+    //
+    // The golden fixture cannot cover every command: some of them are
+    // an hour of walking apart, and the two at the enclave would have
+    // tripled the fixture to exercise arithmetic the unit tests already
+    // pin (see `record_golden.rs`). This covers the format instead, and
+    // the match below is exhaustive on purpose — adding a command
+    // without adding it here will not compile.
+    use crate::command::GameCommand as C;
+    use crate::state::{ShaftPriority, SimSpeed};
+
+    let every = vec![
+        C::SetSpeed {
+            speed: SimSpeed::X4,
+        },
+        C::BuildFloor,
+        C::PlaceRoom {
+            room: "room.mill".into(),
+            floor: 1,
+            slot: 2,
+        },
+        C::RemoveRoom { floor: 1, slot: 2 },
+        C::SetRoomActive {
+            floor: 1,
+            slot: 2,
+            active: false,
+        },
+        C::BuildShaft {
+            shaft: "shaft.elevator".into(),
+            low: 0,
+            high: 3,
+            slot: 7,
+        },
+        C::RemoveShaft {
+            id: crate::ids::ShaftId(1),
+        },
+        C::SetShaftProgram {
+            id: crate::ids::ShaftId(1),
+            daypart: 0,
+            served: vec![true, false, true],
+            priority: ShaftPriority::FreightFirst,
+        },
+        C::SetStriding { walking: false },
+        C::TakeFork { branch: 1 },
+        C::Trade { offer: 2 },
+        C::Recruit,
+    ];
+
+    // Exhaustiveness: if a variant is added and not listed above, this
+    // match stops compiling and whoever added it has to decide.
+    for command in &every {
+        match command {
+            C::SetSpeed { .. }
+            | C::BuildFloor
+            | C::PlaceRoom { .. }
+            | C::RemoveRoom { .. }
+            | C::SetRoomActive { .. }
+            | C::BuildShaft { .. }
+            | C::RemoveShaft { .. }
+            | C::SetShaftProgram { .. }
+            | C::SetStriding { .. }
+            | C::TakeFork { .. }
+            | C::Trade { .. }
+            | C::Recruit => {}
+        }
+    }
+
+    for command in every {
+        let json = serde_json::to_string(&command).expect("a command serialises");
+        let back: C = serde_json::from_str(&json).expect("and comes back");
+        assert_eq!(back, command, "{json} did not survive the round trip");
+    }
+}

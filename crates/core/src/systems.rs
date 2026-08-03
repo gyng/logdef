@@ -60,6 +60,8 @@ pub enum SoundEvent {
     BandChange,
     /// The tower has walked out of one region and into the next.
     RegionChange,
+    /// The far edge of the journey. The run is over, and not badly.
+    Arrived,
     /// A wave arrived on the horizon.
     WaveArrives,
     /// Something reached the tower and started work.

@@ -67,6 +67,14 @@ pub enum GameCommand {
     /// Halt the legs to bank the charge they would have burned, or set
     /// them running again. The bank-or-burn decision, at its simplest.
     SetStriding { walking: bool },
+    /// Take one of the enclave's posted offers, once.
+    ///
+    /// Only while berthed there. Each offer has finite stock, because
+    /// an enclave is somewhere a run passes through rather than a shop
+    /// that restocks.
+    Trade { offer: u8 },
+    /// Take somebody aboard, for poles.
+    Recruit,
     /// Commit to one of the two branches the pending fork offers.
     ///
     /// Legal from the moment the fork appears until the tower crosses
@@ -124,6 +132,16 @@ pub enum CommandError {
     NoForkPending,
     /// A fork offers two ways. That was not one of them.
     NoSuchBranch { branch: u8 },
+    /// The tower is not stopped at the enclave.
+    NotBerthedAtAnEnclave,
+    /// The enclave posts no such offer.
+    NoSuchOffer { offer: u8 },
+    /// That offer has been taken as often as it is going to be.
+    OfferExhausted { offer: u8 },
+    /// Nobody else here is willing to come aboard.
+    NobodyToRecruit,
+    /// The tower has as many people as it can house.
+    CrewFull { cap: u8 },
     /// No shaft with that runtime ID is standing.
     NoSuchShaft { id: ShaftId },
     /// The span is inverted, too short, or too tall for this kind.
@@ -172,6 +190,13 @@ impl std::fmt::Display for CommandError {
             CommandError::Undemolishable { room } => write!(f, "{room} cannot be removed"),
             CommandError::UnknownShaft { shaft } => write!(f, "no such shaft: {shaft}"),
             CommandError::NoForkPending => write!(f, "the route does not split here"),
+            CommandError::NotBerthedAtAnEnclave => {
+                write!(f, "the tower is not stopped at an enclave")
+            }
+            CommandError::NoSuchOffer { offer } => write!(f, "no offer {offer} is posted"),
+            CommandError::OfferExhausted { offer } => write!(f, "offer {offer} is spent"),
+            CommandError::NobodyToRecruit => write!(f, "nobody else here wants to come"),
+            CommandError::CrewFull { cap } => write!(f, "the tower houses {cap} already"),
             CommandError::NoSuchBranch { branch } => {
                 write!(f, "a fork offers two ways; {branch} was not one of them")
             }

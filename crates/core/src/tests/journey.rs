@@ -1352,3 +1352,265 @@ fn a_wardens_grip_only_runs_out_once_the_tower_walks_away() {
         "walking away did not start shaking the warden off"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The enclave, and the end of the run
+// ---------------------------------------------------------------------------
+
+use crate::command::CommandError;
+
+/// Park the tower at the enclave, stopped and in reach.
+///
+/// Walking there honestly would take the better part of an in-game
+/// week; these tests are about what happens once you arrive.
+fn berth_at_the_enclave(game: &mut crate::engine::GameEngine) {
+    let content = content();
+    let at = game
+        .state()
+        .world
+        .enclave_at(&content)
+        .expect("the pack puts an enclave somewhere");
+    {
+        let state = game.state_mut_for_test();
+        state.world.distance = at;
+        state.walking = false;
+        state.strode = false;
+        // No wave mid-trade; these tests are about the transaction.
+        state.siege.provocation = 0;
+        state.siege.enemies.clear();
+        state.siege.next_wave_tick = u64::MAX;
+    }
+}
+
+#[test]
+fn trading_needs_the_tower_to_be_standing_there() {
+    // An enclave is a place, not a menu. A tower that walked past it
+    // has lost it, because there is no going back down the axis, and
+    // that is what makes stopping cost something.
+    let mut game = engine(3000);
+    let error = game
+        .try_send(GameCommand::Trade { offer: 0 })
+        .expect_err("the tower starts a region away from anyone");
+    assert!(matches!(error, CommandError::NotBerthedAtAnEnclave));
+
+    berth_at_the_enclave(&mut game);
+    crate::tests::stock_poles(&mut game, 40);
+    game.try_send(GameCommand::Trade { offer: 2 })
+        .expect("offer 2 takes poles");
+}
+
+#[test]
+fn an_offer_runs_out() {
+    // Finite stock is what stops the enclave being a converter the
+    // player can run in a loop until the numbers say yes.
+    let content = content();
+    let mut game = engine(3001);
+    berth_at_the_enclave(&mut game);
+    crate::tests::stock_poles(&mut game, 200);
+
+    let stock = game.state().enclave_stock[2];
+    for _ in 0..stock {
+        game.try_send(GameCommand::Trade { offer: 2 })
+            .expect("stock remains");
+    }
+    let error = game
+        .try_send(GameCommand::Trade { offer: 2 })
+        .expect_err("the offer is spent");
+    assert!(matches!(error, CommandError::OfferExhausted { offer: 2 }));
+    assert_eq!(game.state().enclave_stock[2], 0);
+
+    let darts = item(&content, "item.darts");
+    assert!(
+        game.state().stock_of(darts) > 0,
+        "the trades paid out nothing"
+    );
+}
+
+#[test]
+fn a_trade_the_tower_cannot_pay_for_changes_nothing() {
+    // `DECISIONS.md` §4 in its narrowest form: a rejected command is a
+    // no-op, down to the enclave's own bookkeeping.
+    let mut game = engine(3002);
+    berth_at_the_enclave(&mut game);
+
+    // The tower ships with a few poles; spend them so the refusal is
+    // about affording the trade rather than about anything else.
+    {
+        let poles = item(&content(), "item.poles");
+        let state = game.state_mut_for_test();
+        let held = state.stock_of(poles);
+        state.take_stock(poles, held);
+    }
+    let before = game.state().enclave_stock.clone();
+    let error = game
+        .try_send(GameCommand::Trade { offer: 2 })
+        .expect_err("the tower has no poles to spare");
+    assert!(matches!(error, CommandError::InsufficientStock { .. }));
+    assert_eq!(
+        game.state().enclave_stock,
+        before,
+        "a refused trade still spent the enclave's stock"
+    );
+}
+
+#[test]
+fn nobody_is_recruited_twice_and_nobody_for_free() {
+    let mut game = engine(3003);
+    berth_at_the_enclave(&mut game);
+
+    let broke = game
+        .try_send(GameCommand::Recruit)
+        .expect_err("recruiting is not free");
+    assert!(matches!(broke, CommandError::InsufficientStock { .. }));
+
+    crate::tests::stock_poles(&mut game, 200);
+    let before = game.state().crew.len();
+    game.try_send(GameCommand::Recruit)
+        .expect("somebody here will come");
+    assert_eq!(game.state().crew.len(), before + 1);
+
+    let again = game
+        .try_send(GameCommand::Recruit)
+        .expect_err("only so many people live here");
+    assert!(matches!(again, CommandError::NobodyToRecruit));
+}
+
+#[test]
+fn a_recruit_is_the_same_kind_of_person_as_the_starting_crew() {
+    // One construction path, so a hired hand cannot drift into being a
+    // different sort of thing from one the tower set out with.
+    let mut game = engine(3004);
+    berth_at_the_enclave(&mut game);
+    crate::tests::stock_poles(&mut game, 200);
+    game.try_send(GameCommand::Recruit).expect("affordable");
+
+    let newcomer = game.state().crew.last().expect("just recruited");
+    assert!(!newcomer.name.is_empty(), "a nameless crew member");
+    assert!(
+        game.state()
+            .crew
+            .iter()
+            .filter(|other| other.id == newcomer.id)
+            .count()
+            == 1,
+        "the newcomer reused somebody else's id"
+    );
+
+    // And they work: given a few hundred ticks they pick something up.
+    game.step(600);
+    assert!(
+        game.state().crew.len() > 3,
+        "the recruit vanished on the next tick"
+    );
+}
+
+#[test]
+fn the_far_edge_of_the_journey_ends_the_run() {
+    // The second of the two endings. Reaching it is an arrival, not a
+    // victory — the tower stops because the world has run out, exactly
+    // the way it stops at an unanswered fork.
+    let mut game = engine(3005);
+    {
+        let state = game.state_mut_for_test();
+        // A stride short of the end, with the jungle held off so the
+        // other ending cannot happen first.
+        state.world.distance = state.world.journey_end() - crate::fx::paces_from_int(2);
+        state.siege.provocation = 0;
+        state.siege.enemies.clear();
+        state.siege.next_wave_tick = u64::MAX;
+    }
+    assert!(!game.state().arrived);
+
+    game.step(120);
+    assert!(
+        game.state().arrived,
+        "the tower never noticed it had arrived"
+    );
+    assert_eq!(
+        game.state().world.distance,
+        game.state().world.journey_end(),
+        "the tower walked off the end of the world"
+    );
+
+    let held = game.state().world.distance;
+    game.step(600);
+    assert_eq!(
+        game.state().world.distance,
+        held,
+        "an arrived tower kept walking"
+    );
+    assert!(!game.state().siege.lost, "arriving is not losing");
+}
+
+#[test]
+fn the_snapshot_says_which_kind_of_standing_still_this_is() {
+    // Four reasons, one silhouette. The renderer cannot tell them apart
+    // from the geometry, and a tower waiting at a fork that reads as a
+    // frozen game is the one failure that would make the whole
+    // halt-at-a-fork argument worthless (`SYSTEMS.md` §3.3).
+    use crate::snapshot::HaltView;
+
+    let mut game = engine(3006);
+    game.step(2);
+    assert_eq!(game.view().journey.halt, HaltView::Walking);
+
+    game.try_send(GameCommand::SetStriding { walking: false })
+        .expect("always legal");
+    game.step(2);
+    assert_eq!(game.view().journey.halt, HaltView::Stopped);
+
+    game.try_send(GameCommand::SetStriding { walking: true })
+        .expect("always legal");
+    {
+        // Empty the banks and take the sails off the roof, so nothing
+        // refills them.
+        let content = content();
+        let state = game.state_mut_for_test();
+        state.power.charge = 0;
+        for floor in &mut state.tower.floors {
+            floor
+                .rooms
+                .retain(|room| content.room(room.def).solar.is_none());
+        }
+    }
+    // Long enough for the prepaid stride block to run out: charge is
+    // bought a hundred ticks at a time, so a tower that has just paid
+    // keeps walking on credit for the rest of the block.
+    game.step(150);
+    assert_eq!(
+        game.view().journey.halt,
+        HaltView::Brownout,
+        "a tower that asked for its legs and did not get them is not merely stopped"
+    );
+
+    let mut game = engine(3007);
+    for _ in 0..40_000 {
+        game.step(1);
+        if game.state().world.is_blocked() {
+            break;
+        }
+    }
+    // One more tick: the step that lands the tower on the fork line is
+    // still a step, so `strode` is true on the tick it arrives.
+    game.step(1);
+    assert_eq!(
+        game.view().journey.halt,
+        HaltView::Fork,
+        "the tower is standing at a fork and the snapshot does not say so"
+    );
+}
+
+#[test]
+fn a_ruins_worth_crosses_the_bridge() {
+    // The renderer draws a ruin still worth berthing at differently
+    // from one already stripped, so the figure has to be in the
+    // snapshot rather than inferred from the terrain kind.
+    let mut game = engine(3008);
+    for _ in 0..400 {
+        game.step(30);
+        if game.view().world.features.iter().any(|f| f.salvage > 0) {
+            return;
+        }
+    }
+    panic!("no ruin with anything in it ever reached the snapshot");
+}

@@ -49,6 +49,8 @@ pub fn apply(
             Ok(())
         }
         GameCommand::TakeFork { branch } => take_fork(state, content, *branch),
+        GameCommand::Trade { offer } => trade(state, content, *offer),
+        GameCommand::Recruit => recruit(state, content),
     }
 }
 
@@ -65,6 +67,85 @@ fn take_fork(state: &mut GameState, content: &Content, branch: u8) -> Result<(),
         return Err(CommandError::NoSuchBranch { branch });
     }
     state.world.answer_fork(content, branch);
+    Ok(())
+}
+
+/// The enclave the tower is berthed at, or a rejection.
+fn berthed_enclave<'a>(
+    state: &GameState,
+    content: &'a Content,
+) -> Result<&'a crate::content::EnclaveRuntime, CommandError> {
+    if !state.world.at_enclave(content, state.strode) {
+        return Err(CommandError::NotBerthedAtAnEnclave);
+    }
+    content
+        .regions
+        .iter()
+        .enumerate()
+        .find_map(|(i, region)| {
+            region.enclave.as_ref()?;
+            content
+                .region_rt(crate::ids::RegionIdx(i as u16))
+                .enclave
+                .as_ref()
+        })
+        .ok_or(CommandError::NotBerthedAtAnEnclave)
+}
+
+/// Take one of the enclave's posted offers.
+///
+/// Validated to the last check before anything moves, per
+/// `DECISIONS.md` §4: the shelves have to have the goods *and* somewhere
+/// to put what comes back, or a trade could take payment and drop the
+/// return on the floor.
+fn trade(state: &mut GameState, content: &Content, offer: u8) -> Result<(), CommandError> {
+    let enclave = berthed_enclave(state, content)?;
+    let index = usize::from(offer);
+    let deal = *enclave
+        .offers
+        .get(index)
+        .ok_or(CommandError::NoSuchOffer { offer })?;
+
+    if state.enclave_stock.get(index).copied().unwrap_or(0) <= 0 {
+        return Err(CommandError::OfferExhausted { offer });
+    }
+    let (give_item, give_amount) = deal.give;
+    let held = state.stock_of(give_item);
+    if held < give_amount {
+        return Err(CommandError::InsufficientStock {
+            item: content.item(give_item).id.clone(),
+            needed: give_amount,
+            available: held,
+        });
+    }
+
+    state.take_stock(give_item, give_amount);
+    let (take_item, take_amount) = deal.take;
+    // Whatever will not fit stays with the traders rather than
+    // vanishing. Nothing this game hands the player is ever silently
+    // discarded — see `haul.rs` on carried loads.
+    let landed = state.shelve(take_item, take_amount);
+    state.enclave_stock[index] -= 1;
+    state.stats.traded += landed as u64;
+    Ok(())
+}
+
+/// Take somebody aboard.
+fn recruit(state: &mut GameState, content: &Content) -> Result<(), CommandError> {
+    let enclave = berthed_enclave(state, content)?;
+    if state.enclave_recruits == 0 {
+        return Err(CommandError::NobodyToRecruit);
+    }
+    let cap = content.balance.crew.crew_cap;
+    if state.crew.len() >= usize::from(cap) {
+        return Err(CommandError::CrewFull { cap });
+    }
+    let cost = enclave.recruit_cost.clone();
+    check_stock(state, content, &cost)?;
+
+    spend(state, &cost);
+    state.enclave_recruits -= 1;
+    state.add_crew();
     Ok(())
 }
 

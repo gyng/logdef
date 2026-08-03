@@ -33,6 +33,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         };
         cross_fork(state, content);
         cross_region(state, content, sounds);
+        arrive(state, sounds);
     }
 
     // Ground actually covered, for intake to accrue against next tick.
@@ -85,6 +86,20 @@ fn cross_region(state: &mut GameState, content: &Content, sounds: &mut Vec<Sound
     }
     state.world.enter_region(content, here);
     sounds.push(SoundEvent::RegionChange);
+}
+
+/// The far edge of the last region, reached.
+///
+/// The generator has nothing past it, so `blocked_at` already stopped
+/// the tower there; this is only the moment being noticed. Presented as
+/// an arrival rather than a victory — the game reports where the tower
+/// got to, it does not grade it (`DECISIONS.md` §8).
+fn arrive(state: &mut GameState, sounds: &mut Vec<SoundEvent>) {
+    if state.arrived || state.world.distance < state.world.journey_end() {
+        return;
+    }
+    state.arrived = true;
+    sounds.push(SoundEvent::Arrived);
 }
 
 /// Paces per tick, derived from the designer-facing "paces per 100
