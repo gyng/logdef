@@ -2557,3 +2557,345 @@ Things that genuinely cannot be settled without building them.
    and rate-limiting them into rarity is the standard answer and also the answer that makes
    them stop doing their job. This cannot be settled from the desk, only by hearing the same
    line for the twentieth time and noticing how it feels.
+
+---
+
+## M5 — The Refugia *(depth within rules)*
+
+**Sprint question:** does a second tier add depth, or does it just add rooms?
+
+**Scope:** the tier-two chains `v2-plan.md` §6.1 has carried since the plan was locked, and the
+raw materials they turn out to need; chutes; the rest of the creature taxonomy; region 3 and
+the arrival that ends a run well; an enclave economy that makes `crew_cap` reachable;
+toolkit-widening unlocks and the delivery mechanism §11 left open; balance telemetry and the
+difficulty pass that turns `DESIGNED` into `PLAYTESTED`; and the itch.io release cut.
+
+**The content gate is absolute, and it is the whole of what keeps this milestone honest:**
+*nothing ships unless an existing system consumes it at runtime.* v1 authored sixteen modifier
+effects and applied zero, and that is the failure this rule exists to prevent (`v2-plan.md` §10
+rule 1). Every item below names its consumer in the same sentence that introduces it, and
+anything that cannot name one is cut here rather than discovered dead later.
+
+### 5.1 The shape of the thing
+
+**M5 is where the route stops being one axis.** Since M1 the world has offered a single trade —
+shade is biomass-rich and sun-poor, open ground the reverse — and M4 finally made the biomass
+half feelable by giving bamboo a consumer that scales with the crew (§4.3). But the sun half
+still only buys *charge*, which is a means rather than an end, so a sun-seeking route reads as
+a sacrifice with a rebate rather than as a different way to play.
+
+The tier-two chains fix that by hanging a second material on the other end of the same axis.
+Shade grows bamboo; open sun grows **produce**; the ruin belt yields **scrap**, which has been
+harvestable since M3 and, until now, has had *no chain consumer at all* — it dead-ends at the
+enclave's trade board, which is a fine thing for a material to also do and a poor thing for it
+to only do. Three materials, three parts of the map, three tiers built on top of them. That is
+the depth M5 is for.
+
+**What this milestone must not become is a wider menu.** Rule 2 of `v2-plan.md` §10 —
+"core-mechanic depth beats content breadth" — is the one most at risk here, because a tier list
+is the easiest thing in the world to keep extending. The test each new room has to pass is not
+"is it interesting" but "does it change a decision the player was already making". A room that
+only adds a step to a chain is breadth wearing depth's clothes.
+
+### 5.2 The materials, and what eats them
+
+Chain depth stays at three and no recipe takes more than two inputs (`v2-plan.md` §6.1). The
+full pack after M5, with the new entries in bold:
+
+| Tier | Item | Made by | Consumed by |
+|---|---|---|---|
+| raw | `bamboo` | cutter arm, shade-weighted | mill, canteen, burner |
+| raw | `scrap` | salvage rig, at ruins | **sun-forge** (new) |
+| raw | **`fiber`** | **fiber comb** (new), mid-band-weighted | **ropery** (new) |
+| raw | **`produce`** | **garden** (new), sun-weighted | **bombary** (new) |
+| T1 | `poles` | mill | construction, repair, thornwright, **fitter** |
+| T1 | `meals` | canteen | crew, three times a day |
+| T1 | `darts` | thornwright | dart battery |
+| T1 | **`rope`** | **ropery** (new) | every shaft and every emplacement's build cost |
+| T1 | **`alloy`** | **sun-forge** (new), charge-hungry | **fitter**, **cellwright** |
+| T2 | **`mechanisms`** | **fitter** (new) | elevator build cost, **seed thrower** (new) |
+| T2 | **`seed bombs`** | **bombary** (new) | seed thrower, as ammo |
+| T2 | **`charge cells`** | **cellwright** (new) | cell bank build cost |
+
+**Meals stay on bamboo, and that is a deliberate departure from `v2-plan.md` §6.1**, which
+lists them as `produce`→kitchen. M4 built them from bamboo for a specific reason — bamboo had
+no consumer and the biomass axis was therefore unfeelable (§4.3) — and the measurement that
+justified it is on the record: two routes eight percent apart in weighted yield harvested 353
+stalks against 351 before the canteen was priced properly, and 576 against 539 after. Switching
+meals to produce now would hand that back. Produce gets seed bombs instead, which is a better
+job for it anyway: a material that grows in the sun feeding a weapon that denies ground is a
+cleaner opposite to bamboo feeding poles than two food chains would be.
+
+**Three of these rooms are the point and three are plumbing.** Worth being honest about which:
+
+- The **sun-forge** is the point. It is the first room that turns a raw material the tower
+  cannot grow into something the chain needs, it is charge-hungry enough to compete with
+  striding, and it gives every ruin the tower walks past a second reason to stop. It is also
+  what makes the drowned city a destination rather than a corridor.
+- The **garden** is the point. It produces on sunlight rather than on ground covered, which
+  makes it the first intake a *stopped* tower runs at full rate — the exact inverse of the
+  cutter arm (§3.6), and therefore the first real argument for standing still.
+- The **fitter** is the point, because mechanisms gate the elevator (§5.3).
+- The **ropery**, the **bombary** and the **cellwright** are plumbing: one input, one output,
+  no decision of their own. They earn their slots by what they feed, and if any of them reads
+  as a step rather than as a choice in play, the right answer is to fold its output into an
+  existing room rather than to make it more interesting.
+
+**Opening values**, as design targets with an argument behind them rather than measurements.
+None is a `BALANCE.md` row until it is authored, at which point it gets a graded row in the
+same commit (`DECISIONS.md` §7).
+
+| Thing | Target | The arithmetic |
+|---|---|---|
+| fiber comb | Intake, 2 slots, 4 poles, `paces_per_item` 90 | A shade under the cutter arm's 78, because fiber is the *second* thing a band gives up. Weighted to clearing and drowned street, so the bands poorest in bamboo are rich in something. |
+| garden | Intake, 2 slots, 5 poles, `ticks_per_item` 260 scaled by exposure | **Per tick, scaled by sun, not per pace.** A stopped tower harvests nothing today; a garden keeps working while the legs are off, which is what makes berthing cost less than it does now. At full sun that is one produce every 8.7 s; under dense canopy it is nearly nothing. |
+| ropery | Production, 2 slots, 4 poles; 2 fiber → 1 rope, 120 ticks | The mill's price and rhythm exactly, because it is the mill's opposite number and the two should feel like siblings. |
+| sun-forge | Production, 2 slots, 8 poles; 3 scrap → 1 alloy, 240 ticks, `power_draw` 4 | Four times the thornwright's draw and the largest single sink in the tower: a forge running flat out costs more charge across a day than continuous striding, so *running the forge* and *walking far* become the same decision. Eight seconds a bar makes it visibly the slowest thing in the chain. |
+| fitter | Production, 2 slots, 6 poles + 4 rope; 1 alloy + 2 poles → 1 mechanism, 300 ticks | The first build cost that is not poles alone, and the first recipe drawing two inputs from different chains. |
+| bombary | Production, 2 slots, 6 poles + 4 rope; 2 produce + 1 fiber → 2 seed bombs, 200 ticks | Cheaper per shot than darts and slower to make, so a thrower is the answer to *many* things rather than to one hard thing. |
+| cellwright | Production, 2 slots, 6 poles; 2 alloy → 1 charge cell, 300 ticks | Storage is built, so the tower's charge ceiling becomes something the chain earns rather than something poles buy. |
+| seed thrower | Defence, 2 slots, 6 poles + 3 rope + 2 mechanisms; 1 seed bomb a shot, 8 damage across a 30-pace band, `reload_ticks` 90 | **Area, not aim.** The dart battery answers one creature well; the thrower answers a wave badly and cheaply. Two emplacements with different failure modes is what makes "what do I build" a question at all. |
+| `rope` in shaft costs | stairs 0, dumbwaiter +3, elevator +6 | Shafts stop being a pure pole cost, so the material easiest to get in the *middle* bands is what buys vertical transport. A tower that never leaves the canopy can afford poles and not rope. |
+| `mechanisms` in the elevator's cost | 2 | **The elevator becomes a tier-two building**, which is the sharpest single expression of "depth within rules": M1's centrepiece stops being something a starting tower can rush, and the route that reaches it runs through the ruins. |
+| `charge cells` in the cell bank's cost | 2, replacing 8 poles | See above: batteries are built. |
+
+### 5.3 What each tier-two item is *for*, stated as a consumer
+
+The content gate applied one item at a time, because "it feeds the next room" is not a
+consumer, it is a postponement.
+
+**`mechanisms` gate the elevator and the seed thrower.** This is the load-bearing one. Until M5
+the elevator is 18 poles and a decision about *when*; after M5 it is 18 poles, 6 rope and 2
+mechanisms and a decision about *whether the route you took can build one at all*. A tower that
+walked the shaded branches every time has bamboo and no scrap, so no alloy, so no mechanisms,
+so it climbs its stairs. That is route choice reaching all the way into the transport layer,
+which is where this game's thesis lives.
+
+**`charge cells` are the tower's charge ceiling.** A cell bank costing cells rather than poles
+means the answer to "I keep browning out at night" stops being "spend poles" and becomes "run
+the forge, which costs charge" — a loop to be climbed rather than bought out of. It is the first
+place in the game where fixing a problem costs the resource the problem is about.
+
+**`seed bombs` are the second emplacement's ammo**, and the second emplacement exists to give
+defence a *shape* rather than a level. A dart battery kills one thing at a time and is the right
+answer to a borer at a shaft column; a thrower scatters and is the right answer to four skitters
+on a panel. Neither is an upgrade of the other, which is the only way a second anything is
+allowed to exist here.
+
+**`rope` is what every shaft and every emplacement is partly made of.** Not a tier so much as a
+second construction currency, and its job is to stop poles being the answer to everything. Fiber
+comes from the middle bands, so the tower that can build transport is the one that walked
+through ordinary ground rather than optimising for either extreme.
+
+**`alloy` is the only thing that consumes scrap**, and therefore the reason to berth. §3.4 built
+berthing, wardens and the salvage rig, and §3.11 asked whether stopping at a ruin is ever
+genuinely "it depends" rather than always yes or always no. It could not be: scrap bought poles
+at the enclave and nothing else, so the answer was "yes, if you happen to be passing". With a
+forge aboard, scrap is the input to the two things that gate the elevator and the charge
+ceiling, and the question becomes a real one.
+
+### 5.4 Chutes, and the answer to shelf typing
+
+`BALANCE.md`'s `storeroom` row has described the sharpest emergent failure in the game since M2
+and handed the fix forward twice: a shelf takes whichever item lands on it first and holds only
+that until it empties, so a material arriving faster than it is consumed claims shelf after
+shelf until nothing else can be put down and the chain deadlocks. §4.3 made it non-fatal — crew
+eat at the canteen, so nobody starves — and said plainly that non-fatal is not solved. §4.10's
+third open question named three candidates and called the decision an owner call.
+
+**The call: a chute, which is the candidate that is a piece of infrastructure rather than a
+setting.** A chute is a shaft kind (§1.3) with no cars, no capacity and no charge draw — things
+fall down it — ending at a spill gate on the ground floor. Anything a crew member drops in
+leaves the tower. Haul gains one destination of last resort, below a shelf in priority: an item
+with no hungry inbox and no free shelf goes down a reachable chute rather than stranding whoever
+is holding it.
+
+Why this rather than a per-shelf item filter:
+
+- **It is a thing you build, not a menu you set.** The player answers the deadlock by spending
+  slots and materials on a piece of the tower, which is how every other problem in this game is
+  answered. A filter would be the first place the answer was a dropdown.
+- **It costs something ongoing.** A chute is a slot column on every floor it spans, like every
+  other shaft (`DESIGN.md` pillar 2), and what goes down it is gone. Surplus bamboo dumped is
+  bamboo not milled later.
+- **It is visible.** You can watch the overflow leave, which puts the deadlock's *cause* on
+  screen rather than leaving it to be inferred from a chain that stopped.
+- **It composes with the stranded-carrier rule.** M4 already lets a stranded carrier sleep, eat
+  and mend while holding a load they cannot put down (§4.8); a chute turns that from a
+  survivable dead end into something the player can fix.
+
+The filter is not rejected as a bad idea, only as a worse first one. If chutes ship and towers
+still jam — because the surplus is something you *wanted* and a chute is too blunt — a per-shelf
+filter is the next thing to try, and it will land on a game that has already made overflow
+visible, which is a better game to add it to.
+
+| Thing | Target | The arithmetic |
+|---|---|---|
+| chute | Shaft, 1 slot column, 6 poles + 2 rope, no charge, no capacity | Cheaper than a dumbwaiter (8 poles) because it does less: one direction, no machinery, nothing comes back up. The rope is what stops it being the trivially correct first build. |
+| spill priority | below `PRIORITY_SHELF` | Never preferred to somewhere useful. A chute is where things go when there is nowhere else, and a tower with spare shelf space should never spill. |
+
+### 5.5 The rest of the taxonomy, region 3, and the Refugia
+
+**Two creatures complete the set**, and both exist to attack something no current creature
+does. The four shipped kinds all converge on the tower and bite it; what is missing is a threat
+to the *chain* rather than to the structure.
+
+| Creature | Shape | Why it is not a fifth biter |
+|---|---|---|
+| **glean-crow** | Fast, fragile, `min_provocation` ~250. Lands on an outbox, takes what is in it, leaves. | Attacks throughput rather than hit points. The tower is undamaged and the day's harvest is gone — a loss repair cannot answer and defence can. |
+| **mire-hulk** | Very slow, very tough, region 3 only. Grapples a *leg* and slows the stride while attached. | Attacks the journey. The one creature that cannot be walked away from, because it is what is stopping you walking — the counterpart to the warden, which is what stopping wakes. |
+
+**Region 3 is the coast approach**: the canopy thins, the ground opens, sun is abundant and
+biomass is poor. Mechanically it is the mirror of region 1, which is what makes a run's shape an
+arc rather than a ramp — a tower tuned for shade arrives somewhere its habits do not work, and
+the garden that was marginal in the jungle is what keeps it fed. The mire-hulk lives here, and
+so does the last stretch of walking.
+
+**The Refugia is an arrival, not a victory.** §3.7 already ends a run two ways and presents the
+far edge as somewhere the tower got to rather than something it won (`DECISIONS.md` §8); M5
+changes the destination from an edge to a place. What arriving shows: the tower, stopped, with
+whatever it still has aboard; the crew by name and what became of them; the route it walked as a
+line through three regions; and the seed, so the run can be handed to somebody else. **No score,
+no rank, no stars.** A run's ending is a description.
+
+**The name stays "the Refugia."** `v2-plan.md` §11 open #1 marked it provisional and asked for a
+decision during M3's world-writing, which never happened because M3 never reached region 3.
+Deciding it now, by keeping it: it has been the word in every document for the whole project, it
+means what it should mean, and a rename at this point would be churn for its own sake.
+
+### 5.6 The enclave economy
+
+`BALANCE.md`'s `crew_cap` row raised the ceiling to eight at M4 on the strength of the rota and
+noted that a run cannot approach it, because M3's single enclave offers exactly one recruit. M5
+is where that stops being aspirational.
+
+- **An enclave in every region**, three in a run rather than one, each with its own board.
+- **Boards differ by region, in the direction the region does.** The jungle settlement wants
+  scrap and sells poles; the drowned city wants poles and sells scrap; the coast wants alloy and
+  sells recruits. A player carrying a surplus finds a buyer for it somewhere, which turns "I
+  have too much of this" from a jam into a plan.
+- **Recruits cost more each time**, so crew growth is a curve rather than a switch and the
+  eighth crew member is a decision about a whole run's savings.
+- **Shell work stays region-two only.** It was withdrawn once for making the tower worse and put
+  back with a measurement (`BALANCE.md`'s `reinforce` row); spreading it across three enclaves
+  would multiply a thing that is barely worth its price.
+
+### 5.7 Unlocks, and how they arrive
+
+`v2-plan.md` §11 open #2 asks for a decision between enclave gifts, Heartseed cultivars and a
+journal. **The call: a journal, kept by the crew.**
+
+- A run ends. The journal gains an entry naming something the tower did that it had not done
+  before — reached the drowned city, ran a forge, walked away from a warden, fed eight people.
+- Entries unlock **rooms and route options, never numbers.** `v2-plan.md` §3's structural call
+  is absolute here: a first-run tower and a fiftieth-run tower start identical, and the veteran
+  has more tools rather than better ones.
+- Unlocked content is added to the build menu, so the surface a new player sees is small and the
+  surface a veteran sees is wide, and neither is stronger.
+
+Why the journal over the other two: an enclave gift makes the unlock a thing that happened
+*during* a run, so a run's outcome depends on whether the gift turned up, which is the seed
+deciding the meta. A Heartseed cultivar makes the unlock a property of the tower, which reads as
+a stat even when it is not. A journal is a record of what you did, it is legible without a
+tutorial, and it is the only one of the three that cannot be mistaken for power.
+
+**Determinism.** The journal is player-level state, not run state. It never enters `GameState`,
+never enters the replay, and a shared seed reproduces a run regardless of who plays it — which
+is `v2-plan.md` §6.6's promise and would be silently broken by any unlock that changed what a
+seed generates. What an unlock changes is which commands the *player* may send, and a replay
+carries the commands.
+
+### 5.8 Telemetry, and the difficulty pass
+
+The exit criteria ask for every balance constant graded `PLAYTESTED`, and today most are
+`DESIGNED` because the instruments are scripted harnesses rather than sessions. M5 adds the
+missing half: **a run log**, written at the end of every run, recording the seed, the route,
+what was built and when, what was harvested and spent, every wave and what it cost, and how the
+run ended. It is a file the player can read and hand over, and it is the input to the difficulty
+pass.
+
+Two rules it inherits. **It is not a score** — no derived rating, no grade, nothing that reads
+as a mark out of ten (`DECISIONS.md` §8). And **it is written from the snapshot, never from
+inside the simulation**: a counter that exists only to be logged is a counter that will drift
+from the thing it claims to count, and `RunStats` already carries what a log needs.
+
+### 5.9 What M5 changes in code that already exists
+
+Not a task list — the places where existing code assumes something M5 stops being true.
+
+- **`IntakeSource` gains a third arm.** It is `Terrain { paces_per_item }` and
+  `Ruin { range_paces }` today; a garden is neither, because it accrues per *tick* scaled by
+  exposure. That is a new shape rather than a new parameter, and `intake.rs` grows a third
+  branch. The trap is `terrain_effort`'s: scale the *interval*, never the per-tick `Fx` step
+  (§4.4).
+- **`ShaftKind` gains `Chute`**, the first shaft with no capacity, no charge draw and no riders.
+  `transport.rs`, `haul::best_shaft` (crew must never route *through* one) and `scene.ts`'s
+  shaft drawing all switch on kind.
+- **`HaulDestination` gains `Spill`**, below `Shelf` in priority, and `find_destination` learns a
+  third case. The stranded-carrier rule (§4.8) stays exactly as it is — a chute is a
+  destination, so a carrier who can reach one is no longer stranded, and one who cannot still
+  sleeps and eats while holding.
+- **Build costs stop being poles-only in practice.** `check_stock`/`spend` have taken a list
+  since M0, so nothing structural changes — but every harness, every capture script and
+  `place_when_affordable`'s wait-for-the-money loop currently reason about one material. A
+  shopping list that waits for poles and needs rope waits forever.
+- **`RegionDef` count goes from two to three**, and the contiguous-`order` check, the journey
+  roll, and `state.rs`'s `enclave_stock` — sized for one enclave with a comment saying it becomes
+  a list per enclave when a second lands — all move.
+- **Two more `SoundEvent` arms** (`Spill`, `Steal`) and their mirrors in `types.ts`.
+- **`CatalogSnapshot` grows**, and the build menu's grouping starts to matter at ~18 rooms in a
+  way it does not at 12.
+- **Every balance harness needs the new rooms in its shopping list**, which is the third time
+  this has been true (§3.9, §4.8) and the reason it is written down again: a harness that
+  measures a tower without the milestone's rooms in it measures the previous milestone with
+  total confidence.
+
+### 5.10 Exit criteria
+
+- [ ] **A full run to the Refugia in 2–4 hours**, played rather than scripted, ending as an
+      arrival rather than a score.
+- [ ] **A shared seed reproduces it.** Same seed, same commands, same run — with unlocks
+      changing what the player may build and not what the world generates.
+- [ ] **The second tier changed a decision.** The specific test: a tower that walked shaded
+      branches all the way cannot build an elevator, and knows why. If mechanisms turn out to be
+      something every route gets anyway, the tier is breadth and the gate has failed.
+- [ ] **Stopping at a ruin is sometimes the wrong call and sometimes the right one** — §3.11's
+      open question, now answerable, because scrap finally buys something.
+- [ ] **Every constant in `BALANCE.md` graded `PLAYTESTED`**, from run logs rather than from
+      scripted harnesses.
+- [ ] Golden replay regenerated; hash parity green natively and in wasm.
+- [ ] `make check` and the smoke suite green.
+- [ ] An itch.io build a stranger can open and play without being told anything.
+
+**Deferred out of M5, which is to say out of the plan:**
+
+- **Role priorities.** §4.9 cut them for having only two kinds of work to prioritise and said
+  four might justify a screen. M5 brings the fourth (haul, mend, operate a forge, feed a
+  thrower) — and the answer is still no: `assign_idle`'s ladder and what the player chooses to
+  build already encode a triage policy, and a per-crew priority grid is the RimWorld tax rather
+  than the RimWorld idea. Recorded as decided rather than as forgotten.
+- **A second Heartseed, difficulty modes, and any run modifier.** All three are ways of making a
+  run harder that are not the player playing loudly, and provocation is the only difficulty dial
+  this game has (§2.6).
+- **The repo rename** (`logdef` → `understory`), `v2-plan.md` §11 open #4. Cosmetic, and a
+  release cut is the worst possible moment for it.
+
+### 5.11 Open questions
+
+1. **Does gating the elevator behind the ruin belt make the shaded route a trap?** The argument
+   in §5.3 is that it makes route choice reach into the transport layer. The risk is that it
+   makes one branch strictly correct — take the ruins, get the elevator — which would be worse
+   than no gate at all. The tell is whether a shade-heavy run ever *wins* on the strength of what
+   shade gave it.
+2. **Is the garden the first thing that makes standing still correct, or the thing that makes
+   walking optional?** It is deliberately the inverse of the cutter arm, and a tower that can
+   feed itself parked is a tower with less reason to walk — the one behaviour this whole game is
+   built around. If berthing stops being a decision, the garden's rate is the lever, not the
+   stride cost.
+3. **Do three enclaves make the economy legible, or make it a market?** Regional boards that
+   differ in direction are a good idea on paper and are also how a game accidentally becomes
+   about arbitrage.
+4. **Can the difficulty pass be done from run logs at all**, or does grading every constant
+   `PLAYTESTED` need more sessions than a solo project will ever have? This is the criterion most
+   likely to be honestly missed, and saying so now is better than quietly redefining
+   `PLAYTESTED` later.

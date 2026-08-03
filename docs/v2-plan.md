@@ -7,8 +7,8 @@
 
 **Status:** locked with owner, 2026-08-03. Build mode: big agentic sprints, one per milestone.
 
-**Progress:** M0 ✅ · M1 ✅ · M2–M5 not started. The plan below is unchanged; this line and
-the notes in §9 are the only edits since it was locked. Two owner decisions taken during
+**Progress:** M0 ✅ · M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ · M5 not started. The plan below is
+unchanged; this line and the notes in §9 are the only edits since it was locked. Two owner decisions taken during
 M0 deviate from §8 and are recorded in `DECISIONS.md` §10 — a custom WebGL2 renderer from
 the start rather than SVG-until-profiling-hurts, and ts7/oxfmt/oxlint for the frontend
 toolchain.
