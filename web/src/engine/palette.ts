@@ -101,6 +101,29 @@ export const palette = {
   roomStorage: hex("#527a86"),
   roomDefence: hex("#7b6f9a"),
   roomHeart: hex("#a85878"),
+  /** Quarters. Dyed cloth and slung rope — the one soft room. */
+  roomQuarters: hex("#9a6a72"),
+
+  // Aged copper and worked brass, named rather than borrowed.
+  //
+  // Shell plating and shaft rails were both drawn in `roomStorage`,
+  // which is a cool blue-green doing double duty; naming the two metals
+  // is most of what makes them read as *aged copper on a walking house*
+  // rather than as paint. Verdigris is the oxide, brass is what is
+  // still polished by hands.
+  verdigris: hex("#5f8f80"),
+  verdigrisDeep: hex("#3a5b52"),
+  brass: hex("#c69a54"),
+
+  // The canteen's hearth: the warmest thing in the tower, and the
+  // kitchen chain's own stall signal. A cold hearth is *why* people are
+  // going hungry, in the same place you notice that they are.
+  hearth: hex("#ffb057"),
+  hearthCore: hex("#fff0c4"),
+  steam: hex("#e8e4d6"),
+  /** Slung canvas, and the blanket over a sleeper. */
+  hammock: hex("#c88f7a"),
+  blanket: hex("#7d5b6a"),
 
   // Damage. The tower is timber and living matter, so it splits and
   // slumps rather than denting: a bruised body, a black split, raw
@@ -125,6 +148,22 @@ export const palette = {
   crewCarrying: hex("#ffd98a"),
   crewStressed: hex("#e0714f"),
   crewShadow: hex("#000000"),
+  /** Working clothes, so a figure has a top and a bottom half. */
+  crewCloth: hex("#6d7f6a"),
+  crewClothWarm: hex("#8a6f5a"),
+  /** Skin, for the head, kept warm against all the green. */
+  crewSkin: hex("#e8c9a4"),
+
+  // Overgrowth beyond the planters: vines between floors, moss at the
+  // shell lip, growth thickening on the leeward side. All of it is
+  // stable per floor from `hash01`, so it sits still frame to frame
+  // rather than crawling.
+  vine: hex("#3f6b3a"),
+  vineDeep: hex("#27441f"),
+  moss: hex("#4e7a44"),
+  /** Dappling through the canopy, and fireflies after dark. */
+  dapple: hex("#fff3c4"),
+  firefly: hex("#d8ff9a"),
 
   cargo: hex("#b4dc72"),
 
@@ -212,6 +251,8 @@ export function roomColor(category: string): Color {
       return palette.roomDefence;
     case "Heart":
       return palette.roomHeart;
+    case "Quarters":
+      return palette.roomQuarters;
     default:
       return palette.roomBody;
   }

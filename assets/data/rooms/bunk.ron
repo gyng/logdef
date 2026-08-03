@@ -7,7 +7,11 @@
 RoomDef(
     id: "room.bunk",
     name: "Bunk",
-    short: "BNK",
+    // "BED", not "BNK" — the cell bank already owns that, and two
+    // rooms sharing a label on the cross-section is a legibility bug
+    // that only shows up once both are standing on the same floor.
+    // Found by looking at `home-evening.png`.
+    short: "BED",
     category: Quarters,
     width: 2,
     // Joint-cheapest in the pack with a storeroom, because the

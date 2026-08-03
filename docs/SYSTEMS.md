@@ -2281,13 +2281,47 @@ reading, and both were in this category.
   project has for answering a visual question, so anything in §4.5 that cannot be seen in a
   capture is not finished.
 
+**What the list above missed, found by building it.** Four things, kept because three of them
+are the kind of thing that is obvious afterwards and invisible before.
+
+- **A run opened with its whole crew asleep.** The clock started at permille 0, which is
+  predawn, which is the night band; every crew member defaults to the day shift; so the first
+  2,592 ticks — 86 seconds at 1× — had nobody moving. Nothing in §4.4 is wrong, and the
+  interaction is fatal anyway: the only reading available to somebody who has not yet been
+  taught what a rota is, is that the game is broken. `Clock::new` now starts a run at the
+  handover onto the day shift, found from the pack rather than hardcoded, and the tower sets
+  out in the morning.
+- **Stranded carriers had to be allowed to do everything except put the load down.** The
+  ladder in §4.4 gates bed and meal on empty hands, which is right, and `pick_repair` had
+  already carved out an exception in M3 for a carrier the tower has nowhere to put — no free
+  shelf, no hungry room. Sleep and meals needed the same exception for a stronger reason:
+  without it, a crew member stranded by the shelf-typing deadlock never slept and never ate
+  *again*, and spent the rest of the run permanently tired, permanently starving, and working
+  at 36% with the deadlock as the invisible cause. Measured, it was the difference between 14%
+  and 41% of crew-hours spent asleep — the second figure being what the night band is actually
+  worth.
+- **A throughput window is a whole number of days, or it is a measurement of what time it
+  started.** `throughput.rs` and the elevator test both used windows that were not, so once
+  crew slept, two thirds of the measurement fell across the night when the tower does not
+  queue. The elevator reported 19 crafts without against 18 with; the same two towers over a
+  whole day read 18 against 36. The effect had not moved — the instrument had stopped pointing
+  at it. This is the same failure as M3's fork omission, and it will recur every time the
+  simulation grows a new rhythm.
+- **The canteen's authored recipe contradicted its own design paragraph**, and the arithmetic
+  in §4.3 was the thing that caught it. See §4.9.
+
+- **`RoomDef.short` codes have to be unique and nothing checks it.** The bunk shipped `"BNK"`,
+  which the cell bank already owned; invisible until the two stand on the same floor, at which
+  point the cross-section shows two of the same room. Found by looking at `home-evening.png`.
+  A content-validation rule would catch the next one, and is not written.
+
 ### 4.9 Exit criteria
 
 Both of M4's criteria are answered by looking and listening. Neither can be asserted, and a
 passing test suite is evidence about the code rather than about the game — which is why each
 one below says what would actually demonstrate it.
 
-- [ ] **The eyes-closed test: can you hear how the tower is doing?** Demonstrated by a
+- [~] **The eyes-closed test: can you hear how the tower is doing?** Demonstrated by a
       listener with the screen off, given three unlabelled sixty-second recordings from a real
       run, answering four questions about each: is it day or night; is the chain running or
       stalled; is something attacking; is the tower walking or stopped. Four binaries, twelve
@@ -2305,7 +2339,27 @@ one below says what would actually demonstrate it.
       report. Until it exists, the criterion is answered by a person listening, and that should
       be said rather than implied.
 
-- [ ] **The screenshot test: does one frame say "solarpunk home, not war machine"?**
+      **Built, and unjudged.** `web/src/engine/AudioManager.ts` is the whole subsystem: nine
+      continuous beds read off `view()` and nineteen one-shots fired from `frame()`'s event
+      list, coalesced by kind within a frame and rate-limited per kind, all synthesised from
+      oscillators and filtered noise so there is nothing to fetch and nothing to fail to load.
+      The split the spec insisted on is the shape of the file — loops from the snapshot,
+      one-shots from the events — and the diegetic rule holds throughout: no arm on a stalled
+      room, no beep on a queue, and the legs read `journey.halt`'s five states rather than
+      `power.walking`, so a tower that stopped and a tower that cannot afford to move do not
+      sound the same. The three new events are wired: `MealServed`, `ShiftChange`, and
+      `EnemyLeaves`, the last of which closes M2's deferral by making a creature that walked
+      away audibly different from one that was shot down.
+
+      **What has not happened is a person listening**, and that is the criterion. Nobody has
+      sat with the screen off and answered the twelve questions, so this is `[~]` and not
+      `[x]`. What is knowable without that: the beds are wired to the state they claim to
+      report, and the mix is never silent, so absence reads against a floor. Whether that is
+      *enough* to tell a working mill from a starved one with your eyes shut is exactly the
+      thing only the recordings can say — and §4.10's fourth open question is the reason to
+      expect it to be the hard one.
+
+- [~] **The screenshot test: does one frame say "solarpunk home, not war machine"?**
       Demonstrated by two stills from `web/e2e/capture.spec.ts` shown to somebody who has never
       seen the game, asked only "what is this place?". `home-evening.png` — dusk, lamps on,
       the canteen's hearth lit and steaming, two crew sitting to a meal, one asleep in a
@@ -2317,17 +2371,73 @@ one below says what would actually demonstrate it.
       A frame with no people in it cannot pass, which is why crew-as-people (§4.5 item 1) is
       the load-bearing item in the art pass rather than the overgrowth.
 
-- [ ] The kitchen chain has visibly given bamboo somewhere to go: `examples/journey.rs`'s
-      shade-versus-sun comparison no longer reports identical harvest on both routes (§4.3,
-      and §3.10's closing finding).
+      **Both stills exist and both have people in them**, which took more of the harness than
+      expected and is worth recording, because the same trap is waiting for the next visual
+      criterion. A capture that walks to roughly the right hour and photographs whatever is on
+      screen gets a still of three figures standing in a corridor: sleep is easy to catch (the
+      night band is a third of the day) but a meal is 300 ticks out of 4,800, so a loop that
+      stops at the first interesting state it sees *always* stops on a sleeper. `capture the
+      home` now holds out for both and bounds the search to one night band, and prints what the
+      crew were actually doing so a still that failed to find a meal says so instead of being
+      filed as though it had. It currently reports `climb/sleep/eat`: somebody on the stairs,
+      somebody in a hammock, somebody sitting to a bowl.
 
-- [ ] The siege balance is re-earned. §3.10 deferred this as "the biggest thing M3 leaves
-      behind"; §4.1 explains why it is the *last* job of M4 rather than the first. `BALANCE.md`'s
-      Siege section stops opening with a warning.
+      Two things the stills caught that no test would have. The bunk and the cell bank both
+      shipped `short: "BNK"`, which is invisible until they stand on the same floor and then
+      reads as two of the same room — the bunk is `"BED"` now. And the harness's build helper
+      compared `send`'s result against `null`, which is never what it answers, so every attempt
+      read as a failure and the loop bought *four canteens*. Both were found by looking at the
+      picture, which is the argument for having the picture.
 
-- [ ] Golden replay regenerated; hash parity green natively and in wasm.
+      **Still `[~]`: nobody who has not seen the game has been shown them.** That is the
+      criterion, and it cannot be self-assessed — the whole point of asking a stranger "what is
+      this place?" is that the person who drew it already knows the answer.
 
-- [ ] `make check` and the smoke suite green.
+- [x] **The kitchen chain has visibly given bamboo somewhere to go.** `examples/journey.rs`'s
+      shade-versus-sun comparison reported *exactly* 100 stalks on both routes at M3 and
+      **576 against 539** now, on two routes 8% apart in weighted yield. M3's biggest open
+      finding is closed.
+
+      It took three fixes rather than one, and only the first was the one §4.3 predicted.
+      **The canteen was authored three times too cheap** — 2 bamboo for *three* meals, against
+      a design stated twice as "2 bamboo a meal … six a day a crew member … about a fifth of
+      what a fed mill draws" — so a crew member ate two stalks a day and the canteen drew 5% of
+      a mill. **The harness had no standing shopping list**, so its towers built two rooms,
+      stopped wanting anything, filled every buffer and reported the size of their own shelves
+      as a harvest; `siege_run.rs` had diagnosed exactly that for provocation and fixed it
+      there, and this is the same fix arriving late. And **stranded carriers never ate**: the
+      priority ladder gated eating on empty hands, so a tower deadlocked on shelf typing had
+      crew holding a crate forever, never eating, never sleeping, and working at 36% with the
+      deadlock as the invisible cause.
+
+      The order matters for anyone re-reading this: the canteen's price was the fix that moved
+      the number (353→576), and the other two were what stopped it moving before that.
+
+- [x] **The siege balance is re-earned**, at a cost: `provocation_per_100_harvested` moves
+      240 → 300 and the three-way shape returns — subsistence never rises above 6 and ends
+      whole at 999‰, greedy peaks at 56 and is eaten down to 62‰, answered holds 809‰ and sees
+      off 15.
+
+      The interesting part is why break-even arithmetic gives the wrong answer here. **Sleep
+      made provocation spiky.** Harvest now arrives entirely inside the day band while decay
+      runs around the clock, so what draws a wave is the mid-afternoon *peak* rather than the
+      daily mean, and the two stopped moving together. Break-even says 370; at 370 a
+      subsistence tower's peak cleared the wave threshold every afternoon and it took 210 hit
+      points on day one, which is not what living within your means is supposed to buy.
+
+      `BALANCE.md`'s Siege section no longer opens with the stale-economy warning, and carries
+      two things it explicitly does *not* act on instead: the pressure table has dropped a band
+      (mending is crew-hours, and sleep took two-fifths of them), which stays coherent only
+      because the provocation a real tower reaches fell by the same order; and the plating
+      comparison came back "worse on 7 of 8 seeds" for the third time, which is still an
+      artefact of comparing hit-points-missing between towers whose maxima differ by the
+      plating under test.
+
+- [x] Golden replay regenerated — it now covers a canteen, two bunks, a `SetShift`, 26 meals
+      and 72,854 crew-ticks asleep — and hash parity is green natively and in wasm.
+
+- [x] `make check` and the smoke suite green: 274 Rust tests, clippy clean, 8 Playwright
+      tests including native/wasm parity.
 
 **Deferred out of M4:**
 

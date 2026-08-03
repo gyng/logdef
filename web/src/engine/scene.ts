@@ -98,7 +98,67 @@ export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
   drawCrew(batch, ctx);
   drawSiege(batch, ctx);
   drawPlaceMode(batch, ctx);
+  drawLight(batch, ctx);
   drawVignette(batch, ctx);
+}
+
+/**
+ * Light through the canopy by day, and things with their own light in
+ * them after dark.
+ *
+ * Both are pure JS animation with no state behind them, which is where
+ * cosmetic motion belongs. The dappling is keyed to the band underfoot,
+ * so walking from dense canopy into a clearing visibly changes the
+ * quality of the light on the tower's face and not just the numbers
+ * behind it — the same fact the sails are reading, said in the register
+ * a player actually attends to.
+ */
+function drawLight(batch: QuadBatch, ctx: SceneContext): void {
+  const { view, layout, clock } = ctx;
+  const { width } = layout.viewport;
+  const dark = darkness(view);
+
+  // Dapple: strongest under a closed canopy in strong sun, absent at
+  // night and in the open.
+  const shade = 1 - unit(view.world.yield_pct / 140);
+  const dappling = (1 - dark) * (view.clock.sun_pct / 100) * (1 - shade) * 0.5;
+  if (dappling > 0.02) {
+    for (let i = 0; i < 10; i += 1) {
+      const seed = hash01(i * 3931);
+      const drift = (clock * 0.06 + seed) % 1;
+      const r = layout.slotW * (0.5 + seed * 1.4);
+      batch.push(
+        layout.originX - layout.slotW + drift * (layout.slotW * 10) - r,
+        layout.groundY - layout.floorH * (0.6 + hash01(i * 617) * 5) - r,
+        r * 2,
+        r * 2,
+        fade(palette.dapple, dappling * (0.06 + hash01(i * 89) * 0.06)),
+        { radius: r, softness: r },
+      );
+    }
+  }
+
+  // Fireflies, after dark. They drift rather than blink on a timer,
+  // because a blinking dot next to a tower full of readouts reads as a
+  // readout.
+  if (dark > 0.4) {
+    for (let i = 0; i < 14; i += 1) {
+      const seed = hash01(i * 5171);
+      const t = clock * (0.05 + seed * 0.06) + seed * 10;
+      const fx = ((t * 0.3) % 1.2) - 0.1;
+      const fy = 0.35 + Math.sin(t * 1.7 + seed * 6) * 0.28;
+      const r = Math.max(1.2, layout.slotW * 0.035);
+      const glow = (0.3 + Math.abs(Math.sin(t * 2.1 + seed * 3)) * 0.7) * (dark - 0.4) * 1.6;
+      batch.push(
+        fx * width - r,
+        layout.horizonY + (layout.groundY - layout.horizonY) * fy - r,
+        r * 2,
+        r * 2,
+        fade(palette.firefly, glow * 0.5),
+        { radius: r, softness: r * 2.2 },
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1447,6 +1507,23 @@ function drawTower(batch: QuadBatch, ctx: SceneContext): void {
     palette.towerShellLip,
     { colorBottom: palette.towerShell, radius: shellPad * 2 },
   );
+  // Verdigris down both flanks, over the timber. The shell is bolted
+  // metal and it has been walking through wet jungle for a long time,
+  // so the oxide is the thing you see and the polished brass is only
+  // where hands go. Before this the plating borrowed `roomStorage` — a
+  // cool blue-green doing double duty — and read as paint.
+  for (const side of [-1, 1]) {
+    const edgeX =
+      side < 0 ? layout.originX - shellPad : layout.originX + spanX + shellPad - shellPad * 0.55;
+    batch.push(
+      edgeX,
+      topY - shellPad,
+      shellPad * 0.55,
+      layout.groundY - topY + shellPad * 2,
+      fade(palette.verdigris, 0.5),
+      { colorBottom: fade(palette.verdigrisDeep, 0.7), radius: shellPad * 0.3 },
+    );
+  }
 
   for (const floor of view.tower.floors) {
     const y = floorY(layout, floor.index);
@@ -1538,6 +1615,77 @@ function drawTower(batch: QuadBatch, ctx: SceneContext): void {
     palette.towerShellLip,
     { radius: shellPad },
   );
+  batch.push(
+    layout.originX - shellPad * 2,
+    topY - shellPad * 0.9,
+    spanX + shellPad * 4,
+    shellPad * 0.9,
+    fade(palette.moss, 0.55),
+    { radius: shellPad * 0.4 },
+  );
+
+  drawOvergrowth(batch, ctx, shape, spanX, shellPad);
+}
+
+/**
+ * What has grown on the tower since it set out.
+ *
+ * Vines trailing between floors and moss thickening at the shell lip,
+ * with every phase derived from `hash01` on the floor index rather than
+ * from the clock, so it sits still frame to frame instead of crawling —
+ * the tower is overgrown, not infested. Growth is heavier on the
+ * leeward flank (the trailing edge, which is the left of the frame,
+ * because the tower walks right) for the same reason moss is: that is
+ * the side the weather does not scour.
+ *
+ * Pure decoration with no state behind it, which is where cosmetic
+ * motion belongs — the only thing that moves is a slow sway.
+ */
+function drawOvergrowth(
+  batch: QuadBatch,
+  ctx: SceneContext,
+  shape: { floors: number; slots: number },
+  spanX: number,
+  shellPad: number,
+): void {
+  const { layout, clock } = ctx;
+  const strands = Math.max(4, Math.round(shape.slots * 1.4));
+  for (let i = 0; i < strands; i += 1) {
+    const seed = i * 7717 + shape.floors * 131;
+    const fx = hash01(seed);
+    // Leeward bias: squaring the sample pushes strands toward the left
+    // edge of the tower without ever leaving the right bare.
+    const biased = fx * fx * 0.75 + hash01(seed + 11) * 0.25;
+    const x = layout.originX + biased * spanX;
+    const fromFloor = Math.floor(hash01(seed + 29) * Math.max(1, shape.floors - 1));
+    const top = floorY(layout, fromFloor) + layout.floorH * 0.82;
+    const len = layout.floorH * (0.35 + hash01(seed + 53) * 0.9);
+    const sway = Math.sin(clock * 0.5 + fx * 6.2) * layout.slotW * 0.05;
+    const w = Math.max(1.1, layout.slotW * 0.02);
+
+    batch.pushLine(x, top, x + sway * 0.4, top + len * 0.55, w, palette.vineDeep);
+    batch.pushLine(x + sway * 0.4, top + len * 0.55, x + sway, top + len, w * 0.8, palette.vine);
+    // A leaf or two, so a strand is not just a line.
+    const leaf = layout.slotW * 0.07;
+    batch.push(x + sway * 0.7 - leaf * 0.5, top + len * 0.7, leaf, leaf * 0.6, palette.vine, {
+      radius: leaf * 0.3,
+      rotation: 0.4 + fx,
+    });
+  }
+
+  // Moss along every deck's outboard edge, on the shaded flank.
+  for (let floor = 0; floor < shape.floors; floor += 1) {
+    const y = floorY(layout, floor);
+    const bite = layout.slotW * (0.2 + hash01(floor * 613) * 0.5);
+    batch.push(
+      layout.originX - shellPad,
+      y + layout.floorH - shellPad * 1.4,
+      bite,
+      shellPad * 1.2,
+      fade(palette.moss, 0.4 + hash01(floor * 97) * 0.25),
+      { radius: shellPad * 0.5 },
+    );
+  }
 }
 
 /**
@@ -1704,6 +1852,12 @@ function roomProfile(info: RoomInfo | undefined): {
     // Shelving is shelving: low, wide, and flat on top.
     case "Storage":
       return { rise: 0.66, radius: 2, crown: "none" };
+    // The one soft room. Full height because the hammocks are slung
+    // across it, round because nothing in it was joined by a carpenter,
+    // and no crown at all — quarters are the one thing on a floor that
+    // does not stick anything out over the deck.
+    case "Quarters":
+      return { rise: 0.82, radius: 10, crown: "none" };
     default:
       return { rise: 0.84, radius: 4, crown: "none" };
   }
@@ -1884,6 +2038,26 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
     }
   }
 
+  // Quarters draw their beds, and the canteen draws its fire. Both are
+  // the room saying what it is *for* rather than what category it is
+  // in — a bunk with a spare bed and a bunk that is full are the same
+  // crate otherwise, and a cold hearth is the kitchen chain's own stall
+  // signal in the same place you notice people are hungry.
+  if (info?.category === "Quarters") {
+    drawQuarters(batch, ctx, room, info, x, y, w, h);
+  } else if (info && isCanteen(info)) {
+    drawHearth(batch, ctx, room, x, y, w, h);
+  } else if (info && info.craft_ticks > 0 && !room.stalled) {
+    // Warm interiors, per room: a working room shows a lit window, a
+    // stalled one does not. This reinforces the signal the dimmed body
+    // already carries rather than adding a second, different one, which
+    // is the §8-compliant way to add emphasis.
+    const winW = Math.min(w * 0.22, layout.slotW * 0.3);
+    batch.push(x + w - winW - 4, y + h * 0.22, winW, h * 0.26, fade(palette.lamplight, 0.5), {
+      radius: 2,
+    });
+  }
+
   // The Heartseed glows, gently, always — right up until it does not.
   if (info?.category === "Heart") {
     const pulse = 0.55 + Math.sin(ctx.clock * 1.2) * 0.12;
@@ -1891,6 +2065,142 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
       radius: 10,
       softness: 8,
     });
+  }
+}
+
+/**
+ * Is this the kitchen?
+ *
+ * Asked by id rather than by category, because a canteen is an ordinary
+ * `Production` room and the whole point of §4.3 is that it stays one —
+ * there is no food logistics layer and no `Kitchen` category to switch
+ * on. If a second cooking room ever lands, this becomes a check on
+ * whether the recipe outputs `item.meals`, which is the honest version;
+ * one string is not worth that machinery yet.
+ */
+function isCanteen(info: RoomInfo): boolean {
+  return info.id === "room.canteen";
+}
+
+/**
+ * Beds, drawn as slung hammocks — a solarpunk answer to a bunk, and one
+ * that makes occupancy diegetic.
+ *
+ * One hammock per authored `sleepers`, hanging empty until somebody is
+ * in it, so you can see who is asleep and whether a bed is spare
+ * without a number anywhere. Which hammocks are filled is derived from
+ * the crew standing in this room's slot range and asleep — the same
+ * trick the simulation uses, for the same reason: there is no occupancy
+ * counter to get out of step with reality.
+ */
+function drawQuarters(
+  batch: QuadBatch,
+  ctx: SceneContext,
+  room: RoomView,
+  info: RoomInfo,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  const beds = Math.max(1, info.sleepers);
+  const sleeping = ctx.view.crew.filter(
+    (member) =>
+      member.asleep &&
+      Math.floor(member.slot) >= room.slot &&
+      Math.floor(member.slot) < room.slot + room.width,
+  ).length;
+
+  const bandH = h / (beds + 1);
+  for (let i = 0; i < beds; i += 1) {
+    const cy = y + bandH * (i + 1);
+    const occupied = i < sleeping;
+    // The sag is the whole cue: an empty hammock hangs slack and
+    // shallow, one with somebody in it bellies down.
+    const sag = occupied ? bandH * 0.5 : bandH * 0.22;
+    const rope = Math.max(1.2, w * 0.012);
+    const cloth = occupied ? palette.hammock : mix(palette.hammock, palette.roomQuarters, 0.55);
+    batch.pushLine(x + w * 0.1, cy, x + w * 0.5, cy + sag, rope, cloth);
+    batch.pushLine(x + w * 0.5, cy + sag, x + w * 0.9, cy, rope, cloth);
+    if (occupied) {
+      batch.push(x + w * 0.32, cy + sag - bandH * 0.34, w * 0.36, bandH * 0.4, palette.blanket, {
+        radius: bandH * 0.2,
+      });
+    }
+  }
+}
+
+/**
+ * The canteen's fire.
+ *
+ * The single warmest image available in the tower, and it doubles as
+ * the kitchen chain's own stall signal: a hearth that is lit and
+ * steaming is a room cooking, and a cold dim one is *why* people are
+ * going hungry, in the same place you notice that they are. No badge and
+ * no second signal — the fire simply goes out, the way a starved mill
+ * simply goes quiet.
+ */
+function drawHearth(
+  batch: QuadBatch,
+  batchCtx: SceneContext,
+  room: RoomView,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  const { clock } = batchCtx;
+  const cooking = !room.stalled && room.progress > 0;
+  const cx = x + w * 0.5;
+  const baseY = y + h * 0.82;
+  const fireW = Math.min(w * 0.36, h * 0.5);
+
+  // The firebox is always there; only the fire in it comes and goes.
+  batch.push(
+    cx - fireW * 0.62,
+    baseY - fireW * 0.5,
+    fireW * 1.24,
+    fireW * 0.62,
+    palette.towerShell,
+    {
+      radius: 3,
+    },
+  );
+
+  if (!cooking) {
+    batch.push(cx - fireW * 0.4, baseY - fireW * 0.4, fireW * 0.8, fireW * 0.34, palette.wreck, {
+      radius: 2,
+    });
+    return;
+  }
+
+  const flicker = 0.72 + Math.sin(clock * 6.1 + room.id) * 0.14 + Math.sin(clock * 2.3) * 0.08;
+  batch.push(
+    cx - fireW,
+    baseY - fireW * 1.5,
+    fireW * 2,
+    fireW * 2,
+    fade(palette.hearth, 0.3 * flicker),
+    { radius: fireW, softness: fireW * 0.9 },
+  );
+  batch.push(cx - fireW * 0.34, baseY - fireW * 0.46, fireW * 0.68, fireW * 0.42, palette.hearth, {
+    colorBottom: palette.hearthCore,
+    radius: fireW * 0.2,
+  });
+
+  // Steam, rising and thinning. Three puffs on different phases so it
+  // reads as convection rather than as a bar.
+  for (let i = 0; i < 3; i += 1) {
+    const t = (clock * 0.45 + i / 3) % 1;
+    const puff = fireW * (0.16 + t * 0.2);
+    batch.push(
+      cx - puff * 0.5 + Math.sin(t * 5 + i) * fireW * 0.22,
+      baseY - fireW * 0.6 - t * h * 0.5,
+      puff,
+      puff,
+      fade(palette.steam, 0.26 * (1 - t)),
+      { radius: puff * 0.5, softness: puff * 0.6 },
+    );
   }
 }
 
@@ -2161,39 +2471,114 @@ function drawCar(
   void catalog;
 }
 
+/**
+ * The crew, as people.
+ *
+ * This is the load-bearing item in M4's art pass, and the one the
+ * screenshot test turns on: a frame full of rounded lozenges is a
+ * diagram, and whoever is shown it will read the tower as a factory. So
+ * a figure has a head, a torso in working clothes, and two legs that
+ * swing — and four postures, because standing, carrying, sitting to a
+ * meal and lying asleep are four different things a person does, and
+ * only the first two were ever drawn.
+ *
+ * **No numeric badge, no warning icon, no hunger bar over anybody's
+ * head.** The diegetic signal for each of the two new needs is
+ * behaviour: a hungry crew member walks to the canteen, a tired one
+ * moves visibly slower, a sleeping one is lying down. Precision is a
+ * hover layer (`DECISIONS.md` §8), and the moment a crew member acquires
+ * a floating status bar the screenshot test is unwinnable — a frame full
+ * of floating bars is a spreadsheet with legs, which is the exact
+ * failure the sprint question names.
+ */
 function drawCrew(batch: QuadBatch, { view, layout, clock }: SceneContext): void {
   for (const member of view.crew) {
     const { x, y } = crewPosition(layout, member);
-    // Idle fidget, phase-offset per crew member from the cosmetic RNG
-    // stream so nobody bobs in lockstep.
+    // Phase-offset per crew member from the cosmetic RNG stream, so
+    // nobody bobs, steps or breathes in lockstep. One draw, four uses.
     const phase = (member.fidget / 65535) * Math.PI * 2;
-    const bob = member.state === "idle" ? Math.sin(clock * 2.2 + phase) * 1.2 : 0;
 
-    const bodyW = layout.slotW * 0.19;
-    const bodyH = layout.floorH * 0.26;
-    const color = member.stressed
+    const unitW = layout.slotW * 0.19;
+    const unitH = layout.floorH * 0.26;
+    const cloth = member.stressed
       ? palette.crewStressed
-      : member.carrying
-        ? palette.crewCarrying
-        : palette.crew;
+      : mix(palette.crewCloth, palette.crewClothWarm, ((member.fidget >> 3) % 5) / 4);
+    const skin = member.stressed ? palette.crewStressed : palette.crewSkin;
+    const shirt = member.carrying ? mix(cloth, palette.crewCarrying, 0.35) : cloth;
 
-    batch.push(x - bodyW * 0.6, y + 1, bodyW * 1.2, 3, fade(palette.crewShadow, 0.35), {
+    if (member.state === "sleep") {
+      drawSleeper(batch, x, y, unitW, unitH, clock, phase, skin);
+      continue;
+    }
+    if (member.state === "eat") {
+      drawDiner(batch, x, y, unitW, unitH, clock, phase, cloth, skin);
+      continue;
+    }
+
+    // The walk cycle, driven off the fractional slot the crew member
+    // already carries — no new snapshot data, and it stays in step with
+    // the movement rather than with wall-clock time, so somebody slowed
+    // by hunger or by the dark takes visibly slower steps rather than
+    // moon-walking at the same cadence.
+    const moving = member.state === "walk" || member.state === "climb";
+    const gait = moving ? Math.sin(member.slot * Math.PI * 2.6 + member.floor * 5 + phase) : 0;
+    const bob =
+      member.state === "idle" ? Math.sin(clock * 2.2 + phase) * 1.2 : Math.abs(gait) * unitH * 0.05;
+
+    // Laden posture: a load rides high and forward, and the body leans
+    // back under it. An empty crew member stands straight.
+    const lean = member.carrying ? -0.07 : 0;
+    const legH = unitH * 0.38;
+    const torsoH = unitH - legH;
+    const feetY = y - bob;
+    const hipY = feetY - legH;
+
+    batch.push(x - unitW * 0.6, y + 1, unitW * 1.2, 3, fade(palette.crewShadow, 0.35), {
       radius: 2,
     });
-    batch.push(x - bodyW / 2, y - bodyH + bob, bodyW, bodyH, color, {
-      colorBottom: mix(color, palette.towerShell, 0.3),
-      radius: bodyW * 0.45,
+
+    // Two legs, swung apart by the gait. At rest they stand together and
+    // read as one column, which is what a standing figure looks like
+    // from this far away.
+    const stride = gait * unitW * 0.42;
+    for (const side of [-1, 1]) {
+      const swing = side > 0 ? stride : -stride;
+      batch.pushLine(
+        x,
+        hipY,
+        x + swing,
+        feetY,
+        Math.max(1.4, unitW * 0.2),
+        mix(cloth, palette.towerShell, 0.45),
+      );
+    }
+
+    // Torso, leaning into the load if there is one.
+    batch.push(x - unitW * 0.42, hipY - torsoH, unitW * 0.84, torsoH, shirt, {
+      colorBottom: mix(shirt, palette.towerShell, 0.35),
+      radius: unitW * 0.3,
+      rotation: lean,
     });
-    // Head.
-    batch.push(x - bodyW * 0.36, y - bodyH - bodyW * 0.5 + bob, bodyW * 0.72, bodyW * 0.72, color, {
-      radius: bodyW * 0.36,
-    });
+    const headR = unitW * 0.34;
+    batch.push(
+      x - headR + lean * unitH * 0.3,
+      hipY - torsoH - headR * 1.6,
+      headR * 2,
+      headR * 2,
+      skin,
+      { radius: headR },
+    );
 
     if (member.carrying) {
-      const crate = bodyW * 0.7;
-      batch.push(x - crate / 2, y - bodyH - crate * 1.5 + bob, crate, crate, palette.cargo, {
-        radius: 2,
-      });
+      const crate = unitW * 0.72;
+      batch.push(
+        x - crate * 0.5 + unitW * 0.15,
+        hipY - torsoH - crate * 1.9,
+        crate,
+        crate,
+        palette.cargo,
+        { radius: 2 },
+      );
     }
 
     // Mending: a pole in hand and a small pool of worklight. Repair is
@@ -2201,19 +2586,19 @@ function drawCrew(batch: QuadBatch, { view, layout, clock }: SceneContext): void
     // visible as that and not mistaken for someone standing about.
     if (member.state === "mend") {
       batch.push(
-        x - bodyW * 1.1,
-        y - bodyH * 1.9,
-        bodyW * 2.2,
-        bodyH * 2.1,
+        x - unitW * 1.1,
+        feetY - unitH * 1.9,
+        unitW * 2.2,
+        unitH * 2.1,
         fade(palette.lamplight, 0.14 + Math.abs(Math.sin(clock * 3 + phase)) * 0.08),
-        { radius: bodyW, softness: bodyW * 0.9 },
+        { radius: unitW, softness: unitW * 0.9 },
       );
       batch.pushLine(
-        x - bodyW * 0.7,
-        y - bodyH * 0.2,
-        x + bodyW * 0.9,
-        y - bodyH * 1.3,
-        Math.max(1.2, bodyW * 0.18),
+        x - unitW * 0.7,
+        feetY - unitH * 0.2,
+        x + unitW * 0.9,
+        feetY - unitH * 1.3,
+        Math.max(1.2, unitW * 0.18),
         palette.splinter,
       );
     }
@@ -2223,15 +2608,104 @@ function drawCrew(batch: QuadBatch, { view, layout, clock }: SceneContext): void
     if (member.state === "board") {
       const glow = 0.25 + Math.min(0.5, member.wait_ticks / 90);
       batch.push(
-        x - bodyW,
-        y - bodyH - bodyW * 0.7,
-        bodyW * 2,
-        bodyH + bodyW * 1.4,
+        x - unitW,
+        feetY - unitH - unitW * 0.7,
+        unitW * 2,
+        unitH + unitW * 1.4,
         fade(member.stressed ? palette.crewStressed : palette.shaftBusy, glow * 0.5),
-        { radius: bodyW, softness: bodyW * 0.9 },
+        { radius: unitW, softness: unitW * 0.9 },
       );
     }
   }
+}
+
+/**
+ * Lying down, and breathing.
+ *
+ * Drawn flat and low whether they found a bed or not — the hammock
+ * belongs to the bunk (`drawQuarters`), so a crew member asleep on the
+ * deck of a tower with no quarters is the *same* figure with nothing
+ * under them. That is exactly the reading the player should get, and it
+ * is the only cue that "you have not built anywhere to sleep" gets.
+ * Slow rise and fall from the same fidget phase, so a dormitory is not
+ * three people breathing in unison.
+ */
+function drawSleeper(
+  batch: QuadBatch,
+  x: number,
+  y: number,
+  unitW: number,
+  unitH: number,
+  clock: number,
+  phase: number,
+  skin: Color,
+): void {
+  const breath = Math.sin(clock * 0.9 + phase) * unitH * 0.035;
+  const lieH = unitH * 0.3 + breath;
+  const lieW = unitH * 0.95;
+  const top = y - lieH;
+
+  batch.push(x - lieW * 0.55, y + 1, lieW * 1.1, 3, fade(palette.crewShadow, 0.3), { radius: 2 });
+  batch.push(x - lieW * 0.5, top, lieW * 0.78, lieH, palette.blanket, {
+    colorBottom: mix(palette.blanket, palette.towerShell, 0.4),
+    radius: lieH * 0.5,
+  });
+  const headR = unitW * 0.3;
+  batch.push(x + lieW * 0.3 - headR, top + lieH * 0.5 - headR, headR * 2, headR * 2, skin, {
+    radius: headR,
+  });
+}
+
+/**
+ * Sitting to a meal — the warmest moment in the tower, and worth a
+ * posture of its own rather than a standing figure that happens to be
+ * beside a canteen.
+ */
+function drawDiner(
+  batch: QuadBatch,
+  x: number,
+  y: number,
+  unitW: number,
+  unitH: number,
+  clock: number,
+  phase: number,
+  cloth: Color,
+  skin: Color,
+): void {
+  const sitH = unitH * 0.6;
+  const hipY = y - sitH * 0.42;
+
+  batch.push(x - unitW * 0.6, y + 1, unitW * 1.3, 3, fade(palette.crewShadow, 0.3), { radius: 2 });
+  batch.pushLine(
+    x,
+    hipY,
+    x + unitW * 0.75,
+    y,
+    Math.max(1.4, unitW * 0.2),
+    mix(cloth, palette.towerShell, 0.45),
+  );
+  batch.push(x - unitW * 0.4, hipY - sitH * 0.62, unitW * 0.8, sitH * 0.62, cloth, {
+    colorBottom: mix(cloth, palette.towerShell, 0.35),
+    radius: unitW * 0.28,
+  });
+  const headR = unitW * 0.32;
+  batch.push(x - headR, hipY - sitH * 0.62 - headR * 1.5, headR * 2, headR * 2, skin, {
+    radius: headR,
+  });
+  // A bowl, held, with a curl of steam off it. The one thing on screen
+  // that says a chain ended somewhere good.
+  const bowl = unitW * 0.42;
+  batch.push(x + unitW * 0.28, hipY - sitH * 0.34, bowl, bowl * 0.6, palette.brass, {
+    radius: bowl * 0.3,
+  });
+  batch.push(
+    x + unitW * 0.34,
+    hipY - sitH * 0.34 - bowl * (0.6 + Math.abs(Math.sin(clock * 1.6 + phase)) * 0.5),
+    bowl * 0.3,
+    bowl * 0.7,
+    fade(palette.steam, 0.3),
+    { radius: bowl * 0.2, softness: bowl * 0.3 },
+  );
 }
 
 /** Screen position of a crew member's feet. */

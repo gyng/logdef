@@ -797,3 +797,171 @@ test("capture stills", async ({ page }) => {
   console.log(`enclave: ${enclave} — ${traded}`);
   console.log(`arrival: ${arrival}`);
 });
+
+/**
+ * Buy a room as soon as the tower can pay for it — **in the page**.
+ *
+ * Hoisted to module scope rather than closed over inside the test,
+ * because everything here executes in the browser and nothing in it may
+ * capture a Node-side variable; keeping it out here makes that a
+ * property of where it is written rather than a thing to remember.
+ *
+ * Waiting for the money rather than hardcoding a tick is the rule the
+ * Rust harnesses follow, and for the same reason: a script that assumes
+ * "by now there will be five poles" breaks on every balance change, and
+ * breaks by measuring the wrong tower rather than by failing.
+ */
+function buyInPage({ id, wide }: { id: string; wide: number }): boolean {
+  const hooks = window.__understory!;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const spot = window.__capture!.freeSlotAny(wide);
+    // `send` answers "Ok" or `{ Error }` — it never answers null, and a
+    // null check here quietly meant *every* attempt read as a failure,
+    // so this loop bought the room forty times. Found by looking at the
+    // still: a tower with four canteens in it.
+    if (
+      spot &&
+      hooks.send({ PlaceRoom: { room: id, floor: spot.floor, slot: spot.slot } }) === "Ok"
+    ) {
+      return true;
+    }
+    window.__capture!.walk(600);
+  }
+  return false;
+}
+
+/**
+ * Step until the frame has what it is a picture of: somebody eating,
+ * and somebody asleep.
+ *
+ * Sleep is easy to catch — the night band is a third of the day — while
+ * a meal is 300 ticks out of 4,800, so a loop that stops at the first
+ * interesting state it sees *always* stops on a sleeper and the frame
+ * never has anybody eating in it. Bounded to well under one night band,
+ * so a search that finds no meal leaves the tower in the evening it was
+ * walked to rather than wandering into the following dawn — a still
+ * captioned "dusk" that is actually daybreak proves nothing.
+ */
+function settleOnAHomeInPage(): void {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const states = window.__understory!.view().crew.map((member) => member.state);
+    if (states.includes("eat") && states.includes("sleep")) break;
+    window.__capture!.walk(20, 20);
+  }
+}
+
+/**
+ * M4's screenshot test: **does one frame say "solarpunk home, not war
+ * machine"?**
+ *
+ * Two stills, to be shown to somebody who has never seen the game and
+ * asked only "what is this place?".
+ *
+ * - `home-evening.png` — dusk, lamps on, the canteen's hearth lit and
+ *   steaming, crew sitting to a meal, somebody asleep, planters full,
+ *   the jungle going blue behind it. It has to come back as somebody's
+ *   home, greenhouse, or ark. If it comes back as a factory, a rig, or
+ *   a gun platform, the art pass failed.
+ * - `home-siege.png` — the same tower mid-wave, as the control. It
+ *   should read as a home under threat, not as a fortress that has
+ *   finally found its purpose.
+ *
+ * **A frame with no people in it cannot pass**, which is why the
+ * harness works so hard below to get crew visibly eating and asleep
+ * before it takes the picture, rather than photographing whatever
+ * happens to be on screen. If the tower is drawn beautifully and
+ * nobody is home, the answer to "what is this place?" is "a machine".
+ */
+test("capture the home", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/?seed=909");
+  await page.waitForFunction(() => window.__understory !== undefined, null, { timeout: 20_000 });
+  await arm(page);
+
+  // Build the two rooms M4 adds, as soon as the tower can pay for
+  // them. Waiting for the money rather than hardcoding a tick keeps
+  // this harness working across a balance change — the same rule the
+  // Rust harnesses follow.
+  const buy = async (id: string, wide: number): Promise<boolean> =>
+    await page.evaluate(buyInPage, { id, wide });
+
+  await page.evaluate(() => {
+    window.__capture!.walk(1800);
+  });
+  await buy("room.canteen", 2);
+  await buy("room.bunk", 2);
+
+  // Put one crew member on nights, so the evening frame has somebody
+  // up and about as well as somebody asleep. A dormitory with everyone
+  // in it and nobody moving is a still life, not a home.
+  await page.evaluate(() => {
+    const crew = window.__understory!.view().crew;
+    const last = crew[crew.length - 1];
+    if (last) window.__understory!.send({ SetShift: { crew: last.id, shift: "Night" } });
+  });
+
+  // Walk to dusk, and then keep stepping in small increments until the
+  // frame actually has what it is a picture of: somebody eating, and
+  // somebody asleep. Photographing "roughly evening" and hoping is how
+  // you end up with a still of three people standing in a corridor.
+  await page.evaluate(() => {
+    const catalog = window.__understory!.catalog();
+    const view = window.__understory!.view();
+    // 770 per-mille: a hair past the dusk boundary, so the search
+    // below has the whole night band to spend and still lands in the
+    // evening rather than at the following daybreak.
+    const target = Math.round(catalog.ticks_per_day * 0.77);
+    const now = Math.round((view.clock.permille / 1000) * catalog.ticks_per_day);
+    window.__capture!.walk((target - now + catalog.ticks_per_day) % catalog.ticks_per_day, 120);
+  });
+  await page.evaluate(settleOnAHomeInPage);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: "capture/home-evening.png" });
+  const inFrame = await page.evaluate(() =>
+    window
+      .__understory!.view()
+      .crew.map((member) => member.state)
+      .join("/"),
+  );
+  console.log(`home-evening: crew are ${inFrame}`);
+
+  // The control: the same home, mid-wave. Earned rather than pinned —
+  // there is no debug hook that writes provocation and there should not
+  // be one, because a still of a tower in a state no run reaches is not
+  // evidence about the game. A second cutter arm is what a player does
+  // to get noticed, so it is what the harness does.
+  await buy("room.cutter_arm", 2);
+  const met = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    let budget = 260_000;
+    while (budget > 0) {
+      const view = hooks.view();
+      if (view.journey.arrived) break;
+      // Daylight, so the frame is legible, and something actually on
+      // the tower rather than merely on the horizon.
+      if (view.clock.sun_pct > 40 && view.siege.enemies.some((e) => e.state === "attack")) {
+        return true;
+      }
+      const nearest = Math.min(
+        999,
+        ...view.siege.enemies.map((enemy) => Math.abs(enemy.at - view.world.distance)),
+      );
+      const stride = nearest < 40 ? 10 : 240;
+      window.__capture!.answer();
+      hooks.step(stride);
+      budget -= stride;
+    }
+    return false;
+  });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: "capture/home-siege.png" });
+  // Reported rather than asserted: this is a harness, and a run that
+  // never drew a wave is a finding about the balance, not a test
+  // failure. It still has to be said out loud, because a still of an
+  // unbothered tower filed as `home-siege.png` is worse than no still.
+  console.log(
+    met
+      ? "home-siege: a wave reached the tower"
+      : "home-siege: NO WAVE — still is of a quiet tower",
+  );
+});

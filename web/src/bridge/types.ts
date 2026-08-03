@@ -425,6 +425,12 @@ export interface RoomInfo {
   bank_capacity: number;
   /** Shoots back, and eats ammo off the same shelves as everything else. */
   defence: boolean;
+  /**
+   * Beds. Zero for everything that is not quarters. Drawn one hammock
+   * apiece, which is what makes occupancy diegetic — you can see who is
+   * asleep and whether a bed is spare, without a number.
+   */
+  sleepers: number;
 }
 
 export interface CostInfo {

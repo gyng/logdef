@@ -12,6 +12,7 @@
  * it directly, and React only holds what a human is looking at.
  */
 
+import { AudioManager } from "./AudioManager";
 import { Renderer } from "./Renderer";
 import type { PlaceMode } from "./scene";
 import { slotRangeFree, towerShape } from "./scene";
@@ -19,6 +20,7 @@ import type { Bridge } from "../bridge";
 import { commandFailed } from "../bridge";
 import type {
   CatalogSnapshot,
+  CrewView,
   EnclaveInfo,
   FeatureView,
   ForkView,
@@ -26,6 +28,7 @@ import type {
   HaltView,
   RoomInfo,
   ShaftInfo,
+  ShiftTag,
   SimSpeed,
   StockView,
   ViewSnapshot,
@@ -45,6 +48,18 @@ export interface UiState {
   hauled: number;
   /** Crew currently blocked at a shaft — the bottleneck at a glance. */
   waiting: number;
+  /**
+   * Everybody aboard, verbatim from the snapshot.
+   *
+   * The roster is the one panel M4 adds, and it is defensible under
+   * `DECISIONS.md` §8 because a rota is a *schedule the player writes*
+   * rather than a readout of state — the same category as the
+   * elevator's per-daypart programs. What is not defensible is the
+   * roster becoming the primary place hunger and tiredness are read; if
+   * the tower can only be understood through this list, the art pass
+   * failed.
+   */
+  crew: CrewView[];
   selected: SelectedRoom | null;
   /** Whether the selected room is switched on. */
   selectedActive: boolean;
@@ -129,6 +144,8 @@ export class Game {
   private startedMs = 0;
   private fps = 0;
 
+  private readonly audio = new AudioManager();
+
   private placeMode: PlaceMode | null = null;
   private selected: SelectedRoom | null = null;
   private lastError: string | null = null;
@@ -196,6 +213,39 @@ export class Game {
   // -------------------------------------------------------------------
   // Player input
   // -------------------------------------------------------------------
+
+  /**
+   * Put one crew member on a shift.
+   *
+   * One person per command rather than a bulk setter, matching the
+   * simulation: a rejection then names the crew member it is about, and
+   * the replay reads as a list of decisions about people.
+   */
+  setShift(crew: number, shift: ShiftTag): void {
+    this.send({ SetShift: { crew, shift } });
+  }
+
+  /**
+   * Let the sound start.
+   *
+   * Browser autoplay policy suspends an `AudioContext` until the player
+   * clicks, so this is called from the first interaction rather than
+   * from the constructor. The opening frames being silent is a rule of
+   * the platform, not a bug, and the smoke test never hears anything
+   * for the same reason.
+   */
+  startAudio(): void {
+    this.audio.start();
+  }
+
+  setAudioEnabled(on: boolean): void {
+    this.audio.setEnabled(on);
+    if (on) this.audio.start();
+  }
+
+  audioEnabled(): boolean {
+    return this.audio.isEnabled();
+  }
 
   send(cmd: GameCommand): void {
     const result = this.bridge.send(cmd);
@@ -384,13 +434,16 @@ export class Game {
     // Smoothed, so the readout doesn't flicker on every hitch.
     if (deltaMs > 0) this.fps += (1000 / deltaMs - this.fps) * 0.1;
 
-    // Sounds are produced and dropped until the audio pass in M4. They
-    // are fire-and-forget by contract, so discarding them is correct
-    // rather than a leak.
-    this.bridge.frame(Math.round(deltaMs * 1000));
+    // Sound is fire-and-forget: emitted during a tick, played or
+    // dropped here, and never read back into the simulation. The list
+    // is punctuation — things that *happened* — and the snapshot below
+    // is what the continuous beds read, because a starved mill going
+    // quiet is not an event at all, it is the absence of a loop.
+    const sounds = this.bridge.frame(Math.round(deltaMs * 1000));
 
     const view = this.bridge.view();
     this.latest = view;
+    this.audio.update(view, sounds, deltaMs);
 
     // A demolished or newly built room can invalidate the selection.
     if (this.selected) {
@@ -432,6 +485,7 @@ export class Game {
       crafted: view?.stats.crafts_completed ?? 0,
       hauled: view?.stats.hauls_completed ?? 0,
       waiting: view?.crew.filter((member) => member.state === "board").length ?? 0,
+      crew: view?.crew ?? [],
       selected: this.selected,
       selectedActive: this.selectedRoomActive(),
       placing: this.placeMode?.id ?? null,

@@ -957,3 +957,115 @@ button {
     animation-duration: 1ms !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * The crew roster
+ *
+ * A schedule the player writes, not a readout — see `Roster` in
+ * Chrome.tsx for why that distinction is what makes a panel allowable
+ * here at all. Sat opposite the build sidebar so the two things you
+ * *decide* live on the two flanks and the middle of the screen stays
+ * the tower.
+ * ------------------------------------------------------------------------- */
+
+.roster {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  width: 232px;
+  max-height: calc(100% - 220px);
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.roster-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roster-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.roster-row:hover {
+  background: var(--bg-raised);
+}
+
+.roster-face {
+  flex: none;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.roster-who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.roster-name {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.roster-doing {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The one control. Deliberately a word rather than an icon: a rota is
+ * read aloud ("Wren works nights"), and a moon glyph would need a
+ * legend. */
+.shift-toggle {
+  flex: none;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide, 0.04em);
+  cursor: pointer;
+}
+
+.shift-toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.shift-toggle.night {
+  border-color: var(--accent-verdigris);
+  background: rgb(89 182 163 / 14%);
+  color: var(--accent-verdigris);
+}
+
+/* The gesture that lets the sound start, wearing a mute button. */
+.sound-toggle {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: var(--text-sm);
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.sound-toggle:hover,
+.sound-toggle.on {
+  border-color: var(--border-default);
+  opacity: 1;
+}

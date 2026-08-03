@@ -455,6 +455,11 @@ pub struct RoomInfo {
     pub bank_capacity: i64,
     /// Shoots back, and eats ammo off the same shelves as everything else.
     pub defence: bool,
+    /// Beds. Zero for everything that is not quarters. The renderer
+    /// draws one hammock apiece, which is what makes bunk occupancy
+    /// diegetic — you can see who is asleep and whether a bed is spare,
+    /// without a number.
+    pub sleepers: u8,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1072,6 +1077,7 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                     solar: room.solar.is_some(),
                     burner: room.burner.is_some(),
                     bank_capacity: room.bank.as_ref().map_or(0, |bank| bank.capacity),
+                    sleepers: room.quarters.as_ref().map_or(0, |q| q.sleepers),
                     defence: room.defence.is_some(),
                 }
             })

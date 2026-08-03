@@ -51,21 +51,35 @@ this all rests on.
 
 ### What's built, and what isn't
 
-M0 ("The Stride"), M1 ("The Chain"), M2 ("The Siege") and M3 ("The Journey") are shipped.
-That is: the deterministic chassis and streaming terrain; the day clock, charge, elevators
-and dumbwaiters, and the crafting chain; creatures, infrastructure damage, emplacements and
-repair; and regions, route forks, berthing at ruins, an enclave, and a run that ends two
-ways. A run can be played from the first pace to the last.
+M0 ("The Stride"), M1 ("The Chain"), M2 ("The Siege"), M3 ("The Journey") and M4 ("The
+Home") are shipped. That is: the deterministic chassis and streaming terrain; the day clock,
+charge, elevators and dumbwaiters, and the crafting chain; creatures, infrastructure damage,
+emplacements and repair; regions, route forks, berthing at ruins, an enclave, and a run that
+ends two ways; and now named crew with two needs — meals from a canteen chain and sleep in a
+bunk on a shift rota the player sets — plus the art pass and the whole audio subsystem. A run
+can be played from the first pace to the last, and the tower is somewhere people live.
 
-Not built: crew names beyond placeholders, meals, sleep, shift rotas, the art pass, audio,
-region 3, the Refugia, tier-two chains, unlocks, and any meta-progression. Those are M4 and
-M5 — see `docs/v2-plan.md` §9.
+Not built: region 3, the Refugia, tier-two chains, unlocks, role priorities, and any
+meta-progression. Those are M5 — see `docs/v2-plan.md` §9.
 
 **`docs/SYSTEMS.md` is the exact, current boundary of what exists.** Read the milestone
 section for whatever you are about to touch, and its "Deferred out of" list, before
-assuming a system is live. Two things worth knowing before you touch balance: the Siege
-section of `docs/BALANCE.md` opens with a warning that its `PLAYTESTED` grades describe an
-economy three correctness fixes ago, and re-earning them is the first job of M4.
+assuming a system is live.
+
+Three things worth knowing before you touch balance or an instrument, all of them M4's:
+
+1. **A measurement window is a whole number of days, or it is a measurement of what time it
+   started.** Crew sleep through the night band now, so a tower does not queue, haul or craft
+   at the same rate around the clock. `SYSTEMS.md` §4.8 has the case that taught this — an
+   elevator that measured as worthless because two thirds of the window was night.
+2. **A harness tower needs a standing reason to want poles.** A tower that has worked through
+   a finite shopping list stops consuming, every buffer fills, and harvest stops dead at the
+   tower's total buffer capacity — which is a property of the tower and identical whatever the
+   ground underfoot was. Both `siege_run.rs` and `journey.rs` have been wrong this way.
+3. **`BALANCE.md`'s Siege section has been re-measured twice and says so.** Read the block at
+   the top of it before trusting a `PLAYTESTED` grade there, and in particular read what it
+   says about the plating comparison, which has now produced the same false finding three
+   times for the same reason.
 
 ### Project structure
 
@@ -102,6 +116,7 @@ crates/
         defence.rs              # emplacements, fed off the same shelves as everything
         repair.rs               # putting the tower back together, for poles and crew time
         haul.rs                  # crew state machine + task assignment/scoring
+        needs.rs                 # hunger, rest, the shift band, and the work multiplier
       snapshot.rs                # presentation boundary — the only place Fx::to_f32 runs
       replay.rs                  # Replay, Recorder, hash_state, embedded golden fixture
       tests.rs, tests/            # tests grouped by topic (determinism, haul, journey, ...)
@@ -119,6 +134,7 @@ assets/
 web/                              # React/TypeScript frontend (Vite)
   src/
     engine/                       # the custom WebGL2 renderer — not React
+      AudioManager.ts             # loops from view(), one-shots from frame() — M4 §4.6
     ui/                           # React chrome: panels, cards, readouts
     bridge/                       # the wasm boundary and its TypeScript contract
   e2e/smoke.spec.ts               # Playwright smoke test
@@ -426,12 +442,31 @@ that already changes state — before adding a new number to the screen.
 
 ### Audio
 
-Not built yet as of M0 (`v2-plan.md` targets the audio pass at M4), but the intended shape
-carries forward from v1's philosophy: production loops go silent when a room is starved,
-not muted with a separate "problem" sound; `SoundEvent`s (`systems.rs`) are fire-and-forget
-— emitted during a tick, consumed or dropped by the JS `AudioManager`, never read back into
-the simulation. When audio work starts, keep that boundary: Rust decides *that* something
-happened, JS decides whether and how it sounds.
+Built at M4 (`SYSTEMS.md` §4.6); `web/src/engine/AudioManager.ts` is the whole of it, and it
+is JS-side entirely — the plumbing had been crossing the bridge since M0.
+
+**The boundary is fixed: Rust decides *that* something happened, JS decides whether and how
+it sounds.** `SoundEvent`s are fire-and-forget — emitted during a tick, played or dropped,
+never read back into the simulation — and nothing about the mix, the volume, the voice count,
+or whether audio is enabled may reach `GameState`.
+
+**The two inputs are not interchangeable, and telling them apart is the whole design.**
+`frame()`'s event list drives one-shots: things that *happened*. `view()`'s snapshot drives
+loops: things that are *ongoing*. A starved mill going quiet is not an event at all — it is
+the absence of a loop, and the fact behind it is `RoomView.stalled`. Getting this backwards is
+how a project ends up with a warning beep where a silence belonged.
+
+**A starved production loop goes silent; it does not gain a warning sound.** No alarm on a
+stalled room, no beep on a queue, no sting on a full buffer. `wait_ticks` and the red tint are
+the bottleneck instrument (`DECISIONS.md` §8) and audio's contribution to them is the mill you
+can no longer hear. What keeps absence readable is the beds underneath — the jungle, the day
+and night soundscapes, the electrical hum thinning as the bank drains — so silence reads
+against a floor rather than against nothing.
+
+Two traps already paid for: the legs read `journey.halt`'s five states and **not**
+`power.walking`, because a tower that stopped and a tower that cannot afford to move must not
+sound the same; and one-shots are coalesced by kind within a frame and rate-limited per kind,
+because `frame()` runs many ticks at 4× and three mills finishing on one tick is one sound.
 
 ### Narrative / crew tone
 

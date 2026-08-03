@@ -9,7 +9,7 @@
  * would not do.
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import type { Game, UiState } from "../engine/Game";
 import type {
@@ -41,6 +41,7 @@ export function Chrome({ game, ui }: Props) {
     <div className="chrome">
       <TopBar game={game} ui={ui} />
       <Sidebar game={game} ui={ui} />
+      <Roster game={game} ui={ui} />
       {ui.fork && <ForkCard game={game} ui={ui} />}
       {ui.atEnclave && <EnclaveBoard game={game} ui={ui} />}
       <div className="diagnostics">
@@ -57,6 +58,115 @@ export function Chrome({ game, ui }: Props) {
       {ui.arrived && !ui.lost && <Arrival ui={ui} />}
     </div>
   );
+}
+
+/**
+ * Who is aboard, what they are doing, and which shift they work.
+ *
+ * **This is a schedule the player writes, not a readout of state**,
+ * which is what makes it defensible under `DECISIONS.md` §8 — the same
+ * category as the elevator's per-daypart programs, and a different
+ * category from a dashboard. The rule it has to keep: this must never
+ * become the primary place hunger and tiredness are read. Those belong
+ * to the cross-section — a hungry crew member walks to the canteen, a
+ * tired one moves visibly slower, a sleeping one is lying down — and if
+ * the tower can only be understood through this list, the art pass
+ * failed and no amount of polish here fixes it.
+ *
+ * So what a row shows is a *face*, a *name*, and what they are doing in
+ * plain words. The two needs appear only as the state they produce
+ * ("hungry", "asleep"), never as a number and never as a bar; the exact
+ * tick counts are a hover title, which is the hover-only layer §8
+ * allows.
+ */
+function Roster({ game, ui }: Props) {
+  if (ui.crew.length === 0) return null;
+  return (
+    <aside className="roster panel" data-testid="roster">
+      <h2 className="section-title">Aboard</h2>
+      <ul className="roster-list">
+        {ui.crew.map((member) => {
+          const night = member.shift === "Night";
+          return (
+            <li className="roster-row" key={member.id} data-testid={`crew-${member.id}`}>
+              <span className="roster-face" aria-hidden="true">
+                {FACES[member.fidget % FACES.length]}
+              </span>
+              <span className="roster-who">
+                <span className="roster-name">{member.name}</span>
+                <span
+                  className="roster-doing"
+                  title={`fed ${Math.round(member.hunger / 30)}s ago, ${Math.round(
+                    member.rested / 30,
+                  )}s of work left`}
+                >
+                  {doing(member)}
+                </span>
+              </span>
+              <button
+                type="button"
+                className={`shift-toggle${night ? " night" : ""}`}
+                data-testid={`shift-${member.id}`}
+                aria-pressed={night}
+                title={
+                  night
+                    ? `${member.name} works the night. Set them back to days.`
+                    : `${member.name} works the day. Put them on nights — they will be up while the day crew sleep, and their bed is free for somebody else.`
+                }
+                onClick={() => game.setShift(member.id, night ? "Day" : "Night")}
+              >
+                {night ? "night" : "day"}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </aside>
+  );
+}
+
+/**
+ * Faces, chosen by `fidget` — the per-crew cosmetic draw that already
+ * exists for the renderer's idle phase.
+ *
+ * `portrait = fidget % faces` is the whole mechanism. It costs no new
+ * state and no new roll, it is stable for the life of a crew member,
+ * and it is reproducible from a seed. Crucially it is drawn from the
+ * `cosmetic` stream, so adding or removing a face can never perturb an
+ * economic roll (`DECISIONS.md` §2).
+ */
+const FACES = ["🌱", "🍃", "🪴", "🌿", "🌾", "🌻", "🌴", "🍂"] as const;
+
+/**
+ * What somebody is doing, in words a person would use.
+ *
+ * Hunger and tiredness appear here as states rather than as numbers,
+ * and only once they are *visible in the tower anyway* — "hungry" means
+ * they are on their way to eat, which you can watch them do.
+ */
+function doing(member: UiState["crew"][number]): string {
+  switch (member.state) {
+    case "sleep":
+      return "asleep";
+    case "eat":
+      return "eating";
+    case "mend":
+      return "mending";
+    case "board":
+      return member.stressed ? "held up at the stairs" : "waiting for a way up";
+    case "climb":
+      return "on the stairs";
+    case "ride":
+      return "riding up";
+    case "load":
+      return "picking up";
+    case "unload":
+      return "setting down";
+    case "walk":
+      return member.carrying ? "carrying" : "on their way";
+    default:
+      return "idle";
+  }
 }
 
 function TopBar({ game, ui }: Props) {
@@ -85,6 +195,7 @@ function TopBar({ game, ui }: Props) {
       </dl>
       <Weather ui={ui} />
       <ChargeGauge ui={ui} />
+      <SoundToggle game={game} />
       <button
         type="button"
         className={`stride-toggle stride-${ui.halt}`}
@@ -142,6 +253,38 @@ const HALT_WORDS: Record<HaltView, string> = {
  * that is the one thing here that earns chrome: an unlabelled line, no
  * percentage, next to the name of the place and the paces walked.
  */
+/**
+ * The one piece of chrome the audio pass needs, and the reason it needs
+ * one: **audio cannot start without a gesture.**
+ *
+ * Browser autoplay policy keeps an `AudioContext` suspended until the
+ * player interacts, so something on screen has to be the interaction.
+ * Making that thing the mute button rather than a modal "click to
+ * enable sound" gate means the game is playable from the first frame
+ * and the sound arrives when it is asked for — and it is why the
+ * Playwright smoke test never hears anything, which is correct rather
+ * than a failure.
+ */
+function SoundToggle({ game }: { game: Game }) {
+  const [on, setOn] = useState(false);
+  return (
+    <button
+      type="button"
+      className={`sound-toggle${on ? " on" : ""}`}
+      data-testid="sound-toggle"
+      aria-pressed={on}
+      title={on ? "Mute" : "Listen to the tower"}
+      onClick={() => {
+        const next = !on;
+        setOn(next);
+        game.setAudioEnabled(next);
+      }}
+    >
+      {on ? "🔊" : "🔇"}
+    </button>
+  );
+}
+
 function Journey({ ui }: { ui: UiState }) {
   const through = Math.max(0, Math.min(100, ui.regionPermille / 10));
   return (
