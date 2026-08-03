@@ -110,6 +110,29 @@ Dwell, dispatch, and the estimates crew use to pick a shaft. See `SYSTEMS.md` §
 > lengthening its shopping list until the tower runs out of *floors* did not bring the shape
 > back.
 >
+> **The instrument now exists.** `examples/siege_run.rs` grew a pressure table that pins
+> provocation instead of earning it, holds the tower's shape fixed, and stocks it so nothing
+> under measurement is waiting on the chain — three days per cell, three tower shapes against
+> four levels of attention. It asks the question these rows actually encode: at this much
+> attention, with this much built, does it hold? Two things it says straight away, both
+> needing work rather than a tweak:
+>
+> **The curve is far too steep.** Every shape holds at provocation 300 and every shape is
+> dead at 600. There is no survivable band above a third of the dial, so 700 points of
+> `provocation_max` describe outcomes the player never sees, and the difference between
+> playing loudly and playing very loudly is nothing. `threat_per_100_provocation` at 40 turns
+> 600 provocation into 240 threat — 48 skitters a wave — which is the immediate suspect.
+>
+> **Plating and defence barely register, and plating may be actively bad.** At provocation
+> 100 the starting tower loses *nothing*; the same tower plated twice loses 1,276 hit points
+> on the same seed with the same waves. More armour, more damage. It is not a metric artefact
+> — the table reports absolute hit points lost precisely so that towers with different totals
+> can be compared — and the repair figures suggest it is repair scheduling rather than the
+> plating itself: the bare tower mended 2,834 and the plated one 1,602, so the plated tower
+> is repairing *less* while damaged more. `pick_repair` orders by per-mille, and a plated
+> panel reads healthier for the same absolute wound, which would send crew to the wrong
+> place. That is a hypothesis and wants confirming before anything is changed.
+>
 > What that needs is a balance pass with an instrument that keeps a tower genuinely
 > constrained, not another round of tuning at the end of a systems milestone. Until then the
 > reasoning in these rows is sound and the *evidence* in them describes a game three fixes

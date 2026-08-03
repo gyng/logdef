@@ -79,12 +79,19 @@ impl GameEngine {
         &self.state
     }
 
-    /// Direct state access for tests that need to construct a specific
-    /// situation (an empty tower, a single terrain band) that no
-    /// command can produce. Never exposed outside the crate: production
-    /// code mutates through commands only.
-    #[cfg(test)]
-    pub(crate) fn state_mut_for_test(&mut self) -> &mut GameState {
+    /// Direct state access for tests and measurement harnesses that
+    /// need to construct a situation no command can produce — an empty
+    /// tower, a single terrain band, a provocation level held steady
+    /// while the siege is measured against it.
+    ///
+    /// Deliberately ugly to type and deliberately not `state_mut`.
+    /// Nothing that ships to a player may touch this: the command
+    /// pattern is what makes the game replayable and debuggable
+    /// (`DECISIONS.md` §4), and a second way to mutate state would be a
+    /// second way for a replay to diverge from the run it recorded. It
+    /// is `pub` only because `examples/` are separate crates and the
+    /// instruments live there.
+    pub fn state_mut_for_test(&mut self) -> &mut GameState {
         &mut self.state
     }
 

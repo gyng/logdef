@@ -38,6 +38,188 @@ fn main() {
     for plan in [Plan::Subsistence, Plan::Greedy, Plan::Answered] {
         run(plan);
     }
+    pressure_table();
+}
+
+/// What a given tower can take at a given level of attention.
+///
+/// The three plans above tell a story and are the better read, but they
+/// stopped being able to *measure* the siege: a tower only provokes
+/// while it is consuming, and once a shopping list runs out the jungle
+/// forgets it exists. Every plan then finishes untouched, which says
+/// nothing about whether `panel_hp` or `threat_per_100_provocation` are
+/// any good.
+///
+/// So this pins provocation instead of earning it, holds the tower's
+/// shape fixed, and asks the question the Siege rows actually encode:
+/// at this much attention, with this much built, does it hold? No
+/// economy in the loop, nothing to run out of, and the same three days
+/// every time.
+fn pressure_table() {
+    const DAYS: u32 = 3;
+    const LEVELS: [i64; 4] = [100, 300, 600, 1000];
+
+    println!("\n=== how much attention can a tower take? ===\n");
+    println!(
+        "  provocation held, tower held fixed, {DAYS} days each. `mend` is what repair \n           managed; `bill` is what it could not.\n"
+    );
+    println!(
+        "{:<26} {:>5} {:>10} {:>7} {:>7} {:>6} {:>5} {:>9}",
+        "tower", "prov", "standing", "lost hp", "seen off", "mend", "bill", "verdict"
+    );
+
+    for shape in [Shape::Bare, Shape::Plated, Shape::Answered] {
+        for level in LEVELS {
+            let (standing, lost, repelled, mended, bill) = press(shape, level, DAYS);
+            println!(
+                "{:<26} {level:>5} {standing:>9}‰ {lost:>7} {repelled:>7} {mended:>6} {bill:>5}                  {:>9}",
+                shape.name(),
+                if standing >= 900 {
+                    "held"
+                } else if standing >= 600 {
+                    "worn"
+                } else if standing > 0 {
+                    "mauled"
+                } else {
+                    "LOST"
+                }
+            );
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Shape {
+    /// What every run starts with.
+    Bare,
+    /// The same tower with its hull plated twice, as an enclave will do.
+    Plated,
+    /// A battery, a thornwright to feed it, and a second mill.
+    Answered,
+}
+
+impl Shape {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Bare => "as it starts",
+            Self::Plated => "plated twice",
+            Self::Answered => "battery + darts",
+        }
+    }
+}
+
+/// Hold provocation at `level` and see what happens.
+fn press(shape: Shape, level: i64, days: u32) -> (i64, i64, u64, u64, i64) {
+    let mut engine = GameEngine::new(0x0000_5EED_0000_0003);
+    engine.set_speed(SimSpeed::X1);
+    let content = engine.content().clone();
+
+    if shape == Shape::Answered {
+        for room in ["room.dart_battery", "room.thornwright", "room.mill"] {
+            build_anywhere(&mut engine, room);
+        }
+    }
+    if shape == Shape::Plated {
+        let twice = content
+            .regions
+            .iter()
+            .find_map(|region| region.enclave.as_ref())
+            .and_then(|enclave| enclave.reinforce.as_ref())
+            .map_or((0, 0), |work| (work.panel_hp, work.times));
+        for _ in 0..twice.1 {
+            engine.state_mut_for_test().tower.reinforce(twice.0);
+        }
+    }
+    // Stock it so the chain is never the limiting factor — this is a
+    // measurement of the siege, not of the economy.
+    stock_everything(&mut engine);
+
+    let ticks = days * TICKS_PER_DAY;
+    for tick in 0..ticks {
+        if tick % 60 == 0 {
+            stock_everything(&mut engine);
+            let siege = &mut engine.state_mut_for_test().siege;
+            siege.provocation = level;
+            siege.provocation_acc = 0;
+        }
+        step_walking(&mut engine, 1);
+        if engine.state().siege.lost {
+            break;
+        }
+    }
+
+    let state = engine.state();
+    (
+        tower_integrity_permille(state),
+        total_hp(state) - standing_hp(state),
+        state.siege.repelled,
+        state.stats.hp_repaired,
+        understory_core::systems::repair::outstanding_repair_cost(state, &content),
+    )
+}
+
+/// Hit points the tower is missing, in absolute terms.
+///
+/// The per-mille readout is a *fraction*, so it is not comparable
+/// between towers with different totals: plating raises every panel's
+/// maximum, and a plated tower that loses one panel reads worse than a
+/// bare tower that loses the same panel, because the panel it lost was
+/// bigger. That is fine for the player, who only ever compares their
+/// tower to itself, and useless for a table that compares three towers
+/// to each other. This column is the honest one.
+fn standing_hp(state: &understory_core::state::GameState) -> i64 {
+    let mut hp = 0;
+    for floor in &state.tower.floors {
+        hp += floor.panel.hp;
+        for room in &floor.rooms {
+            hp += room.health.hp;
+        }
+    }
+    for shaft in &state.tower.shafts {
+        hp += shaft.health.hp;
+    }
+    hp
+}
+
+fn total_hp(state: &understory_core::state::GameState) -> i64 {
+    let mut max = 0;
+    for floor in &state.tower.floors {
+        max += floor.panel.max;
+        for room in &floor.rooms {
+            max += room.health.max;
+        }
+    }
+    for shaft in &state.tower.shafts {
+        max += shaft.health.max;
+    }
+    max
+}
+
+/// Keep poles and darts on the shelves, so nothing under measurement is
+/// waiting on the chain.
+fn stock_everything(engine: &mut GameEngine) {
+    let content = engine.content().clone();
+    let poles = content.item_idx("item.poles");
+    let darts = content.item_idx("item.darts");
+    let state = engine.state_mut_for_test();
+    for item in [poles, darts].into_iter().flatten() {
+        let held = state.stock_of(item);
+        if held < 40 {
+            state.shelve(item, 40 - held);
+        }
+    }
+    // And the racks, so a battery is measured on its reload rather than
+    // on its supply line.
+    for floor in &mut state.tower.floors {
+        for room in &mut floor.rooms {
+            if let Some(darts) = darts
+                && let Some(rack) = room.inputs.iter_mut().find(|s| s.item == darts)
+            {
+                let space = rack.space();
+                rack.deposit(space);
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
