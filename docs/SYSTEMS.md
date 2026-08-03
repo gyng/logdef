@@ -2949,9 +2949,13 @@ Not a task list — the places where existing code assumes something M5 stops be
       walked ordinary ground" rather than "you have to have gone to the ruins". Better sentence,
       reachable tower.
 
-      What is *not* demonstrated is the tier changing a decision in play, because open question 0
-      swallows it: with every chain terminating in a buffer, a route that is richer in a material
-      does not end up with more of it.
+      What is *not* demonstrated is the tier changing a decision in play, which needs somebody
+      playing. It is no longer blocked on open question 0, though: that question is answered
+      (yield and sun are a balanced pair, tuned to cancel), so the reason a richer route does not
+      end up with more of a material is that it is *supposed* to pay for the extra ground in
+      charge. The tier's decision is about what the tower can *reach* — rope for an elevator,
+      alloy for a charge ceiling — rather than about how much a route hands it, and that is a
+      better claim than the one this criterion was written against.
 - [~] **Stopping at a ruin is sometimes the wrong call and sometimes the right one.** Scrap now
       buys something — the forge is real and alloy gates the charge ceiling — and the garden makes
       berthing cost less than it did, because it is the first intake that runs while the legs are
@@ -2965,8 +2969,23 @@ Not a task list — the places where existing code assumes something M5 stops be
       ground floors do not hold all three once the Heartseed, a cell bank and a storeroom have
       taken theirs. It trades M3 coverage `tests/journey.rs` duplicates for M5 coverage that
       exists nowhere else.
-- [ ] `make check` and the smoke suite green.
-- [ ] An itch.io build a stranger can open and play without being told anything.
+- [x] `make check` and the smoke suite green. 282 Rust tests, clippy clean at `-D warnings`,
+      `tsgo`/`oxlint` clean, and 11 Playwright specs — smoke, capture, audio, and the built-bundle
+      check. One known flake, documented in `e2e/capture.spec.ts`: the two approach stills come
+      out empty on some runs, because that harness interleaves stepping with real-time waits while
+      the frame loop runs and so lands the same seed in different places. It is a property of the
+      harness, not of the game, and the three explanations that were *not* the cause are recorded
+      there so nobody spends the afternoon again.
+- [~] **An itch.io build a stranger can open.** `make release` cuts it and it works: the bundle
+      builds, `index.html` sits at the zip root where itch expects it, and `e2e/release.spec.ts`
+      boots the built bundle — not the dev server — and plays it, which is the failure this whole
+      target exists to catch (a bundle that 404s its own WASM and shows a blank canvas passes
+      every other check in the project). Note for anyone cutting one on Windows: the target
+      shells out to `zip`, which Git Bash does not ship; `Compress-Archive -Path web/dist/*`
+      produces the same layout.
+
+      **"and play without being told anything" is the half that needs a stranger.** Nobody has
+      been shown it.
 
 **Deferred out of M5, which is to say out of the plan:**
 

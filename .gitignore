@@ -28,6 +28,11 @@ coverage/
 # wasm-pack output
 web/pkg/
 
+# The itch.io release cut, written by `make release`. A build output —
+# reproducible from a tag, and half a megabyte of binary that would
+# otherwise land in the history every time somebody cuts one.
+understory-web.zip
+
 # Playwright/browser automation
 .playwright/
 playwright-report/
