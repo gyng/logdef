@@ -903,6 +903,31 @@ fn answering_a_fork_replaces_the_terrain_drawn_for_the_other_branch() {
         Some(fork.branches[1]),
         "the second answer did not take"
     );
+
+    // And the ground behind the fork survived it. Throwing away the
+    // wrong side of the split is the dangerous half of re-answering:
+    // the retain runs over every band the world has, and a predicate
+    // pointing the other way would keep the far ones and drop the near
+    // ones — including the band the tower is standing on. The tower
+    // would then be walking on nothing, at a distance the generator had
+    // already produced terrain for, which is about as confusing as this
+    // simulation can get.
+    assert!(
+        world.band_at(world.distance).is_some(),
+        "re-answering the fork took the ground out from under the tower"
+    );
+    for pair in world.bands.windows(2) {
+        assert_eq!(
+            pair[0].end(),
+            pair[1].start,
+            "re-answering left a hole in the terrain at {}",
+            pair[0].end() >> FX_SHIFT
+        );
+    }
+    assert!(
+        world.bands.iter().all(|band| band.end() <= fork.at),
+        "a band past the fork survived the answer being changed"
+    );
 }
 
 #[test]
