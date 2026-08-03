@@ -48,6 +48,96 @@ fn main() {
 
     println!();
     verdict(&across, &within);
+
+    println!("\n=== the whole way ===\n");
+    whole_run(1);
+}
+
+/// One seed, start to finish, through both regions and the enclave.
+///
+/// Everything above stops at the region-1 boundary, which measures the
+/// half of the run that has been played most. This walks the rest: into
+/// the drowned city, past the settlement in it, and out to the far edge
+/// where the run ends. It is the only thing that exercises a region
+/// change, a second region's palette, and the enclave in one go, and it
+/// is how "seeded start to region 2" stops being a claim.
+fn whole_run(seed: u64) {
+    let mut engine = GameEngine::new(seed);
+    engine.set_speed(SimSpeed::X1);
+    let content = engine.content().clone();
+    let enclave_at = engine
+        .state()
+        .world
+        .enclave_at(&content)
+        .expect("the pack puts an enclave somewhere");
+
+    let mut traded = 0;
+    let mut recruited = false;
+    let mut crossed_at = None;
+    let mut berthed = false;
+
+    for tick in 0..600_000u32 {
+        if let Some(fork) = engine.state().world.fork
+            && fork.answer.is_none()
+        {
+            let _ = engine.try_send(GameCommand::TakeFork { branch: 0 });
+        }
+
+        // Stop at the settlement, take what it offers, move on.
+        let here = engine.state().world.distance;
+        if !berthed && here >= enclave_at {
+            berthed = true;
+            let _ = engine.try_send(GameCommand::SetStriding { walking: false });
+            engine.step(2);
+            traded = (0..4u8)
+                .filter(|offer| {
+                    engine
+                        .try_send(GameCommand::Trade { offer: *offer })
+                        .is_ok()
+                })
+                .count();
+            recruited = engine.try_send(GameCommand::Recruit).is_ok();
+            let _ = engine.try_send(GameCommand::SetStriding { walking: true });
+        }
+
+        engine.step(1);
+        let state = engine.state();
+        if crossed_at.is_none() && state.world.region.get() > 0 {
+            crossed_at = Some(tick);
+        }
+        if state.arrived || state.siege.lost {
+            break;
+        }
+    }
+
+    let state = engine.state();
+    let minutes = |t: u32| f64::from(t) / 30.0 / 60.0;
+    println!(
+        "  seed {seed}: {} after {} ticks ({:.0} minutes at 1x, {:.0} at 4x), {} days",
+        if state.arrived {
+            "reached the far edge"
+        } else if state.siege.lost {
+            "lost the Heartseed"
+        } else {
+            "still going when the harness gave up"
+        },
+        state.tick,
+        minutes(state.tick as u32),
+        minutes(state.tick as u32) / 4.0,
+        state.tick / u64::from(TICKS_PER_DAY),
+    );
+    println!(
+        "  crossed into the drowned city at {:.0} minutes; {} trade(s) and {} at the settlement",
+        crossed_at.map_or(0.0, minutes),
+        traded,
+        if recruited { "a recruit" } else { "nobody" },
+    );
+    println!(
+        "  ended {} paces on, {} crew, {} standing",
+        state.world.distance >> 8,
+        state.crew.len(),
+        understory_core::systems::siege::tower_integrity_permille(state),
+    );
 }
 
 /// How the tower is played. Every policy answers forks — a harness that

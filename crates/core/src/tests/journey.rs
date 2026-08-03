@@ -1614,3 +1614,68 @@ fn a_ruins_worth_crosses_the_bridge() {
     }
     panic!("no ruin with anything in it ever reached the snapshot");
 }
+
+#[test]
+fn a_run_can_be_played_from_the_first_pace_to_the_last() {
+    // The whole of M3 in one test: two regions, a boundary crossing, a
+    // second palette, the settlement in the middle of the drowned city,
+    // and the far edge where the run ends.
+    //
+    // Every other test here holds something still to measure one thing.
+    // This one holds nothing still, which is the only way to catch the
+    // failures that live between systems — a fork scheduled behind the
+    // tower after a region change, an enclave that never becomes
+    // reachable, a generator that stops producing past a boundary.
+    // Slower than the rest by a wide margin and worth every tick.
+    let content = content();
+    let mut game = engine(1);
+    let enclave_at = game
+        .state()
+        .world
+        .enclave_at(&content)
+        .expect("the pack puts an enclave somewhere");
+
+    let mut crossed = false;
+    let mut traded = false;
+    let mut berthed = false;
+
+    for _ in 0..600_000 {
+        if let Some(fork) = game.state().world.fork
+            && fork.answer.is_none()
+        {
+            game.try_send(crate::command::GameCommand::TakeFork { branch: 0 })
+                .expect("a pending fork always offers a branch 0");
+        }
+
+        if !berthed && game.state().world.distance >= enclave_at {
+            berthed = true;
+            game.try_send(crate::command::GameCommand::SetStriding { walking: false })
+                .expect("always legal");
+            game.step(2);
+            traded = (0..4u8).any(|offer| {
+                game.try_send(crate::command::GameCommand::Trade { offer })
+                    .is_ok()
+            });
+            game.try_send(crate::command::GameCommand::SetStriding { walking: true })
+                .expect("always legal");
+        }
+
+        game.step(1);
+        crossed |= game.state().world.region.get() > 0;
+        if game.state().arrived || game.state().siege.lost {
+            break;
+        }
+    }
+
+    let state = game.state();
+    assert!(!state.siege.lost, "the run ended in the Heartseed going");
+    assert!(state.arrived, "the tower never reached the far edge");
+    assert!(crossed, "the tower never entered the second region");
+    assert!(berthed, "the enclave never came within reach");
+    assert!(traded, "nothing could be traded at the settlement");
+    assert_eq!(
+        state.world.region.get(),
+        content.regions.len() - 1,
+        "the run finished somewhere other than the last region"
+    );
+}
