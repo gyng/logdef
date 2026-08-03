@@ -51,11 +51,21 @@ this all rests on.
 
 ### What's built, and what isn't
 
-As of this writing, M0 ("The Stride") is the current milestone: the deterministic chassis,
-a tower striding over streaming terrain, stairs-only vertical transport, and one crew
-member hauling bamboo to a mill. No charge/energy, no elevators or dumbwaiters, no enemies,
-no crew needs, no regions. `docs/SYSTEMS.md` is the exact, current boundary of what exists
-— read its non-goals section for a milestone before assuming a system is live.
+M0 ("The Stride"), M1 ("The Chain"), M2 ("The Siege") and M3 ("The Journey") are shipped.
+That is: the deterministic chassis and streaming terrain; the day clock, charge, elevators
+and dumbwaiters, and the crafting chain; creatures, infrastructure damage, emplacements and
+repair; and regions, route forks, berthing at ruins, an enclave, and a run that ends two
+ways. A run can be played from the first pace to the last.
+
+Not built: crew names beyond placeholders, meals, sleep, shift rotas, the art pass, audio,
+region 3, the Refugia, tier-two chains, unlocks, and any meta-progression. Those are M4 and
+M5 — see `docs/v2-plan.md` §9.
+
+**`docs/SYSTEMS.md` is the exact, current boundary of what exists.** Read the milestone
+section for whatever you are about to touch, and its "Deferred out of" list, before
+assuming a system is live. Two things worth knowing before you touch balance: the Siege
+section of `docs/BALANCE.md` opens with a warning that its `PLAYTESTED` grades describe an
+economy three correctness fixes ago, and re-earning them is the first job of M4.
 
 ### Project structure
 
@@ -71,32 +81,48 @@ crates/
       content.rs            # RON content pack: load, intern, hash, validate
       state.rs              # GameState root
       state/
-        world.rs            # World, TerrainBand, Feature — the streaming terrain
+        world.rs            # World, TerrainBand, Feature, the journey roll, forks
         tower.rs            # Tower, Floor, Room, Shaft, Stack, Shelf
         crew.rs             # Crew, CrewState, HaulTask — the porter state machine
+        clock.rs            # the day cycle and its dayparts
+        power.rs            # charge: the bank, and who is allowed to spend it
+        siege.rs            # Enemy, DamageTarget, Health, provocation
       command.rs             # GameCommand, CommandResult, CommandError
       engine.rs               # GameEngine: frame/step/send/view, thin by design
       engine/
         commands.rs           # command validation + application — §4
       systems.rs               # tick() — the fixed system order
       systems/
-        stride.rs              # tower movement, terrain streaming
-        intake.rs               # harvesting the terrain underfoot
+        stride.rs              # the legs, terrain streaming, region and fork crossings
+        intake.rs               # harvesting ground covered, and extracting from ruins
         production.rs           # crafting rooms
+        transport.rs            # elevator cars, dumbwaiters, queues
+        power.rs                # sun, sails, burners, and the charge priority order
+        siege.rs                # waves, approach, damage, wardens
+        defence.rs              # emplacements, fed off the same shelves as everything
+        repair.rs               # putting the tower back together, for poles and crew time
         haul.rs                  # crew state machine + task assignment/scoring
       snapshot.rs                # presentation boundary — the only place Fx::to_f32 runs
       replay.rs                  # Replay, Recorder, hash_state, embedded golden fixture
-      tests.rs, tests/            # tests grouped by topic (determinism, haul, replay, ...)
+      tests.rs, tests/            # tests grouped by topic (determinism, haul, journey, ...)
     examples/
       record_golden.rs            # regenerate assets/replays/golden.json
+      throughput.rs               # M1's instrument: does an elevator earn its slot?
+      siege_run.rs                # M2's: three towers, five days, one seed
+      journey.rs                  # M3's: twelve seeds, three policies, and a whole run
   bridge/                         # understory-bridge: wasm-bindgen entry points (cdylib)
     src/lib.rs
 assets/
-  data/                           # RON content pack: balance.ron, items/, rooms/, terrain/
+  data/                           # RON content pack: balance.ron, items/, rooms/,
+                                  # terrain/, enemies/, regions/
   replays/golden.json          # the embedded native/wasm parity fixture
 web/                              # React/TypeScript frontend (Vite)
   src/
+    engine/                       # the custom WebGL2 renderer — not React
+    ui/                           # React chrome: panels, cards, readouts
+    bridge/                       # the wasm boundary and its TypeScript contract
   e2e/smoke.spec.ts               # Playwright smoke test
+  e2e/capture.spec.ts             # screenshot harness — how visual questions get answered
 docs/
   v2-plan.md, DESIGN.md, SYSTEMS.md, DECISIONS.md, BALANCE.md
 ```
