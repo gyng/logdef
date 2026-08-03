@@ -67,6 +67,12 @@ pub enum GameCommand {
     /// Halt the legs to bank the charge they would have burned, or set
     /// them running again. The bank-or-burn decision, at its simplest.
     SetStriding { walking: bool },
+    /// Commit to one of the two branches the pending fork offers.
+    ///
+    /// Legal from the moment the fork appears until the tower crosses
+    /// it, and re-sendable until then — the last answer before the line
+    /// is the one that counts (`SYSTEMS.md` §3.3).
+    TakeFork { branch: u8 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -114,6 +120,10 @@ pub enum CommandError {
     Undemolishable { room: String },
     /// The content pack has no shaft with that ID.
     UnknownShaft { shaft: String },
+    /// The route does not split here, or not yet.
+    NoForkPending,
+    /// A fork offers two ways. That was not one of them.
+    NoSuchBranch { branch: u8 },
     /// No shaft with that runtime ID is standing.
     NoSuchShaft { id: ShaftId },
     /// The span is inverted, too short, or too tall for this kind.
@@ -161,6 +171,10 @@ impl std::fmt::Display for CommandError {
             }
             CommandError::Undemolishable { room } => write!(f, "{room} cannot be removed"),
             CommandError::UnknownShaft { shaft } => write!(f, "no such shaft: {shaft}"),
+            CommandError::NoForkPending => write!(f, "the route does not split here"),
+            CommandError::NoSuchBranch { branch } => {
+                write!(f, "a fork offers two ways; {branch} was not one of them")
+            }
             CommandError::NoSuchShaft { id } => write!(f, "no shaft {}", id.0),
             CommandError::BadSpan {
                 low,

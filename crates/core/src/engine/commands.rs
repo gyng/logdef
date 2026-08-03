@@ -48,7 +48,24 @@ pub fn apply(
             state.walking = *walking;
             Ok(())
         }
+        GameCommand::TakeFork { branch } => take_fork(state, content, *branch),
     }
+}
+
+/// Answer the pending fork.
+///
+/// Validated fully before anything moves, per `DECISIONS.md` §4:
+/// `World::answer_fork` throws away terrain generated past the split,
+/// so a rejected answer must never reach it.
+fn take_fork(state: &mut GameState, content: &Content, branch: u8) -> Result<(), CommandError> {
+    let Some(fork) = state.world.fork else {
+        return Err(CommandError::NoForkPending);
+    };
+    if usize::from(branch) >= fork.branches.len() {
+        return Err(CommandError::NoSuchBranch { branch });
+    }
+    state.world.answer_fork(content, branch);
+    Ok(())
 }
 
 fn set_room_active(

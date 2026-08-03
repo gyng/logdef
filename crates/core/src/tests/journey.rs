@@ -542,3 +542,381 @@ fn an_intake_room_with_no_rate_is_a_load_error() {
         "expected a ruin-intake error, got {errors:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Generation
+// ---------------------------------------------------------------------------
+//
+// Property tests over many seeds rather than example tests over one. A
+// generator that satisfies its invariants on seed 1 and violates them
+// on seed 400 is a generator that ships a broken run to somebody, and
+// the only way to find that out at the desk is to try 400 seeds.
+
+use crate::fx::{FX_SHIFT, paces_from_int};
+use crate::rng::RngStreams;
+use crate::state::world::World;
+
+/// Enough seeds to catch a once-in-a-hundred violation, few enough to
+/// stay fast. Individual tests step through this at a stride.
+const SEEDS: std::ops::Range<u64> = 1..300;
+
+fn fresh(seed: u64, content: &Content) -> (RngStreams, World) {
+    let mut streams = RngStreams::new(seed);
+    let world = World::new(&mut streams.world, content);
+    (streams, world)
+}
+
+/// Walk a world forward without an engine, answering every fork with
+/// its first branch, so generation keeps running.
+fn walk(world: &mut World, streams: &mut RngStreams, content: &Content, steps: usize, each: i64) {
+    for _ in 0..steps {
+        world.distance += paces_from_int(each);
+        if world.fork.is_some() {
+            world.answer_fork(content, 0);
+        }
+        world.generate_ahead(&mut streams.world, content);
+    }
+}
+
+#[test]
+fn every_region_is_rolled_inside_the_length_it_was_authored_with() {
+    let content = content();
+    for seed in SEEDS {
+        let (_, world) = fresh(seed, &content);
+        let mut start = 0;
+        for (i, roll) in world.journey.iter().enumerate() {
+            let def = &content.regions[i];
+            let length = (roll.end - start) >> FX_SHIFT;
+            assert!(
+                (def.length_min_paces..=def.length_max_paces).contains(&length),
+                "seed {seed}: {} rolled {length} paces, outside {}..={}",
+                def.id,
+                def.length_min_paces,
+                def.length_max_paces
+            );
+            assert!(
+                (def.ruin_richness_min_pct..=def.ruin_richness_max_pct)
+                    .contains(&roll.ruin_richness_pct),
+                "seed {seed}: {} rolled {}% richness, outside its range",
+                def.id,
+                roll.ruin_richness_pct
+            );
+            start = roll.end;
+        }
+    }
+}
+
+#[test]
+fn the_journey_is_the_same_every_time_a_seed_is_played() {
+    // The whole point of a shared seed: two people comparing notes
+    // about a run have to be talking about the same journey.
+    let content = content();
+    for seed in SEEDS.step_by(7) {
+        let (_, first) = fresh(seed, &content);
+        let (_, second) = fresh(seed, &content);
+        assert_eq!(
+            first.journey, second.journey,
+            "seed {seed} rolled two different journeys"
+        );
+        assert_eq!(
+            first.bands, second.bands,
+            "seed {seed} generated two different opening stretches"
+        );
+    }
+}
+
+#[test]
+fn seeds_differ_in_how_many_decisions_a_region_asks() {
+    // What the length roll was bought for (`SYSTEMS.md` §3.2). Fork
+    // spacing is fixed, so the roll changes how many forks fit — and if
+    // every seed came out the same length it would be buying nothing.
+    let content = content();
+    let mut lengths: Vec<i64> = SEEDS
+        .step_by(3)
+        .map(|seed| fresh(seed, &content).1.journey[0].end)
+        .collect();
+    lengths.sort_unstable();
+    lengths.dedup();
+    assert!(
+        lengths.len() > 10,
+        "region 1 came out only {} distinct lengths across the seeds tried",
+        lengths.len()
+    );
+}
+
+#[test]
+fn no_band_repeats_the_kind_before_it() {
+    // Carried forward from M0, now that a palette rather than a
+    // pack-wide weight decides what is eligible. The anti-frustration
+    // constraint lives in the generator and is never a rule the player
+    // can perceive.
+    let content = content();
+    for seed in SEEDS.step_by(5) {
+        let (mut streams, mut world) = fresh(seed, &content);
+        walk(&mut world, &mut streams, &content, 40, 300);
+        for pair in world.bands.windows(2) {
+            assert_ne!(
+                pair[0].kind,
+                pair[1].kind,
+                "seed {seed}: two {} bands ran together",
+                content.terrain(pair[0].kind).id
+            );
+        }
+    }
+}
+
+#[test]
+fn every_band_is_drawn_from_the_palette_covering_it() {
+    // A band drawn from the wrong palette is what would make the
+    // drowned city look like the deep jungle, and it is invisible in a
+    // screenshot of either one on its own.
+    let content = content();
+    for seed in SEEDS.step_by(11) {
+        let (mut streams, mut world) = fresh(seed, &content);
+        for _ in 0..60 {
+            world.distance += paces_from_int(400);
+            if world.fork.is_some() {
+                world.answer_fork(&content, 0);
+            }
+            world.generate_ahead(&mut streams.world, &content);
+
+            let branch = world.branch;
+            for band in &world.bands {
+                let inside = branch.is_some_and(|b| band.start >= b.from && band.start < b.to);
+                let palette = if inside {
+                    &content.branch_rt(branch.expect("checked").def).palette
+                } else {
+                    &content.region_rt(world.region_at(band.start)).palette
+                };
+                assert!(
+                    palette.iter().any(|(idx, _)| *idx == band.kind),
+                    "seed {seed}: a {} band at {} came from no palette covering it",
+                    content.terrain(band.kind).id,
+                    band.start >> FX_SHIFT
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn the_generator_never_runs_past_a_fork_nobody_has_answered() {
+    // The whole basis of the halt: the tower stands at the split
+    // because the ground beyond has not been decided, not because a
+    // rule says stop. If generation ran on, the halt would be arbitrary
+    // and the renderer would be drawing ground nobody may walk onto.
+    let content = content();
+    for seed in SEEDS.step_by(13) {
+        let (mut streams, mut world) = fresh(seed, &content);
+        for _ in 0..80 {
+            world.distance += paces_from_int(400);
+            world.generate_ahead(&mut streams.world, &content);
+            if let Some(fork) = world.fork
+                && fork.answer.is_none()
+            {
+                assert!(
+                    world.generated_to <= fork.at,
+                    "seed {seed}: generated {} paces past an unanswered fork",
+                    (world.generated_to - fork.at) >> FX_SHIFT
+                );
+                break;
+            }
+        }
+    }
+}
+
+#[test]
+fn a_fork_never_lands_on_top_of_a_boundary_or_a_berth() {
+    // A decision competing with a region change or an enclave for the
+    // same stretch of horizon is two things at once, and one of them
+    // gets missed.
+    let content = content();
+    let margin = paces_from_int(content.balance.journey.fork_edge_margin_paces);
+    for seed in SEEDS.step_by(9) {
+        let (mut streams, mut world) = fresh(seed, &content);
+        for _ in 0..120 {
+            world.distance += paces_from_int(500);
+            if let Some(fork) = world.fork {
+                let region = world.region_at(fork.at);
+                let start = world.region_start_of(region);
+                let end = world.journey[region.get()].end;
+                assert!(
+                    fork.at - start >= margin && end - fork.at >= margin,
+                    "seed {seed}: a fork at {} crowds a region boundary",
+                    fork.at >> FX_SHIFT
+                );
+                if let Some(enclave) = content.region(region).enclave.as_ref() {
+                    let berth = start + paces_from_int(enclave.at_paces);
+                    assert!(
+                        (fork.at - berth).abs() >= margin,
+                        "seed {seed}: a fork at {} crowds the enclave",
+                        fork.at >> FX_SHIFT
+                    );
+                }
+                world.answer_fork(&content, 0);
+            }
+            world.generate_ahead(&mut streams.world, &content);
+        }
+    }
+}
+
+#[test]
+fn how_much_a_run_has_to_salvage_depends_on_the_seed() {
+    // Richness is the roll the player actually feels, so it has to
+    // reach the ruins: one run's city picked over and grudging, the
+    // next one's worth stopping at more than once.
+    let content = content();
+    let mut totals = Vec::new();
+    for seed in SEEDS.step_by(17) {
+        let (mut streams, mut world) = fresh(seed, &content);
+        walk(&mut world, &mut streams, &content, 200, 500);
+        totals.push(world.features.iter().map(|f| f.salvage).sum::<i64>());
+    }
+    assert!(
+        totals.iter().any(|total| *total > 0),
+        "no seed generated a single ruin worth berthing at"
+    );
+    let low = totals.iter().min().copied().unwrap_or(0);
+    let high = totals.iter().max().copied().unwrap_or(0);
+    assert!(
+        high > low,
+        "every seed's ruins held exactly {high} scrap between them — \
+         richness is not reaching the ruins"
+    );
+}
+
+#[test]
+fn nothing_but_a_ruin_holds_salvage() {
+    let content = content();
+    for seed in SEEDS.step_by(23) {
+        let (mut streams, mut world) = fresh(seed, &content);
+        walk(&mut world, &mut streams, &content, 60, 500);
+        for feature in &world.features {
+            if feature.salvage == 0 {
+                continue;
+            }
+            let band = world
+                .band_at(feature.at)
+                .expect("every feature stands in a band");
+            let rt = &content.terrain_runtime[band.kind.get()];
+            assert!(
+                rt.ruin_feature
+                    .get(usize::from(feature.kind))
+                    .copied()
+                    .unwrap_or(false),
+                "seed {seed}: a {} feature is carrying {} scrap",
+                content.terrain(band.kind).id,
+                feature.salvage
+            );
+        }
+    }
+}
+
+#[test]
+fn answering_a_fork_replaces_the_terrain_drawn_for_the_other_branch() {
+    // Re-answering is legal right up to the split, so the terrain past
+    // it has to match the answer that stands — otherwise the player
+    // walks onto ground drawn from a palette they rejected.
+    let content = content();
+    let (mut streams, mut world) = fresh(4242, &content);
+    for _ in 0..200 {
+        world.distance += paces_from_int(200);
+        world.generate_ahead(&mut streams.world, &content);
+        if world.fork.is_some() {
+            break;
+        }
+    }
+    let fork = world.fork.expect("a fork inside the first region");
+
+    world.answer_fork(&content, 0);
+    world.generate_ahead(&mut streams.world, &content);
+    assert!(world.generated_to > fork.at, "generation did not resume");
+
+    world.answer_fork(&content, 1);
+    assert!(
+        world.generated_to <= fork.at,
+        "changing the answer left behind terrain drawn for the branch that was dropped"
+    );
+    assert_eq!(
+        world.branch.map(|b| b.def),
+        Some(fork.branches[1]),
+        "the second answer did not take"
+    );
+}
+
+#[test]
+fn a_fork_never_offers_the_same_way_twice() {
+    let content = content();
+    for seed in SEEDS.step_by(3) {
+        let (mut streams, mut world) = fresh(seed, &content);
+        for _ in 0..120 {
+            world.distance += paces_from_int(500);
+            if let Some(fork) = world.fork {
+                assert_ne!(
+                    fork.branches[0], fork.branches[1],
+                    "seed {seed}: a fork offered the same branch on both sides"
+                );
+                world.answer_fork(&content, 0);
+            }
+            world.generate_ahead(&mut streams.world, &content);
+        }
+    }
+}
+
+#[test]
+fn the_tower_stands_at_a_fork_until_it_is_answered_and_then_walks_on() {
+    // End to end through the engine rather than the world alone. The
+    // halt is a consequence of the generator, but all the player ever
+    // sees is the tower stopping and starting again.
+    let mut game = engine(7);
+    let mut halted_at = None;
+    for _ in 0..40_000 {
+        game.step(1);
+        if game.state().world.is_blocked() {
+            halted_at = Some(game.state().world.distance);
+            break;
+        }
+    }
+    let halted_at = halted_at.expect("the tower reached a fork inside a region's length");
+
+    game.step(600);
+    assert_eq!(
+        game.state().world.distance,
+        halted_at,
+        "a tower with nowhere to walk moved anyway"
+    );
+
+    game.try_send(crate::command::GameCommand::TakeFork { branch: 0 })
+        .expect("the pending fork offers a branch 0");
+    game.step(600);
+    assert!(
+        game.state().world.distance > halted_at,
+        "answering the fork did not set the tower walking again"
+    );
+}
+
+#[test]
+fn standing_at_a_fork_costs_nothing_to_run_the_legs() {
+    // A tower with nowhere to walk must not pay for trying. Charging
+    // for it would quietly bleed a player who was only thinking.
+    let mut game = engine(11);
+    for _ in 0..40_000 {
+        game.step(1);
+        if game.state().world.is_blocked() {
+            break;
+        }
+    }
+    assert!(game.state().world.is_blocked(), "never reached a fork");
+    assert!(
+        game.state().walking,
+        "this test is about a tower that still intends to walk"
+    );
+
+    let before = game.state().power.charge;
+    game.step(300);
+    assert!(
+        game.state().power.charge >= before,
+        "a tower standing at a fork spent charge on its legs: {before} then {}",
+        game.state().power.charge
+    );
+}

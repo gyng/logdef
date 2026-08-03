@@ -138,6 +138,14 @@ fn main() {
         .expect("floor 1 slot 1 should be free");
     engine.step(9000);
 
+    // The route splits about fifteen thousand paces in, and a tower
+    // with no answer stands at the split indefinitely. A recorder that
+    // did not answer would produce a fixture of a parked tower and
+    // claim it was recording a run — so the fork answer goes in, and
+    // the branch palette goes into the fixture with it.
+    answer_any_fork(&mut engine);
+    engine.step(6000);
+
     let replay = engine.export_replay();
     let path = fixture_path();
     std::fs::create_dir_all(path.parent().expect("fixture has a parent directory"))
@@ -152,6 +160,15 @@ fn main() {
         replay.checkpoints.len()
     );
     println!("rebuild so the embedded copy picks it up");
+}
+
+/// Take the left-hand branch of whatever fork is pending, if any.
+fn answer_any_fork(engine: &mut GameEngine) {
+    if engine.state().world.fork.is_some() {
+        engine
+            .try_send(GameCommand::TakeFork { branch: 0 })
+            .expect("a pending fork always offers a branch 0");
+    }
 }
 
 fn fixture_path() -> PathBuf {

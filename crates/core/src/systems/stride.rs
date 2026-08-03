@@ -10,7 +10,7 @@
 //! literal.
 
 use crate::content::Content;
-use crate::fx::{Fx, paces_from_fx};
+use crate::fx::{Fx, paces_from_fx, paces_from_int};
 use crate::state::GameState;
 
 use super::{SoundEvent, power};
@@ -23,7 +23,15 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
 
     state.strode = power::pay_for_stride(state, content);
     if state.strode {
-        state.world.distance += paces_from_fx(stride_per_tick(content));
+        let step = paces_from_fx(stride_per_tick(content));
+        // Never step over a block. Landing exactly on it is what makes
+        // `is_blocked` true next tick, which is how the halt begins.
+        state.world.distance = match state.world.blocked_at() {
+            Some(limit) => (state.world.distance + step).min(limit),
+            None => state.world.distance + step,
+        };
+        cross_fork(state, content);
+        cross_region(state, content, sounds);
     }
 
     // Terrain keeps streaming whether or not the legs are running: the
@@ -38,6 +46,36 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     if before != after {
         sounds.push(SoundEvent::BandChange);
     }
+}
+
+/// Commit the branch once the tower is over the fork line.
+///
+/// The answer stops being changeable here rather than when it is given,
+/// which is what lets a player think again right up until the moment
+/// they are standing on the split.
+fn cross_fork(state: &mut GameState, content: &Content) {
+    let Some(fork) = state.world.fork else {
+        return;
+    };
+    if state.world.distance < fork.at || fork.answer.is_none() {
+        return;
+    }
+    state.world.fork = None;
+    state.world.next_fork_at +=
+        paces_from_int(content.region(state.world.region).fork_interval_paces);
+    state.world.skip_forks_too_near_an_edge(content);
+}
+
+/// Crossing a region boundary is an event, not only a fact: it is where
+/// the fork schedule resets and where the next region's one-time setup
+/// happens.
+fn cross_region(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
+    let here = state.world.region_at(state.world.distance);
+    if here == state.world.region {
+        return;
+    }
+    state.world.enter_region(content, here);
+    sounds.push(SoundEvent::RegionChange);
 }
 
 /// Paces per tick, derived from the designer-facing "paces per 100

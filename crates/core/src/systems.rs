@@ -58,6 +58,8 @@ pub enum SoundEvent {
     Burn,
     /// The tower crossed into a new terrain band.
     BandChange,
+    /// The tower has walked out of one region and into the next.
+    RegionChange,
     /// A wave arrived on the horizon.
     WaveArrives,
     /// Something reached the tower and started work.

@@ -143,7 +143,11 @@ pub fn lighting(state: &mut GameState, content: &Content) {
 /// before anything inside it stops working. Returns whether the tower
 /// could afford to move this tick.
 pub fn pay_for_stride(state: &mut GameState, content: &Content) -> bool {
-    if !state.walking {
+    // A tower with nowhere to walk does not pay to try. Standing at an
+    // unanswered fork or at the far edge of the journey is a stop like
+    // any other stop, and charging for it would quietly bleed a player
+    // who was only thinking.
+    if !state.walking || state.world.is_blocked() {
         return false;
     }
     let per_100 = content.balance.power.stride_charge_per_100_ticks;

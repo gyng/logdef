@@ -8,9 +8,10 @@
 
 use crate::command::GameCommand;
 use crate::content::Approach;
-use crate::ids::ShaftId;
+use crate::ids::{EnemyIdx, FloorIdx, ShaftId, SlotIdx};
 use crate::state::CrewState;
 use crate::state::siege::{DamageTarget, EnemyState};
+use crate::systems::SoundEvent;
 use crate::tests::{content, engine, item};
 
 /// Wind provocation to the ceiling so waves arrive promptly. Tests
@@ -107,6 +108,278 @@ fn walking_away_from_something_does_not_count_as_seeing_it_off() {
         game.state().siege.repelled,
         0,
         "a tower with no way to shoot back claimed to have seen creatures off"
+    );
+}
+
+#[test]
+fn only_the_creatures_the_darts_killed_are_counted_as_seen_off() {
+    // The test above is the zero case, and zero is where a miscount
+    // hides: with nothing shooting back there is nothing dying, so a
+    // counter that tallies the wrong exit and one that tallies the
+    // right one both read nothing. This is the same rule with both
+    // exits on the field at once, and it pins the counter to the kills
+    // exactly rather than to "more than none".
+    //
+    // The field is staged rather than fought for. A run that produces
+    // both exits cleanly is a narrow window — at low provocation the
+    // battery kills the whole wave and nothing is ever left behind, and
+    // at high provocation the wave wrecks the battery before it can
+    // kill anything — and a test of what a counter counts should not
+    // also be a test of whether that window was hit.
+    let content = content();
+    let skitter = content
+        .enemy_idx("enemy.skitter")
+        .expect("the pack defines a skitter");
+    let fade = content.balance.siege.enemy_fade_ticks;
+
+    let mut game = engine(1044);
+    {
+        let state = game.state_mut_for_test();
+        state.siege.provocation = 0;
+        state.siege.next_wave_tick = u64::MAX;
+        let here = state.world.distance;
+        // Far enough out that it is still walking in when the last fade
+        // finishes, so the field also holds something that is on its way
+        // nowhere — a creature with no fade left to run is exactly what
+        // a counter reading the wrong side of this comparison would
+        // start tallying.
+        let horizon = here + crate::fx::paces_from_int(500);
+        let hp = content.enemy(skitter).hp;
+        state.siege.enemies = vec![
+            staged_creature(9101, skitter, hp, here, EnemyState::Dying, fade),
+            staged_creature(9102, skitter, hp, here, EnemyState::Dying, fade),
+            staged_creature(9103, skitter, hp, here, EnemyState::Leaving, fade),
+            staged_creature(9104, skitter, hp, here, EnemyState::Leaving, fade),
+            staged_creature(9105, skitter, hp, here, EnemyState::Leaving, fade),
+            staged_creature(9106, skitter, hp, horizon, EnemyState::Approaching, 0),
+        ];
+    }
+
+    // Long enough for every fade to run out, and then some.
+    game.step(fade + 2);
+
+    assert_eq!(
+        game.state().siege.repelled,
+        2,
+        "two were shot down and three were walked away from; the tower claims {}",
+        game.state().siege.repelled
+    );
+    assert_eq!(
+        game.state().siege.enemies.len(),
+        1,
+        "the field should hold only the creature that was still walking in"
+    );
+}
+
+/// One creature on the field in a chosen state, so a test can stage a
+/// departure of each kind rather than arrange a fight that happens to
+/// produce both.
+fn staged_creature(
+    id: u32,
+    def: EnemyIdx,
+    hp: i64,
+    at: crate::fx::Paces,
+    state: EnemyState,
+    fade_left: u32,
+) -> crate::state::siege::Enemy {
+    crate::state::siege::Enemy {
+        id: crate::ids::EnemyId(id),
+        def,
+        at,
+        hp,
+        state,
+        attack_cooldown: 0,
+        // Long enough that the tower's stride cannot take it off the
+        // field for a reason this test is not asking about.
+        cling_left: u32::MAX,
+        fade_left,
+    }
+}
+
+#[test]
+fn a_battery_shoots_the_nearest_thing_first() {
+    // With a wave strung out along the approach, which one a battery
+    // picks decides whether it thins the front of the wave or plinks
+    // at the back while the front walks in. Nearest first is the only
+    // choice that reads as sensible from outside, and nothing else in
+    // the simulation depends on the ordering, so it needs pinning.
+    let content = content();
+    let darts = item(&content, "item.darts");
+    let range = content
+        .rooms
+        .iter()
+        .find_map(|room| room.defence.as_ref().map(|d| d.range_paces))
+        .expect("the pack defines an emplacement");
+
+    let mut game = engine(1042);
+    crate::tests::stock_poles(&mut game, 20);
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.dart_battery".into(),
+        floor: 1,
+        slot: 1,
+    })
+    .expect("affordable");
+    game.try_send(GameCommand::SetStriding { walking: false })
+        .expect("always legal");
+    top_up(&mut game, darts);
+
+    // Two creatures, both within reach, at opposite ends of it.
+    let full = place_one_creature(&mut game, range / 4);
+    {
+        let state = game.state_mut_for_test();
+        let far_at = state.world.distance + crate::fx::paces_from_int(range * 3 / 4);
+        let mut far = state.siege.enemies[0].clone();
+        far.id = crate::ids::EnemyId(9002);
+        far.at = far_at;
+        state.siege.enemies.push(far);
+    }
+
+    game.step(1);
+    let near_hp = creature_hp(&game).expect("the near one is still there");
+    let far_hp = game
+        .state()
+        .siege
+        .enemies
+        .iter()
+        .find(|enemy| enemy.id == crate::ids::EnemyId(9002))
+        .map(|enemy| enemy.hp)
+        .expect("the far one is still there");
+
+    assert!(
+        near_hp < full,
+        "the battery did not shoot the creature at a quarter of its range"
+    );
+    assert_eq!(
+        far_hp, full,
+        "the battery shot past the near creature at the far one"
+    );
+}
+
+#[test]
+fn equally_hurt_things_are_mended_nearest_first() {
+    // The other half of triage. Once two wounds are equally bad, the
+    // tie goes to whichever is fewer floors away, so a crew member does
+    // not walk the length of the tower past an identical job.
+    let mut game = engine(1043);
+    crate::tests::stock_poles(&mut game, 200);
+    {
+        let state = game.state_mut_for_test();
+        state.siege.provocation = 0;
+        state.siege.enemies.clear();
+        state.siege.next_wave_tick = u64::MAX;
+        state.crew.truncate(1);
+        // Identical wounds, one right where the crew member is
+        // standing and one at the top of the tower.
+        let top = state.tower.top_floor();
+        state.tower.floor_mut(0).expect("ground floor").panel.hp -= 100;
+        state.tower.floor_mut(top).expect("top floor").panel.hp -= 100;
+        let member = state.crew.first_mut().expect("one crew member");
+        member.state = crate::state::CrewState::Idle;
+    }
+
+    let mut went_to = None;
+    for _ in 0..600 {
+        game.step(1);
+        if let Some(job) = game.state().crew.first().and_then(|member| member.repair) {
+            went_to = Some(job.target);
+            break;
+        }
+    }
+
+    assert_eq!(
+        went_to,
+        Some(DamageTarget::Panel { floor: 0 }),
+        "the crew climbed the tower past an identical job on the way"
+    );
+}
+
+#[test]
+fn the_repair_bill_is_what_the_repairs_actually_cost() {
+    // "TO MEND 34 poles" is the number the player triages against, and
+    // a bill that is not the true cost is worse than no bill at all —
+    // they would put off a repair they could afford, or bank for one
+    // they could already pay for. Nothing else in the simulation reads
+    // this figure, so it needs pinning against the thing it predicts:
+    // the poles actually spent putting the same damage right.
+    let content = content();
+    let mut game = engine(1040);
+    crate::tests::stock_poles(&mut game, 200);
+
+    // A quiet tower with one known wound, so the bill has exactly one
+    // thing in it and repair is not racing fresh damage.
+    let hurt_by = 100;
+    {
+        let state = game.state_mut_for_test();
+        state.siege.provocation = 0;
+        state.siege.enemies.clear();
+        state.siege.next_wave_tick = u64::MAX;
+        let floor = state.tower.floor_mut(0).expect("ground floor");
+        floor.panel.hp -= hurt_by;
+    }
+
+    let bill = crate::systems::repair::outstanding_repair_cost(game.state(), &content);
+    assert_eq!(
+        bill,
+        hurt_by * content.balance.siege.repair_poles_per_10_hp / 10,
+        "the bill is not the damage priced at the going rate"
+    );
+
+    // Now let the crew settle it, and see the two figures agree.
+    let before = game.state().stats.repair_poles_spent;
+    for _ in 0..200 {
+        game.step(60);
+        let state = game.state_mut_for_test();
+        state.siege.provocation = 0;
+        state.siege.enemies.clear();
+        if crate::systems::repair::outstanding_repair_cost(state, &content) == 0 {
+            break;
+        }
+    }
+
+    assert_eq!(
+        crate::systems::repair::outstanding_repair_cost(game.state(), &content),
+        0,
+        "the crew never finished the one repair on the list"
+    );
+    assert_eq!(
+        (game.state().stats.repair_poles_spent - before) as i64,
+        bill,
+        "the crew spent a different number of poles than the bill quoted"
+    );
+}
+
+#[test]
+fn crew_go_to_the_worst_damage_first() {
+    // Triage is the whole point of repair being neither automatic nor
+    // free: with more damage than crew, which one they walk to has to
+    // be the one that most needs them. Worst first, ties to nearest.
+    let mut game = engine(1041);
+    crate::tests::stock_poles(&mut game, 200);
+    {
+        let state = game.state_mut_for_test();
+        state.siege.provocation = 0;
+        state.siege.enemies.clear();
+        state.siege.next_wave_tick = u64::MAX;
+        state.crew.truncate(1);
+        // Two wounds on the same floor, so distance cannot be the
+        // reason for the choice — only how bad they are.
+        state.tower.floor_mut(0).expect("ground floor").panel.hp -= 20;
+        state.tower.floor_mut(1).expect("first floor").panel.hp -= 120;
+    }
+
+    let mut went_to = None;
+    for _ in 0..600 {
+        game.step(1);
+        if let Some(job) = game.state().crew.first().and_then(|member| member.repair) {
+            went_to = Some(job.target);
+            break;
+        }
+    }
+
+    assert_eq!(
+        went_to,
+        Some(DamageTarget::Panel { floor: 1 }),
+        "the crew went to the scratch and left the hole"
     );
 }
 
@@ -235,7 +508,13 @@ fn a_battery_with_nothing_to_shoot_at_still_reloads() {
 /// Clear the field and put a single creature `ahead` paces in front.
 /// Returns its hit points.
 fn place_one_creature(game: &mut crate::engine::GameEngine, ahead: i64) -> i64 {
-    let def = crate::ids::EnemyIdx(0);
+    place_creature(game, EnemyIdx(0), ahead)
+}
+
+/// The same, for a named kind. The targeting tests each need a
+/// particular approach, and which index the pack happens to intern a
+/// creature at is not something a test should know.
+fn place_creature(game: &mut crate::engine::GameEngine, def: EnemyIdx, ahead: i64) -> i64 {
     let hp = game.content().enemy(def).hp;
     let state = game.state_mut_for_test();
     let at = state.world.distance + crate::fx::paces_from_int(ahead);
@@ -516,6 +795,144 @@ fn creatures_arrive_and_close_on_the_tower() {
     assert!(ever_contacted, "creatures never reached the tower");
 }
 
+/// Wind the clock to `tick_of_day`, wind provocation to the ceiling, and
+/// run the one tick on which a wave is due. Leaves the field holding
+/// exactly what that wave brought and nothing else.
+fn force_a_wave(game: &mut crate::engine::GameEngine, tick_of_day: u32) {
+    let ceiling = game.content().balance.siege.provocation_max;
+    {
+        let state = game.state_mut_for_test();
+        state.siege.enemies.clear();
+        state.siege.provocation = ceiling;
+        state.siege.next_wave_tick = state.tick;
+        // The clock advances at the top of the tick, so wind it to one
+        // short of where the wave should see it.
+        state.clock.tick_of_day = tick_of_day.saturating_sub(1);
+    }
+    game.step(1);
+}
+
+#[test]
+fn a_wave_announces_itself_once_however_many_creatures_it_brings() {
+    // The horizon cue is the entire warning the player gets, and the
+    // spawn counter behind it is read by nothing else in the
+    // simulation. One cue per wave: silence would mean nothing is
+    // coming, and a cue per creature would turn a large wave into a
+    // stutter that says nothing about how large it is. A wave that
+    // brought its creatures in silence, or brought none at all, looks
+    // identical to every other test in this file.
+    let mut game = engine(1055);
+    provoke_fully(&mut game);
+
+    // Tick zero of a run is already a wave check.
+    let sounds = game.step(1);
+    let announced = sounds
+        .iter()
+        .filter(|sound| **sound == SoundEvent::WaveArrives)
+        .count();
+    assert_eq!(announced, 1, "a wave announced itself {announced} times");
+    assert!(
+        game.state().siege.enemies.len() > 1,
+        "the wave that announced itself was a single creature, or none"
+    );
+
+    // And nothing announces itself when no wave is due.
+    game.state_mut_for_test().siege.next_wave_tick = u64::MAX;
+    let quiet = game.step(1200);
+    assert!(
+        !quiet.contains(&SoundEvent::WaveArrives),
+        "a wave announced itself with no wave behind it"
+    );
+}
+
+#[test]
+fn the_night_prowler_only_comes_out_after_dark() {
+    // `night_only` is the mechanism behind the milestone's second exit
+    // criterion — a night without banked charge being meaningfully
+    // worse than one with — and one comparison against the sun decides
+    // whether it is night at all. Backwards, the fastest creature in
+    // the pack turns up at noon and never after dark, and the whole
+    // reason to bank charge quietly evaporates while every other test
+    // here carries on passing.
+    let content = content();
+    let prowler = content
+        .enemy_idx("enemy.night_prowler")
+        .expect("the pack defines a night prowler");
+    let ticks_per_day = content.balance.clock.ticks_per_day;
+
+    let mut game = engine(1056);
+
+    // Midday, sun at its highest.
+    for _ in 0..6 {
+        force_a_wave(&mut game, ticks_per_day / 2);
+        assert!(
+            game.state()
+                .siege
+                .enemies
+                .iter()
+                .all(|enemy| enemy.def != prowler),
+            "a night prowler turned up at midday"
+        );
+    }
+
+    // The small hours, when it is supposed to.
+    let mut ever_prowled = false;
+    for _ in 0..6 {
+        force_a_wave(&mut game, 100);
+        ever_prowled |= game
+            .state()
+            .siege
+            .enemies
+            .iter()
+            .any(|enemy| enemy.def == prowler);
+    }
+    assert!(
+        ever_prowled,
+        "six fully-provoked waves after dark and nothing nocturnal came"
+    );
+}
+
+#[test]
+fn a_wave_never_fields_more_than_its_budget_can_pay_for() {
+    // Provocation is the only difficulty dial in the game and the
+    // threat budget is the whole of what it buys, so a wave that
+    // overspent it would make the dial mean nothing — a tower walking
+    // quietly and one stripping the terrain bare would meet the same
+    // jungle, and every figure in BALANCE.md's siege section would be
+    // describing something the simulation does not do.
+    let content = content();
+    let balance = &content.balance.siege;
+
+    let mut game = engine(1057);
+    for provocation in [20, 100, 400, balance.provocation_max] {
+        {
+            let state = game.state_mut_for_test();
+            state.siege.enemies.clear();
+            state.siege.provocation = provocation;
+            state.siege.next_wave_tick = state.tick;
+        }
+        game.step(1);
+
+        let budget =
+            (provocation * balance.threat_per_100_provocation / 100).max(balance.base_threat);
+        let fielded: i64 = game
+            .state()
+            .siege
+            .enemies
+            .iter()
+            .map(|enemy| content.enemy(enemy.def).threat)
+            .sum();
+        assert!(
+            fielded > 0,
+            "provocation {provocation} bought a wave with nothing in it"
+        );
+        assert!(
+            fielded <= budget,
+            "provocation {provocation} fielded {fielded} threat against a budget of {budget}"
+        );
+    }
+}
+
 #[test]
 fn creatures_damage_the_things_the_player_built() {
     let mut game = engine(1004);
@@ -526,6 +943,350 @@ fn creatures_damage_the_things_the_player_built() {
     assert!(
         integrity < 1000,
         "ten minutes at full provocation left the tower untouched"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// What a creature goes for
+// ---------------------------------------------------------------------------
+
+/// Take the poles away and shut the rooms down, so nothing the tower
+/// owns is mended or replaced while a measurement is running.
+///
+/// The targeting tests below each knock one specific thing down and then
+/// watch what a creature turns to next. If the crew patch the hole
+/// mid-measurement the creature's choice legitimately changes and the
+/// test is quietly measuring the repair system instead. Same trick, and
+/// the same reason, as `repair_without_poles_does_not_happen`.
+fn hold_the_repairs_off(game: &mut crate::engine::GameEngine) {
+    let poles = item(&content(), "item.poles");
+    let state = game.state_mut_for_test();
+    let held = state.stock_of(poles);
+    state.take_stock(poles, held);
+    for floor in &mut state.tower.floors {
+        for room in &mut floor.rooms {
+            room.active = false;
+        }
+    }
+}
+
+fn room_hp(game: &crate::engine::GameEngine, floor: FloorIdx, slot: SlotIdx) -> i64 {
+    game.state()
+        .tower
+        .find_room(floor, slot)
+        .expect("the room is still standing")
+        .health
+        .hp
+}
+
+#[test]
+fn a_leaper_moves_on_to_whatever_is_still_standing_on_the_roof() {
+    // Every branch of the targeting rule reaches for the first thing
+    // that is still *intact*, and the intactness check is the whole of
+    // what makes that true. Inverted, a creature goes back to the hole
+    // it has already made, the bite lands on nothing, and it re-picks
+    // the same hole forever. From outside that reads as a wave that has
+    // arrived and then stopped doing anything — and it means the top
+    // deck, the thing height is supposed to expose, is never actually
+    // at risk once its panel is gone.
+    let content = content();
+    let leaper = content
+        .enemy_idx("enemy.canopy_leaper")
+        .expect("the pack defines a canopy leaper");
+
+    let mut game = engine(1053);
+    game.try_send(GameCommand::SetStriding { walking: false })
+        .expect("always legal");
+    hold_the_repairs_off(&mut game);
+
+    // The roof panel is already gone. The sails behind it are not.
+    let top = game.state().tower.top_floor();
+    let slot = {
+        let floor = game
+            .state_mut_for_test()
+            .tower
+            .floor_mut(top)
+            .expect("the top floor");
+        floor.panel.hp = 0;
+        floor.rooms.first().expect("the canopy sails").slot
+    };
+    let whole = room_hp(&game, top, slot);
+    place_creature(&mut game, leaper, 0);
+
+    let mut bitten = false;
+    for _ in 0..600 {
+        game.step(1);
+        if room_hp(&game, top, slot) < whole {
+            bitten = true;
+            break;
+        }
+    }
+    assert!(
+        bitten,
+        "a leaper on a roof whose panel was already gone never touched the sails behind it"
+    );
+}
+
+#[test]
+fn a_creature_whose_target_is_torn_out_from_under_it_finds_another() {
+    // What a creature is chewing is a coordinate rather than a handle
+    // precisely so the player can demolish a room mid-bite
+    // (`siege.rs`, `apply_damage`). The other half of that decision is
+    // that the creature has to notice and move on. One left gnawing at
+    // a coordinate that resolves to nothing has quietly retired, and a
+    // player who worked that out could clear a wave by pulling down one
+    // room per attacker — a demolition button that doubles as a weapon,
+    // which is not a verb this game has.
+    let content = content();
+    let leaper = content
+        .enemy_idx("enemy.canopy_leaper")
+        .expect("the pack defines a canopy leaper");
+
+    let mut game = engine(1058);
+    crate::tests::stock_poles(&mut game, 20);
+    // A second room on the roof, so there is somewhere for the leaper
+    // to go once the first one is pulled out from under it.
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.storeroom".into(),
+        floor: 3,
+        slot: 1,
+    })
+    .expect("affordable, and the roof has room");
+    game.try_send(GameCommand::SetStriding { walking: false })
+        .expect("always legal");
+    hold_the_repairs_off(&mut game);
+
+    let top = game.state().tower.top_floor();
+    game.state_mut_for_test()
+        .tower
+        .floor_mut(top)
+        .expect("the top floor")
+        .panel
+        .hp = 0;
+    let store_whole = room_hp(&game, top, 1);
+    let sails_whole = room_hp(&game, top, 3);
+    place_creature(&mut game, leaper, 0);
+
+    // Wait until it has its teeth into the nearer of the two rooms.
+    let mut chewing = false;
+    for _ in 0..600 {
+        game.step(1);
+        if room_hp(&game, top, 1) < store_whole {
+            chewing = true;
+            break;
+        }
+    }
+    assert!(chewing, "the leaper never started on the storeroom");
+
+    // Now pull it down around them.
+    game.try_send(GameCommand::RemoveRoom {
+        floor: top,
+        slot: 1,
+    })
+    .expect("a storeroom is demolishable");
+
+    let mut moved_on = false;
+    for _ in 0..600 {
+        game.step(1);
+        if room_hp(&game, top, 3) < sails_whole {
+            moved_on = true;
+            break;
+        }
+    }
+    assert!(
+        moved_on,
+        "the room a leaper was chewing was demolished and it never looked for another"
+    );
+}
+
+#[test]
+fn a_borer_moves_on_to_the_column_that_is_still_whole() {
+    // The same rule, on the branch that matters most. A borer that
+    // keeps working a column it has already severed is a borer that can
+    // never take the second one, which would make transport redundancy
+    // free rather than a decision — build one spare shaft and the
+    // jungle can never cut your circulation again.
+    let content = content();
+    let borer = content
+        .enemy_idx("enemy.root_borer")
+        .expect("the pack defines a root borer");
+
+    let mut game = engine(1054);
+    crate::tests::stock_poles(&mut game, 20);
+    game.try_send(GameCommand::BuildShaft {
+        shaft: "shaft.elevator".into(),
+        low: 0,
+        high: 3,
+        slot: 7,
+    })
+    .expect("affordable");
+    game.try_send(GameCommand::SetStriding { walking: false })
+        .expect("always legal");
+    hold_the_repairs_off(&mut game);
+
+    let stairs = game.state().tower.shafts[0].id;
+    let elevator = game.state().tower.shafts[1].id;
+    let whole = {
+        let state = game.state_mut_for_test();
+        state.tower.shaft_mut(stairs).expect("the stairs").health.hp = 0;
+        state.tower.shaft(elevator).expect("the elevator").health.hp
+    };
+    place_creature(&mut game, borer, 0);
+
+    let mut bitten = false;
+    for _ in 0..900 {
+        game.step(1);
+        if game
+            .state()
+            .tower
+            .shaft(elevator)
+            .expect("still standing")
+            .health
+            .hp
+            < whole
+        {
+            bitten = true;
+            break;
+        }
+    }
+    assert!(
+        bitten,
+        "a borer at a tower with one column already cut through never started on the other"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The standing figure
+// ---------------------------------------------------------------------------
+
+/// Every hit point the opening tower is built from: four panels at
+/// `panel_hp`, a Heartseed at `heartseed_hp`, five ordinary rooms at
+/// `room_hp`, and one staircase at `shaft_hp`.
+///
+/// Written out rather than summed off the tower, because the test below
+/// exists to check the readout against arithmetic done somewhere other
+/// than the function that produces it.
+const OPENING_TOWER_HP: i64 = 6500;
+
+#[test]
+fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
+    // "STANDING 95%" is the player's one at-a-glance read on how the
+    // tower is holding up, and nothing else in the simulation consumes
+    // it — no system branches on it, no crew decision reads it. That
+    // makes it exactly the kind of figure that can quietly become
+    // nonsense and have every other test in this file still pass, which
+    // is what mutation testing found: the whole function could be
+    // replaced with a constant and nobody noticed.
+    //
+    // Each of the three kinds of thing the tower is made of has its own
+    // accumulator, and each is damaged separately below, because a
+    // readout that only counted its panels would still say the tower
+    // was whole with a wrecked mill and a severed spine in it. That is
+    // the reassuring lie the top bar must never tell.
+    let content = content();
+    let siege = &content.balance.siege;
+    assert_eq!(
+        4 * siege.panel_hp + siege.heartseed_hp + 5 * siege.room_hp + siege.shaft_hp,
+        OPENING_TOWER_HP,
+        "the opening tower is not the one the arithmetic below is written against"
+    );
+
+    let mut game = engine(1050);
+    assert_eq!(
+        crate::systems::siege::tower_integrity_permille(game.state()),
+        1000,
+        "a tower nothing has touched yet did not read as whole"
+    );
+
+    // A panel first. 65 hit points off 6,500 is one per cent of the
+    // tower, so the figure has to land on exactly 990.
+    game.state_mut_for_test()
+        .tower
+        .floor_mut(0)
+        .expect("ground floor")
+        .panel
+        .hp -= 65;
+    assert_eq!(
+        crate::systems::siege::tower_integrity_permille(game.state()),
+        990,
+        "a breached panel did not move the standing figure by its own share of the tower"
+    );
+
+    // Then the mill: 130 more off, two per cent, down to 970.
+    {
+        let mill = game
+            .state_mut_for_test()
+            .tower
+            .floor_mut(2)
+            .expect("the mill's floor")
+            .rooms
+            .iter_mut()
+            .find(|room| room.covers(3))
+            .expect("the mill");
+        mill.health.hp -= 130;
+    }
+    assert_eq!(
+        crate::systems::siege::tower_integrity_permille(game.state()),
+        970,
+        "a chewed-up room left the standing figure where it was"
+    );
+
+    // Then the stairs: 260 more, four per cent, down to 930.
+    {
+        let state = game.state_mut_for_test();
+        let stairs = state.tower.shafts[0].id;
+        state.tower.shaft_mut(stairs).expect("the stairs").health.hp -= 260;
+    }
+    assert_eq!(
+        crate::systems::siege::tower_integrity_permille(game.state()),
+        930,
+        "a half-cut staircase left the standing figure where it was"
+    );
+}
+
+#[test]
+fn the_standing_figure_stays_on_its_scale() {
+    // The frontend draws this as a percentage and as a bar. A figure
+    // that can run past full or below empty does not draw as anything a
+    // player can read, and it would do it at exactly the moment they
+    // most need the readout — during the wave that is taking the tower
+    // apart.
+    let mut game = engine(1051);
+    provoke_fully(&mut game);
+
+    let mut ever_hurt = false;
+    for _ in 0..300 {
+        game.step(60);
+        let standing = crate::systems::siege::tower_integrity_permille(game.state());
+        assert!(
+            (0..=1000).contains(&standing),
+            "the standing figure left its scale at {standing}"
+        );
+        ever_hurt |= standing < 1000;
+    }
+    assert!(
+        ever_hurt,
+        "nothing was ever damaged over ten minutes at full provocation, so this proves nothing"
+    );
+
+    // The bottom of the scale, which no survivable run reaches: a tower
+    // with nothing left standing reads as nothing left standing.
+    {
+        let state = game.state_mut_for_test();
+        for floor in &mut state.tower.floors {
+            floor.panel.hp = 0;
+            for room in &mut floor.rooms {
+                room.health.hp = 0;
+            }
+        }
+        for shaft in &mut state.tower.shafts {
+            shaft.health.hp = 0;
+        }
+    }
+    assert_eq!(
+        crate::systems::siege::tower_integrity_permille(game.state()),
+        0,
+        "a tower with no hit points anywhere in it still claimed to be standing"
     );
 }
 
@@ -556,9 +1317,47 @@ fn a_severed_shaft_is_no_longer_a_route() {
 
 #[test]
 fn a_severed_shaft_puts_everyone_on_it_back_on_their_feet() {
+    // One crew member in each of the three states that has somebody
+    // committed to a column, because a sever has to reach all three:
+    // queueing at the foot of it, climbing it, and riding it. Somebody
+    // left `Climbing` a column that no longer exists never arrives
+    // anywhere and never takes another job — they are simply gone from
+    // the tower, which reads as a bug and is one.
+    //
+    // The states are set by hand rather than waited for. Whether any of
+    // three crew happens to be on the stairs at tick 900 is a fact
+    // about the haul system's scheduling, and the version of this test
+    // that took its chances on that passed for a long time while
+    // proving nothing: at tick 900 the stairs were empty, so cutting
+    // them evicted nobody and the assertions below were all vacuous.
     let mut game = engine(1006);
     game.step(900);
     let stairs = game.state().tower.shafts[0].id;
+
+    {
+        let state = game.state_mut_for_test();
+        assert_eq!(
+            state.crew.len(),
+            3,
+            "this test wants one crew member per boarding state"
+        );
+        state.crew[0].state = CrewState::Boarding {
+            shaft: stairs,
+            to_floor: 2,
+        };
+        state.crew[1].state = CrewState::Climbing {
+            shaft: stairs,
+            to_floor: 3,
+        };
+        // Caught mid-flight, between the first and second floors.
+        state.crew[1].floor_fx = crate::fx::Fx::ratio(3, 2);
+        state.crew[2].state = CrewState::Riding {
+            shaft: stairs,
+            car: 0,
+            to_floor: 1,
+        };
+        state.tower.shaft_mut(stairs).expect("the stairs").riders = 1;
+    }
 
     crate::systems::siege::evict_riders(game.state_mut_for_test(), stairs);
 
@@ -569,9 +1368,83 @@ fn a_severed_shaft_puts_everyone_on_it_back_on_their_feet() {
             | CrewState::Riding { shaft, .. } if shaft == stairs)
     });
     assert!(!stuck, "somebody is still on a shaft that was cut through");
+    assert!(
+        game.state()
+            .crew
+            .iter()
+            .all(|member| member.state == CrewState::Idle),
+        "somebody came off a severed shaft still mid-errand"
+    );
+    assert!(
+        game.state()
+            .crew
+            .iter()
+            .all(|member| member.floor_fx.frac_raw() == 0),
+        "somebody came off a severed shaft standing between two floors"
+    );
     assert_eq!(
         game.state().tower.shaft(stairs).expect("standing").riders,
         0
+    );
+}
+
+#[test]
+fn cutting_one_shaft_leaves_the_crew_on_the_other_one_alone() {
+    // Eviction is per column, and it has to be. The whole reason to
+    // spend eighteen poles on a second way up is that losing the first
+    // one is survivable; a sever that emptied every shaft in the tower
+    // would turn that redundancy into a liability, and the reroute this
+    // milestone exists to produce would have nobody left to make it.
+    let mut game = engine(1052);
+    crate::tests::stock_poles(&mut game, 20);
+    game.try_send(GameCommand::BuildShaft {
+        shaft: "shaft.elevator".into(),
+        low: 0,
+        high: 3,
+        slot: 7,
+    })
+    .expect("affordable");
+
+    let stairs = game.state().tower.shafts[0].id;
+    let elevator = game.state().tower.shafts[1].id;
+    assert_ne!(stairs, elevator, "the second shaft was never built");
+
+    let aboard = CrewState::Riding {
+        shaft: elevator,
+        car: 0,
+        to_floor: 3,
+    };
+    {
+        let state = game.state_mut_for_test();
+        state.crew[0].state = CrewState::Climbing {
+            shaft: stairs,
+            to_floor: 2,
+        };
+        state.crew[1].state = aboard.clone();
+        state.tower.shaft_mut(stairs).expect("the stairs").riders = 1;
+        state
+            .tower
+            .shaft_mut(elevator)
+            .expect("the elevator")
+            .riders = 1;
+    }
+
+    crate::systems::siege::evict_riders(game.state_mut_for_test(), stairs);
+
+    assert_eq!(
+        game.state().crew[0].state,
+        CrewState::Idle,
+        "the crew member on the cut staircase was left climbing it"
+    );
+    assert_eq!(
+        game.state().crew[1].state,
+        aboard,
+        "cutting the stairs threw somebody out of the elevator seven slots away"
+    );
+    assert_eq!(
+        game.state().tower.shaft(elevator).expect("standing").riders,
+        1,
+        "the elevator's own rider count was cleared by damage to the stairs"
     );
 }
 
