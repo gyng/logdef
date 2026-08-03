@@ -17,6 +17,10 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
+    // The e2e harnesses write files: WAVs from the offline audio render,
+    // stills from the capture pass. Types only — nothing in `src` may
+    // reach for Node.
+    "types": ["node"],
     "paths": {
       "@/*": ["./src/*"]
     }

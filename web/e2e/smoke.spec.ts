@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import type {
+  SoundEvent,
   CatalogSnapshot,
   CommandResult,
   FeatureView,
@@ -40,7 +41,8 @@ interface TestHooks {
    */
   send(cmd: GameCommand): CommandResult;
   stateHash(): string;
-  step(ticks: number): void;
+  /** Step, and hand back the sounds that tick would have made. */
+  step(ticks: number): SoundEvent[];
   verifyGolden(): ReplayReport;
   exportReplay(): string;
   /** Centre of a slot in client coordinates, from the live layout. */

@@ -2536,6 +2536,19 @@ function drawCrew(batch: QuadBatch, { view, layout, clock }: SceneContext): void
     batch.push(x - unitW * 0.6, y + 1, unitW * 1.2, 3, fade(palette.crewShadow, 0.35), {
       radius: 2,
     });
+    // A soft dark halo behind the figure, so it separates from whatever
+    // it is standing in front of. Without it a crew member crossing a
+    // room body is the same value as the room and simply disappears —
+    // which is the difference between a frame with people in it and a
+    // frame that merely contains them.
+    batch.push(
+      x - unitW * 0.9,
+      feetY - unitH * 1.35,
+      unitW * 1.8,
+      unitH * 1.5,
+      fade(palette.crewShadow, 0.3),
+      { radius: unitW * 0.9, softness: unitW * 0.8 },
+    );
 
     // Two legs, swung apart by the gait. At rest they stand together and
     // read as one column, which is what a standing figure looks like

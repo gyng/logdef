@@ -2357,13 +2357,48 @@ one below says what would actually demonstrate it.
       `EnemyLeaves`, the last of which closes M2's deferral by making a creature that walked
       away audibly different from one that was shot down.
 
-      **What has not happened is a person listening**, and that is the criterion. Nobody has
-      sat with the screen off and answered the twelve questions, so this is `[~]` and not
-      `[x]`. What is knowable without that: the beds are wired to the state they claim to
-      report, and the mix is never silent, so absence reads against a floor. Whether that is
-      *enough* to tell a working mill from a starved one with your eyes shut is exactly the
-      thing only the recordings can say — and §4.10's fourth open question is the reason to
-      expect it to be the hard one.
+      **The harness got built, and it found the mix was failing.** `web/e2e/audio.spec.ts`
+      does what the paragraph above sketches: steps three sixty-second excerpts at 1×,
+      drives the *shipping* `AudioManager` from them under an `OfflineAudioContext`, and
+      writes `capture/audio/{a,b,c}.wav` plus per-second energy in five bands. The four
+      binaries are then answered from those numbers alone, using discriminators fixed in
+      advance from the mixer's own documented band layout, and only then marked.
+
+      First run: **three of the four were unrecoverable, and two were backwards.** A fully
+      working tower and a completely switched-off one differed by 6% in the band the
+      production loops own, and a *stopped* tower read louder in the leg band than a walking
+      one. The wiring was right the whole time; the mix was wrong, in three ways that are
+      worth writing down because none of them is audible as a bug — they are audible as
+      "atmospheric".
+
+      1. **A `lowpass` on white noise is not a bed, it is a wall.** The jungle sat on a
+         lowpass at 620 Hz, which keeps *everything* underneath it, so one decorative loop
+         held eight times the energy of every state-carrying loop combined. Beds are
+         bandpassed now, and the bottom of the spectrum is left to the two things that mean
+         something down there.
+      2. **A pure tone beats broadband noise for presence at a fraction of the amplitude.**
+         The electrical hum is a 50 Hz sine and the legs are filtered noise; at similar gains
+         the hum owned the whole bottom octave and "is the tower walking" had no answer. The
+         hum is a fifth of what it was.
+      3. **Combat was quieter than the chain.** Impacts were written at roughly a mill's
+         level, which is wrong twice: the chain fires constantly and a bite does not, and
+         something biting your home should be the loudest thing in the frame. A minute with
+         a creature on the tower for a fifth of it was *indistinguishable* from a quiet
+         minute.
+
+      After those three: **12 of 12.** Night separates 2.3× on the ratio between the two
+      insect bands, a working chain 13× on the band the room loop owns, walking 12× on the
+      leg band, and a wave shows as a burst well above the clip's own floor.
+
+      One nuance the harness surfaced rather than papered over. The excerpt scored as "quiet"
+      turned out to have had enemies out for a third of it — a wave had announced itself on
+      the horizon — and the audio said so. Scored against *contact*, that reads as a false
+      positive; scored against the question a listener is actually answering, it is correct.
+      Both numbers are reported.
+
+      **Still `[~]`, because none of that is listening.** A signal can carry a fact and still
+      not be legible to an ear, and nothing here says whether the tower sounds *good*. What
+      changed is that "is it in there" is now answered, checkable, and regression-tested.
 
 - [~] **The screenshot test: does one frame say "solarpunk home, not war machine"?**
       Demonstrated by two stills from `web/e2e/capture.spec.ts` shown to somebody who has never
@@ -2388,12 +2423,16 @@ one below says what would actually demonstrate it.
       filed as though it had. It currently reports `climb/sleep/eat`: somebody on the stairs,
       somebody in a hammock, somebody sitting to a bowl.
 
-      Two things the stills caught that no test would have. The bunk and the cell bank both
+      Three things the stills caught that no test would have. The bunk and the cell bank both
       shipped `short: "BNK"`, which is invisible until they stand on the same floor and then
-      reads as two of the same room — the bunk is `"BED"` now. And the harness's build helper
+      reads as two of the same room — the bunk is `"BED"` now. The harness's build helper
       compared `send`'s result against `null`, which is never what it answers, so every attempt
-      read as a failure and the loop bought *four canteens*. Both were found by looking at the
-      picture, which is the argument for having the picture.
+      read as a failure and the loop bought *four canteens*. And **the crew were dressed in
+      almost exactly the colour of the tower's unlit interior** — a muted forest green, which
+      is what people in a jungle would sensibly wear and which made them invisible in the one
+      frame whose whole job is having people in it. They wear sun-bleached linen now and stand
+      against a soft dark halo. All three were found by looking at the picture, which is the
+      argument for having the picture.
 
       **Still `[~]`: nobody who has not seen the game has been shown them.** That is the
       criterion, and it cannot be self-assessed — the whole point of asking a stranger "what is
@@ -2465,8 +2504,11 @@ one below says what would actually demonstrate it.
   there are four kinds of work — M5's tier-two chains and second emplacement — the row count
   might justify the screen.
 - **Positional audio.** Reasoned about and cut in §4.6: `SoundEvent` stays payload-free.
-- **An audio regression harness.** Specified in outline above and not built. The criterion is
-  answered by a person until it is.
+- **~~An audio regression harness.~~** Built after all — `web/e2e/audio.spec.ts`, and it
+  earned its keep immediately by finding that three of the four eyes-closed binaries were
+  unrecoverable from the mix (§4.9). What is still deferred is the *regression* half: the WAVs
+  are rendered and measured but nothing compares them against a stored baseline, so a mix that
+  drifts will be noticed by whoever next reads the numbers rather than by CI.
 - **Occupancy-gated lighting.** Reasoned about and rejected in §4.4. Recorded because it is the
   obvious idea and the reason not to do it is not obvious.
 - **Crew that wake themselves.** Rejected in §4.4: an automatic wake on attack would make the

@@ -95,7 +95,7 @@ interface Loop {
 }
 
 export class AudioManager {
-  private ctx: AudioContext | null = null;
+  private ctx: BaseAudioContext | null = null;
   private master: GainNode | null = null;
   private readonly loops = new Map<string, Loop>();
   private readonly lastFired = new Map<SoundEvent, number>();
@@ -111,19 +111,31 @@ export class AudioManager {
    * hears anything. Neither is a bug; both need to be true on purpose
    * rather than discovered as a mystery. This is called from a click
    * handler, and calling it twice is harmless.
+   *
+   * `into` exists for the offline harness (`web/e2e/audio.spec.ts`),
+   * which drives this same graph under an `OfflineAudioContext` to
+   * render a run to a WAV. Taking the context as an argument rather
+   * than reaching for `window.AudioContext` is the entire difference
+   * between a soundscape that can be reviewed without a browser and one
+   * that can only be listened to live — and the point of the harness is
+   * that it drives the *shipping* mixer, not a copy of it that has
+   * drifted.
    */
-  start(): void {
+  start(into?: BaseAudioContext): void {
     if (this.started) {
-      void this.ctx?.resume();
+      void (this.ctx as AudioContext | null)?.resume?.();
       return;
     }
-    const Ctor: typeof AudioContext | undefined =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return;
+    let ctx: BaseAudioContext | undefined = into;
+    if (!ctx) {
+      const Ctor: typeof AudioContext | undefined =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      ctx = new Ctor();
+    }
 
     this.started = true;
-    const ctx = new Ctor();
     this.ctx = ctx;
     const master = ctx.createGain();
     master.gain.value = this.enabled ? MASTER : 0;
@@ -131,7 +143,12 @@ export class AudioManager {
     this.master = master;
 
     this.buildBeds(ctx, master);
-    void ctx.resume();
+    // Only a live context may be resumed — an `OfflineAudioContext`
+    // throws, because it has not started and starting it is
+    // `startRendering`'s job.
+    if ("resume" in ctx && ctx.state === "suspended") {
+      void (ctx as AudioContext).resume();
+    }
   }
 
   /** Whether the player wants to hear anything at all. */
@@ -154,28 +171,35 @@ export class AudioManager {
    * One frame of sound: the loops follow the snapshot, the one-shots
    * fire from the event list.
    */
-  update(view: ViewSnapshot, events: readonly SoundEvent[], deltaMs: number): void {
+  update(view: ViewSnapshot, events: readonly SoundEvent[], deltaMs: number, at?: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
+    // `at` is the offline harness scheduling ahead of the clock. An
+    // `OfflineAudioContext` renders faster than real time and its
+    // `currentTime` stays at zero until `startRendering` runs, so a
+    // mixer that reads the clock schedules the whole run on top of
+    // itself at t=0 and renders one instant of noise. Live, this is
+    // `currentTime` and nothing changes.
+    const now = at ?? ctx.currentTime;
 
-    this.tuneBeds(view, ctx.currentTime);
+    this.tuneBeds(view, now);
 
     // Glide every loop toward its target rather than jumping.
     const step = Math.min(1, (deltaMs / 1000) * LOOP_GLIDE);
     for (const loop of this.loops.values()) {
       loop.current += (loop.target - loop.current) * step;
-      loop.gain.gain.setTargetAtTime(loop.current, ctx.currentTime, 0.03);
+      loop.gain.gain.setTargetAtTime(loop.current, now, 0.03);
     }
 
     // Coalesce by kind within the frame — three mills finishing on one
     // tick is one craft sound, not three.
     const seen = new Set<SoundEvent>();
     for (const event of events) seen.add(event);
-    for (const event of seen) this.fire(event, ctx.currentTime);
+    for (const event of seen) this.fire(event, now);
   }
 
   dispose(): void {
-    void this.ctx?.close();
+    void (this.ctx as AudioContext | null)?.close?.();
     this.ctx = null;
     this.master = null;
     this.loops.clear();
@@ -186,25 +210,47 @@ export class AudioManager {
   // Beds — the continuous half, driven by the snapshot
   // -------------------------------------------------------------------
 
-  private buildBeds(ctx: AudioContext, master: GainNode): void {
+  private buildBeds(ctx: BaseAudioContext, master: GainNode): void {
     const noise = makeNoiseBuffer(ctx);
 
-    // The jungle: never silent, and the floor everything else is heard
-    // against. Two filtered noise bands, one low and wide (wind in a
-    // canopy) and one narrow and high (insects), so the day/night
-    // crossfade has something to move between.
-    this.addNoiseLoop("jungle", ctx, master, noise, "lowpass", 620, 0.7);
-    this.addNoiseLoop("insects_day", ctx, master, noise, "bandpass", 3400, 6);
-    this.addNoiseLoop("insects_night", ctx, master, noise, "bandpass", 5200, 12);
-    this.addNoiseLoop("wind_night", ctx, master, noise, "lowpass", 340, 0.6);
+    // **Every bed that carries state owns a band, and the ones that do
+    // not carry state stay out of those bands.** This is the whole of
+    // why the mix is laid out the way it is, and it was not obvious
+    // until it was measured.
+    //
+    // The first version had the jungle on a `lowpass` at 620, which
+    // sounds reasonable and is not: white noise through a lowpass keeps
+    // *everything* under the corner, so the bed piled up the entire
+    // sub-200 Hz range at eight times the level of every state-carrying
+    // loop put together. Rendered and measured (`e2e/audio.spec.ts`), a
+    // fully working tower and a completely dead one came out 6% apart
+    // in the room band, and a stopped tower read *louder* in the leg
+    // band than a walking one. Three of the eyes-closed test's four
+    // binaries were unrecoverable, and the fault was the mix rather
+    // than the wiring: the loops were reporting faithfully and nobody
+    // could hear them over the weather.
+    //
+    // So the beds are bandpassed and pushed up out of the way, and the
+    // bottom of the spectrum is left to the two things that mean
+    // something down there — the legs and the hum.
+    //
+    //   0–200 Hz   the legs, and the electrical hum
+    //   200–700    rooms working, and a car running
+    //   700–2k     the jungle floor, and footsteps on the stairs
+    //   2k–4.5k    daytime insects, and the sails
+    //   4.5k+      night insects
+    this.addNoiseLoop("jungle", ctx, master, noise, "bandpass", 1100, 0.9);
+    this.addNoiseLoop("insects_day", ctx, master, noise, "bandpass", 3200, 4);
+    this.addNoiseLoop("insects_night", ctx, master, noise, "bandpass", 6200, 6);
+    this.addNoiseLoop("wind_night", ctx, master, noise, "bandpass", 900, 0.7);
 
     // The tower's own working noise.
-    this.addToneLoop("rooms", ctx, master, 88, "sawtooth", 460);
-    this.addToneLoop("hum", ctx, master, 50, "triangle", 900);
-    this.addNoiseLoop("legs", ctx, master, noise, "lowpass", 180, 0.8);
-    this.addNoiseLoop("footsteps", ctx, master, noise, "bandpass", 1100, 3);
-    this.addToneLoop("car", ctx, master, 132, "triangle", 700);
-    this.addNoiseLoop("sails", ctx, master, noise, "bandpass", 2100, 2.5);
+    this.addToneLoop("rooms", ctx, master, 132, "sawtooth", 620);
+    this.addToneLoop("hum", ctx, master, 50, "triangle", 160);
+    this.addNoiseLoop("legs", ctx, master, noise, "lowpass", 150, 1.2);
+    this.addNoiseLoop("footsteps", ctx, master, noise, "bandpass", 1500, 3);
+    this.addToneLoop("car", ctx, master, 220, "triangle", 620);
+    this.addNoiseLoop("sails", ctx, master, noise, "bandpass", 2600, 2.5);
   }
 
   /**
@@ -237,10 +283,20 @@ export class AudioManager {
     // index, for the same reason the sun curve is a curve: a step
     // change at a boundary reads as a bug (§1.1).
     const day = clamp01(view.clock.sun_pct / 60);
-    this.setTarget("jungle", 0.1 + day * 0.05);
-    this.setTarget("insects_day", day * 0.05);
-    this.setTarget("insects_night", (1 - day) * 0.035);
-    this.setTarget("wind_night", (1 - day) * 0.06);
+    // **Levels here are per-band-width, not per-taste, and the numbers
+    // look wrong until you measure them.** A biquad bandpass at Q 6
+    // passes a sliver of white noise; one at Q 0.9 passes most of the
+    // spectrum with gentle skirts. So the insect beds need gains an
+    // order of magnitude above the jungle's to be *equally* audible,
+    // and the jungle needs holding down or its skirts leak across every
+    // band and flatten the day/night difference to nothing — measured,
+    // a midday excerpt and a midnight one came out 1.5% apart in the
+    // band the night insects have to themselves. Anything changed here
+    // gets re-rendered (`e2e/audio.spec.ts`), not eyeballed.
+    this.setTarget("jungle", 0.03 + day * 0.012);
+    this.setTarget("insects_day", day * 1.1);
+    this.setTarget("insects_night", (1 - day) * 1.5);
+    this.setTarget("wind_night", (1 - day) * 0.04);
 
     // Rooms: how much of the tower is actually working. Not "is
     // anything wrong" — the loop is the work, and its absence is the
@@ -255,15 +311,26 @@ export class AudioManager {
       }
     }
     const busy = rooms > 0 ? working / rooms : 0;
-    this.setTarget("rooms", busy * 0.05);
+    // The loudest thing in its band by a wide margin when the tower is
+    // working, and gone when it is not. "A starved mill goes quiet" is
+    // only a rule if the difference is audible.
+    this.setTarget("rooms", busy * 0.09);
 
     // The legs, off `halt` rather than off intent.
     const halt = view.journey.halt;
-    this.setTarget("legs", halt === "walking" ? 0.07 : 0);
+    this.setTarget("legs", halt === "walking" ? 0.6 : 0);
     // A brown-out is a motor asking and not being answered: the hum
     // drops out entirely and the legs stutter rather than run.
+    //
+    // Kept *thin*. The hum is a pure 50 Hz tone and the legs are
+    // broadband noise under 150 Hz, so at anything like equal gain the
+    // tone owns the whole bottom of the spectrum and the legs vanish
+    // underneath it — measured, a stopped tower and a walking one came
+    // out within half a percent of each other down there, which makes
+    // "is the tower walking" unanswerable. A hum should be something
+    // you notice when it *changes*, not a floor.
     const drained = clamp01(view.power.fill_permille / 1000);
-    this.setTarget("hum", view.power.brownout ? 0 : 0.012 + drained * 0.03);
+    this.setTarget("hum", view.power.brownout ? 0 : 0.004 + drained * 0.008);
     this.tuneNode("hum", (loop) => {
       // Pitch sags with the bank, so a tower running down is audible
       // before it is dark.
@@ -274,16 +341,16 @@ export class AudioManager {
     const onStairs = view.crew.filter(
       (member) => member.state === "climb" || member.state === "board",
     ).length;
-    this.setTarget("footsteps", Math.min(0.05, onStairs * 0.018));
+    this.setTarget("footsteps", Math.min(0.14, onStairs * 0.05));
 
     const cars = view.tower.shafts.some((shaft) =>
       shaft.cars.some((car) => car.state === "moving"),
     );
-    this.setTarget("car", cars ? 0.035 : 0);
+    this.setTarget("car", cars ? 0.05 : 0);
 
     // The sails, which is the same fact the charge readout is showing,
     // said in a register you can hear without looking.
-    this.setTarget("sails", clamp01(view.clock.exposure_pct / 100) * 0.03);
+    this.setTarget("sails", clamp01(view.clock.exposure_pct / 100) * 0.09);
   }
 
   // -------------------------------------------------------------------
@@ -337,30 +404,40 @@ export class AudioManager {
       // The siege. Nothing here is a weapon report and nothing is
       // triumphant — `DECISIONS.md` §8, and §2.2's refusal to grade a
       // creature that walked away.
+      //
+      // **Loud, and that took measuring.** These were first written at
+      // roughly the chain's level, which is wrong twice over: the chain
+      // sounds fire constantly and these do not, and something biting
+      // your home should be the loudest thing in the frame. Rendered
+      // and measured (`e2e/audio.spec.ts`), a minute with a creature on
+      // the tower for a fifth of it was *indistinguishable* from a quiet
+      // minute — the impacts never rose above the clip's own median,
+      // which is the eyes-closed test's third question failing outright.
+      // A bite is now several times the beds it lands on.
       case "WaveArrives":
-        this.chime(now, [147, 175], 1.4, 0.06);
+        this.chime(now, [147, 175], 1.4, 0.16);
         break;
       case "EnemyContact":
-        this.thud(now, 120, 0.18, 0.06);
+        this.thud(now, 120, 0.18, 0.2);
         break;
       case "Impact":
-        this.thud(now, 90, 0.22, 0.08);
+        this.thud(now, 90, 0.24, 0.3);
         break;
       case "Breach":
-        this.thud(now, 62, 0.6, 0.11);
+        this.thud(now, 62, 0.6, 0.42);
         break;
       case "Wrecked":
-        this.thud(now, 48, 0.9, 0.13);
+        this.thud(now, 48, 0.9, 0.46);
         break;
       case "Severed":
-        this.thud(now, 40, 1.3, 0.15);
+        this.thud(now, 40, 1.3, 0.5);
         break;
       case "Shot":
-        this.blip(now, 640, 0.05, 0.035, "square");
+        this.blip(now, 640, 0.06, 0.13, "square");
         break;
       case "EnemyDown":
         // Falling, not a kill sting. A pitch that drops and stops.
-        this.sweep(now, 300, 120, 0.28, 0.05);
+        this.sweep(now, 300, 120, 0.28, 0.16);
         break;
       case "EnemyLeaves":
         // **Closes M2's deferral.** `Leaving` and `Dying` are distinct
@@ -499,7 +576,7 @@ export class AudioManager {
 
   private addToneLoop(
     key: string,
-    ctx: AudioContext,
+    ctx: BaseAudioContext,
     master: GainNode,
     freq: number,
     shape: OscillatorType,
@@ -522,7 +599,7 @@ export class AudioManager {
 
   private addNoiseLoop(
     key: string,
-    ctx: AudioContext,
+    ctx: BaseAudioContext,
     master: GainNode,
     buffer: AudioBuffer,
     type: BiquadFilterType,
@@ -556,7 +633,7 @@ export class AudioManager {
 
 /** Two seconds of white noise, reused by every noise loop and hiss. */
 let noiseBuffer: AudioBuffer | null = null;
-function makeNoiseBuffer(ctx: AudioContext): AudioBuffer {
+function makeNoiseBuffer(ctx: BaseAudioContext): AudioBuffer {
   if (noiseBuffer && noiseBuffer.sampleRate === ctx.sampleRate) return noiseBuffer;
   const frames = ctx.sampleRate * 2;
   const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);

@@ -35,7 +35,8 @@
           "__BUILD_COMMIT__",
           "__BUILD_DIRTY__",
           "__understory",
-          "__capture"
+          "__capture",
+          "__audio"
         ]
       }
     ]

@@ -148,11 +148,20 @@ export const palette = {
   crewCarrying: hex("#ffd98a"),
   crewStressed: hex("#e0714f"),
   crewShadow: hex("#000000"),
-  /** Working clothes, so a figure has a top and a bottom half. */
-  crewCloth: hex("#6d7f6a"),
-  crewClothWarm: hex("#8a6f5a"),
+  // **Working clothes, and they are this light on purpose.**
+  //
+  // The first pass used a muted forest green (#6d7f6a) and a muted
+  // brown, which is what people in a jungle would sensibly wear and is
+  // almost exactly the colour of the tower's unlit interior. Looked at
+  // in `home-evening.png` the crew were technically in frame and
+  // effectively invisible — and "a frame with no people in it cannot
+  // pass" (`SYSTEMS.md` §4.9) makes crew legibility the load-bearing
+  // thing in the whole art pass, not a detail. Sun-bleached linen reads
+  // against a dark deck at any hour.
+  crewCloth: hex("#c9d3b4"),
+  crewClothWarm: hex("#e0c39a"),
   /** Skin, for the head, kept warm against all the green. */
-  crewSkin: hex("#e8c9a4"),
+  crewSkin: hex("#f0d4ad"),
 
   // Overgrowth beyond the planters: vines between floors, moss at the
   // shell lip, growth thickening on the leeward side. All of it is

@@ -48,7 +48,15 @@ export interface Bridge {
   verifyReplay(json: string): ReplayReport;
   verifyGoldenReplay(): ReplayReport;
   /** Run N ticks regardless of speed. Test hook. */
-  debugStep(ticks: number): void;
+  /**
+   * Step without the frame loop, and hand back what it sounded like.
+   *
+   * The events were always there — `debug_step` has serialised them
+   * since M0 and this wrapper threw them away, which is why the offline
+   * audio harness could not exist. Returning them costs nothing and is
+   * the whole of what it needed.
+   */
+  debugStep(ticks: number): SoundEvent[];
 }
 
 let bridge: Bridge | null = null;
@@ -78,9 +86,7 @@ export async function initBridge(seed: number): Promise<Bridge> {
     exportReplay: () => wasm.export_replay(),
     verifyReplay: (json) => JSON.parse(wasm.verify_replay(json)) as ReplayReport,
     verifyGoldenReplay: () => JSON.parse(wasm.verify_golden_replay()) as ReplayReport,
-    debugStep: (ticks) => {
-      wasm.debug_step(ticks);
-    },
+    debugStep: (ticks) => JSON.parse(wasm.debug_step(ticks)) as SoundEvent[],
   };
 
   installTestHooks(bridge);
@@ -103,9 +109,7 @@ function installTestHooks(active: Bridge): void {
     // need a command channel for exactly that.
     send: (cmd: GameCommand) => active.send(cmd),
     stateHash: () => active.stateHash(),
-    step: (ticks: number) => {
-      active.debugStep(ticks);
-    },
+    step: (ticks: number) => active.debugStep(ticks),
     verifyGolden: () => active.verifyGoldenReplay(),
     exportReplay: () => active.exportReplay(),
   };
