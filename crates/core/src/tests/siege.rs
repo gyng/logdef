@@ -36,7 +36,16 @@ fn wait_for_contact(game: &mut crate::engine::GameEngine) -> (crate::ids::EnemyI
             .siege
             .enemies
             .iter()
-            .find(|enemy| matches!(enemy.state, EnemyState::Attacking { .. }))
+            // **Biters only.** These tests are about grip — how long a
+            // creature holds on to a walking tower against a stopped
+            // one — and a thief does not hold on at all: a glean-crow
+            // with nothing left to take goes back to circling by
+            // design, which reads as "shaken off" to a test looking for
+            // `Attacking` and has nothing to do with the rule.
+            .find(|enemy| {
+                matches!(enemy.state, EnemyState::Attacking { .. })
+                    && !content().enemy(enemy.def).steals
+            })
             .map(|enemy| (enemy.id, content().enemy(enemy.def).cling_ticks));
         if let Some(found) = found {
             return found;
@@ -1833,5 +1842,161 @@ fn a_tower_with_one_shaft_stalls_when_it_is_cut() {
         game.state().stats.crafts_completed,
         crafts_before,
         "bamboo reached a mill two floors up with no working shaft"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The two shapes that are not a fifth biter
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_thief_takes_from_an_outbox_and_breaks_nothing() {
+    // The whole reason this creature shape exists: every threat before
+    // it was answerable the same two ways — shoot it, or mend what it
+    // broke. A crow costs a morning's harvest, which repair cannot put
+    // back and defence can prevent.
+    let content = content();
+    let crow = content
+        .enemies
+        .iter()
+        .position(|def| def.steals)
+        .map(|i| crate::ids::EnemyIdx(i as u16))
+        .expect("the pack authors a thief");
+
+    // **Not provoked**, and the crow placed by hand below. A fully
+    // provoked tower draws everything in the pack, and this test would
+    // then be measuring what a wave does rather than what a thief does —
+    // the first version failed on exactly that, with integrity down to
+    // 645 and nothing of it the crow's doing.
+    let mut game = engine(1500);
+    // Give it something worth taking, on the roof where it lands.
+    let bamboo = item(&content, "item.bamboo");
+    {
+        let state = game.state_mut_for_test();
+        let top = state.tower.top_floor();
+        if let Some(floor) = state.tower.floor_mut(top) {
+            for room in &mut floor.rooms {
+                for stack in &mut room.outputs {
+                    stack.count = stack.max;
+                }
+            }
+        }
+        let _ = bamboo;
+        // And put one on the tower directly rather than waiting for the
+        // wave table to field it — this is about what it does, not about
+        // when it turns up.
+        state.siege.enemies.push(crate::state::Enemy {
+            id: crate::ids::EnemyId(9001),
+            def: crow,
+            at: state.world.distance,
+            hp: 100,
+            state: crate::state::EnemyState::Approaching,
+            attack_cooldown: 0,
+            cling_left: 100_000,
+            fade_left: 0,
+        });
+    }
+
+    let integrity = crate::systems::siege::tower_integrity_permille(game.state());
+    let before = game.state().stats.items_stolen;
+    game.step(3000);
+
+    assert!(
+        game.state().stats.items_stolen > before,
+        "a thief stood on a full outbox for a hundred seconds and took nothing"
+    );
+    assert_eq!(
+        crate::systems::siege::tower_integrity_permille(game.state()),
+        integrity,
+        "a thief damaged the tower"
+    );
+}
+
+#[test]
+fn a_thief_has_no_reason_to_land_on_an_empty_tower() {
+    // Haul throughput quietly buying safety, which is the nicest thing
+    // about this creature: an outbox somebody cleared is an outbox
+    // nothing wants.
+    let content = content();
+    let crow = content
+        .enemies
+        .iter()
+        .position(|def| def.steals)
+        .map(|i| crate::ids::EnemyIdx(i as u16))
+        .expect("the pack authors a thief");
+
+    let mut game = engine(1501);
+    {
+        let state = game.state_mut_for_test();
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                room.active = false;
+                for stack in &mut room.outputs {
+                    stack.count = 0;
+                }
+            }
+        }
+        state.siege.enemies.push(crate::state::Enemy {
+            id: crate::ids::EnemyId(9002),
+            def: crow,
+            at: state.world.distance,
+            hp: 100,
+            state: crate::state::EnemyState::Approaching,
+            attack_cooldown: 0,
+            cling_left: 100_000,
+            fade_left: 0,
+        });
+    }
+
+    game.step(1200);
+    assert_eq!(
+        game.state().stats.items_stolen,
+        0,
+        "a thief took something from a tower with nothing in any outbox"
+    );
+}
+
+#[test]
+fn something_holding_a_leg_slows_the_tower_down() {
+    // The mire-hulk's whole mechanic, and it inverts the answer to
+    // every other wave: since M2 the reply to something clinging has
+    // been to keep walking until it loses its grip, and a dragged tower
+    // walks more slowly and therefore sheds it *later*.
+    let content = content();
+    let hulk = content
+        .enemies
+        .iter()
+        .position(|def| def.drag_pct > 0)
+        .map(|i| crate::ids::EnemyIdx(i as u16))
+        .expect("the pack authors something that drags");
+
+    let mut free = engine(1502);
+    let mut dragged = engine(1502);
+    {
+        let state = dragged.state_mut_for_test();
+        state.siege.enemies.push(crate::state::Enemy {
+            id: crate::ids::EnemyId(9003),
+            def: hulk,
+            at: state.world.distance,
+            hp: 1000,
+            state: crate::state::EnemyState::Attacking {
+                target: crate::state::DamageTarget::Panel { floor: 0 },
+            },
+            attack_cooldown: 999_999,
+            cling_left: 1_000_000,
+            fade_left: 0,
+        });
+    }
+
+    crate::tests::step_quietly(&mut free, 1200);
+    dragged.step(1200);
+
+    assert!(
+        dragged.state().world.distance < free.state().world.distance,
+        "a tower with a hulk on its leg walked as far as one without"
+    );
+    assert!(
+        dragged.state().world.distance > 0,
+        "a hulk stopped the tower outright; it is meant to be a pressure, not an ending"
     );
 }

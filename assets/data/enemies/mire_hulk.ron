@@ -1,0 +1,56 @@
+// Takes hold of a leg and will not let go.
+//
+// **The one creature that cannot be walked away from, because it is
+// what is stopping you walking** (`SYSTEMS.md` §5.5). Everything else in
+// the pack loses its grip on a tower that keeps moving — that is what
+// `cling_ticks` is for, and it is why "keep walking" has been a real
+// answer to a wave since M2. A hulk inverts it: while it is attached the
+// stride slows, so the tower it is riding sheds it more slowly than any
+// other creature, and the usual answer makes itself worse.
+//
+// It is the counterpart to the feral warden. A warden is what *stopping*
+// wakes; a hulk is what happens to a tower that never stops. Between
+// them, neither half of the stop/go decision is free.
+//
+// Region 3 only. The coast is where a run is at its most built and its
+// most confident, and this is the thing that is not impressed by that.
+#![enable(implicit_some)]
+EnemyDef(
+    id: "enemy.mire_hulk",
+    name: "Mire-hulk",
+    glyph: "🦬",
+    // The toughest thing in the game by a wide margin — half again a
+    // root-borer's 225. A dart battery needs twenty-three hits, which
+    // at 40 ticks a shot is over five minutes of continuous fire, so
+    // shooting one down is a commitment rather than an answer.
+    hp: 340,
+    // And the slowest, at half a borer's 15. You see it coming for a
+    // very long time, which is the point: the decision it poses is
+    // "what do I do about that", made at leisure, and the wrong answer
+    // is to ignore it because it is slow.
+    speed_paces_per_100_ticks: 8,
+    // Modest damage on a long cycle. A hulk is not trying to break the
+    // tower open; it is holding on.
+    damage: 12,
+    attack_ticks: 90,
+    // Three thousand ticks — a hundred seconds, and by far the longest
+    // grip in the pack. On a tower it has slowed, longer still.
+    cling_ticks: 3000,
+    // Up out of the ground the tower is standing on, like a borer.
+    approach: Burrow,
+    // The most expensive creature in the game, so a wave fields one
+    // only when a run has been genuinely loud.
+    threat: 45,
+    // Two-thirds of provocation_max, and higher than the borer's half.
+    // Reaching the coast is not enough; you have to have been noticed.
+    min_provocation: 650,
+    // **Region 3 only.** Provocation says how loud you have been and
+    // this says where you are; the coast's own problem should not turn
+    // up in the jungle because a run was noisy.
+    min_region: 2,
+    // Down to a third of the tower's pace while it has hold of a leg,
+    // which is what makes it the one creature that cannot be walked
+    // away from — a dragged tower sheds it more slowly than it would
+    // anything else.
+    drag_pct: 34,
+)

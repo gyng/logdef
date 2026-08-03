@@ -68,6 +68,9 @@ pub struct RunStats {
     /// starving tower and a tower with no canteen at all look identical
     /// from every other counter.
     pub meals_eaten: u64,
+    /// Loads taken out of an outbox by a thief. Not damage and not a
+    /// haul — work the tower did and did not get to keep.
+    pub items_stolen: u64,
     /// Crew-ticks spent asleep. What sleep actually costs the economy,
     /// which is the largest single unknown M4 introduces
     /// (`SYSTEMS.md` §4.10) and not something any existing counter sees.
@@ -115,16 +118,22 @@ pub struct GameState {
     /// reports where the tower got to, it does not grade it
     /// (`DECISIONS.md` §8).
     pub arrived: bool,
-    /// What the enclave has left, one entry per authored offer, and how
-    /// many people are still willing to come aboard.
+    /// What each enclave has left, one board per region and one entry
+    /// per authored offer, and how many people are still willing to come
+    /// aboard at each.
     ///
     /// Held in state rather than read from content because a trade
-    /// spends it: an enclave is somewhere a run passes through once,
-    /// not a shop that restocks.
-    pub enclave_stock: Vec<i64>,
-    pub enclave_recruits: u8,
-    /// How many more times a settlement will plate the shell.
-    pub shell_work_left: u8,
+    /// spends it: an enclave is somewhere a run passes through once, not
+    /// a shop that restocks.
+    ///
+    /// **Indexed by region, from M5.** It was a single board while there
+    /// was a single enclave, and the comment here said it would become a
+    /// list per enclave when a second landed. A second landed.
+    pub enclave_stock: Vec<Vec<i64>>,
+    pub enclave_recruits: Vec<u8>,
+    /// How many more times each settlement will plate the shell. Only
+    /// one of them does any, but the shape follows the others.
+    pub shell_work_left: Vec<u8>,
     /// Which shift the clock says is awake. Held only so the handover
     /// can be noticed and sounded once for the tower rather than once
     /// per crew member; every other reader derives it from the daypart.
@@ -172,27 +181,36 @@ impl GameState {
             next_shaft_id: 2,
             next_enemy_id: 1,
             arrived: false,
-            // Sized from whichever region carries the enclave. One
-            // region has one, so there is one list; when a second
-            // enclave lands this becomes a list per enclave and the
-            // commands index by berth rather than by offer.
+            // One entry per region, whether or not that region has a
+            // settlement in it. Indexing by region rather than by "the
+            // nth enclave" means a command never has to work out which
+            // enclave it is talking about — the world already knows
+            // which region the tower is standing in.
             enclave_stock: content
                 .regions
                 .iter()
-                .find_map(|region| region.enclave.as_ref())
-                .map(|enclave| enclave.offers.iter().map(|offer| offer.stock).collect())
-                .unwrap_or_default(),
+                .map(|region| {
+                    region.enclave.as_ref().map_or_else(Vec::new, |enclave| {
+                        enclave.offers.iter().map(|offer| offer.stock).collect()
+                    })
+                })
+                .collect(),
             enclave_recruits: content
                 .regions
                 .iter()
-                .find_map(|region| region.enclave.as_ref())
-                .map_or(0, |enclave| enclave.recruits),
+                .map(|region| region.enclave.as_ref().map_or(0, |e| e.recruits))
+                .collect(),
             shell_work_left: content
                 .regions
                 .iter()
-                .find_map(|region| region.enclave.as_ref())
-                .and_then(|enclave| enclave.reinforce.as_ref())
-                .map_or(0, |work| work.times),
+                .map(|region| {
+                    region
+                        .enclave
+                        .as_ref()
+                        .and_then(|e| e.reinforce.as_ref())
+                        .map_or(0, |work| work.times)
+                })
+                .collect(),
         };
 
         state.place_starting_rooms(content);

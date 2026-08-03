@@ -1,0 +1,152 @@
+// Region 3, and the last of the walking.
+//
+// **The mirror of region 1, which is what makes a run an arc rather than
+// a ramp** (`SYSTEMS.md` §5.5). The deep jungle is biomass-rich and
+// sun-poor; the coast is the reverse and more so — a tower that learned
+// its habits in the canopy arrives somewhere those habits stop working,
+// and the garden that was marginal in the jungle is what keeps it fed.
+// The answer was buildable the whole way; the coast is where not having
+// built it costs something.
+//
+// It ends at the Refugia. There is no region four and nothing past the
+// far edge.
+#![enable(implicit_some)]
+RegionDef(
+    id: "region.coast_approach",
+    name: "The Coast Approach",
+    order: 2,
+    // The longest region, deliberately. This is the last act: the tower
+    // is at its most built and the crew at their most numerous, and the
+    // run needs somewhere to spend all of that before it ends. At 0.6
+    // paces a tick it is roughly 25-33 minutes of 1x walking.
+    length_min_paces: 45000,
+    length_max_paces: 60000,
+    // Poorer than the city. What the sea left is picked over.
+    ruin_richness_min_pct: 50,
+    ruin_richness_max_pct: 120,
+    // Salt flat dominant, the city's kinds thinning out behind, clearing
+    // holding the middle. **Canopy is absent entirely** — the one region
+    // where the jungle is not an option, which is the whole point of it.
+    palette: [
+        TerrainWeight(terrain: "terrain.salt_flat", weight: 50),
+        TerrainWeight(terrain: "terrain.clearing", weight: 25),
+        TerrainWeight(terrain: "terrain.ruin_field", weight: 15),
+        TerrainWeight(terrain: "terrain.drowned_street", weight: 10),
+    ],
+    // The most dangerous region, and by less than the step from 1 to 2.
+    // The jump from 100 to 150 was the shock; 150 to 180 is the coast
+    // being harder without being a different game. What actually makes
+    // it hurt is the mire-hulk, which lives only here and attacks the
+    // one thing nothing else does.
+    threat_pct: 180,
+    // The same rhythm the player has been learning since region 1. A
+    // longer region simply fits more of them — three at the top of the
+    // length roll, the most decisions a single region asks.
+    fork_interval_paces: 15000,
+    branches: [
+        BranchDef(
+            id: "branch.tide_road",
+            name: "Tide Road",
+            length_paces: 6000,
+            // Three kinds, which is the pack's minimum — fewer makes
+            // the no-repeat rule alternate and the ground read as a
+            // stripe pattern rather than as country.
+            palette: [
+                TerrainWeight(terrain: "terrain.salt_flat", weight: 65),
+                TerrainWeight(terrain: "terrain.clearing", weight: 25),
+                TerrainWeight(terrain: "terrain.ruin_field", weight: 10),
+            ],
+            // The coast at its most itself: all the light in the world
+            // and nothing to cut. The best charge in the game, and a
+            // stretch a tower without a garden simply endures.
+            threat_pct: 90,
+        ),
+        BranchDef(
+            id: "branch.driftwood_shelf",
+            name: "Driftwood Shelf",
+            length_paces: 6000,
+            palette: [
+                TerrainWeight(terrain: "terrain.ruin_field", weight: 45),
+                TerrainWeight(terrain: "terrain.salt_flat", weight: 35),
+                TerrainWeight(terrain: "terrain.drowned_street", weight: 20),
+            ],
+            // Where the wrecks pile up. The last chance to feed a forge,
+            // and the company that comes with taking it.
+            threat_pct: 140,
+        ),
+        BranchDef(
+            id: "branch.last_green",
+            name: "The Last Green",
+            length_paces: 6000,
+            palette: [
+                TerrainWeight(terrain: "terrain.clearing", weight: 55),
+                TerrainWeight(terrain: "terrain.salt_flat", weight: 25),
+                TerrainWeight(terrain: "terrain.ruin_field", weight: 20),
+            ],
+            // A stand of ordinary ground before the end — the last place
+            // a mill has anything to do. Quiet, and the branch a tower
+            // low on poles or rope takes to put itself right before the
+            // arrival.
+            threat_pct: 80,
+        ),
+    ],
+    // **The last enclave, and the one that sells people.**
+    //
+    // `BALANCE.md`'s `crew_cap` row raised the ceiling to eight at M4 on
+    // the strength of the rota and noted that a run could not approach
+    // it, because M3's single enclave offered exactly one recruit. This
+    // is where that stops being aspirational — and it is deliberately
+    // the *last* one, so a full crew is something a run arrives with
+    // rather than something it plays most of the game with.
+    //
+    // A third of the way in: far enough that the tower has crossed real
+    // salt flat and knows what it is short of, close enough that there
+    // is a region left to spend the answer on.
+    enclave: EnclaveDef(
+        id: "enclave.tidewatch",
+        name: "Tidewatch",
+        at_paces: 16000,
+        // **The coast wants alloy, which nowhere else does.** A tower
+        // that ran a forge arrives with something these people cannot
+        // make and will pay for; one that never berthed has poles and
+        // bamboo, which are worth less out here than they were inland.
+        // A board that differs in the direction its region does is what
+        // turns "I have too much of this" from a jam into a plan
+        // (`SYSTEMS.md` §5.6).
+        offers: [
+            OfferDef(
+                give: CostEntryDef(item: "item.alloy", amount: 2),
+                take: CostEntryDef(item: "item.poles", amount: 9),
+                stock: 12,
+            ),
+            OfferDef(
+                give: CostEntryDef(item: "item.alloy", amount: 3),
+                take: CostEntryDef(item: "item.rope", amount: 6),
+                stock: 10,
+            ),
+            // And a way out for the surplus a coastal tower actually
+            // has: light is free here, so produce is what piles up.
+            OfferDef(
+                give: CostEntryDef(item: "item.produce", amount: 8),
+                take: CostEntryDef(item: "item.poles", amount: 4),
+                stock: 12,
+            ),
+        ],
+        // No shell work. It was withdrawn once for making the tower
+        // worse and put back with a measurement (`BALANCE.md`'s
+        // `reinforce` row); spreading it across three enclaves would
+        // multiply something barely worth its price, and the coast is
+        // too late for hull to change a run anyway.
+        recruits: 3,
+        // **Dearer than High Water's 30, and paid in what the coast
+        // trades in.** Crew growth is a curve rather than a switch: the
+        // fourth pair of hands cost 30 poles inland, and the eighth
+        // should be a decision about a whole run's savings rather than a
+        // formality. Alloy in the price means the tower that can afford
+        // a full crew is the one that went to the ruins.
+        recruit_cost: [
+            CostEntryDef(item: "item.poles", amount: 24),
+            CostEntryDef(item: "item.alloy", amount: 4),
+        ],
+    ),
+)

@@ -364,6 +364,8 @@ export interface RunStats {
   repair_poles_spent: number;
   /** Meals eaten. The kitchen chain's own throughput figure. */
   meals_eaten: number;
+  /** Loads taken out of an outbox by a thief — work you did not keep. */
+  items_stolen: number;
   /** Crew-ticks spent asleep. What the rota actually costs. */
   crew_ticks_asleep: number;
 }
@@ -604,6 +606,12 @@ export type SoundEvent =
    * away, and a tower that is spilling is telling you about itself.
    */
   | "Spill"
+  /**
+   * Something took a load out of an outbox and left with it. Not
+   * `Impact`: nothing was hit and nothing needs mending, and it should
+   * sound like a theft rather than like a blow.
+   */
+  | "Steal"
   /**
    * Something lost its grip and walked away. Distinct from `EnemyDown`
    * on purpose: only one of the two counts as having been seen off, and

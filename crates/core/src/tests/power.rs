@@ -286,9 +286,35 @@ fn halting_the_legs_banks_the_charge_they_would_have_burned() {
         .expect("always legal");
     game.step(900);
 
+    // **Measured on the stride credit, not on the bank.**
+    //
+    // Comparing the two towers' charge totals looks like the obvious
+    // assertion and is not one: a stopped tower stays in whatever band
+    // it stopped in while a walking one moves through others, so the
+    // comparison is partly about *sunlight* and only partly about the
+    // legs. It passed for two milestones and then failed the day M5
+    // added a third region — which changed the world roll, which put
+    // seed 707's stopped tower in shade. Nothing about halting had
+    // changed at all.
+    //
+    // `buy_block` tops the credit up to 99 only when the legs actually
+    // pay for a block, so a credit that never moves is the legs never
+    // buying, and that is the whole claim.
     assert!(
-        game.state().power.charge > walking.state().power.charge,
-        "standing still did not save any charge"
+        game.state().power.stride_credit >= walking.state().power.stride_credit,
+        "a halted tower bought more stride than a walking one"
+    );
+    assert!(
+        !game.state().strode,
+        "a tower told to stand still kept walking"
+    );
+    // And the control: the walking tower did buy stride. `spent_last`
+    // is one tick's spend and striding is bought in blocks of a hundred
+    // ticks, so ninety-nine ticks in a hundred it is zero — the credit
+    // is what carries the fact.
+    assert!(
+        walking.state().strode,
+        "the walking tower was not actually walking, so this proves nothing"
     );
     assert_eq!(
         game.state().world.distance,

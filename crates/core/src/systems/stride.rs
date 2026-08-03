@@ -24,7 +24,19 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     let from = state.world.distance;
     state.strode = power::pay_for_stride(state, content);
     if state.strode {
-        let step = paces_from_fx(stride_per_tick(content));
+        // **Slowed by whatever is holding on.** A mire-hulk takes a leg
+        // and the tower walks at a fraction of its pace while it does —
+        // which means it also sheds the hulk later, because `cling_ticks`
+        // runs down against a tower that is *moving*. The answer to every
+        // other wave since M2 has been "keep walking"; this is the one
+        // creature that makes that answer worse, and the whole of the
+        // mechanic is this multiplication (`SYSTEMS.md` §5.5).
+        //
+        // Scales the step rather than the charge: a dragged tower pays
+        // the same to walk and gets less for it, which is the right way
+        // round. Being slowed should cost you the ground, not the power.
+        let drag = super::siege::drag_pct(state, content);
+        let step = paces_from_fx(stride_per_tick(content)) * drag / 100;
         // Never step over a block. Landing exactly on it is what makes
         // `is_blocked` true next tick, which is how the halt begins.
         state.world.distance = match state.world.blocked_at() {

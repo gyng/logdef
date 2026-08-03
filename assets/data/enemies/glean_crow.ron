@@ -1,0 +1,48 @@
+// Takes what is lying in an outbox and goes.
+//
+// **The first creature that attacks the chain rather than the
+// structure**, which is the whole reason it exists. The four kinds that
+// shipped before it all converge on the tower and bite it, so every
+// threat in the game was answerable the same two ways: shoot it, or mend
+// what it broke. A crow damages nothing. It lands on a room's outbox,
+// takes what is in it, and leaves — and the loss is a morning's harvest,
+// which repair cannot put back and defence can prevent
+// (`SYSTEMS.md` §5.5).
+//
+// Tone: this is a bird doing what birds do to an unguarded crop. It is
+// not raiding you and it does not want a fight; it wants the bamboo.
+// A tower that shoots one has decided its harvest is worth more than a
+// bird, which is a decision rather than a duty.
+#![enable(implicit_some)]
+EnemyDef(
+    id: "enemy.glean_crow",
+    name: "Glean-crow",
+    glyph: "🐦",
+    // Fragile. A dart battery two-shots a skitter at 30; a crow goes
+    // down to one. What makes it a problem is arriving, not surviving.
+    hp: 14,
+    // The fastest thing in the pack by half again — it is in and away
+    // before a battery has reloaded, which is what makes *having* the
+    // battery matter more than aiming it.
+    speed_paces_per_100_ticks: 105,
+    // Nominal, and nearly irrelevant: a crow's bite is 1 against a
+    // panel's 150. What it takes is the point, and the taking is
+    // modelled as the theft in `siege.rs` rather than as damage.
+    damage: 1,
+    attack_ticks: 45,
+    // Barely two bites' worth of grip. It is not here to stay.
+    cling_ticks: 90,
+    // Down onto a deck, the way a leaper does. Height is exposure, and
+    // an outbox on the roof is an outbox a bird can see.
+    approach: Canopy,
+    // Cheap, so a wave that fields crows fields several.
+    threat: 8,
+    // A quarter of provocation_max. A quiet tower keeps its harvest;
+    // one that has been stripping the terrain has been noticed by
+    // something that eats.
+    min_provocation: 250,
+    // Takes rather than breaks. Nothing it does needs mending, and what
+    // it costs is a morning's work sitting in an outbox somebody had not
+    // got to yet.
+    steals: true,
+)

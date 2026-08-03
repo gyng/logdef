@@ -367,11 +367,40 @@ impl World {
     /// own start, so this needs the journey roll to place it.
     #[must_use]
     pub fn enclave_at(&self, content: &Content) -> Option<Paces> {
+        self.enclave_ahead(content).map(|(_, at)| at)
+    }
+
+    /// The next enclave the tower has not yet passed, and where it
+    /// stands on the distance axis.
+    ///
+    /// **Was "the first enclave in the pack", which stopped being the
+    /// same thing the moment M5 added a second.** One enclave meant one
+    /// answer and `find_map` on the first `Some` was that answer; three
+    /// mean the tower has to be told which one it is walking toward, or
+    /// it stands at the coast berthed against a settlement two regions
+    /// behind it. Skips anything already passed by more than a berth's
+    /// reach, because there is no going back down the axis.
+    #[must_use]
+    pub fn enclave_ahead(&self, content: &Content) -> Option<(RegionIdx, Paces)> {
+        let reach = paces_from_int(content.balance.journey.enclave_berth_paces);
         content.regions.iter().enumerate().find_map(|(i, region)| {
             let enclave = region.enclave.as_ref()?;
-            let region = RegionIdx(i as u16);
-            Some(self.region_start_of(region) + paces_from_int(enclave.at_paces))
+            let idx = RegionIdx(i as u16);
+            let at = self.region_start_of(idx) + paces_from_int(enclave.at_paces);
+            (at + reach >= self.distance).then_some((idx, at))
         })
+    }
+
+    /// Which enclave the tower is berthed at, if any.
+    #[must_use]
+    pub fn berthed_enclave(&self, content: &Content, strode: bool) -> Option<RegionIdx> {
+        if strode {
+            return None;
+        }
+        let reach = paces_from_int(content.balance.journey.enclave_berth_paces);
+        self.enclave_ahead(content)
+            .filter(|(_, at)| (*at - self.distance).abs() <= reach)
+            .map(|(idx, _)| idx)
     }
 
     /// Whether the tower is berthed at the enclave — stopped, and near
@@ -383,12 +412,7 @@ impl World {
     /// the axis, which is what makes deciding to stop cost something.
     #[must_use]
     pub fn at_enclave(&self, content: &Content, strode: bool) -> bool {
-        if strode {
-            return false;
-        }
-        let reach = paces_from_int(content.balance.journey.enclave_berth_paces);
-        self.enclave_at(content)
-            .is_some_and(|at| (at - self.distance).abs() <= reach)
+        self.berthed_enclave(content, strode).is_some()
     }
 
     /// Yield multiplier, in percent, of the terrain under the tower.

@@ -210,30 +210,46 @@ fn the_two_regions_are_opposed_on_yield_and_sun() {
 #[test]
 fn the_enclave_stands_inside_the_region_however_its_length_rolls() {
     let content = content();
-    let enclaves = content
+    // **Two from M5, and every one of them checked** rather than the
+    // one M3 shipped. `BALANCE.md`'s `crew_cap` row raised the ceiling
+    // to eight on the strength of the rota and noted that a run could
+    // not approach it with a single settlement offering one recruit;
+    // the coast is where that stops being aspirational.
+    let enclaves: Vec<usize> = content
         .regions
         .iter()
-        .filter(|region| region.enclave.is_some())
-        .count();
-    assert_eq!(enclaves, 1, "M3 ships exactly one enclave");
+        .enumerate()
+        .filter(|(_, region)| region.enclave.is_some())
+        .map(|(i, _)| i)
+        .collect();
+    assert!(enclaves.len() >= 2, "M5 ships more than one enclave");
 
-    let city = content.region(RegionIdx(1));
-    let enclave = city.enclave.as_ref().expect("region 2 has the enclave");
-    assert!(enclave.at_paces > 0 && enclave.at_paces < city.length_min_paces);
-    assert!(!enclave.offers.is_empty());
-    assert!(enclave.recruits > 0);
+    for i in enclaves {
+        let region = content.region(RegionIdx(i as u16));
+        let enclave = region.enclave.as_ref().expect("filtered for one");
+        // Inside the region whatever its length rolls, which is the
+        // property this test is named for: an enclave placed past
+        // `length_min_paces` would simply not exist on a short roll.
+        assert!(
+            enclave.at_paces > 0 && enclave.at_paces < region.length_min_paces,
+            "{} stands outside its own region",
+            enclave.id
+        );
+        assert!(!enclave.offers.is_empty());
+        assert!(enclave.recruits > 0);
 
-    // Every offer resolved to a real item on both sides.
-    let rt = content
-        .region_rt(RegionIdx(1))
-        .enclave
-        .as_ref()
-        .expect("the enclave resolved");
-    assert_eq!(rt.offers.len(), enclave.offers.len());
-    for (offer, resolved) in enclave.offers.iter().zip(&rt.offers) {
-        assert_eq!(content.item(resolved.give.0).id, offer.give.item);
-        assert_eq!(content.item(resolved.take.0).id, offer.take.item);
-        assert!(resolved.stock > 0);
+        // Every offer resolved to a real item on both sides.
+        let rt = content
+            .region_rt(RegionIdx(i as u16))
+            .enclave
+            .as_ref()
+            .expect("the enclave resolved");
+        assert_eq!(rt.offers.len(), enclave.offers.len());
+        for (offer, resolved) in enclave.offers.iter().zip(&rt.offers) {
+            assert_eq!(content.item(resolved.give.0).id, offer.give.item);
+            assert_eq!(content.item(resolved.take.0).id, offer.take.item);
+            assert!(resolved.stock > 0);
+        }
     }
 }
 
@@ -341,14 +357,25 @@ fn only_ruin_bearing_terrain_holds_salvage() {
             assert!(rt.salvage_min > 0 && rt.salvage_max >= rt.salvage_min);
         }
     }
-    // Both the ruin-field and the city's own band, and nothing else.
+    // The ruin-field, the city's own band, and — from M5 — the coast's
+    // salt flat, where a wreck is what the sea drove ashore. Nothing
+    // else: a band that holds salvage is a band the tower can berth at,
+    // and that has to be a deliberate authoring decision rather than
+    // something a new terrain kind picks up by default.
     let ruined: Vec<&str> = content
         .terrain
         .iter()
         .filter(|band| !band.ruin_kinds.is_empty())
         .map(|band| band.id.as_str())
         .collect();
-    assert_eq!(ruined, ["terrain.drowned_street", "terrain.ruin_field"]);
+    assert_eq!(
+        ruined,
+        [
+            "terrain.drowned_street",
+            "terrain.ruin_field",
+            "terrain.salt_flat"
+        ]
+    );
 }
 
 #[test]
@@ -1448,7 +1475,7 @@ fn an_offer_runs_out() {
     berth_at_the_enclave(&mut game);
     crate::tests::stock_poles(&mut game, 200);
 
-    let stock = game.state().enclave_stock[2];
+    let stock = game.state().enclave_stock[1][2];
     for _ in 0..stock {
         game.try_send(GameCommand::Trade { offer: 2 })
             .expect("stock remains");
@@ -1457,7 +1484,7 @@ fn an_offer_runs_out() {
         .try_send(GameCommand::Trade { offer: 2 })
         .expect_err("the offer is spent");
     assert!(matches!(error, CommandError::OfferExhausted { offer: 2 }));
-    assert_eq!(game.state().enclave_stock[2], 0);
+    assert_eq!(game.state().enclave_stock[1][2], 0);
 
     let darts = item(&content, "item.darts");
     assert!(
@@ -2203,7 +2230,7 @@ fn a_settlement_only_does_so_much_shell_work() {
     let scrap = item(&content(), "item.scrap");
     game.state_mut_for_test().shelve(scrap, 60);
 
-    let times = game.state().shell_work_left;
+    let times = game.state().shell_work_left[1];
     assert!(times > 0, "the pack authors no shell work at all");
     for _ in 0..times {
         game.try_send(GameCommand::Reinforce)

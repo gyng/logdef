@@ -111,6 +111,12 @@ pub enum SoundEvent {
     /// The rota turned over. The tower's one daily ritual, and the only
     /// reliable way to *hear* what time it is.
     ShiftChange,
+    /// Something took a load out of an outbox and left with it.
+    ///
+    /// Not `Impact`: nothing was hit and nothing needs mending. What it
+    /// costs is a morning's work, and it should sound like a theft
+    /// rather than like a blow.
+    Steal,
     /// A load went down a chute and out of the tower.
     ///
     /// Deliberately distinct from `Deliver`: something the chain worked

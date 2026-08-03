@@ -738,12 +738,33 @@ fn build_journey(state: &GameState, content: &Content) -> JourneyView {
             .filter(|at| *at >= world.distance)
             .map(|at| paces_to_f32(at - world.distance)),
         at_enclave: world.at_enclave(content, state.strode),
-        offers: state.enclave_stock.clone(),
-        recruits: state.enclave_recruits,
-        shell_work: state.shell_work_left,
+        // **The board in front of you**, not every board in the world.
+        // Each of the three enclaves keeps its own stock from M5, and
+        // what the chrome needs to draw is whichever one the tower is
+        // standing at — or the one ahead of it, so the offers can be
+        // read before deciding whether stopping is worth it.
+        offers: nearest_enclave(state, content)
+            .and_then(|region| state.enclave_stock.get(region).cloned())
+            .unwrap_or_default(),
+        recruits: nearest_enclave(state, content)
+            .and_then(|region| state.enclave_recruits.get(region).copied())
+            .unwrap_or(0),
+        shell_work: nearest_enclave(state, content)
+            .and_then(|region| state.shell_work_left.get(region).copied())
+            .unwrap_or(0),
         shell_bonus: state.tower.shell_bonus,
         arrived: state.arrived,
     }
+}
+
+/// Which enclave's board the chrome should be showing: the one the
+/// tower is berthed at, or failing that the next one ahead.
+fn nearest_enclave(state: &GameState, content: &Content) -> Option<usize> {
+    state
+        .world
+        .berthed_enclave(content, state.strode)
+        .or_else(|| state.world.enclave_ahead(content).map(|(idx, _)| idx))
+        .map(|idx| idx.0 as usize)
 }
 
 /// Why the tower is standing still.

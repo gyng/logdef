@@ -91,26 +91,28 @@ fn take_fork(state: &mut GameState, content: &Content, branch: u8) -> Result<(),
     Ok(())
 }
 
-/// The enclave the tower is berthed at, or a rejection.
+/// The enclave the tower is berthed at, and which region it belongs to.
+///
+/// **Returns the region index too, from M5.** With one settlement in the
+/// game "the enclave" was unambiguous and this returned the first one it
+/// found; with three, every board, every recruit count and every stock
+/// list is per region, and a command that did not know *which* enclave
+/// it was talking to would spend the coast's recruits out of the
+/// jungle's stock.
 fn berthed_enclave<'a>(
     state: &GameState,
     content: &'a Content,
-) -> Result<&'a crate::content::EnclaveRuntime, CommandError> {
-    if !state.world.at_enclave(content, state.strode) {
-        return Err(CommandError::NotBerthedAtAnEnclave);
-    }
-    content
-        .regions
-        .iter()
-        .enumerate()
-        .find_map(|(i, region)| {
-            region.enclave.as_ref()?;
-            content
-                .region_rt(crate::ids::RegionIdx(i as u16))
-                .enclave
-                .as_ref()
-        })
-        .ok_or(CommandError::NotBerthedAtAnEnclave)
+) -> Result<(usize, &'a crate::content::EnclaveRuntime), CommandError> {
+    let region = state
+        .world
+        .berthed_enclave(content, state.strode)
+        .ok_or(CommandError::NotBerthedAtAnEnclave)?;
+    let enclave = content
+        .region_rt(region)
+        .enclave
+        .as_ref()
+        .ok_or(CommandError::NotBerthedAtAnEnclave)?;
+    Ok((region.0 as usize, enclave))
 }
 
 /// Take one of the enclave's posted offers.
@@ -120,14 +122,21 @@ fn berthed_enclave<'a>(
 /// to put what comes back, or a trade could take payment and drop the
 /// return on the floor.
 fn trade(state: &mut GameState, content: &Content, offer: u8) -> Result<(), CommandError> {
-    let enclave = berthed_enclave(state, content)?;
+    let (region, enclave) = berthed_enclave(state, content)?;
     let index = usize::from(offer);
     let deal = *enclave
         .offers
         .get(index)
         .ok_or(CommandError::NoSuchOffer { offer })?;
 
-    if state.enclave_stock.get(index).copied().unwrap_or(0) <= 0 {
+    if state
+        .enclave_stock
+        .get(region)
+        .and_then(|board| board.get(index))
+        .copied()
+        .unwrap_or(0)
+        <= 0
+    {
         return Err(CommandError::OfferExhausted { offer });
     }
     let (give_item, give_amount) = deal.give;
@@ -146,7 +155,7 @@ fn trade(state: &mut GameState, content: &Content, offer: u8) -> Result<(), Comm
     // vanishing. Nothing this game hands the player is ever silently
     // discarded — see `haul.rs` on carried loads.
     let landed = state.shelve(take_item, take_amount);
-    state.enclave_stock[index] -= 1;
+    state.enclave_stock[region][index] -= 1;
     state.stats.traded += landed as u64;
     Ok(())
 }
@@ -158,25 +167,25 @@ fn trade(state: &mut GameState, content: &Content, offer: u8) -> Result<(), Comm
 /// consumer is the trade board, so a tower that berths late banks
 /// metal it cannot spend. Plating turns it into hull.
 fn reinforce(state: &mut GameState, content: &Content) -> Result<(), CommandError> {
-    let enclave = berthed_enclave(state, content)?;
+    let (region, enclave) = berthed_enclave(state, content)?;
     let Some((cost, panel_hp)) = enclave.reinforce.clone() else {
         return Err(CommandError::NoShellWorkHere);
     };
-    if state.shell_work_left == 0 {
+    if state.shell_work_left.get(region).copied().unwrap_or(0) == 0 {
         return Err(CommandError::NoShellWorkLeft);
     }
     check_stock(state, content, &cost)?;
 
     spend(state, &cost);
-    state.shell_work_left -= 1;
+    state.shell_work_left[region] -= 1;
     state.tower.reinforce(panel_hp);
     Ok(())
 }
 
 /// Take somebody aboard.
 fn recruit(state: &mut GameState, content: &Content) -> Result<(), CommandError> {
-    let enclave = berthed_enclave(state, content)?;
-    if state.enclave_recruits == 0 {
+    let (region, enclave) = berthed_enclave(state, content)?;
+    if state.enclave_recruits.get(region).copied().unwrap_or(0) == 0 {
         return Err(CommandError::NobodyToRecruit);
     }
     let cap = content.balance.crew.crew_cap;
@@ -187,7 +196,7 @@ fn recruit(state: &mut GameState, content: &Content) -> Result<(), CommandError>
     check_stock(state, content, &cost)?;
 
     spend(state, &cost);
-    state.enclave_recruits -= 1;
+    state.enclave_recruits[region] -= 1;
     state.add_crew(content);
     Ok(())
 }

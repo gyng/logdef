@@ -332,6 +332,31 @@ pub struct EnemyDef {
     /// rule.
     #[serde(default = "wave_eligible_default")]
     pub wave_eligible: bool,
+    /// Earliest region this creature appears in, by `order`.
+    ///
+    /// A second gate alongside `min_provocation`, and a different kind
+    /// of one: provocation is a thing the player earns and a region is a
+    /// place they have reached. The mire-hulk is the coast's own
+    /// problem, and meeting one in the jungle because a run was loud
+    /// would make region 3 less itself rather than more.
+    #[serde(default)]
+    pub min_region: u16,
+    /// Takes what is in an outbox instead of damaging what it lands on.
+    ///
+    /// The one creature shape that attacks the *chain* rather than the
+    /// structure (`SYSTEMS.md` §5.5). A thief does no hit points of
+    /// harm; what it costs is a morning's harvest, which repair cannot
+    /// answer and defence can prevent.
+    #[serde(default)]
+    pub steals: bool,
+    /// Percent the tower's stride is cut to while this is attached.
+    ///
+    /// Zero means no effect, which is every creature but one. A hulk
+    /// takes hold of a leg, and a tower it is riding sheds it more
+    /// slowly than it would anything else — so "keep walking", the
+    /// answer to every other wave since M2, makes itself worse.
+    #[serde(default)]
+    pub drag_pct: i64,
 }
 
 const fn wave_eligible_default() -> bool {

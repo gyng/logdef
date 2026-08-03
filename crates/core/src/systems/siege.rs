@@ -96,6 +96,11 @@ fn maybe_spawn_wave(state: &mut GameState, content: &Content, sounds: &mut Vec<S
         .filter(|(_, def)| def.wave_eligible)
         .filter(|(_, def)| def.min_provocation <= state.siege.provocation)
         .filter(|(_, def)| !def.night_only || night)
+        // Where you are, as well as how loud you have been. The
+        // mire-hulk is the coast's own problem and meeting one in the
+        // jungle because a run was noisy would make region 3 less
+        // itself rather than more.
+        .filter(|(_, def)| def.min_region <= state.world.region.get() as u16)
         .filter(|(_, def)| def.threat > 0)
         .map(|(i, _)| EnemyIdx(i as u16))
         .collect();
@@ -305,7 +310,7 @@ fn advance_enemies(state: &mut GameState, content: &Content, sounds: &mut Vec<So
                 enemy.at -= step;
                 if paces_to_int((enemy.at - tower_at).abs()) <= CONTACT_PACES {
                     enemy.at = tower_at;
-                    if let Some(target) = pick_target(state, content, def.approach) {
+                    if let Some(target) = pick_prize(state, content, def) {
                         enemy.state = EnemyState::Attacking { target };
                         enemy.attack_cooldown = def.attack_ticks;
                         sounds.push(SoundEvent::EnemyContact);
@@ -322,11 +327,19 @@ fn advance_enemies(state: &mut GameState, content: &Content, sounds: &mut Vec<So
                     continue;
                 }
                 enemy.attack_cooldown = def.attack_ticks;
-                let landed = apply_damage(state, content, target, def.damage, sounds);
+                // A thief takes instead of breaking. Nothing about the
+                // tower's hit points changes and a morning's harvest is
+                // gone — a loss the repair system cannot answer, which
+                // is the whole reason this creature shape exists.
+                let landed = if def.steals {
+                    steal_from(state, target, sounds)
+                } else {
+                    apply_damage(state, content, target, def.damage, sounds)
+                };
                 if !landed {
                     // Whatever it was chewing is gone. Find something
                     // else, or go back to circling.
-                    enemy.state = match pick_target(state, content, def.approach) {
+                    enemy.state = match pick_prize(state, content, def) {
                         Some(next) => EnemyState::Attacking { target: next },
                         None => EnemyState::Approaching,
                     };
@@ -337,6 +350,102 @@ fn advance_enemies(state: &mut GameState, content: &Content, sounds: &mut Vec<So
     }
 
     state.siege.enemies = enemies;
+}
+
+/// What a creature settles on: a full outbox for a thief, the hull for
+/// everything else.
+///
+/// Split from `pick_target` rather than folded into it because the two
+/// are asking different questions. A biter wants whatever is nearest and
+/// intact; a thief wants whatever has something in it, and a tower whose
+/// outboxes are all empty is a tower a crow has no reason to land on —
+/// which is haul throughput quietly buying you safety, and the nicest
+/// thing about this creature.
+fn pick_prize(
+    state: &GameState,
+    content: &Content,
+    def: &crate::content::EnemyDef,
+) -> Option<DamageTarget> {
+    if !def.steals {
+        return pick_target(state, content, def.approach);
+    }
+    // Highest floor first, because a crow comes down from the canopy and
+    // the roof is what it sees. Ties to the lowest slot, so the choice is
+    // a pure function of state.
+    state
+        .tower
+        .floors
+        .iter()
+        .rev()
+        .flat_map(|floor| floor.rooms.iter().map(move |room| (floor.index, room)))
+        .find(|(_, room)| room.outputs.iter().any(|stack| stack.count > 0))
+        .map(|(floor, room)| DamageTarget::Room {
+            floor,
+            slot: room.slot,
+        })
+}
+
+/// Take one load out of whatever the target room has finished.
+///
+/// Returns false when there is nothing to take, which sends the thief
+/// looking elsewhere exactly as an empty target sends a biter looking —
+/// the two share the "whatever it was working on is gone" path rather
+/// than each having their own.
+///
+/// **Outboxes only, never shelves.** A crow takes what is lying out,
+/// which is the finished work sitting where a crew member has not got
+/// to yet; getting it onto a shelf is what putting it away *means*. That
+/// makes the loss legible ("I was slow clearing that outbox") and gives
+/// haul throughput a defensive value it has never had.
+fn steal_from(state: &mut GameState, target: DamageTarget, sounds: &mut Vec<SoundEvent>) -> bool {
+    let DamageTarget::Room { floor, slot } = target else {
+        // Panels and shafts hold nothing. A thief that picked one is a
+        // thief with nothing to do here.
+        return false;
+    };
+    let Some(floor) = state.tower.floor_mut(floor) else {
+        return false;
+    };
+    let Some(room) = floor.rooms.iter_mut().find(|room| room.covers(slot)) else {
+        return false;
+    };
+    for stack in &mut room.outputs {
+        if stack.withdraw(1) > 0 {
+            state.stats.items_stolen += 1;
+            sounds.push(SoundEvent::Steal);
+            return true;
+        }
+    }
+    false
+}
+
+/// How much the things currently attached slow the legs, in percent.
+///
+/// **The mire-hulk's whole mechanic, and it inverts the answer to every
+/// other wave.** Since M2 the reply to something clinging to the tower
+/// has been to keep walking until it loses its grip (`cling_ticks`). A
+/// hulk takes hold of a leg, so the tower it is riding walks more slowly
+/// and therefore sheds it *later* — the usual answer making itself
+/// worse, which is the only reason a fifth biter would have been worth
+/// authoring.
+///
+/// Multiplicative across attached creatures and floored, so two hulks
+/// are worse than one without ever bringing the tower to a stop. A
+/// creature that halted the legs outright would end the run rather than
+/// pressure it (`SYSTEMS.md` §2.2).
+#[must_use]
+pub fn drag_pct(state: &GameState, content: &Content) -> i64 {
+    let mut pct = 100i64;
+    for enemy in &state.siege.enemies {
+        if !matches!(enemy.state, EnemyState::Attacking { .. }) {
+            continue;
+        }
+        let drag = content.enemy(enemy.def).drag_pct;
+        if drag > 0 {
+            pct = pct * drag / 100;
+        }
+    }
+    pct.clamp(10, 100)
 }
 
 /// What this kind of creature goes for, given what the tower currently
