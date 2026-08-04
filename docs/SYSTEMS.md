@@ -3050,6 +3050,25 @@ Not a task list — the places where existing code assumes something M5 stops be
 - [ ] **Every constant in `BALANCE.md` graded `PLAYTESTED`**, from run logs rather than from
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
+
+      **Standing at 15 of 137.** Moved this pass: `reinforce`, once the plating comparison stopped
+      counting the wrong thing, and the three region-length rows, on the whole-run measurement
+      that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4 hours).
+
+      **And the criterion contradicts what this project has actually been doing, which is worth
+      settling before somebody grades the other 122.** It says "from run logs rather than from
+      scripted harnesses" — but every `PLAYTESTED` grade in the file was awarded on a harness:
+      `elevator_capacity` on `throughput.rs`, `wave_interval_ticks` and `base_threat` on
+      `siege_run.rs`. Either those grades are wrong, or the criterion means something narrower
+      than it says. The defensible reading, and the one the rows themselves use, is: **a constant
+      is `PLAYTESTED` when the effect it exists to produce has been measured and confirmed, with
+      the limit of that measurement written into the row.** What no harness can supply is whether
+      the result is *enjoyable*, and no row should ever claim it.
+
+      On that reading the remaining 122 are not blocked on sessions so much as on somebody
+      building an instrument per constant, which is a milestone's work rather than an afternoon's.
+      On the literal reading they are blocked entirely. Saying which is meant is the decision this
+      criterion actually needs.
 - [x] Golden replay regenerated; hash parity green natively and in wasm. The fixture lost its
       salvage rig on the way: three rooms reach the ground and carry `max_floor: 1`, and two
       ground floors do not hold all three once the Heartseed, a cell bank and a storeroom have
