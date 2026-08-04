@@ -917,6 +917,72 @@ pub trait DataSource {
     fn list(&self, prefix: &str) -> Vec<String>;
 }
 
+/// A pack read off disk, for tuning without a rebuild.
+///
+/// The shipped game is always [`EmbeddedSource`] — `DECISIONS.md` §6
+/// wants one pack, hashed into the replay, and a browser has no
+/// filesystem to read a different one from. This exists for the
+/// instruments in `examples/`, where the loop is *edit a number, see
+/// what it did*: `include_dir!` does make cargo rebuild the crate when
+/// a `.ron` changes, so the embedded path is correct rather than stale,
+/// but it charges twenty seconds of compile for a one-character edit.
+///
+/// Not compiled for wasm at all: there is nothing there to read, and a
+/// `std::fs` call in the bridge would be a link error rather than a
+/// runtime one, which is the right time to find out.
+#[cfg(not(target_arch = "wasm32"))]
+pub struct DirSource {
+    root: std::path::PathBuf,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DirSource {
+    #[must_use]
+    pub fn new(root: impl Into<std::path::PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DataSource for DirSource {
+    fn read(&self, path: &str) -> Result<Cow<'_, [u8]>, LoadError> {
+        std::fs::read(self.root.join(path))
+            .map(Cow::Owned)
+            .map_err(|err| LoadError {
+                path: path.into(),
+                message: err.to_string(),
+            })
+    }
+
+    fn list(&self, prefix: &str) -> Vec<String> {
+        let mut files = Vec::new();
+        collect_dir(&self.root, &self.root.join(prefix), &mut files);
+        files.sort();
+        files
+    }
+}
+
+/// Paths relative to `root`, slash-separated, so a directory pack lists
+/// identically to the embedded one on every platform. A missing or
+/// unreadable directory yields nothing and lets `load` report the
+/// specific file it wanted, rather than panicking here about a path.
+#[cfg(not(target_arch = "wasm32"))]
+fn collect_dir(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dir(root, &path, out);
+        } else if path.extension().is_some_and(|ext| ext == "ron")
+            && let Ok(rel) = path.strip_prefix(root)
+        {
+            out.push(rel.to_string_lossy().replace('\\', "/"));
+        }
+    }
+}
+
 pub struct EmbeddedSource;
 
 impl DataSource for EmbeddedSource {
