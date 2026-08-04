@@ -79,6 +79,15 @@ fn measure(label: &str, build_shaft: bool) -> Sample {
     let mut queued_ticks = 0;
     let mut peak_wait = 0;
     let mut brownout_ticks = 0;
+    // **Dispatch, measured rather than derived.** The Transport rows
+    // size a car's behaviour — `dwell_base_ticks`, `dispatch_threshold`,
+    // `elevator_base_wait_ticks` — and none of them had ever been
+    // watched running. What is observable from outside is how long a
+    // car spends stopped and how long a person spends waiting for one.
+    let mut car_moving = 0u32;
+    let mut car_stopped = 0u32;
+    let mut boarding_waits: Vec<u32> = Vec::new();
+    let mut was_boarding: Vec<u32> = Vec::new();
     for _ in 0..WINDOW {
         // Nobody is playing, so nobody answers the fork the route
         // eventually offers — and a tower with an unanswered fork in
@@ -108,6 +117,46 @@ fn measure(label: &str, build_shaft: bool) -> Sample {
         if state.power.brownout {
             brownout_ticks += 1;
         }
+
+        for shaft in state.tower.shafts.iter().filter(|s| !s.cars.is_empty()) {
+            for car in &shaft.cars {
+                match car.state {
+                    understory_core::state::CarState::Moving => car_moving += 1,
+                    understory_core::state::CarState::Dwelling { .. } => car_stopped += 1,
+                    understory_core::state::CarState::Idle => {}
+                }
+            }
+        }
+        was_boarding.resize(state.crew.len(), 0);
+        for (i, member) in state.crew.iter().enumerate() {
+            if matches!(
+                member.state,
+                understory_core::state::CrewState::Boarding { .. }
+            ) {
+                was_boarding[i] += 1;
+            } else if was_boarding[i] > 0 {
+                boarding_waits.push(was_boarding[i]);
+                was_boarding[i] = 0;
+            }
+        }
+    }
+
+    if !boarding_waits.is_empty() {
+        boarding_waits.sort_unstable();
+        let mean = boarding_waits.iter().sum::<u32>() / boarding_waits.len() as u32;
+        let median = boarding_waits[boarding_waits.len() / 2];
+        println!(
+            "  [{label}] {} wait(s) at a shaft: {mean} mean, {median} median, {} worst               (`elevator_base_wait_ticks` 45, `queue_penalty_ticks` 60)",
+            boarding_waits.len(),
+            boarding_waits.last().copied().unwrap_or(0),
+        );
+    }
+    if car_moving + car_stopped > 0 {
+        println!(
+            "  [{label}] of the ticks a car was busy: {}% moving, {}% dwelling               (`dwell_base_ticks` 10 + `dwell_per_unit_ticks` 6 a unit)",
+            car_moving * 100 / (car_moving + car_stopped),
+            car_stopped * 100 / (car_moving + car_stopped),
+        );
     }
 
     let state = game.state();

@@ -3051,7 +3051,7 @@ Not a task list — the places where existing code assumes something M5 stops be
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
 
-      **Standing at 33 of 137.** Moved this pass: `reinforce`, once the plating comparison
+      **Standing at 39 of 137.** Moved this pass: `reinforce`, once the plating comparison
       stopped counting the wrong thing; the three region-length rows, on the whole-run
       measurement that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4
       hours); and the three Power rows, on a new instrument.
@@ -3112,6 +3112,19 @@ Not a task list — the places where existing code assumes something M5 stops be
       pruning each finish the band they are in, so the retained window is the constant plus up to
       one `band_max_paces`. Recorded because the next person to measure it will otherwise file a
       bug.
+
+      **The Transport section is graded off an extension to `throughput.rs`**, and it explains
+      that instrument's own result. A car spends **67% of its busy time dwelling and 32% moving**
+      on a four-floor tower: `dwell_base_ticks` plus `dwell_per_unit_ticks` is a fixed cost paid
+      per stop, and four floors do not give enough travel between stops to amortise it. That is
+      why the elevator cuts contention without raising throughput, and it is the right shape — an
+      elevator should earn its slot by height — but it means these constants are sized against a
+      tower nobody has measured them on. **The crossover height is the number actually worth
+      finding**, and it is the same question `haulcycle.rs` raises from the other side.
+
+      A crew member's wait at a shaft is **1 tick median, 14–15 mean, ~110 worst**. Most calls
+      are served instantly and the mean is a tail, so those constants shape an exception rather
+      than an experience — worth knowing before anybody tunes one to fix a queue they felt.
 
       **And one row was stale by a factor of six.** `canopy sails charge_per_100_ticks` compared
       a good-sun day's ~20,000 income against "~17,700 of continuous striding" — but
