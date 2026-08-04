@@ -1,4 +1,4 @@
-import { test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import type { ViewSnapshot } from "../src/bridge/types";
 
@@ -945,6 +945,35 @@ test("capture stills", async ({ page }) => {
   // it a third of the way in.
   await page.waitForTimeout(3000);
   await page.screenshot({ path: "capture/halt-arrived.png" });
+
+  // **The run log, which is the input to the difficulty pass and had no
+  // test at all.** `SYSTEMS.md` §5.8 asks for "a file the player can
+  // read and hand over"; every run has been recorded to the journal
+  // since M5 and until now there was no way to get one out, which is the
+  // whole gap between somebody playing and `BALANCE.md`'s constants
+  // being graded from run logs rather than from harnesses. Asserted here
+  // rather than in its own test because this is the only place in the
+  // suite that reaches an ending, and reaching one costs 375,000 ticks.
+  const handed = await page.evaluate(() => {
+    // The affordance and the data, checked separately. Reading the
+    // clipboard back needs a permission grant Playwright does not have
+    // by default, and a test that depends on one is a test that fails
+    // for the wrong reason — so this asserts the button exists and that
+    // what it would hand over is real, which is the contract.
+    const button = document.querySelector<HTMLButtonElement>('[data-testid="copy-runs"]');
+    if (!button) return "no copy button on the arrival";
+    const raw = localStorage.getItem("understory.journal.v1");
+    if (!raw) return "nothing written down";
+    const journal = JSON.parse(raw) as { runs?: unknown };
+    const runs = journal.runs;
+    if (!Array.isArray(runs) || runs.length === 0) return "the journal holds no runs";
+    const first = runs[0] as Record<string, unknown>;
+    return typeof first.seed === "string" && typeof first.ending === "string"
+      ? `${runs.length} run(s) to hand over, first ended "${String(first.ending)}"`
+      : "a run log is missing its seed or its ending";
+  });
+  console.log(`run log: ${handed}`);
+  expect(handed).toContain("to hand over");
 
   console.log(`sighting still: ${sighted}`);
   console.log(`closing still: ${closing}`);

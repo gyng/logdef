@@ -596,7 +596,7 @@ function Arrival({ game, ui }: Props) {
       </button>
       {/* Read rather than shown: the whole journal is a lot, and the
           arrival is not the place for a table. */}
-      <p className="elegy-note">{game.journalNow().runs.length} runs written down.</p>
+      <RunLogs game={game} />
     </div>
   );
 }
@@ -625,6 +625,45 @@ function Learned({ ui }: { ui: UiState }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * The run log, and a way to hand it over.
+ *
+ * **`SYSTEMS.md` §5.8 asks for "a file the player can read and hand
+ * over", and until now it was neither.** Every run has been recorded to
+ * the journal since M5 and there was no way to get one out — the elegy
+ * said how many runs were written down and stopped there. That is the
+ * whole gap between somebody playing and `BALANCE.md`'s constants being
+ * graded from run logs rather than from scripted harnesses, which is
+ * what that criterion asks for in as many words.
+ *
+ * A copy button rather than a table, for two reasons. The arrival is not
+ * the place for a dashboard (`DECISIONS.md` §8 — no scores, no grades,
+ * nothing that reads as a mark out of ten), and the reader this is *for*
+ * is somebody doing a difficulty pass with a text file open, not a
+ * player admiring their statistics. So: one line saying how many runs
+ * exist, and a way to take them away.
+ */
+function RunLogs({ game }: { game: Game }) {
+  const [copied, setCopied] = useState(false);
+  const runs = game.journalNow().runs;
+  const hand = () => {
+    void navigator.clipboard
+      .writeText(JSON.stringify(runs, null, 2))
+      .then(() => setCopied(true))
+      .catch(() => setCopied(false));
+  };
+  return (
+    <p className="elegy-note">
+      {runs.length} runs written down.{" "}
+      {runs.length > 0 && (
+        <button type="button" className="elegy-copy" onClick={hand} data-testid="copy-runs">
+          {copied ? "copied" : "copy them"}
+        </button>
+      )}
+    </p>
   );
 }
 

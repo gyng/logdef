@@ -2892,6 +2892,19 @@ what was built and when, what was harvested and spent, every wave and what it co
 run ended. It is a file the player can read and hand over, and it is the input to the difficulty
 pass.
 
+**Built, and for a long time only half built.** Every run has been recorded to the journal
+since M5, and there was no way to get one out — the arrival said how many runs were written
+down and stopped there, which made the log a thing the game kept rather than a thing the
+player has. `Chrome.tsx`'s `RunLogs` now offers to copy the lot as JSON, and
+`e2e/capture.spec.ts` asserts at the arrival that there is something to hand over and that it
+carries a seed and an ending. That gap was the whole distance between somebody playing and
+these constants being graded from run logs rather than from harnesses, which is what the
+exit criterion asks for in as many words.
+
+A copy action rather than a table, deliberately: the arrival is not a place for a dashboard
+(`DECISIONS.md` §8), and the reader this is for is somebody doing a difficulty pass with a
+text file open rather than a player admiring their statistics.
+
 Two rules it inherits. **It is not a score** — no derived rating, no grade, nothing that reads
 as a mark out of ten (`DECISIONS.md` §8). And **it is written from the snapshot, never from
 inside the simulation**: a counter that exists only to be logged is a counter that will drift
@@ -5461,20 +5474,6 @@ never enters the replay, and a shared seed reproduces a run regardless of who pl
 is `v2-plan.md` §6.6's promise and would be silently broken by any unlock that changed what a
 seed generates. What an unlock changes is which commands the *player* may send, and a replay
 carries the commands.
-
-### 5.8 Telemetry, and the difficulty pass
-
-The exit criteria ask for every balance constant graded `PLAYTESTED`, and today most are
-`DESIGNED` because the instruments are scripted harnesses rather than sessions. M5 adds the
-missing half: **a run log**, written at the end of every run, recording the seed, the route,
-what was built and when, what was harvested and spent, every wave and what it cost, and how the
-run ended. It is a file the player can read and hand over, and it is the input to the difficulty
-pass.
-
-Two rules it inherits. **It is not a score** — no derived rating, no grade, nothing that reads
-as a mark out of ten (`DECISIONS.md` §8). And **it is written from the snapshot, never from
-inside the simulation**: a counter that exists only to be logged is a counter that will drift
-from the thing it claims to count, and `RunStats` already carries what a log needs.
 
 ### 5.9 What M5 changes in code that already exists
 

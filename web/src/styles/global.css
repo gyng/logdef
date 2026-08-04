@@ -1182,3 +1182,23 @@ button {
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
+
+/* Underlined text rather than a button shape. The arrival is not a
+   place for chrome (`DECISIONS.md` §8) and this is a quiet offer to
+   somebody doing a difficulty pass, not an action the run is about. */
+.elegy-copy {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-brass);
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 0.25em;
+  cursor: pointer;
+}
+
+.elegy-copy:hover,
+.elegy-copy:focus-visible {
+  text-decoration-style: solid;
+}
