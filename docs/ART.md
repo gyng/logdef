@@ -230,3 +230,68 @@ slightly different styles looks worse than twenty mediocre images in one. To get
 creatures defending territory rather than a gallery to clear. If you generate creature art,
 that applies — a root-borer is an animal doing an animal thing, not a monster. And nothing in
 this game gets a score, a rank or a victory pose.
+
+
+---
+
+## 5. Procedural work, and one thing that looked easy and is not
+
+Art is not the only way to make this look better. Three procedural jobs are worth more than
+most of the manifest above, and one popular idea turns out to be blocked.
+
+### Worth doing
+
+**Burner smoke.** The burner's whole design point is that its smoke provokes
+(`provocation_per_burn` 18, and provocation is the only difficulty dial in the game). It is
+currently invisible. A plume from a running burner is the most `DECISIONS.md` §8-shaped thing
+available — it puts the difficulty dial on screen as a fact about the world rather than a
+number. A handful of soft quads on a noise-drifted path, opacity from the burn state.
+
+**Water in the drowned city.** Region 2 is named for water and the renderer draws none. A
+flooded ground plane with a slow shimmer and a reflected tower silhouette would do more for
+that region's identity than any sprite.
+
+**Not rain or weather.** Pretty, and it says nothing. This renderer's discipline is that a
+visual carries information: the legs report the halt state, a crew member's step cadence
+reports hunger, a stalled room goes quiet. Rain would be the first purely decorative system
+in it.
+
+### Planted feet and IK legs: blocked by geometry, not by effort
+
+The obvious win is that the tower's feet **slide**. `drawLegs` swings each foot sinusoidally
+around the hip through the whole cycle, including the half where it is supposed to be bearing
+weight, so every step skates. Planting the foot — holding it still in the world and letting it
+drift backwards across the screen at the scroll rate — is the classic fix and is normally a
+twenty-line change.
+
+**It does not fit here, and the arithmetic is worth writing down before somebody else tries.**
+At 1600×900:
+
+| | |
+|---|---|
+| `reach` (ground to bottom of frame) | ~126 px |
+| Leg span, hip to foot | ~91 px |
+| Each bone, hip–knee and knee–foot | ~50 px |
+| **Maximum horizontal foot reach** | **±41 px, about half a slot width** |
+| `paceW` (ground scroll) | `slotW * 0.5` ≈ 40 px per pace |
+| Tower speed | 0.6 paces/tick at 30 Hz = **18 paces/s** |
+
+A planted foot must cover exactly the ground the world scrolls. Half a slot of reach is one
+pace of ground, and the tower walks eighteen paces a second — so a physically-correct gait at
+today's scroll rate is **eighteen steps per second**. Asking for a longer, calmer stride makes
+it worse: a two-slot stride is ±82 px against a ±41 px reach, so both legs lock straight and
+the tower skis. That was tried, photographed, and reverted.
+
+So **the pendulum is the right call given the geometry**, and the sliding is the price. To fix
+it for real, one of these has to give:
+
+1. **`paceW` drops by roughly 15×** — the world scrolls far slower past a tower that walks the
+   same speed. This is a feel decision about the whole game, not a leg fix, and it would
+   change how travel reads everywhere.
+2. **The legs get much longer** — `GROUND_FRACTION` 0.86 leaves only 14% of the frame below
+   the tower. Put it on visible stilts and the reach arrives, at the cost of the cross-section
+   being the thing you look at.
+3. **Leave it.** The feet slide, and at 1× nobody has yet said they noticed.
+
+Worth knowing which of those you are choosing rather than discovering it halfway through an
+IK solver.
