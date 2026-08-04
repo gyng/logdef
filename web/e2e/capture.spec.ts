@@ -1207,6 +1207,17 @@ test("capture the home", async ({ page }) => {
   // never drew a wave is a finding about the balance, not a test
   // failure. It still has to be said out loud, because a still of an
   // unbothered tower filed as `home-siege.png` is worse than no still.
+  //
+  // **It reports NO WAVE at the moment, and that is not a regression.**
+  // `journey.rs` now prints peak provocation per seed, and a walking
+  // tower peaks at **19-145 out of 1,000 and repels nothing** — measured
+  // at the 40-minute journey *and* at the 140-minute one it replaced, to
+  // within noise. Provocation is limited by the balance between drawing
+  // and shedding, not by how long the run is, so shortening the journey
+  // did not make the forest quieter. What this probe wants is a
+  // *daylight* attack for a legible frame, and two cutter arms on a
+  // tower that never stops do not reliably buy one. Adding a burner was
+  // tried and tripled the harness's runtime without producing one.
   console.log(
     met
       ? "home-siege: a wave reached the tower"

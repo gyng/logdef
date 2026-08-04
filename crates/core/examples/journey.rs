@@ -589,6 +589,15 @@ struct Run {
     branches: Vec<String>,
     salvage_seen: i64,
     repelled: u64,
+    /// The highest provocation the run ever reached, against a ceiling
+    /// of `provocation_max`.
+    ///
+    /// **`repelled` alone cannot tell "the tower was never noticed" from
+    /// "the tower was noticed and shot everything down"**, and those are
+    /// opposite findings. A run that peaks near the ceiling and repels
+    /// nothing has a defence problem; one that peaks at 20 was simply
+    /// never interesting to the forest.
+    peak_provocation: i64,
     days: u32,
     died: bool,
 }
@@ -828,6 +837,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
     let mut halted = 0u32;
     let mut ticks = 0u32;
     let mut exposure_total = 0i64;
+    let mut peak_provocation = 0i64;
     let mut brownout = 0u32;
     // Ticks spent stopped at the ruin currently in reach.
     let mut berth_ticks = 0u32;
@@ -1149,6 +1159,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
 
         let state = engine.state();
         exposure_total += understory_core::systems::power::exposure_pct(state, &content);
+        peak_provocation = peak_provocation.max(state.siege.provocation);
         if state.walking && !state.strode {
             brownout += 1;
         }
@@ -1181,6 +1192,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
         bamboo: harvested_of(&content, state, "item.bamboo"),
         produce: harvested_of(&content, state, "item.produce"),
         meals: state.stats.meals_eaten,
+        peak_provocation,
         exposure: exposure_total / i64::from(ticks.max(1)),
         brownout,
         salvaged: state.stock_of(
@@ -1256,7 +1268,7 @@ fn table(runs: &[Run]) {
             print!(" {pct:>6}%");
         }
         println!(
-            " {:>3}% {:>6} {:>5} {:>7} {:>8} {:>6} {:>6} {:>5} {:>7} {:>4}  {}",
+            " {:>3}% {:>6} {:>5} {:>7} {:>8} {:>6} {:>6} {:>5} {:>7} {:>4} {:>6}  {}",
             run.exposure,
             run.brownout,
             run.harvested,
@@ -1267,6 +1279,7 @@ fn table(runs: &[Run]) {
             run.forks,
             run.salvage_seen,
             run.repelled,
+            run.peak_provocation,
             if run.died { "LOST" } else { "reached" }
         );
     }
