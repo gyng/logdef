@@ -190,6 +190,21 @@ pub struct RoomDef {
     /// ground, so cutter arms live low.
     #[serde(default)]
     pub max_floor: Option<u8>,
+    /// Lowest floor this room may be placed on.
+    ///
+    /// **The mirror of `max_floor`, and it exists to give the chain a
+    /// direction.** Three intake rooms are pinned to the bottom because
+    /// they reach the ground, and until this nothing was pinned to the
+    /// top — so a whole chain could sit on floors 0 and 1 beside its own
+    /// intake and never move anything vertically. A tower that never
+    /// hauls upward has no use for a shaft, whatever a shaft costs.
+    ///
+    /// **Used sparingly and only where the fiction already says so**, a
+    /// smoke stack and a sleeping deck. It is a placement rule, not a
+    /// tax: most rooms go anywhere, and the interesting layout question
+    /// is which of them you choose to put where.
+    #[serde(default)]
+    pub min_floor: Option<u8>,
     /// Only works on the tower's top floor. Building above it puts it
     /// in shade — which is the price of height, made concrete.
     #[serde(default)]
@@ -1906,6 +1921,43 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
             path: "balance.ron".into(),
             message: "starting_floors exceeds max_floors".into(),
         });
+    }
+    // A floor range that cannot contain a floor is a room nobody can
+    // ever build, and it would present as a build card that refuses
+    // every slot rather than as a broken pack. `AGENTS.md` §IV: an
+    // invalid shipped pack is a build error.
+    let starting = content.balance.tower.starting_floors;
+    let ceiling = content.balance.tower.max_floors;
+    for room in &content.rooms {
+        let Some(min_floor) = room.min_floor else {
+            continue;
+        };
+        if let Some(max_floor) = room.max_floor
+            && min_floor > max_floor
+        {
+            errors.push(LoadError {
+                path: format!("rooms/{}", room.id),
+                message: format!("min_floor {min_floor} is above max_floor {max_floor}"),
+            });
+        }
+        if min_floor >= ceiling {
+            errors.push(LoadError {
+                path: format!("rooms/{}", room.id),
+                message: format!("min_floor {min_floor} is at or above max_floors {ceiling}"),
+            });
+        } else if min_floor >= starting {
+            // Not fatal — a room the tower has to grow into is a fair
+            // design — but it is worth being deliberate about, because
+            // a bunk nobody can build until they add a floor is a very
+            // different game from one they start with.
+            errors.push(LoadError {
+                path: format!("rooms/{}", room.id),
+                message: format!(
+                    "min_floor {min_floor} is above the starting tower's top floor                      ({}), so this room cannot be built until the tower grows",
+                    starting.saturating_sub(1)
+                ),
+            });
+        }
     }
     if content.balance.crew.walk_ticks_per_slot == 0
         || content.balance.crew.climb_ticks_per_floor == 0

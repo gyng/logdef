@@ -422,6 +422,11 @@ fn place_room(
     {
         return Err(CommandError::FloorTooHigh { floor, max_floor });
     }
+    if let Some(min_floor) = def.min_floor
+        && floor < min_floor
+    {
+        return Err(CommandError::FloorTooLow { floor, min_floor });
+    }
     if def.unique && state.tower.count_of(def_idx) > 0 {
         return Err(CommandError::AlreadyPlaced {
             room: room_id.to_string(),

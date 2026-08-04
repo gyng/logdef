@@ -1046,9 +1046,15 @@ function costHint(room: RoomInfo): string {
     }
     case "Storage":
       return `${room.shelves} shelves`;
+    case "Quarters":
+      return room.min_floor === null ? "beds" : `beds · floor ${room.min_floor} and up`;
     case "Energy":
       if (room.solar) return "roof only · charge from sun";
-      if (room.burner) return "burns bamboo for charge";
+      if (room.burner) {
+        return room.min_floor === null
+          ? "burns bamboo for charge"
+          : `burns bamboo for charge · floor ${room.min_floor} and up`;
+      }
       if (room.bank_capacity > 0) return `holds ${room.bank_capacity}⚡`;
       return "";
     case "Defence":

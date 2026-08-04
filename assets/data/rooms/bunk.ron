@@ -14,6 +14,17 @@ RoomDef(
     short: "BED",
     category: Quarters,
     width: 2,
+    // **You sleep above the works.** The mill, the cutter arm and the
+    // burner are all noise, and the sleeping deck being over them rather
+    // than beside them is how quarters read in any building that has
+    // both.
+    //
+    // It is also the one floor constraint that makes *people* travel
+    // rather than goods, which is the traffic an elevator carries and a
+    // dumbwaiter cannot: a crew member walks up to sleep and down to
+    // work, twice a day, every day. Freight has the chute and the
+    // dumbwaiter; bodies have the stairs and the lift.
+    min_floor: 2,
     // Joint-cheapest in the pack with a storeroom, because the
     // alternative to a bed is a crew member who degrades a little more
     // every day, and a bed should never be a gate. The real price of

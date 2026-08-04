@@ -42,6 +42,7 @@ export interface PlaceMode {
   id: string;
   width: number;
   maxFloor: number | null;
+  minFloor: number | null;
   /** Floors a shaft will span upward from the clicked floor. */
   span: number;
   /** Slot the cursor is currently over, if it is over the tower. */
@@ -3328,6 +3329,7 @@ function drawPlaceMode(batch: QuadBatch, ctx: SceneContext): void {
   // options before committing rather than probing for a rejection.
   for (const floor of view.tower.floors) {
     if (placeMode.maxFloor !== null && floor.index > placeMode.maxFloor) continue;
+    if (placeMode.minFloor !== null && floor.index < placeMode.minFloor) continue;
     for (let slot = 0; slot + placeMode.width <= floor.slots; slot += 1) {
       if (!placementFits(view, placeMode, floor.index, slot)) continue;
       const { x, y, w, h } = ghostRect(layout, placeMode, floor.index, slot);
@@ -3368,6 +3370,7 @@ export function placementFits(
   slot: number,
 ): boolean {
   if (placeMode.maxFloor !== null && floor > placeMode.maxFloor) return false;
+  if (placeMode.minFloor !== null && floor < placeMode.minFloor) return false;
   if (placeMode.kind === "room") {
     return slotRangeFree(view, floor, slot, placeMode.width);
   }

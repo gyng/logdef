@@ -485,6 +485,8 @@ pub struct RoomInfo {
     pub width: u8,
     pub build_cost: Vec<CostInfo>,
     pub max_floor: Option<u8>,
+    /// Lowest floor it may be placed on. The mirror of `max_floor`.
+    pub min_floor: Option<u8>,
     pub unique: bool,
     pub craft_ticks: u32,
     pub inputs: Vec<CostInfo>,
@@ -1148,6 +1150,7 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                     width: room.width,
                     build_cost: cost(&rt.build_cost),
                     max_floor: room.max_floor,
+                    min_floor: room.min_floor,
                     unique: room.unique,
                     craft_ticks: rt.craft_ticks,
                     inputs: io(&rt.recipe_inputs),

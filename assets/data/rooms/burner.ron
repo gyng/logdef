@@ -9,6 +9,22 @@ RoomDef(
     short: "BRN",
     category: Energy,
     width: 2,
+    // **A chimney, so it goes up.** The renderer already vents its smoke
+    // from the roof above its column — a burner buried under six floors
+    // was always fictionally odd, and the plume drawn leaving the top of
+    // a tower it was nowhere near was the tell.
+    //
+    // The mechanical reason is that the chain needed a direction. Intake
+    // is pinned to floors 0-1 because it reaches the ground, nothing was
+    // pinned high, and so a whole chain could sit beside its own intake
+    // and never haul anything upward. A tower that never hauls up has no
+    // use for a shaft, whatever the shaft costs.
+    //
+    // Floor 2 rather than the roof: the sails and the garden are already
+    // fighting over the top floor, and a third claimant there would be a
+    // rule rather than a decision. Two is enough to put the burner above
+    // the bamboo that feeds it.
+    min_floor: 2,
     build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
     burner: BurnerDef(
         fuel: "item.bamboo",

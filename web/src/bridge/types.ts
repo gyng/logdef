@@ -460,6 +460,8 @@ export interface RoomInfo {
   width: number;
   build_cost: CostInfo[];
   max_floor: number | null;
+  /** Lowest floor it may go on. The mirror of `max_floor`. */
+  min_floor: number | null;
   unique: boolean;
   craft_ticks: number;
   inputs: CostInfo[];

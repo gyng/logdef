@@ -131,6 +131,8 @@ pub enum CommandError {
     SlotOccupied { floor: FloorIdx, slot: SlotIdx },
     /// This room may only be placed on lower floors.
     FloorTooHigh { floor: FloorIdx, max_floor: u8 },
+    /// This room may only be placed on higher floors.
+    FloorTooLow { floor: FloorIdx, min_floor: u8 },
     /// Only one of these may exist in a tower.
     AlreadyPlaced { room: String },
     /// Not enough on the shelves. The chain pays for the tower.
@@ -199,6 +201,9 @@ impl std::fmt::Display for CommandError {
             }
             CommandError::FloorTooHigh { floor, max_floor } => {
                 write!(f, "cannot go above floor {max_floor}; asked for {floor}")
+            }
+            CommandError::FloorTooLow { floor, min_floor } => {
+                write!(f, "cannot go below floor {min_floor}; asked for {floor}")
             }
             CommandError::AlreadyPlaced { room } => write!(f, "{room} is already placed"),
             CommandError::InsufficientStock {

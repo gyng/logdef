@@ -201,8 +201,11 @@ fn a_burner_turns_bamboo_into_charge() {
     game.step(3000);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.burner".into(),
-        floor: 1,
-        slot: 4,
+        // A burner is a chimney: `min_floor` 2 keeps it above the works.
+        // Slot 1, because the starting layout already has floor 2's
+        // right-hand slots.
+        floor: 2,
+        slot: 1,
     })
     .expect("affordable");
 
@@ -238,8 +241,11 @@ fn switching_a_room_off_stops_it() {
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.burner".into(),
-        floor: 1,
-        slot: 4,
+        // A burner is a chimney: `min_floor` 2 keeps it above the works.
+        // Slot 1, because the starting layout already has floor 2's
+        // right-hand slots.
+        floor: 2,
+        slot: 1,
     })
     .expect("affordable");
     {
@@ -257,8 +263,8 @@ fn switching_a_room_off_stops_it() {
     }
 
     game.try_send(GameCommand::SetRoomActive {
-        floor: 1,
-        slot: 4,
+        floor: 2,
+        slot: 1,
         active: false,
     })
     .expect("the burner is there");
@@ -444,8 +450,11 @@ fn a_burn_consumes_exactly_its_fuel_and_yields_exactly_its_charge() {
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.burner".into(),
-        floor: 1,
-        slot: 4,
+        // A burner is a chimney: `min_floor` 2 keeps it above the works.
+        // Slot 1, because the starting layout already has floor 2's
+        // right-hand slots.
+        floor: 2,
+        slot: 1,
     })
     .expect("affordable");
 

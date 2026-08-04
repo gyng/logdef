@@ -388,6 +388,7 @@ export class Game {
       id: roomId,
       width: info.width,
       maxFloor: info.max_floor,
+      minFloor: info.min_floor,
       span: 1,
       hover: null,
     };
@@ -417,6 +418,7 @@ export class Game {
       id: shaftId,
       width: 1,
       maxFloor: null,
+      minFloor: null,
       span: Math.max(info.min_span, Math.min(ceiling, floors)),
       hover: null,
     };
@@ -532,6 +534,7 @@ export class Game {
     if (!view) return false;
     return view.tower.floors.some((floor) => {
       if (info.max_floor !== null && floor.index > info.max_floor) return false;
+      if (info.min_floor !== null && floor.index < info.min_floor) return false;
       for (let slot = 0; slot + info.width <= floor.slots; slot += 1) {
         if (slotRangeFree(view, floor.index, slot, info.width)) return true;
       }
@@ -730,6 +733,8 @@ function describeError(error: unknown): string {
         return "That room does not fit on the floor";
       case "FloorTooHigh":
         return `That room only mounts up to floor ${String(detail.max_floor)}`;
+      case "FloorTooLow":
+        return `That room does not go below floor ${String(detail.min_floor)}`;
       case "AlreadyPlaced":
         return "There can only be one";
       case "FloorLimit":
