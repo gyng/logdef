@@ -59,7 +59,7 @@ everything else dissolve into wash. Solarpunk, overgrown, quiet. No text, no log
 watermark, no signature, no UI, no border or frame.
 
 Subject: a vast walking tower of bamboo and salvaged timber striding through dense jungle
-canopy, seen from the side at a distance. Six insectile legs mid-step. Lamps lit in a few
+canopy, seen from the side at a distance. Two heavy chicken-jointed legs mid-stride — knee bending backwards, one foot planted and one lifting. Lamps lit in a few
 windows. Soft overcast light, mist between the trunks.
 
 Landscape 3:2. Fill the frame edge to edge.
@@ -111,10 +111,11 @@ config. Name files after the content id they belong to: `room.mill` → `art/roo
 
 | # | Asset | Purpose | Ship size | Format | Subject block |
 |---|---|---|---|---|---|
-| 0.1 | `itch-cover` | itch.io game cover. **Required** by itch, shown in every listing | **630×500** exactly | WebP | The tower small against a huge overgrown horizon, seen from below-left. Legs mid-stride. Enough negative space at the top that a title could sit there later. Soft overcast light. |
+| 0.1 | `itch-cover` | itch.io game cover. **Required** by itch, shown in every listing | **630×500** exactly | WebP | The tower small against a huge overgrown horizon, seen from below-left. Two legs mid-stride, knees bending backwards. Enough negative space at the top that a title could sit there later. Soft overcast light. |
 | 0.2 | `itch-banner` | Optional wide header on the game page | 1920×620 | WebP | The same tower, far right of frame, walking away. The rest is jungle canopy receding into haze. Nothing in the centre. |
 | 0.3 | `title` | Title/menu screen background if you add one | 2560×1440 | WebP | Interior: a lamplit deck inside the tower at night, seen from the side. Two figures at a table, small. Warm firelight, everything beyond the lamp's reach dissolving to dark wash. |
 | 0.4 | `arrival` | Behind the arrival card (`Chrome.tsx`, `.arrival`) | 2048×1152 | WebP | Dawn at the coast. The tower stopped, legs folded, on a headland above pale water. First light. Nothing threatening. The end of a long walk. |
+| 0.4b | `smoke-ref` | Reference only — not shipped. Pin it beside the burner-smoke work so the procedural plume has a target | 1024×1024 | WebP | A thin column of pale woodsmoke rising from a vent on a timber tower and shearing sideways in the wind. Overcast. |
 | 0.5 | `elegy` | Behind the loss card (`.elegy`) | 2048×1152 | WebP | The same tower, still and dark, being taken back by vines. Overcast. No wreckage, no drama — just green closing over. |
 | 0.6 | `favicon` | Browser tab | 512×512 (browser downscales) | PNG | A single bamboo leaf and a lamp, flat and simple, high contrast, readable at 16 px. |
 | 0.7 | `og-image` | Link preview when the itch page is shared | 1200×630 | WebP | Crop of 0.1 or 0.3, composed for a wide letterbox. |
