@@ -59,7 +59,8 @@ pub struct ClockView {
     pub daypart: u16,
     /// Sunlight before terrain.
     pub sun_pct: i64,
-    /// Sunlight after terrain — what the sails actually receive.
+    /// Sunlight after terrain *and* height — what the sails actually
+    /// receive. A tall tower's roof clears some of the canopy.
     pub exposure_pct: i64,
 }
 
@@ -650,7 +651,7 @@ fn build_clock(state: &GameState, content: &Content) -> ClockView {
         permille: state.clock.permille(content),
         daypart: state.clock.daypart(content).0,
         sun_pct: state.clock.sun_pct(content),
-        exposure_pct: crate::systems::power::exposure_pct(state, content),
+        exposure_pct: crate::systems::power::roof_exposure_pct(state, content),
     }
 }
 

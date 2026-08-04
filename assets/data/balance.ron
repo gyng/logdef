@@ -139,6 +139,24 @@ Balance(
         night_light_threshold: 20,
     ),
     power: PowerBalance(
+        // Five points of the terrain's shade recovered per floor above
+        // the starting four. A fourteen-floor tower under dense canopy
+        // (sun_pct 35) sees 85 instead of 35 — most of a clearing —
+        // while in a clearing it changes nothing, because there is no
+        // shade left to recover.
+        //
+        // **The counterweight to `top_floor_only`.** A new top floor
+        // shades the sail deck below it, so growing taller was pure loss
+        // for the tower's income, and the growth gradient pointed away
+        // from the one shape a shaft is worth building for.
+        //
+        // Watch `journey.rs`'s route comparison when touching this:
+        // `SYSTEMS.md` §5.11 open question 0 says `yield_pct` and
+        // `sun_pct` are one constant in two columns, and this hands a
+        // shade route a way to buy back some of what shade costs. It is
+        // meant to be a trade — floors cost poles, and a taller tower
+        // hauls further — not an escape.
+        canopy_climb_pct_per_floor: 5,
         // Enough to outlast the dark stretch at the top of a fresh
         // run (tick 0 is predawn) — a starting tower's base draw
         // (stride + lighting four floors) is ~0.28 charge/tick, so

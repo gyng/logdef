@@ -19,7 +19,11 @@ pub fn income(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEv
     state.power.capacity = bank_capacity(state, content);
     state.power.charge = state.power.charge.min(state.power.capacity);
 
-    let exposure = exposure_pct(state, content);
+    // The *roof's* exposure, which is not the ground's: a taller tower
+    // reaches over more of the canopy. Harvest keeps reading the ground
+    // figure, because a cutter arm sweeping the forest floor does not
+    // care how many storeys are stacked above it.
+    let exposure = roof_exposure_pct(state, content);
     collect_solar(state, content, exposure);
     run_burners(state, content, sounds);
 }
@@ -34,6 +38,34 @@ pub fn exposure_pct(state: &GameState, content: &Content) -> i64 {
         .band_at(state.world.distance)
         .map_or(100, |band| content.terrain_runtime[band.kind.get()].sun_pct);
     sun * terrain / 100
+}
+
+/// Sunlight reaching the *roof*, which on a tall tower is more than
+/// reaches the ground.
+///
+/// Each floor above the starting height recovers
+/// `canopy_climb_pct_per_floor` points of the terrain's shade, capped at
+/// open sky — so this does nothing in a clearing, where there is no
+/// shade to recover, and a great deal under canopy.
+///
+/// **It is the counterweight to `top_floor_only`.** A new top floor
+/// shades the sail deck under it, which made growing taller pure loss
+/// for the tower's income and left the growth gradient pointing away
+/// from the one shape a shaft is worth building for.
+#[must_use]
+pub fn roof_exposure_pct(state: &GameState, content: &Content) -> i64 {
+    let sun = state.clock.sun_pct(content);
+    let terrain = state
+        .world
+        .band_at(state.world.distance)
+        .map_or(100, |band| content.terrain_runtime[band.kind.get()].sun_pct);
+    let grown = i64::from(
+        (state.tower.floors.len() as u8).saturating_sub(content.balance.tower.starting_floors),
+    );
+    // Recovery, not a bonus: a roof cannot see more than open sky, so
+    // this can never lift a clearing above what a clearing gives.
+    let lifted = (terrain + grown * content.balance.power.canopy_climb_pct_per_floor).min(100);
+    sun * terrain.max(lifted) / 100
 }
 
 fn bank_capacity(state: &GameState, content: &Content) -> i64 {

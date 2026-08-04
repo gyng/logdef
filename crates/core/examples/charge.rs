@@ -42,13 +42,29 @@ fn main() {
         "{:<26} {:>8} {:>8} {:>8} {:>9} {:>8}",
         "tower", "income", "draw", "net", "brownout", "dark"
     );
-    for (label, floors, walking) in [
-        ("starting, parked", 0u8, false),
-        ("starting, striding", 0, true),
-        ("+4 floors, parked", 4, false),
-        ("+4 floors, striding", 4, true),
+    for (label, floors, walking, reroof) in [
+        ("starting, parked", 0u8, false, false),
+        ("starting, striding", 0, true, false),
+        ("+4 floors, parked", 4, false, false),
+        ("+4 floors, striding", 4, true, false),
+        // The same towers, re-roofed. Everything above grows without
+        // replacing the sail deck it shaded, which measures
+        // `top_floor_only` rather than height.
+        ("re-roofed, parked", 0, false, true),
+        ("+4, re-roofed, parked", 4, false, true),
+        ("+10, re-roofed, parked", 10, false, true),
+        // Striding, so the bank is actually being drained and income is
+        // income rather than a mirror of draw. A parked tower with a
+        // full bank "earns" exactly what it spends, which is why the
+        // parked rows above cannot tell a bigger roof from a smaller one.
+        ("+4, re-roofed, striding", 4, true, true),
+        ("+10, re-roofed, striding", 10, true, true),
     ] {
-        let day = measure(floors, walking);
+        let day = if reroof {
+            measure_reroofed(floors, walking)
+        } else {
+            measure(floors, walking)
+        };
         println!(
             "{label:<26} {:>8} {:>8} {:>8} {:>8}% {:>7}%",
             day.income,
@@ -86,7 +102,18 @@ fn main() {
             whole day. That is `v2-plan.md` §6.3 working as written — a new top floor\n\
             displaces the canopy sail deck — but the size of it is worth seeing: not a\n\
             tax on growing, a wall. The two tall rows above are a bankrupt tower, and\n\
-            their draw figures measure poverty rather than lighting."
+            their draw figures measure poverty rather than lighting.\n\
+         \n\
+         4. **Re-roof and the wall is gone.** The same tower with a fresh sail deck on\n\
+            its new top floor strides at 0% brown-out ten floors up. So the wall was\n\
+            never height — it was growing without replacing what you shaded, which is a\n\
+            decision, and a far better one than a ceiling.\n\
+         \n\
+         5. **A parked tower cannot answer this**, and the parked rows are here to show\n\
+            why: with a full bank, income is exactly draw, so a bigger roof and a\n\
+            smaller one report the same figure. `canopy_climb_pct_per_floor` is\n\
+            invisible on them at any value. It shows on the striding rows — ten floors\n\
+            up, 4,542 income and 5% brown-out at 0, against 4,836 and 0% at 5."
     );
 }
 
@@ -106,6 +133,22 @@ struct Day {
 /// clock are both in a steady state rather than in their opening
 /// positions.
 fn measure(extra_floors: u8, walking: bool) -> Day {
+    measure_tower(extra_floors, walking, false)
+}
+
+/// The same, with a fresh sail deck bought for the new roof.
+///
+/// **The row that tells `canopy_climb_pct_per_floor` from nothing.** The
+/// note below records a four-floors-taller tower earning *nothing at
+/// all* — but that tower had no sails on its new roof, so it measures
+/// `top_floor_only` doing its job and cannot say anything about whether
+/// a higher roof sees more sky. Re-roofing is what a player would do,
+/// and it is the only shape where the height term is worth a point.
+fn measure_reroofed(extra_floors: u8, walking: bool) -> Day {
+    measure_tower(extra_floors, walking, true)
+}
+
+fn measure_tower(extra_floors: u8, walking: bool, reroof: bool) -> Day {
     let mut game = GameEngine::new(0x_5A_11);
     game.set_speed(SimSpeed::X1);
 
@@ -131,6 +174,42 @@ fn measure(extra_floors: u8, walking: bool) -> Day {
             }
         }
         let _ = game.try_send(GameCommand::BuildFloor);
+    }
+    if reroof {
+        // Bamboo for the canvas, then the deck itself, on whatever slot
+        // of the new top floor will take it. Asserted, because a sail
+        // that silently failed to go up would make this row identical to
+        // the one above it and read as "height buys nothing".
+        let bamboo = game
+            .content()
+            .item_idx("item.bamboo")
+            .expect("the pack defines bamboo");
+        {
+            let state = game.state_mut_for_test();
+            let mut left = 40;
+            'floors: for floor in &mut state.tower.floors {
+                for room in &mut floor.rooms {
+                    left -= room.shelve(bamboo, left);
+                    if left <= 0 {
+                        break 'floors;
+                    }
+                }
+            }
+        }
+        let top = game.state().tower.floors.len() as u8 - 1;
+        let slots = game.content().balance.tower.floor_slots;
+        let up = (0..slots).any(|slot| {
+            game.try_send(GameCommand::PlaceRoom {
+                room: "room.canopy_sails".into(),
+                floor: top,
+                slot,
+            })
+            .is_ok()
+        });
+        assert!(
+            up,
+            "no sail deck went onto floor {top}; this row measures nothing"
+        );
     }
     let _ = game.try_send(GameCommand::SetStriding { walking });
 

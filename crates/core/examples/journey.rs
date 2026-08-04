@@ -250,6 +250,38 @@ enum Tower {
     /// `SYSTEMS.md` §5.11 open question 0 without needing to build the
     /// answer first.
     Uncapped,
+    /// A tower that keeps growing, and keeps re-roofing itself.
+    ///
+    /// **The row the "deliberately no `BuildFloor`" note further down
+    /// asked for.** That note records this harness bankrupting both
+    /// route policies when it was allowed to build upward — permanent
+    /// brown-out from about day 27, 97% of the run standing still —
+    /// because a new top floor shades the sail deck under it and adds a
+    /// floor's lighting cost for no income at all.
+    ///
+    /// `canopy_climb_pct_per_floor` is the counterweight to exactly
+    /// that, and a constant that only engages above the starting height
+    /// cannot be tested by any of the rows above, every one of which
+    /// stays four floors tall forever. This row grows and buys another
+    /// sail deck each time it does.
+    ///
+    /// **It harvests 846 against `+chain, no chute`'s 4,998 at six
+    /// floors, and that is not the height term failing.** Two things it
+    /// does not have: a shaft, and any way to afford one — an elevator
+    /// is 18 poles and 6 rope, and rope needs a ropery this list never
+    /// buys, so the `shaft.elevator` in its shopping list is a line that
+    /// never fires. With `climb_ticks_per_item` charging for freight up
+    /// a staircase, a six-floor tower carrying everything on foot is
+    /// exactly the collapse `examples/lift.rs` measures directly, and
+    /// this row is a second sighting of it rather than a fact about
+    /// sunlight.
+    ///
+    /// So read it as *growing without solving transport*, which is the
+    /// design working. What it cannot tell you is whether the height
+    /// term pays: `charge.rs`'s re-roofed **striding** rows answer that,
+    /// and they need a tower that is spending rather than one whose bank
+    /// is full.
+    Tall,
 }
 
 /// Does the route pay? **It does not, in bamboo, and that is the design
@@ -307,9 +339,11 @@ fn route_pays() {
         Tower::Full,
         Tower::Burning,
         Tower::Uncapped,
+        Tower::Tall,
     ] {
         let (mut shade, mut sun) = (0u64, 0u64);
         let (mut deaths, mut ticks) = (0u32, 0u32);
+        let mut floors = 0usize;
         for seed in 1..=SEEDS {
             let a = play_tower(seed, Policy::Forager, tower, true);
             let b = play_tower(seed, Policy::Sunseeker, tower, true);
@@ -317,16 +351,19 @@ fn route_pays() {
             sun += b.bamboo;
             deaths += u32::from(a.died) + u32::from(b.died);
             ticks += a.ticks + b.ticks;
+            floors += a.floors + b.floors;
         }
         let ticks = ticks / (SEEDS as u32 * 2);
+        let floors = floors / (SEEDS * 2) as usize;
         println!(
-            "{:<19} {shade:>6}   {sun:>6}   {:>+6.1}%   ({deaths} died, {ticks} ticks)",
+            "{:<19} {shade:>6}   {sun:>6}   {:>+6.1}%   ({deaths} died, {ticks} ticks, {floors} floors)",
             match tower {
                 Tower::Bare => "bare",
                 Tower::Clogged => "+chain, no chute",
                 Tower::Full => "+chain +chute",
                 Tower::Burning => "+chain +chute +burner",
                 Tower::Uncapped => "bare, cannot jam",
+                Tower::Tall => "grows, re-roofs",
             },
             (shade as i64 - sun as i64) as f64 * 100.0 / sun.max(1) as f64
         );
@@ -496,6 +533,12 @@ impl Policy {
 
 struct Run {
     label: String,
+    /// Floors standing at the end. **A row whose growth silently failed
+    /// prints the starting height here**, which is the only reason the
+    /// `Tall` row's first version was caught: its numbers were
+    /// byte-identical to another row's, and nothing in the table said
+    /// why.
+    floors: usize,
     length: i64,
     richness: i64,
     ticks: u32,
@@ -692,8 +735,24 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
     if tower == Tower::Full || tower == Tower::Burning {
         list.push("shaft.chute");
     }
-    if !matches!(tower, Tower::Bare | Tower::Uncapped) {
+    // **Not `Tall`**: a garden is `top_floor_only` and so is a sail
+    // deck, so a growing tower that also wants a garden spends every new
+    // roof on the garden and never re-roofs. The first version of this
+    // row did exactly that, could not place its sails, never emptied its
+    // shopping list, never grew, and printed numbers byte-identical to
+    // `+chain, no chute` — which is `siege_run.rs`'s "battery tower that
+    // built nothing" wearing a different hat.
+    if !matches!(tower, Tower::Bare | Tower::Uncapped | Tower::Tall) {
         list.push("room.garden");
+    }
+    if tower == Tower::Tall {
+        // **And a lift, because that is the whole hypothesis.** Grow,
+        // congest, relieve. A growing tower with no shaft measures the
+        // congestion and never the cure, and its collapse then gets read
+        // as "height is ruinous" when it means "height with no shaft is
+        // ruinous" — which is the design working.
+        list.push("shaft.elevator");
+        list.push("room.canopy_sails");
     }
     list.push("room.canteen");
     list.push("room.bunk");
@@ -835,6 +894,22 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
             // reporting the same 80 stalks because neither was moving.
             // The tower that measures a route is one that can still
             // afford to walk it.
+            //
+            // **Except `Tower::Tall`, which is the row that tests
+            // whether that is still true.** It grows on purpose, and
+            // buys a sail deck every time it does, because
+            // `canopy_climb_pct_per_floor` only pays a roof that
+            // actually has sails on it.
+        }
+        // Floor first, *then* the sail that goes on the roof it just
+        // made. Gating this on an empty shopping list was what stopped
+        // it growing at all: an unplaceable sail sat in the list for
+        // ever and the list was never empty.
+        if tower == Tower::Tall
+            && ticks.is_multiple_of(900)
+            && engine.try_send(GameCommand::BuildFloor).is_ok()
+        {
+            list.push("room.canopy_sails");
         }
 
         // Answer any fork, by policy.
@@ -1083,6 +1158,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
     let walked = mix.iter().sum::<i64>().max(1);
     Run {
         label: format!("{seed}/{}", policy.name()),
+        floors: state.tower.floors.len(),
         length: boundary >> 8,
         richness,
         ticks,

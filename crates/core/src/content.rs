@@ -692,6 +692,26 @@ pub struct ClockBalance {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PowerBalance {
+    /// Points of the terrain's `sun_pct` a sail deck recovers for every
+    /// floor the tower stands above its starting height.
+    ///
+    /// **Growing taller used to be pure loss for the sails.** A new top
+    /// floor shades the deck below it (`top_floor_only`), so the tower
+    /// punished the one thing that makes a shaft necessary, and the
+    /// growth gradient pointed away from height the whole way up. This
+    /// is the counterweight: a roof that climbs out of the canopy sees
+    /// more sky.
+    ///
+    /// It only recovers *terrain* shade, so it does nothing in a
+    /// clearing and a great deal under dense canopy — which is
+    /// deliberate, and is the part to watch. `SYSTEMS.md` §5.11 open
+    /// question 0 says `yield_pct` and `sun_pct` are one constant in two
+    /// columns, deliberately opposed and cancelling to within two
+    /// percent; this hands a shade route a way to buy back some of what
+    /// shade costs. **Never tune it without re-running
+    /// `journey.rs`'s route comparison**, which is the instrument that
+    /// question is answered by.
+    pub canopy_climb_pct_per_floor: i64,
     pub starting_charge: i64,
     /// Charge the legs draw per 100 ticks of walking.
     pub stride_charge_per_100_ticks: i64,
