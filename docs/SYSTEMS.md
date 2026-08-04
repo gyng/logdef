@@ -3055,6 +3055,12 @@ Not a task list — the places where existing code assumes something M5 stops be
       ground floors do not hold all three once the Heartseed, a cell bank and a storeroom have
       taken theirs. It trades M3 coverage `tests/journey.rs` duplicates for M5 coverage that
       exists nowhere else.
+- [x] **Every instrument in the repo runs.** Worth stating because one did not: M1's
+      `examples/throughput.rs` panicked on startup — *"could not build the elevator: need 18
+      item.poles, have 0"* — and had done since M5 gated the elevator on rope and raised its
+      poles from 12 to 18. Nothing runs the examples on the way past, so a broken instrument is
+      invisible until somebody asks it a question. `make check` does not cover them and still
+      does not; this is a note for the next person rather than a new gate.
 - [x] `make check` and the smoke suite green. 283 Rust tests, clippy clean at `-D warnings`,
       `tsgo`/`oxlint` clean, and 11 Playwright specs — smoke, capture, audio, and the built-bundle
       check. One known flake, documented in `e2e/capture.spec.ts`: the two approach stills come

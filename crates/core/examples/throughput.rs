@@ -56,6 +56,8 @@ fn measure(label: &str, build_shaft: bool) -> Sample {
     make_it_a_home(&mut game);
     step_walking(&mut game, WARMUP);
 
+    // Both towers are given the elevator's price; only one spends it.
+    endow(&mut game, "shaft.elevator");
     if build_shaft {
         game.try_send(GameCommand::BuildShaft {
             shaft: "shaft.elevator".into(),
@@ -63,7 +65,7 @@ fn measure(label: &str, build_shaft: bool) -> Sample {
             high: 3,
             slot: 7,
         })
-        .unwrap_or_else(|err| panic!("{label}: could not build the elevator: {err}"));
+        .unwrap_or_else(|err| panic!("{label}: could not raise the elevator: {err}"));
     }
 
     let start = (
@@ -129,6 +131,67 @@ fn measure(label: &str, build_shaft: bool) -> Sample {
 fn make_it_a_home(game: &mut GameEngine) {
     place_when_affordable(game, "room.canteen", 1, 4);
     place_when_affordable(game, "room.bunk", 3, 1);
+    // **And somewhere to save, which is a separate thing from somewhere
+    // to live.**
+    //
+    // The starting tower has one storeroom. That was enough while an
+    // elevator cost 12 poles; at M5's 18 it is not, and the failure is
+    // not "the tower is poor" but "the tower has nowhere to put a pole".
+    // Traced: harvest climbing steadily past 278 items, the cutter arm
+    // untouched at 260 of 260, provocation at nothing, and the pole
+    // count sitting at **zero** the whole time — every pole the mill
+    // made was stuck in its own outbox because the shelves were full of
+    // the bamboo waiting to become the next one. A tower that cannot
+    // save cannot buy, however much it earns.
+    place_when_affordable(game, "room.storeroom", 2, 5);
+}
+
+/// Hand the tower a shaft's whole price, so the two samples differ by
+/// the shaft and by nothing else.
+///
+/// **This exists because M5 gated the elevator on rope and this harness
+/// stopped running**, panicking with "could not build the elevator: need
+/// 18 item.poles, have 0". It stayed broken because nothing runs it on
+/// the way past.
+///
+/// The obvious repair — wait until the tower can afford one — is wrong,
+/// and measurably so. A bare tower needs about 75,000 ticks to save 18
+/// poles, so the two samples then start at completely different points
+/// in the run, on different ground, with different provocation and
+/// different accumulated damage. Measured that way the elevator came out
+/// **34 hauls and 50 harvest behind**, which is not a fact about
+/// elevators; it is a fact about measuring one tower three in-game days
+/// later than the other. The header comment above already records this
+/// instrument being fooled once by a window that was not a whole number
+/// of days, and this is the same mistake wearing a different hat.
+///
+/// So both towers are handed the price and only one spends it. The
+/// question here is whether an elevator **earns its slot**, not whether
+/// a tower can afford one — that question belongs to `journey.rs`, which
+/// builds the chain that pays for it.
+fn endow(game: &mut GameEngine, shaft: &str) {
+    let costs: Vec<(understory_core::ids::ItemIdx, i64)> = game
+        .content()
+        .shaft_rt(
+            game.content()
+                .shaft_idx(shaft)
+                .unwrap_or_else(|| panic!("the pack has no {shaft}")),
+        )
+        .build_cost
+        .clone();
+    let state = game.state_mut_for_test();
+    for (item, amount) in costs {
+        let mut left = amount;
+        'floors: for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                left -= room.shelve(item, left);
+                if left <= 0 {
+                    break 'floors;
+                }
+            }
+        }
+        assert!(left <= 0, "nowhere to put {shaft}'s own price");
+    }
 }
 
 /// Place `room` as soon as the tower can pay for it. Waiting for the
