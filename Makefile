@@ -24,7 +24,7 @@ check: fmt-check lint test
 # since an instrument that measures the wrong thing exits zero.
 instruments:
 	@set -e; \
-	for x in throughput charge needs haulcycle chain prices worldrate bestiary siege_run journey; do \
+	for x in throughput charge needs haulcycle chain prices worldrate bestiary profile siege_run journey; do \
 		echo "=== $$x ==="; \
 		cargo run --release -q -p understory-core --example $$x; \
 	done

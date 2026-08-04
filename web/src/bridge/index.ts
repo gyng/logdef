@@ -89,6 +89,8 @@ export async function initBridge(seed: number): Promise<Bridge> {
     debugStep: (ticks) => JSON.parse(wasm.debug_step(ticks)) as SoundEvent[],
   };
 
+  wasmView = () => wasm.view();
+  wasmFrame = (elapsedUs) => wasm.frame(elapsedUs);
   installTestHooks(bridge);
   return bridge;
 }
@@ -97,6 +99,9 @@ export async function initBridge(seed: number): Promise<Bridge> {
  * Hooks the Playwright smoke test drives the engine through, so tests
  * can assert on simulation state without racing the render loop.
  */
+let wasmView: () => string = () => "";
+let wasmFrame: (elapsedUs: number) => string = () => "";
+
 function installTestHooks(active: Bridge): void {
   if (typeof window === "undefined") return;
   const target = window as unknown as Record<string, unknown>;
@@ -112,6 +117,16 @@ function installTestHooks(active: Bridge): void {
     step: (ticks: number) => active.debugStep(ticks),
     verifyGolden: () => active.verifyGoldenReplay(),
     exportReplay: () => active.exportReplay(),
+  };
+  // **Unparsed, for the profiler only.** Every other caller wants a
+  // `ViewSnapshot`; `e2e/profile.spec.ts` wants to know how much of a
+  // frame is the WASM call and how much is `JSON.parse`, and it cannot
+  // tell them apart through the parsed accessor above. Kept beside the
+  // other test hooks rather than exported, because nothing in the game
+  // should ever want the raw string.
+  target.__understoryRaw = {
+    view: () => wasmView(),
+    frame: (elapsedUs: number) => wasmFrame(elapsedUs),
   };
 }
 
