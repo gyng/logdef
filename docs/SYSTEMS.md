@@ -3051,7 +3051,15 @@ Not a task list — the places where existing code assumes something M5 stops be
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
 
-      **Standing at 80 of 137.** Moved this pass: `reinforce`, once the plating comparison
+      **Standing at 89 of 137.**
+
+      **Two rows are graded as decisions rather than findings, and that distinction is worth
+      keeping.** `meals glyph / order` and `scrap order` are presentation choices — a glyph
+      cannot be wrong the way a lighting figure can, because it makes no claim. They carry a
+      grade only because `tests/balance_doc.rs` requires every field to have one, and what
+      "verified" means for them is that the renderer draws them and the capture harness
+      photographs them. Anything else would be manufacturing a measurement to satisfy a
+      checkbox, which is the exact failure this grading system exists to prevent. Moved this pass: `reinforce`, once the plating comparison
       stopped counting the wrong thing; the three region-length rows, on the whole-run
       measurement that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4
       hours); and the three Power rows, on a new instrument.
