@@ -113,6 +113,7 @@ export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
   drawSmoke(batch, body);
   drawSiege(batch, ctx);
   drawPlaceMode(batch, ctx);
+  drawMotes(batch, ctx);
   drawLight(batch, ctx);
   drawVignette(batch, ctx);
 }
@@ -1644,8 +1645,18 @@ function feet(view: ViewSnapshot, layout: Layout, clock: number): Foot[] {
  */
 function drawWake(batch: QuadBatch, ctx: SceneContext): void {
   const { view, layout, clock, catalog } = ctx;
+  // Anything that is not standing water is ground to kick up. Note the
+  // null: `world.band` is null between bands, and hanging the dust off
+  // "not drowned street" while keeping the water pass's `null` guard in
+  // front of it silently withheld dust on every seam — which, since a
+  // walking tower crosses one every few seconds, looked like dust that
+  // did not draw at all.
   const underfoot = view.world.band;
-  if (underfoot === null || catalog.terrain[underfoot]?.id !== "terrain.drowned_street") return;
+  const drowned = underfoot !== null && catalog.terrain[underfoot]?.id === "terrain.drowned_street";
+  if (!drowned) {
+    drawDust(batch, ctx);
+    return;
+  }
   const dark = darkness(view);
   const depth = layout.viewport.height - layout.groundY;
   const edgeX = layout.viewport.width;
@@ -1692,6 +1703,91 @@ function drawWake(batch: QuadBatch, ctx: SceneContext): void {
         );
       }
     }
+  }
+}
+
+/**
+ * What a foot does to dry ground.
+ *
+ * The splash's counterpart, off the same trigger, and it exists for the
+ * same reason: the tower weighs what a building weighs, and until the
+ * feet planted there was nothing for that weight to happen *to*.
+ *
+ * Carries no information — no run goes differently because of it — but
+ * it is the same kind of thing as the contact shadow already under each
+ * foot, which is physical consequence rather than ornament.
+ * `DECISIONS.md` §8 forbids a second representation of a fact and
+ * forbids spectacle; it does not ask the world to behave as though the
+ * tower were weightless. Two low puffs that spread and settle, dust
+ * colour and mist alpha — if this ever reads as an impact effect it has
+ * gone wrong.
+ *
+ * **It hangs for the whole stance, and it never fades to nothing.**
+ * Exactly one foot is planted at a time and its age sweeps 0 to 1
+ * across the stance, so a puff that dies quickly is on screen for a
+ * fraction of the time — two successive attempts at photographing this
+ * both caught the tail and looked like a feature that did not work.
+ * Dust the size of a car kicks up would hang for seconds anyway. The
+ * decay is linear to a quarter strength rather than quadratic to zero:
+ * the ground is simply never quite clean while the tower is moving.
+ */
+function drawDust(batch: QuadBatch, { view, layout, clock }: SceneContext): void {
+  if (view.journey.halt !== "walking") return;
+  // Lifted off the mist rather than the ground: airborne dust catches
+  // the sky, which is why a dust cloud is always paler than the dirt it
+  // came from.
+  const puff = mix(atNight(palette.haze, darkness(view)), palette.sunlight, 0.25);
+  for (const foot of feet(view, layout, clock)) {
+    if (!foot.planted) continue;
+    const age = foot.age;
+    for (let i = 0; i < 2; i += 1) {
+      const side = i === 0 ? -1 : 1;
+      const size = layout.slotW * (0.16 + age * 0.55);
+      batch.push(
+        foot.x + side * layout.slotW * (0.1 + age * 0.5) - size / 2,
+        foot.y - size * 0.5 - age * layout.slotW * 0.1,
+        size,
+        size * 0.55,
+        fade(puff, (1 - age * 0.7) * 0.34),
+        // Softness is measured in pixels of feathering, so a value near
+        // the quad's own half-height never lets coverage reach 1 and
+        // quietly divides the alpha by three. At `size * 0.6` this was
+        // drawing, in the right place, and invisible.
+        { radius: size * 0.3, softness: size * 0.22 },
+      );
+    }
+  }
+}
+
+/**
+ * Motes in the light.
+ *
+ * The one thing in the scene that reports nothing at all, and it earns
+ * its place the way the canopy dappling above it does: most of a frame
+ * here is still air, and a wash with nothing moving in it reads as a
+ * painting rather than as somewhere.
+ *
+ * Kept honest by being tied to the sun the tower is *actually* standing
+ * in — `exposure_pct` is the same number the sails are paid in — so they
+ * thin under dense canopy and are gone at night. Twenty-four quads,
+ * placed by hash rather than simulated, drifting on the tower's own
+ * clock.
+ */
+function drawMotes(batch: QuadBatch, { view, layout, clock }: SceneContext): void {
+  const lit = (view.clock.exposure_pct / 100) * (1 - darkness(view));
+  if (lit <= 0.05) return;
+  const { width } = layout.viewport;
+  const band = layout.groundY - layout.horizonY;
+  for (let i = 0; i < 24; i += 1) {
+    const seed = hash01(i * 7919);
+    const rise = (clock * (0.01 + seed * 0.018) + seed) % 1;
+    const x = (width * ((seed * 3.7) % 1) + Math.sin(clock * 0.3 + i) * 16 + width) % width;
+    const y = layout.horizonY + band * (1.1 - rise * 0.55);
+    const size = 1.5 + seed * 2;
+    batch.push(x, y, size, size, fade(palette.sunlight, lit * 0.3 * (1 - rise)), {
+      radius: size / 2,
+      softness: size,
+    });
   }
 }
 
@@ -1908,7 +2004,15 @@ function drawTower(batch: QuadBatch, ctx: SceneContext): void {
     // brighter as the sky darkens — and goes out entirely in a
     // brown-out, which is the whole point of tracking `lit`. There is
     // no warning banner; the tower simply goes dark.
-    const lamp = ctx.view.power.lit ? 0.07 + darkness(ctx.view) * 0.3 : 0;
+    //
+    // **It also sags with the bank.** Going out is a cliff, and a cliff
+    // arrives without warning; below a third full the lamps thin toward
+    // it, so the dark you end up in is one you watched approach. This is
+    // the second half of the cell rack above — same fact, two places,
+    // because one of them is on the roof and the other is where you are
+    // actually looking.
+    const reserve = 0.55 + unit(ctx.view.power.fill_permille / 333) * 0.45;
+    const lamp = ctx.view.power.lit ? (0.07 + darkness(ctx.view) * 0.3) * reserve : 0;
     batch.push(
       layout.originX,
       y + layout.floorH * 0.55,
@@ -2256,6 +2360,8 @@ function drawCrown(
   swing: number,
   /** Live and fed: a stalled crown holds still. */
   working: boolean,
+  /** How full the charge bank is, 0-1. The cell rack reads it. */
+  charge: number,
 ): void {
   const lit = mix(body, palette.roomBodyLit, 0.35);
   switch (kind) {
@@ -2294,14 +2400,36 @@ function drawCrown(
       break;
     }
     case "cells": {
-      // A rack: upright cells, evenly spaced, each a little taller than
-      // the last is not — they are identical on purpose, because a bank
-      // is a repeated unit.
+      // A rack: upright cells, evenly spaced and identical, because a
+      // bank is a repeated unit.
+      //
+      // **And they fill.** `power.fill_permille` was in the snapshot
+      // from M1 and nothing in the cross-section drew it: the only sign
+      // of the tower's charge was `lit` going false, which is a cliff
+      // rather than a slope. You could not see a bank draining, only
+      // arrive at the bottom of one. The rack now holds a level — cells
+      // charged from the bottom up, the topmost partial — so the last
+      // hour before a brown-out is legible from the roof.
+      //
+      // Levelled rather than dimmed, and never a number: `DECISIONS.md`
+      // §8 wants the tower's own parts to be the gauge. The faint
+      // breathing on the lit portion is what says the bank is live
+      // rather than a painted stripe.
       const count = Math.max(2, Math.round(w / 11));
       const cw = (w * 0.8) / count;
+      const held = charge * count;
+      const breath = 0.88 + Math.sin(swing * 0.8) * 0.12;
       for (let i = 0; i < count; i += 1) {
-        batch.push(x + w * 0.1 + i * cw + 1, y - head, cw - 2, head, palette.charge, {
-          colorBottom: lit,
+        const cx = x + w * 0.1 + i * cw + 1;
+        batch.push(cx, y - head, cw - 2, head, palette.chargeEmpty, {
+          colorBottom: mix(palette.chargeEmpty, lit, 0.5),
+          radius: cw / 2,
+        });
+        const level = Math.max(0, Math.min(1, held - i));
+        if (level <= 0.02) continue;
+        const fillH = head * level;
+        batch.push(cx, y - fillH, cw - 2, fillH, fade(palette.charge, breath), {
+          colorBottom: mix(palette.charge, lit, 0.35),
           radius: cw / 2,
         });
       }
@@ -2394,6 +2522,7 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
       room.shaded ? 0 : ctx.view.clock.exposure_pct,
       ctx.view.world.distance * 0.6,
       working && ctx.view.journey.halt === "walking",
+      unit(ctx.view.power.fill_permille / 1000),
     );
   }
   batch.push(x, y, w, h, mix(body, palette.roomBodyLit, 0.25), {

@@ -235,10 +235,14 @@ export const palette = {
   nightLow: hex("#1d3a3c"),
   moonlight: hex("#cfe0f0"),
 
-  // Charge.
+  // Charge. Two colours, not three: these were once a green/amber/red
+  // gauge ramp that nothing ever drew, and an amber "getting low" step
+  // is a badge — `DECISIONS.md` §8 wants the roof rack emptying to be
+  // the signal instead. What is left is the stored charge and the cold
+  // casing it sits in.
   charge: hex("#7fe0c4"),
-  chargeLow: hex("#e0b455"),
-  chargeEmpty: hex("#e0714f"),
+  /** A spent cell in the roof rack. Cold, not black — it is still a cell. */
+  chargeEmpty: hex("#2f3f42"),
 } as const;
 
 /**
