@@ -2130,3 +2130,74 @@ fn focusing_a_creature_that_is_not_there_is_refused() {
     ));
     assert!(game.state().siege.focus.is_none());
 }
+
+/// **Somebody standing in the room sends a thief away, and nobody
+/// fights.**
+///
+/// `DECISIONS.md` §8 has defenders rather than soldiers and creatures
+/// defending their territory rather than a gallery to clear, so what a
+/// person does about a crow in the outbox is *be there*. The creature
+/// leaves; it is not killed, and it does not count as repelled — that
+/// number means the darts worked.
+#[test]
+fn somebody_in_the_room_sends_a_thief_away_without_a_fight() {
+    use crate::state::siege::{DamageTarget, Enemy, EnemyState};
+    let mut game = engine(9401);
+    let thief = game
+        .content()
+        .enemies
+        .iter()
+        .position(|def| def.steals)
+        .expect("the pack has a thief");
+
+    // A room with something in its outbox for the crow to want.
+    let (floor, slot) = {
+        let content = game.content().clone();
+        let state = game.state_mut_for_test();
+        let mut found = None;
+        'outer: for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                if content.room_rt(room.def).craft_ticks > 0 && !room.outputs.is_empty() {
+                    room.outputs[0].count = room.outputs[0].max.max(1);
+                    found = Some((floor.index, room.slot));
+                    break 'outer;
+                }
+            }
+        }
+        found.expect("the starting tower has a room that makes something")
+    };
+
+    {
+        let state = game.state_mut_for_test();
+        state.siege.enemies.push(Enemy {
+            id: crate::ids::EnemyId(501),
+            def: crate::ids::EnemyIdx(thief as u16),
+            at: state.world.distance,
+            hp: 100_000,
+            state: EnemyState::Attacking {
+                target: DamageTarget::Room { floor, slot },
+            },
+            attack_cooldown: 0,
+            cling_left: 100_000,
+            fade_left: 0,
+        });
+    }
+
+    let repelled_before = game.state().siege.repelled;
+    // Long enough for somebody to walk there and stand the shift out.
+    crate::tests::step_walking(&mut game, 3000);
+
+    let gone = game
+        .state()
+        .siege
+        .enemies
+        .iter()
+        .find(|enemy| enemy.id.0 == 501)
+        .is_none_or(|enemy| enemy.state.is_going());
+    assert!(gone, "nobody shooed the thief off");
+    assert_eq!(
+        game.state().siege.repelled,
+        repelled_before,
+        "being asked to leave was counted as being seen off"
+    );
+}

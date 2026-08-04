@@ -13,7 +13,7 @@
 
 use crate::content::{Approach, Content};
 use crate::fx::{Fx, Paces, paces_from_fx, paces_from_int, paces_to_int};
-use crate::ids::EnemyIdx;
+use crate::ids::{EnemyIdx, FloorIdx, SlotIdx};
 use crate::state::siege::{DamageTarget, Enemy, EnemyState};
 use crate::state::{GameState, Health};
 
@@ -23,6 +23,10 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     decay_provocation(state, content);
     maybe_spawn_wave(state, content, sounds);
     advance_enemies(state, content, sounds);
+    // After the creatures have moved and before they are reaped, so a
+    // thief that arrives this tick and finds somebody already standing
+    // there leaves on the same tick rather than getting one free bite.
+    shoo_thieves(state, content);
     reap(state);
 }
 
@@ -701,4 +705,82 @@ pub fn tower_integrity_permille(state: &GameState) -> i64 {
         total.max += shaft.health.max;
     }
     total.permille()
+}
+
+/// A room a thief is working that nobody has gone to yet.
+///
+/// **Thieves only.** A crow can be shooed; a mire hulk cannot, and
+/// pretending otherwise would turn standing in a doorway into combat —
+/// exactly what `DECISIONS.md` §8 rules out. The `steals` flag is the
+/// line, and it is the same flag that decides what a creature does when
+/// it arrives.
+///
+/// Returns the room's coordinates rather than the creature's id, for the
+/// reason `DamageTarget` gives: a crew member walks to a *place*, and a
+/// creature that has moved on by the time they get there should end the
+/// errand rather than send them chasing it round the tower.
+#[must_use]
+pub fn thief_at_work(
+    enemies: &[Enemy],
+    content: &Content,
+    crew: &[crate::state::Crew],
+) -> Option<(FloorIdx, SlotIdx)> {
+    let taken = |floor: FloorIdx, slot: SlotIdx| {
+        crew.iter().any(|member| {
+            matches!(
+                member.errand,
+                Some(crate::state::Errand::Shoo { floor: f, slot: s }) if f == floor && s == slot
+            )
+        })
+    };
+    enemies
+        .iter()
+        .filter(|enemy| !enemy.state.is_going())
+        .filter(|enemy| content.enemy(enemy.def).steals)
+        .filter_map(|enemy| match enemy.state {
+            EnemyState::Attacking {
+                target: DamageTarget::Room { floor, slot },
+            } => Some((floor, slot)),
+            _ => None,
+        })
+        .find(|(floor, slot)| !taken(*floor, *slot))
+}
+
+/// Send off any thief that has found somebody standing in the room.
+///
+/// **Nobody fights, and nothing is counted.** The creature goes to
+/// `Leaving`, which shares the fade with a cling timer running out and
+/// deliberately does *not* add to `repelled` — that number means the
+/// darts worked, and conflating it with standing in a doorway would stop
+/// it measuring the thing it exists to measure. Being asked to leave is
+/// not being seen off, and the tower keeps no score of it either way.
+fn shoo_thieves(state: &mut GameState, content: &Content) {
+    let manned: Vec<(FloorIdx, SlotIdx)> = state
+        .crew
+        .iter()
+        .filter(|member| matches!(member.state, crate::state::CrewState::Shooing { .. }))
+        .filter_map(|member| match member.errand {
+            Some(crate::state::Errand::Shoo { floor, slot }) => Some((floor, slot)),
+            _ => None,
+        })
+        .collect();
+    if manned.is_empty() {
+        return;
+    }
+    let fade = content.balance.siege.enemy_fade_ticks;
+    for enemy in &mut state.siege.enemies {
+        if enemy.state.is_going() || !content.enemy(enemy.def).steals {
+            continue;
+        }
+        let EnemyState::Attacking {
+            target: DamageTarget::Room { floor, slot },
+        } = enemy.state
+        else {
+            continue;
+        };
+        if manned.contains(&(floor, slot)) {
+            enemy.state = EnemyState::Leaving;
+            enemy.fade_left = fade;
+        }
+    }
 }

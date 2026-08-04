@@ -676,6 +676,15 @@ pub struct SiegeBalance {
     /// How long a creature on its way out stays on screen, whether it
     /// was shot down or simply left behind.
     pub enemy_fade_ticks: u32,
+    /// Ticks somebody has to stand in a room before a thief gives up on
+    /// it.
+    ///
+    /// **Nobody fights.** `DECISIONS.md` §8 has defenders rather than
+    /// soldiers, so what a person does about a crow in the pantry is be
+    /// in the pantry. The price is their time: a porter shooing is a
+    /// porter not on the stairs, which is the same trade every other
+    /// errand in the game makes.
+    pub shoo_ticks: u32,
     /// Hit points of a floor's outer panel, a room, and a shaft column.
     /// Damage attaches to the things the player built, because that is
     /// what makes it legible.

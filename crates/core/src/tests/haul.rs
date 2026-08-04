@@ -335,6 +335,7 @@ fn the_view_reports_the_same_states_the_simulation_is_in() {
             CrewState::Unloading { .. } => CrewStateTag::Unload,
             CrewState::Eating { .. } => CrewStateTag::Eat,
             CrewState::Manning { .. } => CrewStateTag::Man,
+            CrewState::Shooing { .. } => CrewStateTag::Shoo,
             CrewState::Sleeping => CrewStateTag::Sleep,
         };
         assert_eq!(rendered.state, expected);

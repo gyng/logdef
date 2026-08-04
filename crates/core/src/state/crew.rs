@@ -111,6 +111,16 @@ pub enum CrewState {
     Manning {
         room: RoomId,
     },
+    /// Standing in a room something is taking from, until it leaves.
+    ///
+    /// **Nobody fights.** `DECISIONS.md` §8 has defenders rather than
+    /// soldiers, and creatures defending their territory rather than a
+    /// gallery to clear — so what a person does about a thief is *be
+    /// there*. A crow that finds somebody in the room goes, the way it
+    /// would if you walked into your own kitchen.
+    Shooing {
+        ticks_left: u32,
+    },
     /// Off shift. In a bunk if one was free, on the deck where they
     /// stopped if not; which it is depends on the errand, not on this
     /// tag. A sleeper takes no tasks, advances no legs, mends nothing,
@@ -212,6 +222,8 @@ pub enum Errand {
         floor: FloorIdx,
         slot: SlotIdx,
     },
+    /// A room something is taking from. Go and stand in it.
+    Shoo { floor: FloorIdx, slot: SlotIdx },
 }
 
 impl Errand {
@@ -221,7 +233,8 @@ impl Errand {
             Self::Repair { floor, .. }
             | Self::Meal { floor, .. }
             | Self::Bunk { floor, .. }
-            | Self::Station { floor, .. } => *floor,
+            | Self::Station { floor, .. }
+            | Self::Shoo { floor, .. } => *floor,
         }
     }
 
@@ -231,7 +244,8 @@ impl Errand {
             Self::Repair { slot, .. }
             | Self::Meal { slot, .. }
             | Self::Bunk { slot, .. }
-            | Self::Station { slot, .. } => *slot,
+            | Self::Station { slot, .. }
+            | Self::Shoo { slot, .. } => *slot,
         }
     }
 
@@ -241,7 +255,7 @@ impl Errand {
     #[must_use]
     pub const fn room(&self) -> Option<RoomId> {
         match self {
-            Self::Repair { .. } => None,
+            Self::Repair { .. } | Self::Shoo { .. } => None,
             Self::Meal { room, .. } | Self::Bunk { room, .. } | Self::Station { room, .. } => {
                 Some(*room)
             }

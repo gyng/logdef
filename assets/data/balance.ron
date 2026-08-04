@@ -219,6 +219,18 @@ Balance(
         // — enough frames that a kill is something you see rather than
         // something you infer from the counter going up.
         enemy_fade_ticks: 20,
+        // Four seconds of standing in the room. Long enough that
+        // answering a thief is a real call on somebody's time — they
+        // walk there, they stand there, and the stairs are short a
+        // porter throughout — and short enough that a crow is not
+        // answered by losing a person for the afternoon.
+        //
+        // **The whole of what a person does about a thief.** Nobody
+        // fights: `DECISIONS.md` §8 has defenders rather than soldiers
+        // and creatures defending their territory rather than a gallery
+        // to clear, so a crow that finds somebody in the room simply
+        // goes, the way it would if you walked into your own kitchen.
+        shoo_ticks: 120,
         // A floor's outer skin. Cheap enough that losing one to an
         // unanswered wave is a scrape: repairing it from nothing costs
         // 15 poles and 600 ticks of crew time (see the repair fields

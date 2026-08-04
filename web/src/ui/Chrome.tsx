@@ -411,6 +411,13 @@ function doing(member: UiState["crew"][number]): string {
       return "eating";
     case "mend":
       return "mending";
+    case "man":
+      return "at their station";
+    // Not "chasing it off" and not "defending": nobody fights, they are
+    // simply in the room, which is the whole of what a person does about
+    // a thief (`DECISIONS.md` §8).
+    case "shoo":
+      return "seeing something out";
     case "board":
       return member.stressed ? "held up at the stairs" : "waiting for a way up";
     case "climb":

@@ -400,6 +400,9 @@ pub enum CrewStateTag {
     /// Standing in a room, working it. Somebody at a station is
     /// somebody not on the stairs.
     Man,
+    /// Standing in a room something is taking from, until it leaves.
+    /// Nobody fights — being there is the whole of it.
+    Shoo,
     /// Off shift — in a hammock if a bed was free, on the deck if not.
     Sleep,
 }
@@ -1126,6 +1129,7 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
                 crate::state::CrewState::Unloading { .. } => CrewStateTag::Unload,
                 crate::state::CrewState::Eating { .. } => CrewStateTag::Eat,
                 crate::state::CrewState::Manning { .. } => CrewStateTag::Man,
+                crate::state::CrewState::Shooing { .. } => CrewStateTag::Shoo,
                 crate::state::CrewState::Sleeping => CrewStateTag::Sleep,
             },
             carrying: member.carrying.map(|(item, count)| StockView {

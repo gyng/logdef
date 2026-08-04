@@ -58,6 +58,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     assign_idle(
         &mut crew,
         &state.tower,
+        &state.siege.enemies,
         content,
         &queues,
         daypart,
@@ -106,6 +107,22 @@ fn advance(
         // (hunger and the rota outrank a posting) or the player's.
         CrewState::Manning { .. } => {
             crew.wait_ticks = 0;
+        }
+
+        // **Standing between a thief and the outbox.** Counts down and
+        // then clears; `siege::run` is what notices somebody is there
+        // and sends the creature off, because whether a crow leaves is
+        // the siege's business and not the porter's.
+        CrewState::Shooing { ticks_left } => {
+            crew.wait_ticks = 0;
+            if ticks_left > 0 {
+                crew.state = CrewState::Shooing {
+                    ticks_left: ticks_left - 1,
+                };
+                return;
+            }
+            crew.errand = None;
+            crew.state = CrewState::Idle;
         }
 
         CrewState::Sleeping => {
@@ -574,6 +591,7 @@ const PRIORITY_SPILL: i64 = 1;
 fn assign_idle(
     crew: &mut [Crew],
     tower: &Tower,
+    enemies: &[crate::state::siege::Enemy],
     content: &Content,
     queues: &[u32],
     daypart: DaypartIdx,
@@ -677,6 +695,21 @@ fn assign_idle(
         {
             crew[i].wait_ticks = 0;
             crew[i].errand = Some(errand);
+            crew[i].state = errand_leg(&crew[i], tower, content, queues, daypart, errand);
+            continue;
+        }
+
+        // **A thief outranks damage**, and the order is the argument: a
+        // wrecked panel has already happened and will still be there in
+        // a minute, while a crow in the outbox is taking something right
+        // now. Both sit below hunger and the rota, because neither is
+        // worth skipping dinner over.
+        if free_to_choose
+            && let Some((floor, slot)) = super::siege::thief_at_work(enemies, content, crew)
+        {
+            let errand = Errand::Shoo { floor, slot };
+            crew[i].errand = Some(errand);
+            crew[i].wait_ticks = 0;
             crew[i].state = errand_leg(&crew[i], tower, content, queues, daypart, errand);
             continue;
         }
@@ -842,6 +875,12 @@ fn arrive(content: &Content, errand: Errand) -> CrewState {
         // open-ended and ends when the player ends it, the room goes, or
         // a need pulls them away.
         Errand::Station { room, .. } => CrewState::Manning { room },
+        // Long enough to be a real commitment of somebody's time and
+        // short enough that a thief is not answered by a porter lost for
+        // the rest of the day.
+        Errand::Shoo { .. } => CrewState::Shooing {
+            ticks_left: content.balance.siege.shoo_ticks,
+        },
     }
 }
 

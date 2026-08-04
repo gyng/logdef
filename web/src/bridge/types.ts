@@ -32,6 +32,11 @@ export type CrewStateTag =
   | "eat"
   /** Standing in a room, working it. */
   | "man"
+  /**
+   * Standing in a room something is taking from, until it leaves.
+   * Nobody fights — being there is the whole of it.
+   */
+  | "shoo"
   /** Off shift — in a hammock if a bed was free, on the deck if not. */
   | "sleep";
 
