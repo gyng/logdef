@@ -975,6 +975,45 @@ test("capture stills", async ({ page }) => {
   console.log(`run log: ${handed}`);
   expect(handed).toContain("to hand over");
 
+  // **"Ending as an arrival rather than a score"** — the second half of
+  // M5's first exit criterion, and the half a harness *can* check.
+  // `DECISIONS.md` §8 forbids a rank, a grade or anything that reads as
+  // a mark out of ten, and the arrival is the one screen where a game
+  // like this would traditionally put one. Asserted rather than assumed,
+  // because it is the sort of thing that gets added later by somebody
+  // being helpful.
+  const ending = await page.evaluate(() => {
+    const card = document.querySelector('[data-testid="arrival"]');
+    if (!card) return { text: "", crew: "" };
+    // Crew are named individuals, not a headcount (`DESIGN.md` §2
+    // structural call 4) — "Aboard: 3" would be a score with a friendly
+    // face on it. Read the definition list by structure: the first
+    // attempt anchored a regex to the end of the card's text, and the
+    // card has the journal, the seed and a button after it.
+    let crew = "";
+    for (const row of card.querySelectorAll("dl div")) {
+      if (row.querySelector("dt")?.textContent?.trim() === "Aboard") {
+        crew = row.querySelector("dd")?.textContent?.trim() ?? "";
+      }
+    }
+    return { text: (card.textContent ?? "").toLowerCase(), crew };
+  });
+  // Score *vocabulary*, not ordinary English. "out of" and "final" were
+  // in this list for one run and both matched prose — a deed that reads
+  // "Walked a tower out of the deep jungle" is not a mark out of ten.
+  // A guard that cries wolf on the writing gets deleted by the next
+  // person, so it checks the words a score actually uses.
+  for (const word of ["score", "rank", "rating", "graded", "points", "percentile"]) {
+    expect(ending.text, `the arrival reads as a score: found "${word}"`).not.toContain(word);
+  }
+  // And the shape of one, which is the part that would survive a
+  // rename: a mark over a maximum, or a percentage.
+  expect(ending.text, "the arrival shows a mark out of a maximum").not.toMatch(/\d+\s*\/\s*\d+/);
+  expect(ending.text, "the arrival shows a percentage").not.toMatch(/\d+\s*%/);
+  expect(ending.crew, "the arrival has no crew line at all").not.toBe("");
+  expect(ending.crew, "the arrival counted the crew instead of naming them").toMatch(/[A-Za-z]{2}/);
+  console.log("arrival reads as a description, not a score");
+
   console.log(`sighting still: ${sighted}`);
   console.log(`closing still: ${closing}`);
   console.log(`siege still captured at ${standing} per-mille standing`);

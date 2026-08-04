@@ -2960,9 +2960,21 @@ Not a task list — the places where existing code assumes something M5 stops be
       player does makes a run shorter. At 2.2–2.4 hours the floor sits just inside the window
       with the whole of the top half free for a player to spend.
 
-      The ending is an arrival rather than a score by construction (§3.7, and `Chrome.tsx`'s
-      arrival card has no rank in it). What is unverified is whether two hours of it is
-      *enjoyable*, which is not a thing a harness can be pointed at.
+      **"Ending as an arrival rather than a score" is now asserted rather than assumed.**
+      `e2e/capture.spec.ts` reaches the arrival and checks the card for score vocabulary and for
+      the *shape* of a score — a mark over a maximum, a percentage — and checks that the crew
+      line names people rather than counting them, because "Aboard: 3" would be a score with a
+      friendly face on it (`DESIGN.md` §2 structural call 4). It reports *"arrival reads as a
+      description, not a score"*.
+
+      Worth having as a guard rather than a comment: `DECISIONS.md` §8 forbids a rank, and the
+      arrival is exactly the screen where somebody being helpful would add one. Two words had to
+      come out of the check first — "out of" and "final" both matched ordinary prose, and a deed
+      that reads *"Walked a tower out of the deep jungle"* is not a mark out of ten. A guard that
+      cries wolf on the writing is a guard the next person deletes.
+
+      What is unverified is whether two hours of it is *enjoyable*, which is not a thing a
+      harness can be pointed at.
 - [x] **A shared seed reproduces it.** Unlocks are player-level, never touch `GameState` and
       never enter the replay, so a veteran's recording replays exactly for somebody who has
       unlocked nothing — they watch a tower build a room they could not build themselves. The seed
