@@ -64,14 +64,24 @@ them, the chute, region 3 and the coast, the two creatures that complete the tax
 enclaves, the journal that carries unlocks between runs, and the run log. A run can be played
 from the first pace to an arrival at the Refugia.
 
-Not built: the difficulty pass that would turn `DESIGNED` into `PLAYTESTED`, and the itch.io
-release cut. Role priorities are cut for good rather than deferred (`SYSTEMS.md` §5.10).
+Not built: the difficulty pass that would turn `DESIGNED` into `PLAYTESTED` — **44 of 137
+constants are graded**, section by section, each off an instrument (see below). The itch.io
+release cut works and has not been shown to a stranger. Role priorities are cut for good
+rather than deferred (`SYSTEMS.md` §5.10).
 
-**Read `SYSTEMS.md` §5.11 open question 0 before touching terrain, yields or a chain.** It is
-the largest open finding in the project: every chain terminates in a buffer, so a tower's
-harvest is capped by its consumption rather than by the ground, and in the steady state every
-terrain yield is decorative. Meals are the one exception and the reason M4's fix worked. Any
-work on the economy either lands inside that problem or has to answer it.
+**Read `SYSTEMS.md` §5.11 open question 0 before touching terrain, yields or a chain.** It
+was the largest open finding in the project and it is now answered, but the answer is not the
+obvious one and the wrong version of it is still repeated in older commits. `yield_pct` and
+`sun_pct` are **one constant in two columns**, deliberately opposed, and they cancel to within
+two percent on every tower shape measured — including a ceiling tower with bottomless buffers
+where nothing can jam. So a shade route genuinely does not out-harvest a sun route, and that
+is the design working rather than failing: shade buys richer ground and less power to cross
+it. **Never tune one without the other.**
+
+Four confident wrong answers were filed against that question before the right one — chains
+terminating in buffers, crew scarcity, a shelf jam, a 9.7% route gap — and every single one
+was a property of the harness rather than of the game. The section records them all, and it
+is the best short lesson in this repo about measuring your own instruments first.
 
 **`docs/SYSTEMS.md` is the exact, current boundary of what exists.** Read the milestone
 section for whatever you are about to touch, and its "Deferred out of" list, before
@@ -172,6 +182,7 @@ concern; see §VI.
 ```bash
 # Unified (Makefile)
 make check                  # fmt-check + lint + test — run before every PR
+make instruments            # run every harness in crates/core/examples — see below
 make fmt                    # auto-format Rust + TypeScript
 make lint                   # clippy + frontend typecheck + lint
 make test                   # cargo test
@@ -201,6 +212,35 @@ npm run format                # oxfmt — write
 
 See `DECISIONS.md` §10 for why the frontend toolchain is ts7/oxfmt/oxlint rather than the
 tsc/prettier/eslint stack v1 used, and why the renderer is custom WebGL2 rather than SVG.
+
+### The instruments, and why `make check` does not run them
+
+`crates/core/examples/*` are the measuring instruments — they answer the design questions
+the tests cannot. **`make check` does not run them, and in one session three of them turned
+out to be dead or lying:**
+
+- `throughput.rs` **panicked on startup** and had since M5 gated the elevator on rope.
+- `siege_run.rs`'s plating comparison counted a total whose maximum was the thing under
+  test, producing the same false finding for the fourth time.
+- The same harness's whole "battery + darts" tower **built nothing at all** — a dart battery
+  costs rope the pressure tower has none of, and nothing checked the return value. It was
+  byte-for-byte the bare tower, and M2's exit criterion rested on that comparison.
+
+Clippy's `--all-targets` compiles them, so a type error is caught; nothing runs them, so a
+runtime failure is invisible until somebody asks a question. `make instruments` runs the lot.
+It is not in `check` because `journey.rs` alone is minutes.
+
+**Read the output, not the exit code.** An instrument measuring the wrong thing exits zero.
+Three rules the wreckage taught:
+
+1. **Assert your setup.** If a harness builds a room, assert the build succeeded. Both
+   `siege_run` failures were a silent `false` from a place-a-room helper.
+2. **Never compare two towers on a quantity whose maximum is the thing you are testing.**
+   Plating raises `panel_hp`, so any column counting panels makes the plated tower look worse
+   for having more to lose.
+3. **Check the run gave the mechanism something to do.** The plating comparison ran at a
+   provocation where nothing ever reached a room on either tower — eight seeds, zero damage,
+   and a confident conclusion drawn from it.
 
 ### Mutation testing, and two ways it will lie to you
 

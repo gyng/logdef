@@ -4,6 +4,31 @@
 check: fmt-check lint test
 	@echo "All checks passed."
 
+# Run every measuring instrument, in the order they answer questions.
+#
+# **Not part of `check`, and that is why three of them were dead.**
+# Clippy's `--all-targets` compiles the examples, so a type error is
+# caught; nothing runs them, so a *runtime* failure is invisible until
+# somebody asks a question. In one session this hid: `throughput.rs`
+# panicking on startup since M5 gated the elevator on rope; the plating
+# comparison in `siege_run.rs` counting a total whose maximum was the
+# thing under test, for the fourth time; and that harness's whole
+# "battery + darts" tower building nothing at all, because a dart
+# battery costs rope the pressure tower has none of and no one checked
+# the return value. M2's exit criterion rested on that comparison and it
+# had never once run.
+#
+# They stay out of `check` because journey.rs alone is minutes. Run this
+# after touching balance.ron, a room, a creature, or anything a
+# BALANCE.md row cites — and read the output rather than the exit code,
+# since an instrument that measures the wrong thing exits zero.
+instruments:
+	@set -e; \
+	for x in throughput charge needs haulcycle worldrate siege_run journey; do \
+		echo "=== $$x ==="; \
+		cargo run --release -q -p understory-core --example $$x; \
+	done
+
 # Lint everything
 lint:
 	@set -e; \
