@@ -1,0 +1,21 @@
+// A carrying frame. One more thing in the arms, for one person.
+//
+// The plainest kit in the pack and deliberately so: `carry_capacity` is
+// 3, and this makes it 4 for whoever is wearing it. A quarter more per
+// trip on the same stairs, which is `DESIGN.md` insight 1 answered by
+// equipment rather than by architecture — cheaper than a shaft and much
+// smaller, and it stacks with nothing.
+//
+// It is also the kit that competes with a posting: a porter in a harness
+// is somebody you have decided is a porter. Standing them in a mill
+// wastes it.
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.porters_harness",
+    name: "Porter's harness",
+    glyph: "🎒",
+    order: 41,
+    kit: KitDef(
+        carry_bonus: 1,
+    ),
+)

@@ -693,3 +693,87 @@ fn the_night_band_is_the_shorter_one() {
         "the day band should be the longer of the two; it is {day_span} per-mille"
     );
 }
+
+/// **A hand lamp keeps the dark off one person.**
+///
+/// `dark_work_pct` slows everybody in a brown-out; a lamp is the tower
+/// saying "not this one". It does not end the brown-out — everybody
+/// else is still slow — which is the triage a siege asks for.
+#[test]
+fn a_hand_lamp_answers_the_dark_for_the_one_carrying_it() {
+    use crate::systems::needs::work_pct;
+    let game = crate::tests::engine(8801);
+    let content = game.content().clone();
+    let lamp = crate::tests::item(&content, "item.hand_lamp");
+
+    let plain = &game.state().crew[0];
+    let mut lit_up = plain.clone();
+    lit_up.kit = Some(lamp);
+
+    assert_eq!(
+        work_pct(plain, &content, true),
+        100,
+        "a lit tower is normal"
+    );
+    assert!(
+        work_pct(plain, &content, false) < 100,
+        "the dark should slow somebody with no light"
+    );
+    assert_eq!(
+        work_pct(&lit_up, &content, false),
+        100,
+        "a lamp did not answer the dark"
+    );
+}
+
+/// Equipping draws the kit off the shelves, and handing it back returns
+/// it. Nothing is consumed and nothing is duplicated.
+#[test]
+fn a_kit_is_lent_from_the_shelves_and_comes_back() {
+    use crate::command::GameCommand;
+    let mut game = crate::tests::engine(8802);
+    crate::tests::stock_item(&mut game, "item.hand_lamp", 1);
+    let lamp = crate::tests::item(game.content(), "item.hand_lamp");
+    let crew = game.state().crew[0].id;
+
+    assert_eq!(game.state().stock_of(lamp), 1);
+    game.try_send(GameCommand::EquipCrew {
+        crew,
+        kit: Some("item.hand_lamp".into()),
+    })
+    .expect("one is on the shelves");
+    assert_eq!(game.state().stock_of(lamp), 0, "the kit was not taken");
+    assert_eq!(game.state().crew[0].kit, Some(lamp));
+
+    game.try_send(GameCommand::EquipCrew { crew, kit: None })
+        .expect("handing it in is always legal");
+    assert_eq!(game.state().stock_of(lamp), 1, "the kit did not come back");
+    assert!(game.state().crew[0].kit.is_none());
+}
+
+/// A kit nobody has is refused, and an item that is not a kit is refused
+/// as a different thing — the two are separate mistakes.
+#[test]
+fn equipping_what_the_tower_does_not_have_is_refused() {
+    use crate::command::{CommandError, GameCommand};
+    let mut game = crate::tests::engine(8803);
+    let crew = game.state().crew[0].id;
+
+    let poor = game
+        .try_send(GameCommand::EquipCrew {
+            crew,
+            kit: Some("item.hand_lamp".into()),
+        })
+        .expect_err("the shelves are bare of lamps");
+    assert!(matches!(poor, CommandError::InsufficientStock { .. }));
+
+    crate::tests::stock_item(&mut game, "item.poles", 4);
+    let wrong = game
+        .try_send(GameCommand::EquipCrew {
+            crew,
+            kit: Some("item.poles".into()),
+        })
+        .expect_err("a pole is not something to carry");
+    assert!(matches!(wrong, CommandError::NotAKit { .. }));
+    assert!(game.state().crew[0].kit.is_none());
+}

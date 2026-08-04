@@ -1289,3 +1289,17 @@ button {
   color: var(--accent-brass);
   background: color-mix(in srgb, var(--accent-brass) 16%, transparent);
 }
+
+/* What somebody is carrying. Beside the station and shift controls,
+   because all three are decisions about one person's working day. */
+.kit-toggle {
+  padding: 1px var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+}
+
+.kit-toggle.on {
+  background: color-mix(in srgb, var(--accent-leaf) 18%, transparent);
+}

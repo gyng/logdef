@@ -988,7 +988,14 @@ fn pick_task(
     queues: &[u32],
     daypart: DaypartIdx,
 ) -> Option<HaulTask> {
-    let capacity = content.balance.crew.carry_capacity.max(1);
+    // A harness is one more thing in the arms, for the one person
+    // wearing it — `DESIGN.md` insight 1 answered by equipment rather
+    // than by architecture, and much smaller than a shaft.
+    let carry_bonus = crew[me]
+        .kit
+        .and_then(|item| content.item(item).kit.as_ref())
+        .map_or(0, |kit| kit.carry_bonus);
+    let capacity = (content.balance.crew.carry_capacity + carry_bonus).max(1);
     let from_floor = crew[me].floor();
     let from_slot = crew[me].slot();
 

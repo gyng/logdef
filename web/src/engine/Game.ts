@@ -280,6 +280,11 @@ export class Game {
    * it — and a posting made from the roster with no room in mind would
    * need a second picker for something the cross-section already does.
    */
+  /** Lend somebody a kit off the shelves, or take back the one they have. */
+  equipCrew(crew: number, kit: string | null): void {
+    this.send({ EquipCrew: { crew, kit } });
+  }
+
   stationCrew(crew: number, room: number | null): void {
     this.send({ StationCrew: { crew, room } });
   }

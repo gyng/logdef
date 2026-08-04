@@ -105,6 +105,7 @@ function Roster({ game, ui }: Props) {
                   {doing(member)}
                 </span>
               </span>
+              <KitButton game={game} ui={ui} member={member} />
               <StationButton game={game} ui={ui} member={member} />
               <button
                 type="button"
@@ -236,6 +237,52 @@ const POWER_WORDS: Record<PowerUse, string> = {
  * "off the mill" — because a toggle whose label describes state leaves
  * the player working out the verb.
  */
+/**
+ * What this person is carrying, and what the tower could lend them.
+ *
+ * **The equip system, and it is deliberately about a person.** The
+ * tower's half of "equip" already exists — what you feed a dart battery
+ * *is* the choice — so a kit belongs to somebody named. `DESIGN.md` §2
+ * structural call 4 says crew are individuals rather than stat blocks,
+ * and this is the smallest control that makes that mechanical.
+ *
+ * A cycle rather than a menu: there are three kits in the whole game,
+ * the tower rarely owns more than one, and a dropdown for a list that
+ * short is a click to open something the button could have said.
+ * Clicking moves to the next kit on the shelves and then back to
+ * nothing, so handing one in is always one click away.
+ */
+function KitButton({ game, ui, member }: Props & { member: UiState["crew"][number] }) {
+  const catalog = game.getCatalog();
+  const held = member.kit === null ? null : catalog.items[member.kit];
+  // What could be lent right now: kits on the shelves, plus whatever
+  // this person already has, so the cycle can always return to it.
+  const offerable = ui.stock
+    .map((entry) => catalog.items[entry.item])
+    .filter((info): info is NonNullable<typeof info> => Boolean(info?.kit));
+  if (offerable.length === 0 && !held) return null;
+
+  const ring = [null, ...offerable.map((info) => info.id)];
+  const at = ring.indexOf(held?.id ?? null);
+  const next = ring[(at + 1) % ring.length] ?? null;
+
+  return (
+    <button
+      type="button"
+      className={`kit-toggle${held ? " on" : ""}`}
+      data-testid={`kit-${member.id}`}
+      title={
+        held
+          ? `${member.name} is carrying the ${held.name}. Click to hand it in.`
+          : `Lend ${member.name} a kit from the shelves.`
+      }
+      onClick={() => game.equipCrew(member.id, next)}
+    >
+      {held?.glyph ?? "·"}
+    </button>
+  );
+}
+
 function StationButton({ game, ui, member }: Props & { member: UiState["crew"][number] }) {
   const posted = member.stationed;
   const here = ui.selected;

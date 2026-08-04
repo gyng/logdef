@@ -97,6 +97,26 @@ pub enum GameCommand {
         room: Option<crate::ids::RoomId>,
     },
 
+    /// Lend somebody a kit off the shelves, or take it back.
+    ///
+    /// **What "equip" means in this game.** Not weapons bolted to the
+    /// tower — emplacements already have that half, and what you feed a
+    /// dart battery *is* the choice. A kit belongs to a *person*, which
+    /// is `DESIGN.md` §2 structural call 4 (crew are named individuals,
+    /// not stat blocks) given something mechanical to rest on.
+    ///
+    /// The item leaves the shelves while it is carried and goes back
+    /// when it is handed in. Nothing is consumed, so this is a decision
+    /// the player can take back — and a kit in somebody's hands is not
+    /// on the shelves for anybody else, which is the whole of the
+    /// scarcity.
+    EquipCrew {
+        crew: CrewId,
+        /// Authored item id, e.g. `"item.hand_lamp"`. `None` takes back
+        /// whatever they are carrying.
+        kit: Option<String>,
+    },
+
     /// Build vertical transport. The column costs a slot on every floor
     /// it spans, which is the whole price of circulation.
     BuildShaft {
@@ -194,6 +214,8 @@ pub enum CommandError {
     BadPowerPriority { given: usize },
     /// Asked to focus a creature that is not out there.
     NoSuchEnemy { id: crate::ids::EnemyId },
+    /// That item exists but is not something a person can carry.
+    NotAKit { item: String },
     /// Not enough on the shelves. The chain pays for the tower.
     InsufficientStock {
         item: String,
@@ -269,6 +291,7 @@ impl std::fmt::Display for CommandError {
                 write!(f, "a charge ranking must be all four uses, got {given}")
             }
             CommandError::NoSuchEnemy { id } => write!(f, "no creature {} out there", id.0),
+            CommandError::NotAKit { item } => write!(f, "{item} is not something to carry"),
             CommandError::InsufficientStock {
                 item,
                 needed,

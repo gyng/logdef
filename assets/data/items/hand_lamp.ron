@@ -1,0 +1,26 @@
+// A lamp somebody carries, and the first thing in the game that belongs
+// to a *person* rather than to the tower.
+//
+// **This is what "equip" means here.** The obvious reading — weapons
+// bolted to the building — is a different game, and the tower's half of
+// it already exists: what you feed a dart battery *is* the choice. A kit
+// is the other half. `DESIGN.md` §2 structural call 4 says crew are
+// named individuals and not stat blocks, and a kit is the smallest
+// mechanic that makes that true in the simulation rather than only in
+// the fiction — Wren carries the lamp, and you know which of them it is.
+//
+// What it answers is real and already in the game: `dark_work_pct` is
+// 75, so everybody works a quarter slower in a brown-out. A lamp is the
+// tower saying "not this one". It does not make the brown-out go away,
+// it makes one person able to work through it, which is exactly the
+// triage the siege asks for.
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.hand_lamp",
+    name: "Hand lamp",
+    glyph: "🏮",
+    order: 40,
+    kit: KitDef(
+        lights_the_dark: true,
+    ),
+)

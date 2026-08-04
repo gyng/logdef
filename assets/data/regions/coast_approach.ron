@@ -114,6 +114,26 @@ RegionDef(
         // turns "I have too much of this" from a jam into a plan
         // (`SYSTEMS.md` §5.6).
         offers: [
+            // **The two kits the tower cannot make.** A settlement full
+            // of people who walk for a living is a better source of a
+            // carrying frame and a set of tools than a workshop is, and
+            // buying one is a different decision from building one: it
+            // spends scrap you could have plated the shell with, on a
+            // person rather than on the building.
+            //
+            // One of each, ever. A kit is a thing you give to somebody
+            // in particular, and a shop with four of them would make it
+            // a loadout instead.
+            OfferDef(
+                give: CostEntryDef(item: "item.scrap", amount: 6),
+                take: CostEntryDef(item: "item.porters_harness", amount: 1),
+                stock: 1,
+            ),
+            OfferDef(
+                give: CostEntryDef(item: "item.scrap", amount: 8),
+                take: CostEntryDef(item: "item.menders_kit", amount: 1),
+                stock: 1,
+            ),
             OfferDef(
                 give: CostEntryDef(item: "item.alloy", amount: 2),
                 take: CostEntryDef(item: "item.poles", amount: 9),

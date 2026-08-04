@@ -161,6 +161,14 @@ pub struct Crew {
     /// re-resolve to whatever took its place — the trap `DamageTarget`
     /// documents. An id that no longer exists simply ends the posting.
     pub stationed: Option<RoomId>,
+    /// A kit this person is carrying, if the tower has lent them one.
+    ///
+    /// **Held, not consumed.** The item leaves the shelves while it is
+    /// in somebody's hands and goes back when they hand it in, so a kit
+    /// is a decision you can take back rather than a purchase you
+    /// regret. It survives sleeping, eating and a wave — it is theirs
+    /// until you say otherwise.
+    pub kit: Option<ItemIdx>,
     /// Cosmetic-stream draw. Renderer-only: idle animation phase, and
     /// (frontend-side) which face and which of several equivalent bark
     /// lines are this person's.
@@ -267,6 +275,7 @@ impl Crew {
             // demanded before the first pace.
             shift: Shift::Day,
             stationed: None,
+            kit: None,
             fidget,
         }
     }

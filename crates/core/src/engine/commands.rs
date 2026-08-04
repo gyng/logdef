@@ -34,6 +34,7 @@ pub fn apply(
         GameCommand::SetPowerPriority { order } => set_power_priority(state, order),
         GameCommand::FocusEnemy { enemy } => focus_enemy(state, *enemy),
         GameCommand::StationCrew { crew, room } => station_crew(state, *crew, *room),
+        GameCommand::EquipCrew { crew, kit } => equip_crew(state, content, *crew, kit.as_deref()),
         GameCommand::BuildShaft {
             shaft,
             low,
@@ -612,5 +613,68 @@ fn station_crew(
         return Err(CommandError::NoSuchCrew { crew });
     };
     member.stationed = room;
+    Ok(())
+}
+
+/// Lend somebody a kit, or take back the one they have.
+///
+/// Validated to the last check before anything moves (`DECISIONS.md`
+/// §4): the person has to exist, the item has to exist, it has to *be* a
+/// kit, and it has to be on the shelves. A half-applied equip would
+/// either duplicate a kit or lose one.
+fn equip_crew(
+    state: &mut GameState,
+    content: &Content,
+    crew: crate::ids::CrewId,
+    kit: Option<&str>,
+) -> Result<(), CommandError> {
+    if !state.crew.iter().any(|member| member.id == crew) {
+        return Err(CommandError::NoSuchCrew { crew });
+    }
+    let wanted = match kit {
+        None => None,
+        Some(id) => {
+            let idx = content
+                .item_idx(id)
+                .ok_or_else(|| CommandError::NotAKit { item: id.into() })?;
+            if content.item(idx).kit.is_none() {
+                return Err(CommandError::NotAKit { item: id.into() });
+            }
+            if state.stock_of(idx) < 1 {
+                return Err(CommandError::InsufficientStock {
+                    item: id.into(),
+                    needed: 1,
+                    available: state.stock_of(idx),
+                });
+            }
+            Some(idx)
+        }
+    };
+
+    // Whatever they were carrying goes back on the shelves first, so
+    // swapping one kit for another cannot lose the old one. If there is
+    // nowhere to put it the swap is refused rather than quietly
+    // destroying it — nothing this game hands the player ever vanishes.
+    let held = state
+        .crew
+        .iter()
+        .find(|member| member.id == crew)
+        .and_then(|member| member.kit);
+    if let Some(old) = held
+        && state.shelve(old, 1) < 1
+    {
+        return Err(CommandError::InsufficientStock {
+            item: content.item(old).id.clone(),
+            needed: 1,
+            available: 0,
+        });
+    }
+    if let Some(idx) = wanted {
+        state.take_stock(idx, 1);
+    }
+    let Some(member) = state.crew.iter_mut().find(|member| member.id == crew) else {
+        return Err(CommandError::NoSuchCrew { crew });
+    };
+    member.kit = wanted;
     Ok(())
 }

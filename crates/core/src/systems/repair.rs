@@ -43,7 +43,18 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         }
 
         // A shift of work is done. Pay for it, then apply it.
-        let per_shift = balance.repair_hp_per_shift.max(1);
+        //
+        // **A mender's kit buys hit points, not time.** The shift takes
+        // exactly as long either way and costs poles in proportion to
+        // what it mends, so the kit makes somebody's hour worth more
+        // rather than making repair cheap — the poles still come off the
+        // shelves at the same rate per point.
+        let mend_pct = member
+            .kit
+            .and_then(|item| content.item(item).kit.as_ref())
+            .map_or(100, |kit| kit.mend_pct)
+            .max(1);
+        let per_shift = (balance.repair_hp_per_shift * mend_pct / 100).max(1);
         let cost = balance.repair_poles_per_10_hp * per_shift / 10;
         if state.stock_of(poles) < cost {
             // No materials. Stand down rather than mending for free —

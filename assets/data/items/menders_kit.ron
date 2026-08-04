@@ -1,0 +1,23 @@
+// Somebody's own tools, and the reason their hour of mending is worth
+// more than anybody else's.
+//
+// **It buys hit points, not time.** A shift of repair takes exactly as
+// long with the kit as without, and costs poles in proportion to what it
+// mends — so this makes a person's hour more valuable rather than making
+// repair cheap. The tower still pays the same poles per point; it just
+// gets more points out of the same day.
+//
+// Half again, matching `manned_work_pct`, because both answer the same
+// question — what is one person's day worth when you have spent
+// something on it — and two different numbers for that would be two
+// different answers to one design idea.
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.menders_kit",
+    name: "Mender's kit",
+    glyph: "🧰",
+    order: 42,
+    kit: KitDef(
+        mend_pct: 150,
+    ),
+)

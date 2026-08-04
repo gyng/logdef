@@ -389,6 +389,13 @@ export interface CrewView {
    * are this second.
    */
   stationed: number | null;
+  /**
+   * A kit this person is carrying, if the tower has lent them one.
+   *
+   * Held rather than consumed: it is off the shelves while they have it
+   * and back on them when they hand it in.
+   */
+  kit: number | null;
   shift: ShiftTag;
   /** Actually asleep, as against merely off shift and walking to bed. */
   asleep: boolean;
@@ -487,6 +494,8 @@ export interface ItemInfo {
   name: string;
   glyph: string;
   order: number;
+  /** Whether a person can carry this. The roster offers these. */
+  kit: boolean;
 }
 
 export interface RoomInfo {
@@ -643,7 +652,12 @@ export type GameCommand =
    * hauling. A standing order about somebody's working day, the same
    * category as the shift rota.
    */
-  | { StationCrew: { crew: number; room: number | null } };
+  | { StationCrew: { crew: number; room: number | null } }
+  /**
+   * Lend somebody a kit off the shelves, or take it back. `null` hands
+   * in whatever they are carrying.
+   */
+  | { EquipCrew: { crew: number; kit: string | null } };
 
 /** Rust's `CommandResult`: `"Ok"` or `{ Error: … }`. */
 export type CommandResult = "Ok" | { Error: unknown };

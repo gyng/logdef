@@ -490,6 +490,9 @@ pub struct ItemInfo {
     pub name: String,
     pub glyph: String,
     pub order: u16,
+    /// Whether a person can carry this. The roster needs it to know
+    /// which of the tower's stock is offerable to somebody.
+    pub kit: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1155,6 +1158,7 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                 name: item.name.clone(),
                 glyph: item.glyph.clone(),
                 order: item.order,
+                kit: item.kit.is_some(),
             })
             .collect(),
         rooms: content

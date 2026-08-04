@@ -239,6 +239,10 @@ fn every_command_survives_the_replay_format() {
             crew: crate::ids::CrewId(1),
             room: Some(crate::ids::RoomId(1)),
         },
+        C::EquipCrew {
+            crew: crate::ids::CrewId(1),
+            kit: Some("item.hand_lamp".into()),
+        },
     ];
 
     // Exhaustiveness: if a variant is added and not listed above, this
@@ -261,7 +265,8 @@ fn every_command_survives_the_replay_format() {
             | C::SetShift { .. }
             | C::SetPowerPriority { .. }
             | C::FocusEnemy { .. }
-            | C::StationCrew { .. } => {}
+            | C::StationCrew { .. }
+            | C::EquipCrew { .. } => {}
         }
     }
 

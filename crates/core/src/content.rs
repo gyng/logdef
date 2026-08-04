@@ -46,6 +46,44 @@ pub struct ItemDef {
     pub glyph: String,
     /// Sort order in the stock readout. Lower comes first.
     pub order: u16,
+    /// What this changes about the person carrying it, if anything.
+    #[serde(default)]
+    pub kit: Option<KitDef>,
+}
+
+/// A tool one named person carries, and what it changes about their day.
+///
+/// **This is what "equip" means here.** The obvious reading — weapon
+/// loadouts bolted to the tower — is the wrong game, and emplacements
+/// already have their half of it: what you feed a dart battery *is* the
+/// choice. A kit is the other half, and it belongs to a person rather
+/// than to the building, because `DESIGN.md` §2 structural call 4 says
+/// crew are named individuals and not stat blocks. A kit is the
+/// smallest mechanic that makes that true in the simulation rather than
+/// only in the fiction.
+///
+/// One item, one person, drawn off the shelves like any build cost and
+/// put back when it is handed in. **Not consumed**: a kit is something
+/// the tower owns and lends out, so equipping is a decision you can take
+/// back rather than a purchase you regret.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KitDef {
+    /// Extra items carried per trip, on top of `carry_capacity`.
+    #[serde(default)]
+    pub carry_bonus: i64,
+    /// Repair work done per shift, in percent of normal.
+    #[serde(default = "hundred")]
+    pub mend_pct: i64,
+    /// Whether the dark stops slowing this person down. Answers
+    /// `dark_work_pct` directly — the penalty a brown-out applies to
+    /// everybody who is not carrying a light.
+    #[serde(default)]
+    pub lights_the_dark: bool,
+}
+
+const fn hundred() -> i64 {
+    100
 }
 
 /// What kind of thing a room is, for grouping in the build menu and for

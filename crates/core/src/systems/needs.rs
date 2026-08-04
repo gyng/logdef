@@ -113,7 +113,19 @@ pub fn work_pct(crew: &Crew, content: &Content, lit: bool) -> u32 {
         pct = pct * balance.tired_work_pct / 100;
     }
     if !lit {
-        pct = pct * balance.dark_work_pct / 100;
+        // **Unless they are carrying a light.** `dark_work_pct` is the
+        // penalty for working by feel; a hand lamp is the tower saying
+        // "not this one". It does not end the brown-out — the lamps are
+        // still out and everybody else is still slow — it makes one
+        // person able to work through it, which is the triage a siege
+        // asks for.
+        let has_light = crew
+            .kit
+            .and_then(|item| content.item(item).kit.as_ref())
+            .is_some_and(|kit| kit.lights_the_dark);
+        if !has_light {
+            pct = pct * balance.dark_work_pct / 100;
+        }
     }
     pct.clamp(1, 100)
 }
