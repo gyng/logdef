@@ -61,6 +61,24 @@ pub enum GameCommand {
         order: Vec<crate::state::power::PowerUse>,
     },
 
+    /// Ask every emplacement to prefer one creature, or clear the ask.
+    ///
+    /// **A battery still has no judgement.** `defence.rs` shoots the
+    /// nearest thing in range because the player's judgement went into
+    /// where they put it; this adds a second moment to supply it, live,
+    /// at the cost of attention during a wave. Nothing focused is the
+    /// normal case and the old behaviour exactly.
+    ///
+    /// A focus out of range does not stop an emplacement firing — it
+    /// falls back to nearest, because a battery sitting idle while
+    /// something chewed on the tower would be a trap rather than a
+    /// decision.
+    FocusEnemy {
+        /// `None` clears it. An unknown id is rejected rather than
+        /// stored, so the highlight can never point at nothing.
+        enemy: Option<crate::ids::EnemyId>,
+    },
+
     /// Build vertical transport. The column costs a slot on every floor
     /// it spans, which is the whole price of circulation.
     BuildShaft {
@@ -156,6 +174,8 @@ pub enum CommandError {
     AlreadyPlaced { room: String },
     /// A charge ranking that was not all four uses, each exactly once.
     BadPowerPriority { given: usize },
+    /// Asked to focus a creature that is not out there.
+    NoSuchEnemy { id: crate::ids::EnemyId },
     /// Not enough on the shelves. The chain pays for the tower.
     InsufficientStock {
         item: String,
@@ -230,6 +250,7 @@ impl std::fmt::Display for CommandError {
             CommandError::BadPowerPriority { given } => {
                 write!(f, "a charge ranking must be all four uses, got {given}")
             }
+            CommandError::NoSuchEnemy { id } => write!(f, "no creature {} out there", id.0),
             CommandError::InsufficientStock {
                 item,
                 needed,

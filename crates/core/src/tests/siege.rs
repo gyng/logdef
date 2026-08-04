@@ -2000,3 +2000,133 @@ fn something_holding_a_leg_slows_the_tower_down() {
         "a hulk stopped the tower outright; it is meant to be a pressure, not an ending"
     );
 }
+
+/// **A focused creature is shot before a nearer one.**
+///
+/// The whole of the feature: `defence.rs` picks the nearest thing in
+/// range because a battery has no judgement of its own, and this is the
+/// player supplying theirs live instead.
+#[test]
+fn an_emplacement_prefers_the_creature_the_player_named() {
+    use crate::state::siege::{Enemy, EnemyState};
+    let mut game = engine(9001);
+    crate::tests::stock_poles(&mut game, 40);
+    crate::tests::stock_for(&mut game, "room.dart_battery", 2);
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.dart_battery".into(),
+        floor: 1,
+        slot: 6,
+    })
+    .expect("a battery is affordable with the shelves stocked");
+
+    // Two creatures, one nearer than the other. Hand-placed rather than
+    // waited for: this test is about which one is chosen, not about
+    // whether the forest turns up.
+    let at = game.state().world.distance;
+    {
+        let state = game.state_mut_for_test();
+        // Plenty of hit points: this is about which one is shot, and a
+        // creature that dies mid-window frees the battery to shoot the
+        // other, which would prove nothing.
+        for (id, offset, hp) in [(101u32, 10i32, 100_000i64), (102, 40, 100_000)] {
+            state.siege.enemies.push(Enemy {
+                id: crate::ids::EnemyId(id),
+                def: crate::ids::EnemyIdx(0),
+                at: at + crate::fx::paces_from_int(i64::from(offset)),
+                hp,
+                state: EnemyState::Approaching,
+                attack_cooldown: 0,
+                cling_left: 100_000,
+                fade_left: 0,
+            });
+        }
+        // Ammo in the battery, so it can actually fire.
+        let darts = crate::tests::item(game.content(), "item.darts");
+        let state = game.state_mut_for_test();
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                for stack in &mut room.inputs {
+                    if stack.item == darts {
+                        stack.count = stack.max;
+                    }
+                }
+            }
+        }
+    }
+
+    // Name the *farther* one, which nearest-first would never pick.
+    game.try_send(GameCommand::FocusEnemy {
+        enemy: Some(crate::ids::EnemyId(102)),
+    })
+    .expect("102 is out there");
+
+    let hp_of = |game: &crate::engine::GameEngine, id: u32| -> i64 {
+        game.state()
+            .siege
+            .enemies
+            .iter()
+            .find(|enemy| enemy.id.0 == id)
+            .map_or(0, |enemy| enemy.hp)
+    };
+    let before = (hp_of(&game, 101), hp_of(&game, 102));
+    // Long enough for several volleys, short enough that neither
+    // creature can die and hand the battery a new nearest target.
+    game.step(300);
+    let after = (hp_of(&game, 101), hp_of(&game, 102));
+
+    assert!(
+        after.1 < before.1,
+        "the named creature was never shot: {before:?} then {after:?}"
+    );
+    assert_eq!(
+        after.0, before.0,
+        "the nearer creature was shot anyway, so the focus did nothing"
+    );
+}
+
+/// A focus that dies is cleared, so the mark never points at nothing.
+#[test]
+fn a_focus_is_dropped_when_its_creature_goes() {
+    use crate::state::siege::{Enemy, EnemyState};
+    let mut game = engine(9002);
+    let at = game.state().world.distance;
+    {
+        let state = game.state_mut_for_test();
+        state.siege.enemies.push(Enemy {
+            id: crate::ids::EnemyId(77),
+            def: crate::ids::EnemyIdx(0),
+            at,
+            hp: 1,
+            state: EnemyState::Leaving,
+            attack_cooldown: 0,
+            cling_left: 0,
+            fade_left: 1,
+        });
+    }
+    game.try_send(GameCommand::FocusEnemy {
+        enemy: Some(crate::ids::EnemyId(77)),
+    })
+    .expect("77 is out there");
+    game.step(120);
+    assert!(
+        game.state().siege.focus.is_none(),
+        "the focus outlived the creature it named"
+    );
+}
+
+/// Focusing something that is not out there is refused, and changes
+/// nothing.
+#[test]
+fn focusing_a_creature_that_is_not_there_is_refused() {
+    let mut game = engine(9003);
+    let err = game
+        .try_send(GameCommand::FocusEnemy {
+            enemy: Some(crate::ids::EnemyId(4242)),
+        })
+        .expect_err("nothing with that id is out there");
+    assert!(matches!(
+        err,
+        crate::command::CommandError::NoSuchEnemy { .. }
+    ));
+    assert!(game.state().siege.focus.is_none());
+}

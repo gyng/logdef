@@ -243,6 +243,14 @@ export interface SiegeView {
   lost: boolean;
   /** Poles it would take to put everything right. */
   repair_cost: number;
+  /**
+   * The creature every emplacement has been asked to prefer.
+   *
+   * Drawn as a mark on that creature and never as a target reticle —
+   * `DECISIONS.md` §8 keeps creatures as animals defending their
+   * territory rather than a gallery to clear.
+   */
+  focus: number | null;
 }
 
 export interface EnemyView {
@@ -617,7 +625,9 @@ export type GameCommand =
    * that is not all four uses exactly once, because a partial order
    * would leave the rest ranked by an accident of list position.
    */
-  | { SetPowerPriority: { order: PowerUse[] } };
+  | { SetPowerPriority: { order: PowerUse[] } }
+  /** Ask every emplacement to prefer one creature. `null` clears it. */
+  | { FocusEnemy: { enemy: number | null } };
 
 /** Rust's `CommandResult`: `"Ok"` or `{ Error: … }`. */
 export type CommandResult = "Ok" | { Error: unknown };

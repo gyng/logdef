@@ -91,6 +91,19 @@ pub struct Siege {
     pub repelled: u64,
     /// The Heartseed is gone. The run is over.
     pub lost: bool,
+    /// The creature the player has asked every emplacement to prefer.
+    ///
+    /// **The battery still has no judgement of its own.** `defence.rs`
+    /// picks the nearest creature in range precisely because a battery
+    /// should not weigh up a wave — the player's judgement went into
+    /// where they put it. This does not change that. It adds a second
+    /// moment for the player to supply judgement, live, at the cost of
+    /// their attention during a wave; nearest remains the answer
+    /// whenever nothing is focused, which is most of the time.
+    ///
+    /// Cleared when the creature dies or leaves, so it can never quietly
+    /// point at nothing.
+    pub focus: Option<EnemyId>,
 }
 
 impl Siege {
@@ -103,6 +116,7 @@ impl Siege {
             next_wave_tick: 0,
             repelled: 0,
             lost: false,
+            focus: None,
         }
     }
 

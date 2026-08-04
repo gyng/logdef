@@ -648,6 +648,18 @@ fn reap(state: &mut GameState) {
         .siege
         .enemies
         .retain(|enemy| !(enemy.state.is_going() && enemy.fade_left == 0));
+
+    // A focus that has died or been left behind is cleared here rather
+    // than checked everywhere it is read. `EnemyId`s are never reused,
+    // so a stale one could not aim at the wrong creature — but it would
+    // sit in the snapshot as a highlight on nothing, and the player
+    // would think their emplacements were still obeying an order that
+    // had quietly expired.
+    if let Some(id) = state.siege.focus
+        && !state.siege.enemies.iter().any(|enemy| enemy.id == id)
+    {
+        state.siege.focus = None;
+    }
 }
 
 /// Health of the tower as a whole, for the readout. Panels, rooms, and

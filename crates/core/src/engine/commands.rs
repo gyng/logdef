@@ -32,6 +32,7 @@ pub fn apply(
             active,
         } => set_room_active(state, *floor, *slot, *active),
         GameCommand::SetPowerPriority { order } => set_power_priority(state, order),
+        GameCommand::FocusEnemy { enemy } => focus_enemy(state, *enemy),
         GameCommand::BuildShaft {
             shaft,
             low,
@@ -561,5 +562,23 @@ fn set_power_priority(
         return Err(CommandError::BadPowerPriority { given: order.len() });
     }
     state.power.priority = order.to_vec();
+    Ok(())
+}
+
+/// Point every emplacement at one creature, or stop pointing.
+///
+/// Validated before mutating (`DECISIONS.md` §4): an id nobody is
+/// carrying is rejected rather than stored, so the highlight in the
+/// cross-section can never be aimed at nothing.
+fn focus_enemy(
+    state: &mut GameState,
+    enemy: Option<crate::ids::EnemyId>,
+) -> Result<(), CommandError> {
+    if let Some(id) = enemy
+        && !state.siege.enemies.iter().any(|out| out.id == id)
+    {
+        return Err(CommandError::NoSuchEnemy { id });
+    }
+    state.siege.focus = enemy;
     Ok(())
 }

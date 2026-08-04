@@ -102,6 +102,9 @@ pub struct SiegeView {
     /// Poles it would take to put everything right, so the player can
     /// see the bill before deciding what to triage.
     pub repair_cost: i64,
+    /// The creature every emplacement has been asked to prefer, if
+    /// any. Drawn as a mark on that creature; never a target reticle.
+    pub focus: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -648,6 +651,7 @@ fn build_siege(state: &GameState, content: &Content) -> SiegeView {
         repelled: state.siege.repelled,
         lost: state.siege.lost,
         repair_cost: crate::systems::repair::outstanding_repair_cost(state, content),
+        focus: state.siege.focus.map(|id| id.0),
     }
 }
 

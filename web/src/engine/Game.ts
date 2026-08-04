@@ -495,6 +495,21 @@ export class Game {
   }
 
   handleClick(clientX: number, clientY: number): void {
+    // **A creature first, and only while not placing.** Naming one is a
+    // live order given during a wave, and it has to beat selecting the
+    // room behind it — a creature is on top of the tower's face, which
+    // is exactly where the rooms are. Placing still wins over both,
+    // because a player mid-placement is not aiming at anything.
+    if (!this.placeMode) {
+      const named = this.renderer.pickEnemy(clientX, clientY, this.getCatalog());
+      if (named !== null) {
+        // Clicking the creature already named clears the order, so the
+        // same gesture takes it back.
+        const already = this.latest?.siege.focus ?? null;
+        this.send({ FocusEnemy: { enemy: already === named ? null : named } });
+        return;
+      }
+    }
     const hit = this.renderer.pick(clientX, clientY);
     if (!hit) {
       this.selected = null;

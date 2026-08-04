@@ -1239,6 +1239,19 @@ function drawSiege(batch: QuadBatch, ctx: SceneContext): void {
     let x = stood;
     if (x < -160 || x > layout.viewport.width + 160) continue;
 
+    // **The mark the player put on it, and it is a mark rather than a
+    // reticle.** `DECISIONS.md` §8 keeps creatures as animals defending
+    // their territory, not a gallery to clear, so this is a soft ring of
+    // the tower's own lamplight resting on the thing the emplacements
+    // have been asked to mind — the shape of attention, not of a sight.
+    if (view.siege.focus === enemy.id) {
+      const r = layout.slotW * (0.34 + 0.03 * Math.sin(clock * 2.2));
+      batch.push(x - r, y - r, r * 2, r * 2, fade(palette.lamplight, 0.16), {
+        radius: r,
+        softness: r * 0.7,
+      });
+    }
+
     const facing = x > layout.originX + spanX * 0.5 ? -1 : 1;
     // A bite is a short lunge toward whatever it is working on. Half a
     // sine, so it jabs rather than sways.

@@ -232,6 +232,9 @@ fn every_command_survives_the_replay_format() {
                 crate::state::power::PowerUse::Lifts,
             ],
         },
+        C::FocusEnemy {
+            enemy: Some(crate::ids::EnemyId(1)),
+        },
     ];
 
     // Exhaustiveness: if a variant is added and not listed above, this
@@ -252,7 +255,8 @@ fn every_command_survives_the_replay_format() {
             | C::Recruit
             | C::Reinforce
             | C::SetShift { .. }
-            | C::SetPowerPriority { .. } => {}
+            | C::SetPowerPriority { .. }
+            | C::FocusEnemy { .. } => {}
         }
     }
 

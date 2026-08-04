@@ -35,6 +35,15 @@ export class Renderer {
   private readonly batch: QuadBatch;
   private readonly labels: LabelLayer;
   private layout: Layout | null = null;
+  /**
+   * The last snapshot drawn, kept only so a click can be tested against
+   * the creatures that were actually on screen when it happened.
+   *
+   * Picking a slot needs the layout alone, because a slot does not move.
+   * A creature does, every frame, so hit-testing one against a *fresh*
+   * snapshot would test a position the player never saw.
+   */
+  private view: ViewSnapshot | null = null;
   private shape: { slots: number; floors: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement, labelRoot: HTMLElement) {
@@ -55,6 +64,7 @@ export class Renderer {
     const layout = computeLayout(viewport, shape);
     this.layout = layout;
     this.shape = shape;
+    this.view = view;
 
     const gl = this.gl;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -79,6 +89,31 @@ export class Renderer {
    * Uses the layout from the last rendered frame, which is what the
    * player was actually looking at when they clicked.
    */
+  /**
+   * The creature under this point, if any.
+   *
+   * Generous by design — twenty-odd pixels of slack around a small,
+   * moving thing. Missing is worse than being approximate here: the
+   * player is clicking during a wave, and a mis-click that clears the
+   * focus costs them the order they just gave.
+   */
+  pickEnemy(clientX: number, clientY: number, catalog: CatalogSnapshot): number | null {
+    if (!this.layout || !this.view) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    let best: { id: number; d: number } | null = null;
+    for (const enemy of this.view.siege.enemies) {
+      if (enemy.state === "dying" || enemy.state === "leaving") continue;
+      const info = catalog.enemies[enemy.def];
+      if (!info) continue;
+      const at = enemyPosition(this.view, this.layout, info.approach, enemy);
+      const d = Math.hypot(at.x - x, at.y - y);
+      if (d < 26 && (!best || d < best.d)) best = { id: enemy.id, d };
+    }
+    return best?.id ?? null;
+  }
+
   pick(clientX: number, clientY: number): { floor: number; slot: number } | null {
     if (!this.layout || !this.shape) return null;
     const rect = this.canvas.getBoundingClientRect();

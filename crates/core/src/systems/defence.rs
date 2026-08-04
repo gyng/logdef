@@ -58,18 +58,35 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                 continue;
             }
 
-            // Nearest live creature inside range. "Nearest" rather than
-            // "weakest" or "strongest" because a battery has no
-            // judgement — the player's judgement went into where they
-            // put it.
+            // Nearest live creature inside range — unless the player
+            // has named one. "Nearest" rather than "weakest" or
+            // "strongest" because a battery has no judgement of its own;
+            // the player's judgement went into where they put it. A
+            // focus does not give the battery judgement either, it gives
+            // the player a second moment to supply theirs, and it costs
+            // attention during a wave to use.
+            //
+            // A focus out of range is not a refusal to fire: the
+            // emplacement falls back to nearest, because a battery that
+            // sat idle while something chewed on the tower would be a
+            // trap rather than a decision.
             let range = crate::fx::paces_from_int(defence.range_paces);
-            let target = state
+            let in_reach = |enemy: &&crate::state::siege::Enemy| {
+                !enemy.state.is_going() && (enemy.at - tower_at).abs() <= range
+            };
+            let focused = state
                 .siege
-                .enemies
-                .iter()
-                .filter(|enemy| !enemy.state.is_going())
-                .filter(|enemy| (enemy.at - tower_at).abs() <= range)
-                .min_by_key(|enemy| ((enemy.at - tower_at).abs(), enemy.id.0));
+                .focus
+                .and_then(|id| state.siege.enemies.iter().find(|enemy| enemy.id == id))
+                .filter(|enemy| in_reach(enemy));
+            let target = focused.or_else(|| {
+                state
+                    .siege
+                    .enemies
+                    .iter()
+                    .filter(in_reach)
+                    .min_by_key(|enemy| ((enemy.at - tower_at).abs(), enemy.id.0))
+            });
             let Some(target) = target else {
                 continue;
             };
