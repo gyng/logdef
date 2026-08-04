@@ -52,12 +52,55 @@ pub(crate) fn item(content: &Content, id: &str) -> ItemIdx {
 pub(crate) fn step_quietly(game: &mut GameEngine, ticks: u32) {
     let mut left = ticks;
     while left > 0 {
+        // **And forks answered**, for the same reason `step_walking`
+        // exists: a tower held at a junction is not a quiet tower, it is
+        // a stopped one, and this helper's whole job is to measure a
+        // running economy without a wave in it.
+        if game
+            .state()
+            .world
+            .fork
+            .is_some_and(|fork| fork.answer.is_none())
+        {
+            let _ = game.try_send(crate::command::GameCommand::TakeFork { branch: 0 });
+        }
         let chunk = left.min(100);
         game.step(chunk);
         let siege = &mut game.state_mut_for_test().siege;
         siege.provocation = 0;
         siege.provocation_acc = 0;
         siege.enemies.clear();
+        left -= chunk;
+    }
+}
+
+/// Step, answering any fork before it can halt the tower.
+///
+/// **A parked tower harvests nothing, and a test that parks one is
+/// measuring a fork.** `SYSTEMS.md` §3.9 makes an unanswered fork a
+/// halt, and every instrument in `examples/` has answered them from the
+/// start — but a handful of tests stepped naked for ten or twenty
+/// thousand ticks and got away with it, because forks were rare enough
+/// to fall outside the window. That was an accident of
+/// `fork_interval_paces`, not a property of the tests, and it stopped
+/// being true the moment the journey was shortened: three tests went
+/// from passing to "drew no attention at all" and "0 crafts without, 0
+/// with", each of them describing a tower standing still at a junction.
+///
+/// Anything stepping far enough to reach one should use this.
+pub(crate) fn step_walking(game: &mut GameEngine, ticks: u32) {
+    let mut left = ticks;
+    while left > 0 {
+        if game
+            .state()
+            .world
+            .fork
+            .is_some_and(|fork| fork.answer.is_none())
+        {
+            let _ = game.try_send(crate::command::GameCommand::TakeFork { branch: 0 });
+        }
+        let chunk = left.min(300);
+        game.step(chunk);
         left -= chunk;
     }
 }

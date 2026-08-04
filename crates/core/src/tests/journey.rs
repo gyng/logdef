@@ -1931,10 +1931,18 @@ fn a_palettes_weights_are_the_proportions_it_gets() {
 
     let mut counts = vec![0i64; content.terrain.len()];
     let mut bands = 0i64;
+    // **Generation stops dead at an unanswered fork**, so each seed
+    // contributes only the trunk terrain in front of its first junction.
+    // That is about twenty bands at the shipped `fork_interval_paces` of
+    // 15,000 and it scales down with it: a trial that shortened the
+    // journey fivefold cut this sample to 219 bands, under the floor
+    // asserted below. If forks ever get closer together, raise the seed
+    // count rather than the floor.
     for seed in 1..40u64 {
         let (mut streams, mut world) = fresh(seed, &content);
         // Region 1 only, and no branches — a branch is a different
-        // palette and would muddy the measurement.
+        // palette and would muddy the measurement, so this stops at the
+        // first fork rather than answering it.
         for _ in 0..30 {
             world.distance += paces_from_int(400);
             if world.fork.is_some() {

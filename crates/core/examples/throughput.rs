@@ -291,6 +291,22 @@ fn answer_any_fork(game: &mut GameEngine) {
 }
 
 fn main() {
+    // **A hardcoded day goes stale silently.** `journey.rs` reported a
+    // 57,372-tick run as "3 days" when the pack said 7,200 and the
+    // answer was eight, because it kept its own copy of the day length.
+    // Every instrument here windows on whole days, so a stale copy makes
+    // the window a measurement of what time it started at — the trap
+    // `throughput.rs` documents at the top of itself. Fail loudly rather
+    // than quietly measure a different game.
+    assert_eq!(
+        DAY,
+        understory_core::content::Content::load_embedded()
+            .expect("the shipped pack should load")
+            .balance
+            .clock
+            .ticks_per_day,
+        "the pack's day length has moved; update this file's day constant"
+    );
     let stairs_only = measure("stairs only", false);
     let with_elevator = measure("with elevator", true);
 

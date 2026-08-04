@@ -753,7 +753,7 @@ fn harvesting_hard_draws_attention_and_walking_quietly_sheds_it() {
     })
     .expect("floor 1 has room for a second arm, and arms reach from there too");
 
-    game.step(12_000);
+    crate::tests::step_walking(&mut game, 12_000);
     let provoked = game.state().siege.provocation;
     assert!(
         provoked > 0,
@@ -765,7 +765,7 @@ fn harvesting_hard_draws_attention_and_walking_quietly_sheds_it() {
         game.try_send(GameCommand::RemoveRoom { floor, slot })
             .expect("a cutter arm is removable");
     }
-    game.step(12_000);
+    crate::tests::step_walking(&mut game, 12_000);
     assert!(
         game.state().siege.provocation < provoked,
         "attention did not decay once the tower stopped harvesting: {provoked} then {}",
@@ -956,7 +956,7 @@ fn a_wave_never_fields_more_than_its_budget_can_pay_for() {
 fn creatures_damage_the_things_the_player_built() {
     let mut game = engine(1004);
     provoke_fully(&mut game);
-    game.step(18_000);
+    crate::tests::step_walking(&mut game, 18_000);
 
     let integrity = crate::systems::siege::tower_integrity_permille(game.state());
     assert!(
@@ -1598,7 +1598,7 @@ fn a_dry_battery_is_as_quiet_as_a_starved_mill() {
 
     // No thornwright, so no darts are ever made and the magazine can
     // never fill.
-    game.step(18_000);
+    crate::tests::step_walking(&mut game, 18_000);
     assert_eq!(
         game.state().siege.repelled,
         0,
@@ -1640,7 +1640,7 @@ fn crew_mend_what_is_broken_and_it_costs_poles() {
     let content = content();
     let poles = item(&content, "item.poles");
     let mut game = engine(1011);
-    game.step(6000);
+    crate::tests::step_walking(&mut game, 6000);
 
     // Break a panel, then leave the tower alone to fix it.
     {
@@ -1652,7 +1652,7 @@ fn crew_mend_what_is_broken_and_it_costs_poles() {
     let poles_before = game.state().stock_of(poles);
     let hp_before = game.state().tower.floor(0).expect("ground floor").panel.hp;
 
-    game.step(9000);
+    crate::tests::step_walking(&mut game, 9000);
     let hp_after = game.state().tower.floor(0).expect("ground floor").panel.hp;
 
     assert!(
@@ -1725,7 +1725,7 @@ fn repair_without_poles_does_not_happen() {
 #[test]
 fn two_crew_never_mend_the_same_thing() {
     let mut game = engine(1013);
-    game.step(6000);
+    crate::tests::step_walking(&mut game, 6000);
     {
         let state = game.state_mut_for_test();
         for floor in &mut state.tower.floors {
@@ -1837,7 +1837,7 @@ fn a_tower_with_one_shaft_stalls_when_it_is_cut() {
     // buffered craft after the cut is correct, not a leak.
     game.step(3000);
     let crafts_before = game.state().stats.crafts_completed;
-    game.step(9000);
+    crate::tests::step_walking(&mut game, 9000);
     assert_eq!(
         game.state().stats.crafts_completed,
         crafts_before,

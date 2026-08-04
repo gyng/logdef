@@ -25,7 +25,20 @@ use understory_core::command::GameCommand;
 use understory_core::state::SimSpeed;
 
 const SEEDS: u64 = 12;
-const TICKS_PER_DAY: u32 = 14_400;
+/// The pack's day length, not a copy of it.
+///
+/// **It was a copy, and the copy went stale the moment the day changed.**
+/// Hardcoded at 14,400 it reported a 57,372-tick run as "3 days" when
+/// the pack said the day was 7,200 and the answer was eight — a harness
+/// quietly describing a different game from the one it was measuring.
+/// Anything a content pack owns, read from the content pack.
+fn ticks_per_day() -> u32 {
+    understory_core::content::Content::load_embedded()
+        .expect("the shipped pack should load")
+        .balance
+        .clock
+        .ticks_per_day
+}
 /// Long enough for the longest region-1 roll at a walking pace, with
 /// room for a policy that stops a lot.
 const PATIENCE: u32 = 400_000;
@@ -204,7 +217,7 @@ fn how_long_is_a_run() {
             minutes,
             minutes / 2.0,
             minutes / 4.0,
-            ticks / TICKS_PER_DAY,
+            ticks / ticks_per_day(),
             if state.arrived {
                 "reached the Refugia"
             } else if state.siege.lost {
@@ -463,7 +476,7 @@ fn whole_run(seed: u64) {
         state.tick,
         minutes(state.tick as u32),
         minutes(state.tick as u32) / 4.0,
-        state.tick / u64::from(TICKS_PER_DAY),
+        state.tick / u64::from(ticks_per_day()),
     );
     println!(
         "  crossed into the drowned city at {:.0} minutes; berthed at {} of {} settlement(s), \
@@ -1086,7 +1099,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
                     // have a "this is taking too long" in it. One
                     // in-game day is already far more patience than the
                     // decision deserves.
-                    let overstayed = berth_ticks > TICKS_PER_DAY;
+                    let overstayed = berth_ticks > ticks_per_day();
                     let leave = salvages && (hurt || full || overstayed);
                     if walking && !leave {
                         let _ = engine.try_send(GameCommand::SetStriding { walking: false });
@@ -1180,7 +1193,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
         branches,
         salvage_seen,
         repelled: state.siege.repelled,
-        days: ticks / TICKS_PER_DAY,
+        days: ticks / ticks_per_day(),
         died: state.siege.lost,
     }
 }
