@@ -3104,6 +3104,15 @@ Not a task list — the places where existing code assumes something M5 stops be
       than on new work: `yield_pct` and `sun_pct` cancel to within two percent on every tower
       shape, which is exactly what they were written to do.
 
+      **And one row was stale by a factor of six.** `canopy sails charge_per_100_ticks` compared
+      a good-sun day's ~20,000 income against "~17,700 of continuous striding" — but
+      `stride_charge_per_100_ticks` is 20, which is 2,880 a day and 2,712 measured. 17,700
+      implies about 123 per 100 ticks, which is what that constant *used to be*, two rows further
+      up the same table. The income half stands; what changed is the other side of the sum.
+      Striding is now a seventh of a good-sun day rather than most of it, so the real pressure on
+      the bank is night lighting and terrain rather than the legs — which is a different game
+      from the one that row describes, and nobody had noticed because nothing recomputes prose.
+
       **And the criterion contradicts what this project has actually been doing, which is worth
       settling before somebody grades the other 122.** It says "from run logs rather than from
       scripted harnesses" — but every `PLAYTESTED` grade in the file was awarded on a harness:
