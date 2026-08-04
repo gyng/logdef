@@ -86,7 +86,7 @@ fn pressure_table() {
             let mut mended_sum = 0;
             let mut deaths = 0;
             for seed in 1..=SEEDS {
-                let (standing, lost, repelled, mended, _) = press(shape, level, DAYS, seed);
+                let (standing, lost, repelled, mended, _, _) = press(shape, level, DAYS, seed);
                 standing_sum += standing;
                 lost_sum += lost;
                 worst = worst.max(lost);
@@ -118,42 +118,74 @@ fn pressure_table() {
     }
 }
 
-/// Does plating actually help? One seed said no, loudly enough to be
-/// worth writing down — and loudly enough to be worth checking whether
-/// it was one seed being strange.
+/// Does plating actually help?
+///
+/// **It does, and this comparison said otherwise three times running.**
+/// The fault was the metric, every time: `reinforce` raises `panel_hp`
+/// and nothing else, so any column that counts panels compares two
+/// towers whose maxima differ by exactly the thing under test — the
+/// plated one has more to lose and reads worse for having it, whether
+/// the column is a fraction or an absolute. It counts rooms and shafts
+/// now, whose maxima are identical on both towers.
+///
+/// And it sweeps provocation rather than sitting at 100, because at 100
+/// the panels hold on both towers and **nothing whatsoever reaches a
+/// room** — eight seeds, zero damage, both shapes. A comparison run
+/// where the mechanism cannot engage is not evidence that the mechanism
+/// does nothing, and that was the other half of why this kept coming out
+/// wrong.
 fn does_plating_help() {
-    const LEVEL: i64 = 100;
     println!(
         "
-  the same tower, bare and plated twice, at provocation {LEVEL}:
+  the same tower, bare and plated twice, swept across provocation.
+
+  Hit points lost from **rooms and shafts only**. Plating raises panel
+  health and nothing else, so any column that counts panels compares two
+  towers whose maxima differ by the thing being tested — which is how
+  this comparison reported plating as worse three times running. Rooms
+  and shafts are identical on both towers, and buying time for what is
+  behind the skin is what plating is for.
 "
     );
     println!(
-        "    {:>6}  {:>9}  {:>9}  {:>8}",
-        "seed", "bare lost", "plated", "verdict"
+        "  {:>4}  {:>4}  {:>9}  {:>9}  {:>8}",
+        "prov", "seed", "bare lost", "plated", "verdict"
     );
     let mut plated_worse = 0;
-    for seed in 1..=8u64 {
-        let (_, bare, _, _, _) = press(Shape::Bare, LEVEL, 3, seed);
-        let (_, plated, _, _, _) = press(Shape::Plated, LEVEL, 3, seed);
-        if plated > bare {
-            plated_worse += 1;
-        }
-        println!(
-            "    {seed:>6}  {bare:>9}  {plated:>9}  {:>8}",
-            if plated > bare {
-                "worse"
-            } else if plated < bare {
-                "better"
-            } else {
-                "same"
+    let mut compared = 0;
+    // **Swept rather than fixed at one level, because at the level this
+    // used to run there is nothing to measure.** At provocation 100 the
+    // panels hold on both towers and *nothing at all* reaches a room:
+    // eight seeds, zero damage behind the skin, both shapes. A
+    // comparison run where the mechanism cannot engage is not evidence
+    // that the mechanism does nothing.
+    for level in [300, 500, 700] {
+        for seed in 1..=8u64 {
+            let (_, _, _, _, _, bare) = press(Shape::Bare, level, 3, seed);
+            let (_, _, _, _, _, plated) = press(Shape::Plated, level, 3, seed);
+            if bare == 0 && plated == 0 {
+                continue;
             }
-        );
+            compared += 1;
+            if plated > bare {
+                plated_worse += 1;
+            }
+            println!(
+                "  {level:>4}  {seed:>4}  {bare:>9}  {plated:>9}  {:>8}",
+                if plated > bare {
+                    "worse"
+                } else if plated < bare {
+                    "better"
+                } else {
+                    "same"
+                }
+            );
+        }
     }
     println!(
         "
-  plated came out worse on {plated_worse} of 8 seeds. More than half is a 
-           finding; a couple is noise."
+  plated came out worse on {plated_worse} of {compared} comparisons where anything
+  got behind the skin at all. More than half is a finding; a couple is noise."
     );
 }
 
@@ -178,7 +210,7 @@ impl Shape {
 }
 
 /// Hold provocation at `level` and see what happens.
-fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64, i64) {
+fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64, i64, i64) {
     let mut engine = GameEngine::new(seed);
     engine.set_speed(SimSpeed::X1);
     let content = engine.content().clone();
@@ -220,7 +252,37 @@ fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64,
         state.siege.repelled,
         state.stats.hp_repaired,
         understory_core::systems::repair::outstanding_repair_cost(state, &content),
+        behind_the_skin_lost(state),
     )
+}
+
+/// Hit points lost from **rooms and shafts**, ignoring panels entirely.
+///
+/// **The only honest way to ask whether plating works, and it took four
+/// goes to find it.** `reinforce` raises `panel_hp` and nothing else, so
+/// any metric that includes panels compares two towers whose maxima
+/// differ by exactly the thing under test: the plated one has more to
+/// lose and reads worse for having it, whether the column is a fraction
+/// (per-mille) or an absolute (hit points missing). That reading has now
+/// been produced three times and withdrawn twice, and `AGENTS.md` warns
+/// about it by name.
+///
+/// Rooms and shafts have identical maxima on both towers, so this column
+/// is apples to apples — and it is also the mechanism plating is *for*.
+/// A thicker skin does not stop damage, it buys time: creatures spend
+/// longer chewing through a panel and correspondingly less time on the
+/// mill behind it. If plating does anything at all, it shows up here.
+fn behind_the_skin_lost(state: &understory_core::state::GameState) -> i64 {
+    let mut lost = 0;
+    for floor in &state.tower.floors {
+        for room in &floor.rooms {
+            lost += room.health.max - room.health.hp;
+        }
+    }
+    for shaft in &state.tower.shafts {
+        lost += shaft.health.max - shaft.health.hp;
+    }
+    lost
 }
 
 /// Hit points the tower is missing, in absolute terms.
