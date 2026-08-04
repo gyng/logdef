@@ -151,11 +151,14 @@ fn measure(label: &str, build_shaft: bool) -> Sample {
             boarding_waits.last().copied().unwrap_or(0),
         );
     }
-    if car_moving + car_stopped > 0 {
+    // `checked_div` rather than a `> 0` guard and a plain divide:
+    // clippy reads that pair as a hand-rolled version of this, and it is
+    // right. A tower with no cars simply prints nothing.
+    if let Some(moving) = (car_moving * 100).checked_div(car_moving + car_stopped) {
         println!(
-            "  [{label}] of the ticks a car was busy: {}% moving, {}% dwelling               (`dwell_base_ticks` 10 + `dwell_per_unit_ticks` 6 a unit)",
-            car_moving * 100 / (car_moving + car_stopped),
-            car_stopped * 100 / (car_moving + car_stopped),
+            "  [{label}] of the ticks a car was busy: {moving}% moving, {}% dwelling  \
+             (`dwell_base_ticks` 10 + `dwell_per_unit_ticks` 6 a unit)",
+            100 - moving,
         );
     }
 
