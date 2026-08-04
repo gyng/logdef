@@ -17,6 +17,8 @@ v1 ("Supply Line," an ARPG-flavoured hero/weapons game) is archived on `main`. T
 - **Balance values:** `docs/BALANCE.md` — every tuning constant, graded by provenance
 - **The remaining work:** `docs/PLAYTEST.md` — M5's four open criteria all need a person at
   the keyboard; this is what to do and what to write down
+- **Art:** `docs/ART.md` — the manifest, sizes, formats and prompt style block. The game
+  currently ships zero images; read §0 before generating anything
 - **Agent guidelines:** `AGENTS.md` — read this before writing any code
 
 ## Canonical override chain
