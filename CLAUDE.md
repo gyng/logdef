@@ -15,6 +15,8 @@ v1 ("Supply Line," an ARPG-flavoured hero/weapons game) is archived on `main`. T
 - **Engineering rules:** `docs/DECISIONS.md` — determinism, bridge, command pattern, tone
   guardrails; numbered so code can cite them (`DECISIONS.md §1`)
 - **Balance values:** `docs/BALANCE.md` — every tuning constant, graded by provenance
+- **The remaining work:** `docs/PLAYTEST.md` — M5's four open criteria all need a person at
+  the keyboard; this is what to do and what to write down
 - **Agent guidelines:** `AGENTS.md` — read this before writing any code
 
 ## Canonical override chain
