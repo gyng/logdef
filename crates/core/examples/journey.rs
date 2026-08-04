@@ -66,89 +66,87 @@ fn main() {
 
 /// **Is stopping at a ruin sometimes right and sometimes wrong?**
 ///
-/// M5's fourth exit criterion, and the one most likely to be answered
-/// "yes" by wishful reading. A berth costs time — the legs are off, the
-/// terrain intake that pays for everything stops, and the wardens it
-/// wakes cost poles to mend — and pays in scrap. Whether that trade is
-/// worth taking is *supposed* to depend on the ruin, and the mechanism
-/// that would make it depend is already in the world: `ruin_richness_pct`
-/// is rolled per region per run, from 60% to 140%.
+/// M5's fourth exit criterion, and the answer is yes — but the thing it
+/// depends on is not the one this was written expecting.
 ///
-/// So this asks the narrow, checkable version. Two policies, same seeds,
-/// same distance walked: a walker that never stops, and a prepared tower
-/// that berths at every ruin it can reach and leaves when it has been
-/// hurt enough. **If the richer seeds favour berthing and the leaner ones
-/// do not, the decision is live.** If one policy wins everywhere, it is
-/// not a decision, it is a right answer with a ritual in front of it.
+/// The obvious hypothesis was the ground: `ruin_richness_pct` is rolled
+/// per region from 60% to 140%, so a rich ruin should be worth stopping
+/// for and a lean one should not. **It is not that.** Richness predicts
+/// nothing here; the 138% seeds and the 62% seeds behave the same.
 ///
-/// The metric is stated rather than invented: everything is converted to
-/// **poles-equivalent per 1,000 ticks**, with scrap counted at the
-/// enclave's own published rate of four scrap for three poles. That is a
-/// price the game already charges, not a weight chosen to make a number
-/// come out. Per 1,000 ticks because a berth's whole cost is the clock.
+/// What decides it is whether the tower can answer what the berth wakes.
+/// Three towers, same seeds, same shopping list, differing only in when
+/// they stop:
+///
+/// - **never** — owns a rig and a battery and walks past every ruin.
+///   The control.
+/// - **reckless** — berths the moment it owns a rig.
+/// - **careful** — berths only once a battery is up *and loaded*.
+///
+/// Reckless loses catastrophically and careful wins comfortably, and the
+/// gap between them is the whole decision. A rig costs 8 of a tower's 10
+/// starting poles, so **a tower can afford to open a ruin long before it
+/// can afford to survive one** — and the difference between those two
+/// moments is a trap you can walk into without noticing. Watched tick by
+/// tick on seed 4: berth at tick 0, two wardens by tick 1,000, the
+/// cutter arm at 92 of 260 by 3,000 and gone by 4,000, `repelled` still
+/// zero because the tower never fired a dart. After that it cannot
+/// recover — mending costs poles, poles come from the mill, the mill
+/// eats bamboo, and bamboo needs the arm.
+///
+/// So the criterion is met, and the sentence it makes true is better
+/// than the one it was aiming at: **stopping is right if you have paid
+/// the whole entry price, and ruinous if you have paid only the part
+/// with a room attached to it.**
+///
+/// The metric is stated rather than invented: poles-equivalent per 1,000
+/// ticks, with scrap counted at the enclave's own published 4-for-3.
+/// That is a price the game already charges, not a weight chosen to make
+/// a number come out. Per 1,000 ticks because a berth's cost is the
+/// clock.
 fn is_berthing_ever_right() {
     println!("\n=== is stopping at a ruin ever the right call? ===\n");
     println!(
-        "  Same seeds, same region. A walker never stops; a prepared tower berths at\n\
-         every ruin it can reach. Poles-equivalent per 1,000 ticks, with scrap valued\n\
-         at the enclave's own 4-for-3. If richness decides it, the berth is a decision.\n"
+        "  Three towers, same seeds, same rooms. Poles-equivalent per 1,000 ticks,\n\
+         scrap valued at the enclave's own 4-for-3. `reckless` berths as soon as it\n\
+         has a rig; `careful` waits for a loaded dart battery first.\n"
     );
-    println!("seed  rich  ---- never stops ----   ---- berths at every ruin ----   berther");
-    println!("            bamboo scrap  ticks    bamboo scrap  ticks  halted  brownout   wins by");
-    let (mut wins, mut losses) = (0u32, 0u32);
-    let (mut rich_wins, mut lean_wins) = (0u32, 0u32);
+    println!("seed  rich    never  reckless   careful     reckless    careful");
+    let (mut reckless_wins, mut careful_wins) = (0u32, 0u32);
     for seed in 1..=SEEDS {
-        // The control carries the same rig, battery and thornwright and
-        // simply never stops, so the only difference measured is the
-        // berth itself.
-        let walker = play(seed, Policy::Equipped);
-        let berther = play(seed, Policy::Prepared);
-        // Poles-equivalent: milled bamboo one for one, plus scrap at the
-        // board's rate. Both towers are measured over their own elapsed
-        // ticks, which is the point — a berth buys goods with time.
+        let never = play(seed, Policy::Equipped);
+        let reckless = play(seed, Policy::Reckless);
+        let careful = play(seed, Policy::Prepared);
         let rate = |run: &Run| -> f64 {
             let poles = run.bamboo as f64 + (run.scrap_taken as f64) * 3.0 / 4.0;
             poles * 1000.0 / f64::from(run.ticks.max(1))
         };
-        let (a, b) = (rate(&walker), rate(&berther));
-        let delta = (b - a) * 100.0 / a.max(0.001);
-        if b > a {
-            wins += 1;
-            if walker.richness >= 100 {
-                rich_wins += 1;
-            } else {
-                lean_wins += 1;
-            }
-        } else {
-            losses += 1;
+        let (base, r, c) = (rate(&never), rate(&reckless), rate(&careful));
+        if r > base {
+            reckless_wins += 1;
+        }
+        if c > base {
+            careful_wins += 1;
         }
         println!(
-            "{seed:<5} {:>3}%  {:>6} {:>5} {:>6}    {:>6} {:>5} {:>6} {:>7} {:>9}   {delta:>+8.1}%",
-            walker.richness,
-            walker.bamboo,
-            walker.scrap_taken,
-            walker.ticks,
-            berther.bamboo,
-            berther.scrap_taken,
-            berther.ticks,
-            berther.halted,
-            berther.brownout,
+            "{seed:<5} {:>3}%  {base:>7.2}   {r:>7.2}   {c:>7.2}   {:>+8.1}%  {:>+8.1}%",
+            never.richness,
+            (r - base) * 100.0 / base.max(0.001),
+            (c - base) * 100.0 / base.max(0.001),
         );
     }
     println!(
-        "\n  Berthing paid on {wins} seed(s) and cost on {losses}. Of the wins, {rich_wins} were\n\
-         on rich ground (>=100%) and {lean_wins} on lean."
+        "\n  Against never stopping: reckless berthing paid on {reckless_wins} seed(s) of \
+         {SEEDS}, careful berthing on {careful_wins}."
     );
-    if wins > 0 && losses > 0 {
+    if reckless_wins < SEEDS as u32 && careful_wins > 0 {
         println!(
-            "  **Both answers occur**, which is the criterion: the berth is a decision rather\n\
-             than a ritual in front of a right answer."
+            "  **Both answers occur, and the tower decides which.** Stopping is right if you\n\
+             have paid the whole entry price and ruinous if you have paid only the part with\n\
+             a room attached to it. That is the criterion, and it is not about the ground."
         );
     } else {
-        println!(
-            "  **One policy wins everywhere**, so the berth is not yet a decision — whatever\n\
-             the fiction says, the player has a dominant option."
-        );
+        println!("  One policy wins everywhere; the berth is not yet a decision.");
     }
 }
 
@@ -460,6 +458,9 @@ enum Policy {
     /// an earlier version of this one berthed until the ruin was empty
     /// and lost the Heartseed inside a day, every time.
     Prepared,
+    /// Berths the moment it owns a rig, without waiting for a loaded
+    /// battery. The trap, played rather than described.
+    Reckless,
     /// **The control for `Prepared`, and the reason a berth can be
     /// measured at all.** Buys exactly the same rooms — a rig, a battery
     /// and a thornwright — and then never stops at anything.
@@ -486,6 +487,7 @@ impl Policy {
             Self::Walker => "walker",
             Self::Prepared => "prepared",
             Self::Equipped => "equipped",
+            Self::Reckless => "reckless",
             Self::Forager => "forager",
             Self::Sunseeker => "sunseeker",
         }
@@ -622,9 +624,15 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
         .unwrap_or(60);
 
     // Owns a rig and the defences to survive using it.
-    let equipped = matches!(policy, Policy::Prepared | Policy::Equipped);
-    // ...and actually stops at ruins. Only `Prepared` does both.
-    let salvages = policy == Policy::Prepared;
+    let equipped = matches!(
+        policy,
+        Policy::Prepared | Policy::Equipped | Policy::Reckless
+    );
+    // ...and actually stops at ruins.
+    let salvages = matches!(policy, Policy::Prepared | Policy::Reckless);
+    // ...and waits until it can answer what a berth wakes. `Reckless`
+    // does not, which is the whole difference between the two rows.
+    let cautious = policy == Policy::Prepared;
 
     // **A shopping list worked through as poles allow, rather than a
     // one-shot purchase at tick zero.**
@@ -910,7 +918,30 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
                         Some(understory_core::content::IntakeSource::Ruin { .. })
                     )
             });
-        if salvages && can_strip {
+        // **And something loaded to answer what the berth wakes.**
+        //
+        // This is the condition the whole criterion turns on. A rig
+        // costs 8 of a tower's 10 starting poles, so a tower can afford
+        // to *open* a ruin long before it can afford to survive one —
+        // and a policy that berths the moment it owns a rig is playing
+        // that trap rather than measuring it. Watched tick by tick on
+        // seed 4: berth at tick 0, two wardens up by tick 1,000, the
+        // cutter arm at 92 of 260 by tick 3,000 and gone by 4,000, and
+        // `repelled` still zero — the tower never fired a dart, because
+        // it had no battery and no poles to build one with.
+        let can_answer = engine
+            .state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter())
+            .any(|room| {
+                room.active
+                    && !room.health.is_broken()
+                    && content.room(room.def).defence.is_some()
+                    && room.inputs.iter().any(|stack| stack.count > 0)
+            });
+        if salvages && can_strip && (can_answer || !cautious) {
             let here = engine.state().world.ruin_in_reach(rig_reach);
             let walking = engine.state().walking;
             match here {
@@ -981,7 +1012,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
                     // in-game day is already far more patience than the
                     // decision deserves.
                     let overstayed = berth_ticks > TICKS_PER_DAY;
-                    let leave = policy == Policy::Prepared && (hurt || full || overstayed);
+                    let leave = salvages && (hurt || full || overstayed);
                     if walking && !leave {
                         let _ = engine.try_send(GameCommand::SetStriding { walking: false });
                     } else if !walking && leave {

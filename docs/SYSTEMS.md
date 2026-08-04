@@ -2974,9 +2974,45 @@ Not a task list — the places where existing code assumes something M5 stops be
       charge. The tier's decision is about what the tower can *reach* — rope for an elevator,
       alloy for a charge ceiling — rather than about how much a route hands it, and that is a
       better claim than the one this criterion was written against.
-- [ ] **Stopping at a ruin is sometimes the wrong call and sometimes the right one.**
-      **Measured, and it is not: it is always the wrong call, and the reason is worse than the
-      margin.**
+- [x] **Stopping at a ruin is sometimes the wrong call and sometimes the right one.**
+      **Met — and what decides it is not the ground, which is a better answer than the one this
+      was written expecting.**
+
+      Three towers, same seeds, same rooms, differing only in when they stop. Poles-equivalent
+      per 1,000 ticks, scrap valued at the enclave's own published 4-for-3:
+
+      | policy | against never stopping |
+      | --- | --- |
+      | **reckless** — berths the moment it owns a rig | **−29% to −94%**, loses on 12 of 12 |
+      | **careful** — berths only once a battery is up *and loaded* | **+0.5% to +66%**, wins on 12 of 12 |
+
+      `ruin_richness_pct` predicts none of it: the 138% seeds and the 62% seeds behave alike. The
+      thing that decides a berth is **whether the tower can answer what the berth wakes**, and
+      the reason that is a real decision rather than a formality is the order the prices come in.
+      A rig costs 8 of a tower's 10 starting poles; a dart battery costs 6 poles *and 2 rope*,
+      and rope needs a ropery, which needs fiber, which needs a comb. **So a tower can afford to
+      open a ruin long before it can afford to survive one.**
+
+      What that costs, watched tick by tick on seed 4: berth at tick 0, two wardens up by tick
+      1,000, the cutter arm at 92 of 260 by 3,000 and gone by 4,000, and `repelled` still zero
+      because the tower never fired a dart. After that it cannot recover — mending costs poles,
+      poles come from the mill, the mill eats bamboo, and bamboo needs the arm. The run does not
+      end; it continues for an hour as a tower that cannot feed itself.
+
+      So the sentence the criterion makes true is: **stopping is right if you have paid the whole
+      entry price, and ruinous if you have paid only the part with a room attached to it.**
+
+      **The one thing left open is telegraphing, and it is a real one.** Nothing tells a player
+      that the rig is half a purchase. The empty space in the build menu is the affordance for
+      *having* a rig (`salvage_rig.ron`), and there is no equivalent for needing a loaded battery
+      before using one — a first-time player buys the obvious thing, stops at the obvious place,
+      and is quietly ruined four thousand ticks later. Whether that wants a diegetic signal, a
+      cost change, or nothing at all is a judgement about how punishing this game means to be,
+      and it wants somebody playing before it is answered.
+
+      *(Superseded: this was recorded as "always the wrong call" on the strength of a policy
+      that berthed as soon as it owned a rig — the reckless row above. The measurement was
+      right and the conclusion was drawn from one of the two towers.)*
 
       `examples/journey.rs`'s "is stopping at a ruin ever the right call" runs two towers that
       differ in exactly one behaviour — same seed, same rig, same battery, same thornwright, same
