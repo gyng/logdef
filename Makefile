@@ -1,4 +1,4 @@
-.PHONY: check lint fmt fmt-check test e2e build build-fast build-checked wasm wasm-dev dev dev-stop clean bench-core bench-scenario bench-pipeline timings-build timings-test timings-all golden mutants
+.PHONY: check instruments lint fmt fmt-check test e2e build build-fast build-checked wasm wasm-dev dev dev-stop clean release release-check bench-pipeline timings-build timings-test timings-all golden mutants
 
 # Run all checks (format + lint + test)
 check: fmt-check lint test
@@ -24,7 +24,7 @@ check: fmt-check lint test
 # since an instrument that measures the wrong thing exits zero.
 instruments:
 	@set -e; \
-	for x in throughput charge needs haulcycle worldrate siege_run journey; do \
+	for x in throughput charge needs haulcycle chain worldrate siege_run journey; do \
 		echo "=== $$x ==="; \
 		cargo run --release -q -p understory-core --example $$x; \
 	done
@@ -134,13 +134,17 @@ dev-stop:
 	if [ -n "$$pids" ]; then kill -9 $$pids 2>/dev/null || true; fi
 	@echo "Port 3000 is now free; any stray vite processes terminated."
 
-# Rust microbenchmarks
-bench-core:
-	cargo run --release -p understory-core --example engine_bench
-
-# Representative combat scenario benchmark
-bench-scenario:
-	cargo run --release -p understory-core --example encounter_scenario_bench
+# **`bench-core` and `bench-scenario` are gone**, and were dead. They ran
+# `engine_bench` and `encounter_scenario_bench`, two v1 examples deleted
+# with the rest of that game — the second one is named after `encounter`,
+# which `AGENTS.md` lists as vocabulary that describes a different game.
+# Nothing had failed, because a Makefile target pointing at a missing
+# example only fails when somebody types it.
+#
+# The frame budget has not been the constraint at any point through M5
+# (`v2-plan.md` §11 open #3), so nothing replaces them. If profiling is
+# ever needed, write the harness for the question at hand rather than
+# reviving a target named after a system that no longer exists.
 
 # Pipeline timing harness (set REPEATS=3 to average)
 bench-pipeline:

@@ -3051,7 +3051,7 @@ Not a task list — the places where existing code assumes something M5 stops be
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
 
-      **Standing at 44 of 137.** Moved this pass: `reinforce`, once the plating comparison
+      **Standing at 62 of 137.** Moved this pass: `reinforce`, once the plating comparison
       stopped counting the wrong thing; the three region-length rows, on the whole-run
       measurement that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4
       hours); and the three Power rows, on a new instrument.
@@ -3112,6 +3112,20 @@ Not a task list — the places where existing code assumes something M5 stops be
       pruning each finish the band they are in, so the retained window is the constant plus up to
       one `band_max_paces`. Recorded because the next person to measure it will otherwise file a
       bug.
+
+      **`examples/chain.rs` measures the starting chain, and the answer reframes the Content
+      rows.** The mill is stalled **88% of the time** — 43.1% with a full outbox, 45.2% with an
+      empty inbox — the cutter arm sits on a full outbox 40.4% of the time, and the tower
+      harvests 92 and crafts 34 a day. Crew are idle 0.2%. So the rows that size a craft time
+      against a harvest time ("deliberately close to the cutter arm's rate and on the near side
+      of it") are reasoning about a tower that does not exist: **neither room runs anywhere near
+      its rate, because both are waiting on hands.** The constant that would change this tower's
+      throughput is `starting_crew` or `carry_capacity`, not `mill craft_ticks`.
+
+      The two mill figures being nearly equal is the buffers doing their job — big enough to ride
+      out a queue, small enough that backpressure reaches the arm — and the arm's 40.4% is that
+      backpressure arriving, which `AGENTS.md` requires to be visible rather than silently
+      absorbed. Enlarging either buffer would hide it.
 
       **The Siege section turned up the worst of the four, and it is M2's exit criterion.**
       `siege_run.rs`'s pressure table compares a bare tower, a plated one and one with "battery +
