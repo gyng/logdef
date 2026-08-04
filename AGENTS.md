@@ -87,10 +87,18 @@ Three things worth knowing before you touch balance or an instrument, all of the
    a finite shopping list stops consuming, every buffer fills, and harvest stops dead at the
    tower's total buffer capacity — which is a property of the tower and identical whatever the
    ground underfoot was. Both `siege_run.rs` and `journey.rs` have been wrong this way.
-3. **`BALANCE.md`'s Siege section has been re-measured twice and says so.** Read the block at
-   the top of it before trusting a `PLAYTESTED` grade there, and in particular read what it
-   says about the plating comparison, which has now produced the same false finding three
-   times for the same reason.
+3. **`BALANCE.md`'s Siege section has been re-measured and says so.** Read the block at the top
+   of it before trusting a `PLAYTESTED` grade there. The plating comparison produced the same
+   false finding **four** times before the cause was found, and it is worth knowing what the
+   cause was, because the shape recurs: **never compare two towers on a quantity whose maximum
+   is the thing you are testing.** `reinforce` raises `panel_hp`, so any column counting panels
+   makes the plated tower look worse for having more to lose — as a fraction *or* as an
+   absolute. It counts rooms and shafts now, whose maxima are identical either way.
+
+   The second half is worth as much: it had been running at a provocation level where **nothing
+   ever reached a room on either tower**. Eight seeds, zero damage, both shapes, and a
+   confident conclusion drawn from it. Before believing that something does nothing, check that
+   the run gave it something to do.
 
 ### Project structure
 
