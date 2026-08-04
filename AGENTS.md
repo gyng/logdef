@@ -37,7 +37,7 @@ Before implementing anything, in override order:
 want to tune, and add a graded row for any new constant (`DECISIONS.md` §7 explains why a test
 enforces this).
 
-**`MEASURED` is not `PLAYTESTED` and the difference is load-bearing.** All 133 rows are
+**`MEASURED` is not `PLAYTESTED` and the difference is load-bearing.** All 140 rows are
 `MEASURED`: an instrument confirms the effect the constant exists to produce, and the limit of
 that measurement is written into the row. None is `PLAYTESTED`, which this file defines as
 somebody having played with it *and with neighbouring values*. Do not promote a row without
@@ -71,11 +71,24 @@ them, the chute, region 3 and the coast, the two creatures that complete the tax
 enclaves, the journal that carries unlocks between runs, and the run log. A run can be played
 from the first pace to an arrival at the Refugia.
 
-Not built: the difficulty pass. **All 133 balance rows are now `MEASURED`** — every one
-checked against an instrument, section by section — and **none is `PLAYTESTED`**, because
-nobody has played with a value and its neighbours. That gap is the difficulty pass, and it is
-a person's work rather than an agent's. The itch.io release cut works and has not been shown
-to a stranger. Role priorities are cut for good rather than deferred (`SYSTEMS.md` §5.10).
+M6 ("The Watch") is shipped: the verbs a player has while a wave is landing. Charge priority
+handed over — it used to *be* the tick order — a creature the emplacements can be told to
+prefer, a person posted to a room, kit that belongs to somebody named, the berth given its own
+halt, and a thief answered by somebody standing in the room. **Read `SYSTEMS.md` §6 before
+adding anything to a wave**, because the tone gate is what shaped every one of them: weapon
+loadouts and crew fighting boarders were cut rather than softened, and what survived is the
+shape of *attention* rather than the shape of a fight.
+
+A run is now **37–44 minutes at 1×**, down from 129–147 — the journey layer scaled by 3.5 and
+nothing else moved. §6.6 records the three things tried instead and why each made it worse; the
+short version is that crew hauling is the binding constraint, so speeding production only fills
+shelves the crew cannot clear.
+
+Not built: the difficulty pass. **Every balance row is `MEASURED`** — checked against an
+instrument, section by section — and **none is `PLAYTESTED`**, because nobody has played with a
+value and its neighbours. That gap is the difficulty pass, and it is a person's work rather than
+an agent's. The itch.io release cut works and has not been shown to a stranger. Role priorities
+are cut for good rather than deferred (`SYSTEMS.md` §5.10).
 
 **Read `SYSTEMS.md` §5.11 open question 0 before touching terrain, yields or a chain.** It
 was the largest open finding in the project and it is now answered, but the answer is not the
@@ -162,6 +175,9 @@ crates/
       throughput.rs               # M1's instrument: does an elevator earn its slot?
       siege_run.rs                # M2's: three towers, five days, one seed
       journey.rs                  # M3's: twelve seeds, three policies, and a whole run
+      lift.rs                     # M6's: does a shaft ever pay, swept over tower height.
+                                  #   Reads its pack from UNDERSTORY_PACK when set, so a
+                                  #   tuning pass costs seconds rather than a rebuild
   bridge/                         # understory-bridge: wasm-bindgen entry points (cdylib)
     src/lib.rs
 assets/
@@ -249,6 +265,12 @@ Three rules the wreckage taught:
 3. **Check the run gave the mechanism something to do.** The plating comparison ran at a
    provocation where nothing ever reached a room on either tower — eight seeds, zero damage,
    and a confident conclusion drawn from it.
+4. **A harness measures its own policy as readily as the game's.** `lift.rs`'s affordability
+   column gave three different answers to one question depending on whether its tower grew,
+   whether it owned a chute, and what order it bought in — because a tower that spends every
+   pole the moment it has one almost never *holds* a surplus, and the column asked what it
+   held. Removing the material it was supposedly gated on moved the number not at all, which
+   is the tell. Its header says so rather than shipping the figures.
 
 ### Mutation testing, and two ways it will lie to you
 

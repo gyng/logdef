@@ -41,7 +41,7 @@ felt like it opened something or like a tax. The elevator is gated behind it (`S
 
 ### 3. Every constant graded `PLAYTESTED`
 
-**All 133 rows are `MEASURED`**: an instrument confirms the effect each constant produces,
+**All 140 rows are `MEASURED`**: an instrument confirms the effect each constant produces,
 with the limit written into the row. None is `PLAYTESTED`, which this project defines as
 *somebody played with it, and with neighbouring values, and this one won*.
 

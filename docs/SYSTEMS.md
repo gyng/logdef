@@ -6020,3 +6020,225 @@ Not a task list — the places where existing code assumes something M5 stops be
    `PLAYTESTED` need more sessions than a solo project will ever have? This is the criterion most
    likely to be honestly missed, and saying so now is better than quietly redefining
    `PLAYTESTED` later.
+
+---
+
+## M6 — The Watch *(the player's hands during a wave)*
+
+**Sprint question:** does a wave become a thing you *do* something about, without the tower
+becoming a war machine?
+
+**Scope:** the verbs a player has while a wave is landing. Charge priority handed over; a
+creature the emplacements can be told to prefer; a person posted to a room; kit that belongs to
+somebody named; the berth given its own halt; and a thief answered by somebody standing in the
+room. Alongside them, the pacing pass that brought a run to forty minutes and the balance
+changes the shaft economy turned out to need once it was measured rather than assumed.
+
+**The tone gate is absolute.** `DECISIONS.md` §8 is defenders rather than soldiers, and
+creatures defending their territory rather than a gallery to clear. Every verb below was checked
+against it before it was built, and the two that could not pass — weapon loadouts, and crew
+fighting boarders — are cut here rather than softened. What survived is the shape of *attention*
+rather than the shape of a fight.
+
+### 6.1 The shape of the thing
+
+**Understory already had most of FTL and had not noticed.** Real time with a pause; a shared
+power bank; crew whose repair work competes with their day job; systems that break mid-fight and
+have to be mended by the same people who were carrying things; and an escape valve. What it did
+not have was any way for the player to *act* during the twenty seconds a creature spends chewing
+on a panel. The tower was a machine you configured in advance and then watched.
+
+Four verbs close that, and each one already had its state sitting in the simulation:
+
+| Verb | What it was before | What it is now |
+|---|---|---|
+| **Charge priority** | the tick order, a constant | a ranking the player owns |
+| **Focus** | nearest-in-range, always | nearest, unless you name one |
+| **Stationing** | crew hauled or mended, nothing else | a person can be put in a room |
+| **Kit** | nothing at all | a tool that belongs to somebody named |
+
+**The escape valve stays.** §11 makes striding the free answer to any wave, and it is the game's
+identity — *keep walking* — so none of this removes it. FTL-ness lives inside the one place a
+tower is already committed, which is a berth (§6.4), rather than replacing the ability to leave.
+
+### 6.2 Charge priority, which was a constant pretending to be a decision
+
+`systems/power.rs` says it in its own header: **"charge priority *is* the tick order."** Lifts
+drew first because transport runs first; legs last because striding runs last. The most
+consequential scarcity in the game was settled by the order somebody wrote the systems in.
+
+`PowerUse` names the four draws — **Lifts, Works, Lamps, Legs** — and `SetPowerPriority` ranks
+them. The command takes the whole order and rejects anything that is not all four exactly once,
+because a partial order would leave the rest ranked by an accident of list position.
+
+**The tick order does not move.** Reordering `systems::tick` would invalidate every replay (§1),
+so the ranking is honoured by a *reserve*: a use may not draw the pool below what higher-ranked
+uses that have not yet spent this tick are owed. Only later-in-the-tick uses can be starved by an
+earlier one, so only those are reserved for — a higher-ranked use that has already spent needs
+nothing held back. Without that the ranking would be decoration and the tick order would still
+decide who gets the last of the bank.
+
+That needs each use's demand known before anything spends, so `estimate_demand` runs at the end
+of income. **They are estimates and the code says so.** A use that draws early cannot know what a
+late one will ask for without running it first; slightly high makes the tower cautious for a
+tick, slightly low costs the high-ranked use nothing because it still draws against whatever is
+actually left. Neither can create charge or lose it — this only decides who is refused first.
+
+**The default ranking is the old tick order**, and a test asserts every reserve is zero under it.
+An untouched tower behaves exactly as it did before, which every balance row measured against the
+old behaviour depends on.
+
+### 6.3 Focus, stationing, and what "equip" means here
+
+**Focus.** `defence.rs` shoots the nearest creature in range, and its comment says why: *a
+battery has no judgement — the player's judgement went into where they put it.* A focus does not
+give the battery judgement. It adds a second moment for the player to supply theirs, live, at the
+cost of their attention during a wave. Nothing focused is the normal case and the old behaviour
+exactly, and a focus out of range falls back to nearest rather than holding fire — a battery
+sitting idle while something chewed on the tower would be a trap rather than a decision. It is
+drawn as a soft ring of the tower's own lamplight, never a reticle.
+
+**Stationing.** A person posted to a room runs it at `manned_work_pct` and stops hauling. **The
+price is the person, not a resource** — three crew and one staircase means posting somebody is a
+standing decision to take a porter off the stairs, which is `DESIGN.md` insight 1 made explicit
+rather than a cost bolted on. Needs outrank it: a posted person goes to eat when hungry and to
+bed when their shift ends, and comes back. A station is not a cage.
+
+**Equip is a kit, and it belongs to a person.** The obvious reading — weapons bolted to the
+tower — is a different game, and the tower's half of it already exists: what you feed a dart
+battery *is* the choice. So a kit is the other half. `DESIGN.md` §2 structural call 4 says crew
+are named individuals and not stat blocks, and a kit is the smallest mechanic that makes that
+true in the simulation rather than only in the fiction — Wren carries the lamp, and you know
+which of them it is.
+
+| Kit | Answers | Where it comes from |
+|---|---|---|
+| **Hand lamp** | `dark_work_pct` (75), for one person | built at a kitbench, behind mechanisms |
+| **Porter's harness** | one more item per trip | the coast enclave, one ever |
+| **Mender's kit** | `repair_hp_per_shift` at 150% | the coast enclave, one ever |
+
+**Lent, not consumed.** The item leaves the shelves while it is carried and goes back when handed
+in, so equipping is a decision the player can take back — and a kit in somebody's hands is not on
+the shelves for anybody else, which is the whole of the scarcity. A swap returns the old kit
+*first* and refuses if there is nowhere to put it, because nothing this game hands the player
+ever vanishes.
+
+### 6.4 The berth, named
+
+`HaltView::Berthed`: stopped at a ruin, with a working rig in reach. **The one place a wave
+cannot be walked away from**, and until M6 it reported as an ordinary halt — indistinguishable
+from a tower somebody had parked for a rest.
+
+That matters because §11 makes striding the free answer to any wave, so *being unable to stride*
+is the only real commitment the game has, and a commitment the player cannot see is one they
+cannot decide about. It outranks `Stopped` and nothing else: a tower at a fork, arrived, or
+browned out is not choosing to be there, and each of those answers "why aren't we moving" better
+than the ruin does.
+
+It requires a rig that can reach the ruin, not merely a ruin nearby. A tower stopped beside one
+it has no way to open is parked, and saying otherwise would promise something it cannot do.
+
+### 6.5 Thieves, and the only defensive verb a person gets
+
+**The glean crow was already a boarder**, and the tone-safe kind: `steals: true` sends it to the
+highest floor with something in an outbox, it takes what is lying out, and it fights nobody. What
+was missing was the crew's half.
+
+A person walks to the room and stands in it for `shoo_ticks`, and the creature leaves. **Nobody
+fights.** What somebody does about a crow in the outbox is *be there* — a crow that finds a
+person in the room goes, the way it would if you walked into your own kitchen. Three lines keep
+it from becoming combat:
+
+- **Thieves only.** The `steals` flag is the line: a crow can be shooed, a mire hulk cannot.
+  Pretending otherwise would turn standing in a doorway into a fight.
+- **It does not count as `repelled`.** The creature goes to `Leaving`, sharing the fade with a
+  cling timer running out. That number means the darts worked, and conflating it with standing in
+  a doorway would stop it measuring what it exists to measure. Being asked to leave is not being
+  seen off.
+- **The roster says "seeing something out"**, not "chasing it off" or "defending".
+
+A thief outranks damage in the assignment order, and the order is the argument: a wrecked panel
+has already happened and will still be there in a minute, while a crow is taking something now.
+Both sit below hunger and the rota, because neither is worth skipping dinner over.
+
+### 6.6 Pacing, and the shaft economy
+
+Two bodies of balance work landed alongside the verbs, both driven by measurement rather than by
+intent.
+
+**A run is now 37–44 minutes at 1×**, down from 129–147. The journey layer scaled by 3.5 — region
+lengths, `fork_interval_paces`, `fork_edge_margin_paces` and every enclave's `at_paces` together,
+because a position measured in absolute paces means nothing on its own and anything left behind
+falls outside the region it belongs to. **Nothing else moved**, and three things that were tried
+are why: an economy 1.5× faster made the golden fixture fail *earlier* (crew hauling is the
+binding constraint, so speeding production only fills shelves the crew cannot clear), storage
+scaled to match made it fail earlier still, and `starting_stock` bought nothing at all. What
+closed the gap was the fixture's own housekeeping — it had been banking 24 rope and 24 meals on
+an eight-shelf tower.
+
+**The staircase now charges for freight.** `climb_ticks_per_item` (15) means an empty climber
+takes 30 ticks a floor and a fully laden one 75. Before it, a staircase was a perfectly good
+freight line and **neither built shaft had a job**: `examples/lift.rs` measured an elevator worth
++1% hauls at five floors and *not chosen at all* at eight or eleven, where crew queued sixty
+thousand crew-ticks on the stairs beside a powered, empty car. After it the lift is +54% at five
+floors and +650% at fourteen, and the dumbwaiter becomes worth building — the ladder the pack has
+always described starts existing. The elevator's price fell from 18 poles and 6 rope to 12 and 4
+to match: a thing the tower needs from minute twelve should not be the last thing it can afford.
+
+**Two smaller shape changes.** `min_floor` gives the chain a direction — three intake rooms were
+pinned low because they reach the ground, nothing was pinned high, and so a whole chain could sit
+beside its own intake and never haul anything upward. A burner (a chimney) and a bunk (you sleep
+above the works) are pinned to floor 2, and nothing else is. And `canopy_climb_pct_per_floor` is
+the counterweight to `top_floor_only`: growing taller shades your own sail deck, so `charge.rs`
+records a four-floors-taller tower earning *nothing at all* and browning out for most of the day.
+Re-roof and the wall is gone.
+
+### 6.7 What M6 changes in code that already exists
+
+- `state/power.rs` — `PowerUse`, a `priority` list, a `demand` estimate, and `draw` taking the
+  class that is spending. Every draw site is tagged with its class.
+- `state/crew.rs` — `stationed` and `kit` on `Crew`; `Manning` and `Shooing` states; `Station`
+  and `Shoo` errands, both routed by the existing `errand_leg`.
+- `state/siege.rs` — `focus`, cleared in `siege::run` when its creature dies or leaves, so the
+  mark can never point at nothing.
+- `content.rs` — `KitDef` on `ItemDef`; `min_floor` on `RoomDef`; `manned_work_pct` and
+  `climb_ticks_per_item` on the crew balance; `shoo_ticks` and `canopy_climb_pct_per_floor`.
+- `systems/power.rs` — `roof_exposure_pct`, split from `exposure_pct` so harvest keeps reading
+  the ground figure. A cutter arm sweeping the forest floor does not care how many storeys are
+  stacked above it.
+- `snapshot.rs` — `HaltView::Berthed`, `CrewStateTag::{Man, Shoo}`, `StoreView` (`StockView` plus
+  `space`), and the power ranking.
+- Four new commands, every one caught by the replay exhaustiveness match on the way in.
+
+### 6.8 Exit criteria
+
+1. **A wave is a thing you do something about.** Four verbs exist, each with a test. *Met in
+   code; whether it reads as agency needs a person.*
+2. **None of it reads as a war machine.** Focus is a mark rather than a reticle, a thief is seen
+   out rather than fought, and nothing new is counted or celebrated. *Met by construction and by
+   review rather than by measurement, which is the honest limit of this criterion.*
+3. **The default behaves as it did.** The charge ranking defaults to the old tick order and a
+   test asserts every reserve is zero under it. *Met.*
+4. **A shaft is worth building.** `lift.rs` measures the lift positive at every height and the
+   dumbwaiter worth having at five. *Met.*
+5. **A run is under an hour.** 12 of 12 seeds reach the Refugia in 37–44 minutes at 1×. *Met for
+   pace; a walker is the floor and a player adds to it.*
+
+### 6.9 Open questions
+
+1. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+   but a tower with a spare person has no reason not to post them. The tell is whether anybody
+   ever *un*-posts somebody, and nothing measures that.
+2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves
+   identically, which is safe and may also be invisible. A ranking nobody reorders is a panel that
+   should not exist.
+3. **Is a kit a decision about a person, or a strictly-correct upgrade?** The harness and the
+   mender's kit are one-of-each at the coast, so their scarcity is real; the lamp is craftable and
+   may not be. If a tower ends every run with three lamps and no thought about who carries them,
+   the kit is a stat block after all.
+4. **`repelled` now excludes shooing deliberately**, and there is no counter for a creature seen
+   out without violence. That is defensible — the tower keeps no score of it either way — and it
+   also means the game's only defensive number under-reports what a well-run tower does.
+5. **Still nothing is `PLAYTESTED`.** Every constant M6 added is `MEASURED`: an instrument
+   confirms the effect it exists to produce. None has been played with, or played with against its
+   neighbours, and `docs/PLAYTEST.md` remains the work that closes it.

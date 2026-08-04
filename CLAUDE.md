@@ -11,7 +11,9 @@ v1 ("Supply Line," an ARPG-flavoured hero/weapons game) is archived on `main`. T
 - **Whole-game plan:** `docs/v2-plan.md` — the locked plan; the only whole-game doc; sprint
   briefs and milestone schedule live here and nowhere else
 - **Design:** `docs/DESIGN.md` — the pitch, the parents, the pillars, the systems, distilled
-- **Built spec:** `docs/SYSTEMS.md` — grown one milestone at a time; spec before code
+- **Built spec:** `docs/SYSTEMS.md` — grown one milestone at a time; spec before code. §6 is
+  the newest and the one to read before touching a wave: it is where the tone gate did most
+  of its work
 - **Engineering rules:** `docs/DECISIONS.md` — determinism, bridge, command pattern, tone
   guardrails; numbered so code can cite them (`DECISIONS.md §1`)
 - **Balance values:** `docs/BALANCE.md` — every tuning constant, graded by provenance

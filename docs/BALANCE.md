@@ -27,7 +27,7 @@ Marking those rows `PLAYTESTED` would have satisfied M5's exit criterion by rede
 word, which is precisely what §5.11's fourth open question predicted somebody would be
 tempted to do.
 
-So the criterion stands open, honestly, with 133 of 133 rows `MEASURED` and 0 `PLAYTESTED`.
+So the criterion stands open, honestly, with 140 of 140 rows `MEASURED` and 0 `PLAYTESTED`.
 What is left is not instrument work — it is somebody playing.
 
 ---
