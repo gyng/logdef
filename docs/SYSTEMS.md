@@ -3051,7 +3051,7 @@ Not a task list — the places where existing code assumes something M5 stops be
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
 
-      **Standing at 28 of 137.** Moved this pass: `reinforce`, once the plating comparison
+      **Standing at 33 of 137.** Moved this pass: `reinforce`, once the plating comparison
       stopped counting the wrong thing; the three region-length rows, on the whole-run
       measurement that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4
       hours); and the three Power rows, on a new instrument.
@@ -3103,6 +3103,15 @@ Not a task list — the places where existing code assumes something M5 stops be
       **The terrain pair is graded too**, on the ceiling measurement in open question 0 rather
       than on new work: `yield_pct` and `sun_pct` cancel to within two percent on every tower
       shape, which is exactly what they were written to do.
+
+      **`examples/worldrate.rs` does the World section**, and it is the one that comes out
+      clean: striding measures 59.8 paces per 100 ticks against an asserted 60 (the gap is the
+      tick a fork answer costs), bands run 586 paces mean against a 300–900 roll, and both
+      streaming windows are bounded and flat with distance — 1,795 ahead against a 1,800 ceiling,
+      1,195 behind against 1,200. Those two *should* exceed their constants: generation and
+      pruning each finish the band they are in, so the retained window is the constant plus up to
+      one `band_max_paces`. Recorded because the next person to measure it will otherwise file a
+      bug.
 
       **And one row was stale by a factor of six.** `canopy sails charge_per_100_ticks` compared
       a good-sun day's ~20,000 income against "~17,700 of continuous striding" — but
