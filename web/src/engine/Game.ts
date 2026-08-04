@@ -19,6 +19,7 @@ import type { PlaceMode } from "./scene";
 import { slotRangeFree, towerShape } from "./scene";
 import type { Bridge } from "../bridge";
 import { commandFailed } from "../bridge";
+import { POWER_USES } from "../bridge/types";
 import type {
   CatalogSnapshot,
   CrewView,
@@ -26,6 +27,7 @@ import type {
   FeatureView,
   ForkView,
   GameCommand,
+  PowerUse,
   HaltView,
   RoomInfo,
   ShaftInfo,
@@ -97,6 +99,8 @@ export interface UiState {
   chargeIncome: number;
   chargeSpend: number;
   brownout: boolean;
+  /** Charge ranking, best first. */
+  powerPriority: PowerUse[];
   walking: boolean;
   /** How much attention the tower has drawn, against its ceiling. */
   provocation: number;
@@ -257,6 +261,17 @@ export class Game {
    * simulation: a rejection then names the crew member it is about, and
    * the replay reads as a list of decisions about people.
    */
+  /**
+   * Rank what keeps running when the bank runs short, best first.
+   *
+   * Sent whole rather than as a swap, because the simulation rejects
+   * anything that is not all four uses exactly once — a partial order
+   * would leave the rest ranked by an accident of list position.
+   */
+  setPowerPriority(order: PowerUse[]): void {
+    this.send({ SetPowerPriority: { order } });
+  }
+
   setShift(crew: number, shift: ShiftTag): void {
     this.send({ SetShift: { crew, shift } });
   }
@@ -625,6 +640,7 @@ export class Game {
       chargeIncome: view?.power.income_last ?? 0,
       chargeSpend: view?.power.spent_last ?? 0,
       brownout: view?.power.brownout ?? false,
+      powerPriority: view?.power.priority ?? POWER_USES,
       walking: view?.power.walking ?? true,
       provocation: view?.siege.provocation ?? 0,
       provocationMax: view?.siege.provocation_max ?? 0,

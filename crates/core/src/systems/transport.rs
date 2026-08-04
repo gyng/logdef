@@ -99,7 +99,7 @@ fn run_elevator(
                 // simply holds position — the brown-out made physical.
                 let step = Fx::ratio(1, ticks_per_floor as i32);
                 let cost = charge_per_floor / i64::from(ticks_per_floor).max(1);
-                if !state.power.draw(cost) {
+                if !state.power.draw(crate::state::power::PowerUse::Lifts, cost) {
                     car
                 } else {
                     advance(car, step, &state.tower.shafts[shaft_index], daypart, &calls)
@@ -500,7 +500,7 @@ fn run_dumbwaiter(
         }
         CarState::Moving => {
             let cost = charge_per_floor / i64::from(ticks_per_floor).max(1);
-            if !state.power.draw(cost) {
+            if !state.power.draw(crate::state::power::PowerUse::Lifts, cost) {
                 return;
             }
             let step = Fx::ratio(1, ticks_per_floor as i32);

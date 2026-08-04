@@ -31,6 +31,7 @@ pub fn apply(
             slot,
             active,
         } => set_room_active(state, *floor, *slot, *active),
+        GameCommand::SetPowerPriority { order } => set_power_priority(state, order),
         GameCommand::BuildShaft {
             shaft,
             low,
@@ -543,4 +544,22 @@ fn spend(state: &mut GameState, cost: &[(ItemIdx, i64)]) {
     for (item, amount) in cost {
         state.take_stock(*item, *amount);
     }
+}
+
+/// Rank the four charge uses. Validates fully before mutating
+/// (`DECISIONS.md` §4): an order that is not a permutation of the four
+/// is rejected whole rather than partly applied.
+fn set_power_priority(
+    state: &mut GameState,
+    order: &[crate::state::power::PowerUse],
+) -> Result<(), CommandError> {
+    use crate::state::power::PowerUse;
+    let complete = PowerUse::ALL
+        .iter()
+        .all(|use_| order.iter().filter(|entry| *entry == use_).count() == 1);
+    if order.len() != PowerUse::ALL.len() || !complete {
+        return Err(CommandError::BadPowerPriority { given: order.len() });
+    }
+    state.power.priority = order.to_vec();
+    Ok(())
 }

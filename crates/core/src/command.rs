@@ -42,6 +42,25 @@ pub enum GameCommand {
         active: bool,
     },
 
+    /// Rank what keeps running when the bank runs short, best first.
+    ///
+    /// **The one piece of FTL's reactor the tower already had the wiring
+    /// for.** Charge priority used to *be* the tick order and nothing
+    /// else — lifts first because transport runs first, legs last
+    /// because striding runs last — so it was a constant rather than a
+    /// decision. This is the same four draws with the ranking handed to
+    /// the player.
+    ///
+    /// It is a schedule the player writes, the same category as the
+    /// shift rota and the per-daypart shaft programs, which is what
+    /// makes a panel for it allowable under `DECISIONS.md` §8.
+    SetPowerPriority {
+        /// All four uses, best first. Rejected unless it is exactly the
+        /// four, each once: a partial order would leave the rest ranked
+        /// by an accident of list position.
+        order: Vec<crate::state::power::PowerUse>,
+    },
+
     /// Build vertical transport. The column costs a slot on every floor
     /// it spans, which is the whole price of circulation.
     BuildShaft {
@@ -135,6 +154,8 @@ pub enum CommandError {
     FloorTooLow { floor: FloorIdx, min_floor: u8 },
     /// Only one of these may exist in a tower.
     AlreadyPlaced { room: String },
+    /// A charge ranking that was not all four uses, each exactly once.
+    BadPowerPriority { given: usize },
     /// Not enough on the shelves. The chain pays for the tower.
     InsufficientStock {
         item: String,
@@ -206,6 +227,9 @@ impl std::fmt::Display for CommandError {
                 write!(f, "cannot go below floor {min_floor}; asked for {floor}")
             }
             CommandError::AlreadyPlaced { room } => write!(f, "{room} is already placed"),
+            CommandError::BadPowerPriority { given } => {
+                write!(f, "a charge ranking must be all four uses, got {given}")
+            }
             CommandError::InsufficientStock {
                 item,
                 needed,

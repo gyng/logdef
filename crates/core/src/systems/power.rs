@@ -8,7 +8,7 @@
 use crate::content::Content;
 use crate::fx::Fx;
 use crate::state::GameState;
-use crate::state::power::Credit;
+use crate::state::power::{Credit, PowerUse};
 
 use super::SoundEvent;
 
@@ -26,6 +26,60 @@ pub fn income(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEv
     let exposure = roof_exposure_pct(state, content);
     collect_solar(state, content, exposure);
     run_burners(state, content, sounds);
+    estimate_demand(state, content);
+}
+
+/// What each use is likely to want this tick, so the player's ranking
+/// can be honoured by draws that happen at different points in it.
+///
+/// **Estimates, deliberately.** A use that draws early in the tick has
+/// to leave room for a higher-ranked one that draws late, and it cannot
+/// know exactly what that one will ask for without running it first.
+/// Slightly high makes the tower cautious for a tick; slightly low costs
+/// the higher-ranked use nothing, because it still draws against
+/// whatever is actually left. Neither can create charge or lose it —
+/// this only decides who gets refused first.
+fn estimate_demand(state: &mut GameState, content: &Content) {
+    let mut demand = vec![0i64; 4];
+
+    // Lifts: every car that could move, one tick's worth of a floor.
+    demand[PowerUse::Lifts.index()] = state
+        .tower
+        .shafts
+        .iter()
+        .map(|shaft| {
+            let def = content.shaft(shaft.def);
+            let ticks = i64::from(def.ticks_per_floor.max(1));
+            shaft.cars.len() as i64 * (def.charge_per_floor / ticks)
+        })
+        .sum();
+
+    // Works: every powered room switched on. A stalled one may not
+    // spend, but it is about to try.
+    demand[PowerUse::Works.index()] = state
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .filter(|room| room.active)
+        .map(|room| content.room(room.def).power_draw)
+        .sum();
+
+    // Lamps and legs buy in hundred-tick blocks, so what they want on
+    // any given tick is either a whole block or nothing at all.
+    let power = &content.balance.power;
+    demand[PowerUse::Lamps.index()] = if state.power.light_credit == 0 {
+        power.light_charge_per_100_ticks_per_floor * state.tower.floors.len() as i64
+    } else {
+        0
+    };
+    demand[PowerUse::Legs.index()] = if state.power.stride_credit == 0 && state.walking {
+        power.stride_charge_per_100_ticks
+    } else {
+        0
+    };
+
+    state.power.demand = demand;
 }
 
 /// Sunlight reaching the sails: the day's curve, scaled by how much of

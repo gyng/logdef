@@ -18,6 +18,7 @@ import type {
   EnclaveInfo,
   HaltView,
   RoomInfo,
+  PowerUse,
   ShaftInfo,
   SimSpeed,
   StoreView,
@@ -123,6 +124,7 @@ function Roster({ game, ui }: Props) {
         })}
       </ul>
       <Schedules game={game} ui={ui} />
+      <PowerOrder game={game} ui={ui} />
     </aside>
   );
 }
@@ -147,6 +149,79 @@ function Roster({ game, ui }: Props) {
  * the version of this that is a spreadsheet is the version that gets
  * built and then never opened.
  */
+/**
+ * What keeps running when the bank runs short.
+ *
+ * **Charge priority used to be the tick order and nothing else** — lifts
+ * first because transport runs first, legs last because striding runs
+ * last — so the most consequential scarcity in the game was resolved by
+ * a constant. This hands the ranking over.
+ *
+ * Allowable under `DECISIONS.md` §8 for the same reason the shift rota
+ * and the shaft programs are: **it is a schedule the player writes, not
+ * a readout of state.** The diegetic half already exists and stays the
+ * primary read — the lamps go out, the legs stutter, the roof rack
+ * empties. This says what you want cut *first*, and the tower still
+ * shows you what happened.
+ *
+ * Reordered by moving one entry at a time rather than by dragging: the
+ * simulation wants all four exactly once, and a drag that can drop
+ * outside the list has to invent a rule for what that means.
+ */
+function PowerOrder({ game, ui }: Props) {
+  const move = (from: number, by: number) => {
+    const next = [...ui.powerPriority];
+    const to = from + by;
+    if (to < 0 || to >= next.length) return;
+    [next[from], next[to]] = [next[to]!, next[from]!];
+    game.setPowerPriority(next);
+  };
+  return (
+    <>
+      <h2 className="section-title schedule-title">Charge</h2>
+      <ol className="power-order" data-testid="power-order">
+        {ui.powerPriority.map((use, at) => (
+          <li key={use} className="power-row">
+            <span className="power-name">{POWER_WORDS[use]}</span>
+            <span className="power-moves">
+              <button
+                type="button"
+                disabled={at === 0}
+                title={`Keep ${POWER_WORDS[use]} running before the one above`}
+                data-testid={`power-up-${use}`}
+                onClick={() => move(at, -1)}
+              >
+                ▲
+              </button>
+              <button
+                type="button"
+                disabled={at === ui.powerPriority.length - 1}
+                title={`Let ${POWER_WORDS[use]} be cut before the one below`}
+                data-testid={`power-down-${use}`}
+                onClick={() => move(at, 1)}
+              >
+                ▼
+              </button>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
+
+/**
+ * The tower's own words for its four draws. "Lifts" rather than
+ * "transport", "works" rather than "production" — this is a place people
+ * live, and the panel should sound like somebody who lives there.
+ */
+const POWER_WORDS: Record<PowerUse, string> = {
+  Lifts: "the lifts",
+  Works: "the works",
+  Lamps: "the lamps",
+  Legs: "the legs",
+};
+
 function Schedules({ game, ui }: Props) {
   const catalog = game.getCatalog();
   const dispatched = ui.shafts.filter((shaft) => shaft.kind !== "Stairs");

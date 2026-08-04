@@ -553,3 +553,83 @@ fn sail_income_scales_with_exposure_rather_than_being_on_or_off() {
         "sails banked {open} in the open against {shaded} under canopy — terrain is not reaching them"
     );
 }
+
+/// **The default ranking is the old tick order, so it changes nothing.**
+///
+/// Charge priority used to *be* the order the tick spent in. A tower
+/// whose player has never touched the ranking has to behave exactly as
+/// it did before the ranking existed, or every balance row measured
+/// against the old behaviour silently stopped being true.
+#[test]
+fn the_default_charge_ranking_reserves_nothing() {
+    use crate::state::power::{Power, PowerUse};
+    let mut power = Power::new(100);
+    power.demand = vec![50, 50, 50, 50];
+    for use_ in PowerUse::ALL {
+        assert_eq!(
+            power.reserved_against(use_),
+            0,
+            "{use_:?} held charge back under the default ranking"
+        );
+    }
+}
+
+/// Ranking the legs first makes an earlier draw yield to them.
+///
+/// This is the whole feature: lifts spend at the top of the tick and
+/// legs at the bottom, so without a reserve the lifts always win the
+/// last of the bank whatever the player asked for.
+#[test]
+fn ranking_the_legs_first_makes_the_lifts_yield() {
+    use crate::state::power::{Power, PowerUse};
+    let mut power = Power::new(100);
+    power.demand = vec![0, 0, 0, 60];
+    power.priority = vec![
+        PowerUse::Legs,
+        PowerUse::Lifts,
+        PowerUse::Works,
+        PowerUse::Lamps,
+    ];
+
+    // 60 is held for the legs, so the lifts may spend only 40.
+    assert_eq!(power.reserved_against(PowerUse::Lifts), 60);
+    assert!(
+        !power.draw(PowerUse::Lifts, 41),
+        "the lifts took the legs' charge"
+    );
+    assert!(power.brownout, "a refusal is a brown-out");
+    assert!(power.draw(PowerUse::Lifts, 40));
+    assert_eq!(power.charge, 60);
+
+    // And the legs, drawing last, still get theirs.
+    assert!(power.draw(PowerUse::Legs, 60));
+    assert_eq!(power.charge, 0);
+}
+
+/// A ranking that is not all four uses is refused whole.
+#[test]
+fn a_partial_charge_ranking_is_rejected() {
+    use crate::command::GameCommand;
+    use crate::state::power::PowerUse;
+    let mut game = crate::tests::engine(4242);
+    let before = game.state().power.priority.clone();
+    let err = game
+        .try_send(GameCommand::SetPowerPriority {
+            order: vec![
+                PowerUse::Legs,
+                PowerUse::Legs,
+                PowerUse::Legs,
+                PowerUse::Legs,
+            ],
+        })
+        .expect_err("four of the same is not a ranking");
+    assert!(matches!(
+        err,
+        crate::command::CommandError::BadPowerPriority { .. }
+    ));
+    assert_eq!(
+        game.state().power.priority,
+        before,
+        "a rejected ranking still changed the order"
+    );
+}

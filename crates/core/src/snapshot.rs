@@ -78,6 +78,12 @@ pub struct PowerView {
     pub lit: bool,
     /// The legs are running.
     pub walking: bool,
+    /// What the player has ranked to keep running when charge is short,
+    /// best first. Always all four uses.
+    pub priority: Vec<crate::state::power::PowerUse>,
+    /// What each use wanted this tick, indexed by `PowerUse::index`. Lets
+    /// a panel say *why* something was cut rather than only that it was.
+    pub demand: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -665,6 +671,8 @@ fn build_power(state: &GameState) -> PowerView {
         brownout: state.power.brownout,
         lit: state.power.lit,
         walking: state.walking,
+        priority: state.power.priority.clone(),
+        demand: state.power.demand.clone(),
     }
 }
 

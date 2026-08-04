@@ -53,7 +53,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             // progress too. Indistinguishable from starving, from the
             // outside — which is correct: it is starving, for power.
             let draw = content.room(room.def).power_draw;
-            if !power.draw(draw) {
+            if !power.draw(crate::state::power::PowerUse::Works, draw) {
                 continue;
             }
 

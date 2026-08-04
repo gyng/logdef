@@ -133,7 +133,26 @@ export interface PowerView {
   lit: boolean;
   /** The legs are running. */
   walking: boolean;
+  /**
+   * What the player ranked to keep running when charge is short, best
+   * first. Always all four.
+   */
+  priority: PowerUse[];
+  /** What each use wanted this tick, in `POWER_USES` order. */
+  demand: number[];
 }
+
+/**
+ * The four things that spend charge.
+ *
+ * Charge priority used to *be* the tick order — lifts first because
+ * transport runs first, legs last because striding runs last — so it was
+ * a constant rather than a decision. This is that ranking, handed over.
+ */
+export type PowerUse = "Lifts" | "Works" | "Lamps" | "Legs";
+
+/** In the order the tick spends, which is also the default ranking. */
+export const POWER_USES: PowerUse[] = ["Lifts", "Works", "Lamps", "Legs"];
 
 export interface WorldView {
   /** Whole paces walked, with fraction. */
@@ -590,7 +609,15 @@ export type GameCommand =
    * command, so a rejection names who it is about and the replay reads
    * as a list of decisions about people.
    */
-  | { SetShift: { crew: number; shift: ShiftTag } };
+  | { SetShift: { crew: number; shift: ShiftTag } }
+  /**
+   * Rank what keeps running when the bank runs short, best first.
+   *
+   * Sent whole rather than as a swap: the simulation rejects anything
+   * that is not all four uses exactly once, because a partial order
+   * would leave the rest ranked by an accident of list position.
+   */
+  | { SetPowerPriority: { order: PowerUse[] } };
 
 /** Rust's `CommandResult`: `"Ok"` or `{ Error: … }`. */
 export type CommandResult = "Ok" | { Error: unknown };
