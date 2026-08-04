@@ -121,6 +121,84 @@ fn a_numeric_row_says_what_the_constant_says() {
     );
 }
 
+/// Every documented `build_cost` must name every item the pack charges.
+///
+/// **The sibling test above guards `balance.ron` and nothing guards the
+/// content pack, which is where four rows had gone stale at once.** The
+/// cell bank's row said "8 poles"; the pack charges **2 charge cells**,
+/// a tier-two material, so that room moved from an opening build to one
+/// gated behind a whole chain and its row still described the old game.
+/// The dumbwaiter, the elevator and the dart battery each said poles
+/// only and each charge rope as well — which is not a detail, because
+/// rope needs a ropery, a ropery needs fiber, and fiber needs a comb. A
+/// reader pricing the elevator off that row would conclude vertical
+/// transport is eighteen poles away when it is three rooms and a chain
+/// away.
+///
+/// Checks presence rather than exact wording: a row has to mention each
+/// item's amount and a recognisable piece of its name. Prose stays free,
+/// facts do not.
+#[test]
+fn a_documented_build_cost_names_everything_the_pack_charges() {
+    let content = content();
+    let mut wrong = Vec::new();
+    let mut checked = 0;
+
+    let costs = content
+        .rooms
+        .iter()
+        .map(|def| &def.name)
+        .zip(content.room_runtime.iter().map(|rt| &rt.build_cost))
+        .chain(
+            content
+                .shafts
+                .iter()
+                .map(|def| &def.name)
+                .zip(content.shaft_runtime.iter().map(|rt| &rt.build_cost)),
+        );
+
+    for (name, cost) in costs {
+        let needle = format!("| {} `build_cost`", name.to_lowercase());
+        let Some(line) = BALANCE_DOC
+            .lines()
+            .find(|line| line.to_lowercase().starts_with(&needle))
+        else {
+            continue;
+        };
+        let cells: Vec<&str> = line.split('|').collect();
+        let Some(value) = cells.get(2) else { continue };
+        checked += 1;
+        for (item, amount) in cost {
+            // The last word of the item id — `item.charge_cells` is
+            // "cells", `item.poles` is "poles" — which is what a row
+            // would naturally call it.
+            let word = content.items[item.get()]
+                .id
+                .rsplit(['.', '_'])
+                .next()
+                .unwrap_or("")
+                .to_lowercase();
+            if !value.contains(&amount.to_string()) || !value.to_lowercase().contains(&word) {
+                wrong.push(format!(
+                    "{name}: pack charges {amount} {word}, row's value column reads \"{}\"",
+                    value.trim()
+                ));
+            }
+        }
+    }
+
+    assert!(
+        checked > 8,
+        "only {checked} build-cost rows were found — the table's shape has changed and this \
+         test has quietly stopped guarding anything"
+    );
+    assert!(
+        wrong.is_empty(),
+        "BALANCE.md build costs disagree with the content pack:\n  {}",
+        wrong.join("\n  ")
+    );
+}
+
 /// Leaf fields with their values, for the row-agreement check above.
 fn collect_leaves(value: &serde_json::Value, out: &mut Vec<(String, serde_json::Value)>) {
     let serde_json::Value::Object(fields) = value else {

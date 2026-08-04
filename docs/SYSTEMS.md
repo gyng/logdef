@@ -3051,7 +3051,7 @@ Not a task list — the places where existing code assumes something M5 stops be
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
 
-      **Standing at 76 of 137.** Moved this pass: `reinforce`, once the plating comparison
+      **Standing at 80 of 137.** Moved this pass: `reinforce`, once the plating comparison
       stopped counting the wrong thing; the three region-length rows, on the whole-run
       measurement that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4
       hours); and the three Power rows, on a new instrument.
@@ -3126,6 +3126,25 @@ Not a task list — the places where existing code assumes something M5 stops be
       out a queue, small enough that backpressure reaches the arm — and the arm's 40.4% is that
       backpressure arriving, which `AGENTS.md` requires to be visible rather than silently
       absorbed. Enlarging either buffer would hide it.
+
+      **`examples/prices.rs` asks the only question a `build_cost` row can be tested on** —
+      is it payable when the thing is wanted? — by walking one tower for eight days, buying
+      nothing, and recording when each buildable first becomes affordable. The answer splits
+      cleanly in two and **no row described the split**: everything priced in poles arrives
+      inside the first fifth of day one, and everything priced in **rope** is never affordable
+      at all, because rope needs a ropery, a ropery needs fiber, and fiber needs a comb.
+
+      That caught four stale rows at once. The cell bank's said "8 poles"; the pack charges **2
+      charge cells**, so it moved from an opening build to a tier-two one and its row still
+      described the old game. The dumbwaiter, elevator and dart battery each said poles only and
+      each charge rope as well. A reader pricing the elevator off its row would conclude vertical
+      transport is eighteen poles away when it is three rooms and a chain away — and the dart
+      battery's hidden rope is exactly what makes berthing a trap, since a salvage rig is 8 poles
+      and affordable at once.
+
+      `a_documented_build_cost_names_everything_the_pack_charges` now guards it: the sibling test
+      covers `balance.ron` and nothing covered the content pack, which is where all four had
+      drifted.
 
       **`examples/bestiary.rs` puts one of each creature against one tower**, which nothing had
       done — the pressure table measures whole waves, so it can say a tower died at provocation
