@@ -53,6 +53,88 @@ fn the_doc_does_not_grade_constants_that_no_longer_exist() {
     );
 }
 
+/// Every row whose Value column is a plain number must agree with the
+/// constant it describes.
+///
+/// **The two tests above check that a row *exists* and carries a grade.
+/// Neither has ever checked that it says the right thing, and the cost
+/// of that showed up the moment anybody looked.** Auditing the file
+/// against measurements turned up a lighting figure 70% out, a meals
+/// figure a third out, and a sails row comparing income against a stride
+/// cost **six times** the constant printed two rows above it — that one
+/// was arithmetic left over from a value the game no longer has.
+///
+/// Prose cannot be tested and is not tested here. The Value column can:
+/// where it is a single number, it is a fact with an answer, and letting
+/// it drift is how a reader ends up reasoning about a game that no
+/// longer exists. Rows whose value is a list, a range, a per-terrain
+/// breakdown or a sentence are skipped — this is a guard against silent
+/// rot, not a formatting rule.
+#[test]
+fn a_numeric_row_says_what_the_constant_says() {
+    let value = serde_json::to_value(&content().balance).expect("balance must serialise");
+    let mut fields = Vec::new();
+    collect_leaves(&value, &mut fields);
+
+    let mut wrong = Vec::new();
+    let mut checked = 0;
+    for (field, actual) in fields {
+        let Some(actual) = actual.as_i64() else {
+            continue;
+        };
+        let needle = format!("`{field}`");
+        for line in BALANCE_DOC.lines() {
+            // The row has to be *about* this field: its name is the
+            // first thing in the row, not a mention further along.
+            let cells: Vec<&str> = line.split('|').collect();
+            if cells.len() < 4 || !cells[1].contains(&needle) {
+                continue;
+            }
+            // One row, one constant. A row naming two knobs is a
+            // per-terrain breakdown or a paired cost, and its value
+            // column is prose by necessity.
+            if cells[1].matches('`').count() != 2 {
+                continue;
+            }
+            let printed = cells[2].trim().replace([',', '`'], "");
+            let Ok(printed) = printed.parse::<i64>() else {
+                continue;
+            };
+            checked += 1;
+            if printed != actual {
+                wrong.push(format!(
+                    "{field}: doc says {printed}, the pack says {actual}"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        checked > 20,
+        "only {checked} rows were checkable — the table's shape has changed and this test \
+         has quietly stopped guarding anything"
+    );
+    assert!(
+        wrong.is_empty(),
+        "BALANCE.md disagrees with the content pack:\n  {}",
+        wrong.join("\n  ")
+    );
+}
+
+/// Leaf fields with their values, for the row-agreement check above.
+fn collect_leaves(value: &serde_json::Value, out: &mut Vec<(String, serde_json::Value)>) {
+    let serde_json::Value::Object(fields) = value else {
+        return;
+    };
+    for (key, child) in fields {
+        if child.is_object() {
+            collect_leaves(child, out);
+        } else {
+            out.push((key.clone(), child.clone()));
+        }
+    }
+}
+
 /// A row counts as documented when the line naming the field in
 /// backticks also carries one of the grades.
 fn documented_with_grade(field: &str) -> bool {
