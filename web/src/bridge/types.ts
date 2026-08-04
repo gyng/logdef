@@ -104,7 +104,7 @@ export interface ViewSnapshot {
   siege: SiegeView;
   journey: JourneyView;
   crew: CrewView[];
-  stock: StockView[];
+  stock: StoreView[];
   stats: RunStats;
 }
 
@@ -360,6 +360,24 @@ export interface CrewView {
 export interface StockView {
   item: number;
   count: number;
+}
+
+/**
+ * One item on the tower's shelves, and how much shelf it has.
+ *
+ * Separate from `StockView` — which also carries a dumbwaiter's freight
+ * and what a crew member is holding, neither of which has a capacity.
+ *
+ * `space` is the shelf capacity currently committed to this item, so
+ * `count === space` is exactly the condition that stalls the chain
+ * feeding it. Until now that fact was legible only as a row of full
+ * pips inside the cross-section.
+ */
+export interface StoreView {
+  item: number;
+  count: number;
+  /** Never zero: an item is listed only because a shelf holds it. */
+  space: number;
 }
 
 export interface RunStats {

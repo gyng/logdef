@@ -44,8 +44,9 @@ pub struct ViewSnapshot {
     pub siege: SiegeView,
     pub journey: JourneyView,
     pub crew: Vec<CrewView>,
-    /// Summed across every storeroom shelf — what construction spends.
-    pub stock: Vec<StockView>,
+    /// Summed across every storeroom shelf — what construction spends,
+    /// and how much shelf it is spread over.
+    pub stock: Vec<StoreView>,
     pub stats: RunStats,
 }
 
@@ -385,6 +386,28 @@ pub enum CrewStateTag {
 pub struct StockView {
     pub item: u16,
     pub count: i64,
+}
+
+/// One item on the tower's shelves, and how much shelf it has.
+///
+/// Separate from [`StockView`] — which also carries a dumbwaiter's
+/// freight and what a crew member has in their arms, neither of which
+/// has a capacity — because `space` would be a lying zero on both.
+///
+/// `space` is the sum of `max` over the shelves *currently holding this
+/// item*, so `count == space` is the exact condition under which the
+/// chain feeding it stalls. That is the fact `SYSTEMS.md` §5.11 open
+/// question 0 turns on: every chain terminates in a buffer, and a full
+/// buffer is why a tower's harvest is capped by its consumption rather
+/// than by the ground. It was legible in the cross-section as a row of
+/// full pips and nowhere else.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoreView {
+    pub item: u16,
+    pub count: i64,
+    /// Shelf capacity committed to this item. Never zero: an item is
+    /// only listed because a shelf holds it.
+    pub space: i64,
 }
 
 // ---------------------------------------------------------------------------
@@ -1049,8 +1072,8 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
         .collect()
 }
 
-fn build_stock(state: &GameState) -> Vec<StockView> {
-    let mut totals: Vec<StockView> = Vec::new();
+fn build_stock(state: &GameState) -> Vec<StoreView> {
+    let mut totals: Vec<StoreView> = Vec::new();
     for shelf in state
         .tower
         .floors
@@ -1062,10 +1085,14 @@ fn build_stock(state: &GameState) -> Vec<StockView> {
             continue;
         };
         match totals.iter_mut().find(|s| s.item == item.0) {
-            Some(entry) => entry.count += shelf.count,
-            None => totals.push(StockView {
+            Some(entry) => {
+                entry.count += shelf.count;
+                entry.space += shelf.max;
+            }
+            None => totals.push(StoreView {
                 item: item.0,
                 count: shelf.count,
+                space: shelf.max,
             }),
         }
     }

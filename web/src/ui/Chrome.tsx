@@ -20,6 +20,7 @@ import type {
   RoomInfo,
   ShaftInfo,
   SimSpeed,
+  StoreView,
 } from "../bridge/types";
 
 const SPEEDS: { value: SimSpeed; label: string; key: string }[] = [
@@ -263,14 +264,19 @@ function TopBar({ game, ui }: Props) {
         <Readout label="Sun" value={`${ui.exposurePct}%`} warn={ui.exposurePct < 30} />
         <Readout label="Floors" value={`${ui.floors} / ${catalog.max_floors}`} />
         <Readout label="Queued" value={String(ui.waiting)} warn={ui.waiting > 0} />
-        <Readout
-          label="Standing"
-          value={`${Math.round(ui.integrity / 10)}%`}
-          warn={ui.integrity < 1000}
-        />
-        {/* Both of these are silent until there is something to say.
-            A permanent "0 poles owed" would be a dashboard number for
-            a state the tower is in for most of a run. */}
+        {/* All three of these are silent until there is something to
+            say. A permanent "0 poles owed" would be a dashboard number
+            for a state the tower is in for most of a run — and by that
+            same rule, so was a permanent "Standing 100%". An undamaged
+            tower is the ordinary case, and the interesting one is
+            already drawn: `drawSplits` cracks the panelling and
+            `drawPanel` opens a hole in the skin. */}
+        {/* Rounded down, not to nearest: this only appears once
+            something is broken, and 998 per-mille rounding up to a
+            warn-coloured "100%" is a readout arguing with itself. */}
+        {ui.integrity < 1000 && (
+          <Readout label="Standing" value={`${Math.floor(ui.integrity / 10)}%`} warn />
+        )}
         {ui.repairCost > 0 && <Readout label="To mend" value={`${ui.repairCost} poles`} warn />}
         {ui.repelled > 0 && <Readout label="Seen off" value={String(ui.repelled)} />}
       </dl>
@@ -819,15 +825,7 @@ function Sidebar({ game, ui }: Props) {
           {ui.stock.length === 0 ? (
             <span className="stock-empty">the shelves are bare</span>
           ) : (
-            ui.stock.map((entry) => {
-              const item = catalog.items[entry.item];
-              return (
-                <span className="stock-item" key={entry.item} title={item?.name}>
-                  <span className="glyph">{item?.glyph}</span>
-                  {entry.count}
-                </span>
-              );
-            })
+            ui.stock.map((entry) => <Store key={entry.item} catalog={catalog} entry={entry} />)
           )}
         </div>
       </section>
@@ -901,6 +899,44 @@ function Sidebar({ game, ui }: Props) {
         </section>
       )}
     </aside>
+  );
+}
+
+/**
+ * One item on the shelves, drawn as a shelf.
+ *
+ * **The number was the whole interface.** `🎋 15` says nothing about
+ * whether fifteen is a lot, and nothing at all about the fact the panel
+ * most needs to carry: a shelf that is *full* is why a chain stops.
+ * `SYSTEMS.md` §5.11 open question 0 is that every chain terminates in
+ * a buffer and a full buffer caps the tower's whole harvest — and that
+ * was visible only as a row of pips inside a room in the cross-section,
+ * which is the last place a player looks when wondering why the cutter
+ * arm has gone quiet.
+ *
+ * So it fills. The count goes to the hover, where `DECISIONS.md` §8
+ * puts precision, and the level leads. A full shelf gets a lip rather
+ * than a colour, because a full store is not an error — it is a tower
+ * that has everything it needs and is telling you to spend some.
+ */
+function Store({ catalog, entry }: { catalog: CatalogSnapshot; entry: StoreView }) {
+  const item = catalog.items[entry.item];
+  const space = Math.max(1, entry.space);
+  const full = entry.count >= entry.space;
+  const fill = Math.max(0, Math.min(100, (entry.count / space) * 100));
+  return (
+    <span
+      className={`stock-item${full ? " full" : ""}`}
+      title={`${entry.count} of ${entry.space} ${item?.name ?? ""}${full ? " · the shelf is full" : ""}`}
+      role="meter"
+      aria-label={item?.name}
+      aria-valuenow={entry.count}
+      aria-valuemin={0}
+      aria-valuemax={entry.space}
+    >
+      <span className="stock-level" style={{ height: `${fill}%` }} />
+      <span className="glyph">{item?.glyph}</span>
+    </span>
   );
 }
 

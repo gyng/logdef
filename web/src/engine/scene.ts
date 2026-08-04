@@ -2504,7 +2504,22 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
   // panelling starts to split. Dim and hurt have to look different,
   // because one of them is a supply problem and the other needs poles.
   const hurt = 1 - unit(room.health_permille / 1000);
-  const body = mix(stalled, palette.hurt, hurt * 0.7);
+  // **A room that has just delivered.** `progress` resets to zero when a
+  // craft lands and climbs again immediately, so a working room barely
+  // into its cycle is one that finished a moment ago — no new snapshot
+  // field, no timer on this side, and nothing that can drift out of step
+  // with the thing it reports. Until now a craft completing was visible
+  // only as a number moving in a panel, which is the one direction
+  // `DECISIONS.md` §8 does not want facts to travel.
+  //
+  // A warmth in the room's own colour rather than a flash over it: the
+  // stalled room going dim is the counterpart, and if this is ever loud
+  // enough to read as a notification it has gone wrong.
+  const fresh =
+    info && info.craft_ticks > 0 && room.active && !room.stalled
+      ? Math.max(0, 1 - room.progress / (info.craft_ticks * 0.16))
+      : 0;
+  const body = mix(mix(stalled, palette.hurt, hurt * 0.7), palette.lamplight, fresh * 0.28);
   if (profile.crown !== "none" && head > 4) {
     // A shaded sail earns nothing and should not look like one that
     // does; a stalled or halted arm has nothing to cut. Both read off

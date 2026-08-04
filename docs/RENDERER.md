@@ -35,7 +35,8 @@ that region's identity than any sprite.
 **Not rain or weather.** Pretty, and it says nothing. This renderer's discipline is that a
 visual carries information: the legs report the halt state, a crew member's step cadence
 reports hunger, a stalled room goes quiet. Rain would be the first purely decorative system
-in it.
+in it — the dust and the motes since added are both tied to something (a planted foot, the
+sun the sails are actually paid in), which is the line.
 
 ### Planted feet and IK legs — done, and the fix was not in the legs
 
@@ -122,5 +123,45 @@ and an order because those are the only two the simulation ever needed.
 
 The pattern in all of them: **the signal already existed in the snapshot and nothing was
 drawing it.** That is where the cheap wins are, and it is a far better filter than "what would
-look nice". What is left by that test is thin — lamps dimming in a brown-out would say a thing
-the legs already say, and rain would say nothing at all.
+look nice".
+
+### The charge bank, the stores, and a craft landing — done
+
+Three more found by the same filter, run mechanically this time: diff every field declared in
+`bridge/types.ts` against every identifier `scene.ts` mentions. Sixty came back undrawn; most
+were catalog metadata or run-log stats that belong in chrome, and three were not.
+
+**`power.fill_permille` — the cell rack holds a level.** The roof rack drew identical full
+cells whatever the bank held, so the only sign of the tower's charge was `lit` going false.
+That is a cliff: you could not watch a bank drain, only arrive at the bottom of one. The cells
+now fill bottom-up over a cold casing, and **the deck lamps sag below a third full** rather
+than only going out — the same fact twice, once on the roof and once where you are looking.
+Photographed at 882‰ and 499‰; the two stills differ, which is the evidence.
+
+**`RoomView.progress` — a room that has just delivered** warms briefly in its own colour.
+`progress` resets on completion and climbs again immediately, so a working room barely into
+its cycle is one that finished a moment ago: no new field, no timer on the JS side, nothing
+that can drift out of step with what it reports. A craft landing used to be visible only as a
+number moving in a panel.
+
+**Shelf capacity — the stores fill up.** `snapshot.rs` gained `StoreView` (`StockView` plus
+`space`) because the Stores panel led with `🎋 15`, which says nothing about whether fifteen is
+a lot and nothing at all about the fact the panel most needs to carry: a full shelf is why a
+chain stops. `SYSTEMS.md` §5.11 open question 0 turns on exactly that, and it was legible only
+as a row of full pips inside a room. Each item is now a jar that fills, with the count on the
+hover where §8 puts precision.
+
+And two that carry nothing, allowed on the same terms as the canopy dappling: **dust under a
+planted foot** (the splash's counterpart, off the same `feet()` trigger — physical consequence,
+the class of thing the contact shadow already is) and **motes in daylight**, tied to
+`exposure_pct` so they thin under canopy and vanish at night. Still no rain: that would be the
+first thing here tied to nothing at all.
+
+Two traps the dust paid for, both worth knowing before writing another effect:
+
+- **`world.band` is null between bands.** Hanging the dust off "not drowned street" while
+  keeping the water pass's `null` guard in front of it withheld it on every seam — which a
+  walking tower crosses every few seconds, and which looked exactly like an effect that did
+  not draw.
+- **`softness` is pixels of feathering.** At `size * 0.6` the shader's coverage never reaches
+  1, quietly dividing the alpha by three. It was drawing, in the right place, and invisible.

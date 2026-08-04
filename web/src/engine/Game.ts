@@ -33,7 +33,7 @@ import type {
   ShaftView,
   ShiftTag,
   SimSpeed,
-  StockView,
+  StoreView,
   ViewSnapshot,
 } from "../bridge/types";
 
@@ -45,7 +45,7 @@ export interface UiState {
   terrain: string;
   yieldPct: number;
   floors: number;
-  stock: StockView[];
+  stock: StoreView[];
   harvested: number;
   crafted: number;
   hauled: number;

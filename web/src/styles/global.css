@@ -689,18 +689,43 @@ button {
   gap: var(--space-2);
 }
 
+/* A jar on a shelf. The glyph sits in it and the contents rise behind
+   it, so a glance at the row reads as levels rather than as figures —
+   the count is on the hover, where DECISIONS.md §8 puts precision. */
 .stock-item {
+  position: relative;
   display: flex;
-  gap: var(--space-1);
-  align-items: baseline;
-  padding: var(--space-1) var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.6rem;
+  overflow: hidden;
   background: var(--bg-sunken);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
 }
 
+/* The contents, and a lighter line where they end — a heap has a
+   surface, and without one the level reads as a coloured box rather
+   than as stuff in a jar. */
+.stock-level {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: color-mix(in srgb, var(--accent-leaf) 26%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--accent-leaf) 55%, transparent);
+  transition: height var(--duration-normal) var(--ease-smooth);
+}
+
+/* Full is a lip, not a colour: a full store is not a fault, it is a
+   tower that has everything it needs and nothing to spend it on. */
+.stock-item.full {
+  border-color: color-mix(in srgb, var(--accent-brass) 50%, transparent);
+}
+
 .stock-item .glyph {
+  position: relative;
   font-size: var(--text-md);
 }
 
