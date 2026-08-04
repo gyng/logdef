@@ -178,3 +178,92 @@ test("bank", async ({ page }) => {
     await page.screenshot({ path: `capture/fx-bank-${want}.png` });
   }
 });
+
+/**
+ * Does a jammed staircase look jammed?
+ *
+ * `climb_ticks_per_item` made freight up the stairs expensive on
+ * purpose, and `examples/lift.rs` measures a fourteen-floor stairs-only
+ * tower spending 46,642 crew-ticks queued at a shaft. That is a *felt*
+ * problem only if the queue is visible: crew in `Boarding` stand at the
+ * shaft column, so a backed-up staircase should read as a stack of
+ * people against the tower's left edge with the red stress tint on the
+ * ones who have been there longest.
+ *
+ * If it does not read, the measured problem is invisible and a player
+ * has no reason to buy the cure — which is the whole chain of reasoning
+ * behind the last few balance changes.
+ *
+ * **It has not answered the question yet, and the reason is the
+ * finding.** A scripted tower given nine thousand iterations to grow to
+ * eight floors reaches **five**, and queues nobody: it runs out of poles
+ * long before it runs out of ambition. So the congestion `lift.rs`
+ * measures at eight and eleven floors is real but sits past where a
+ * tower can afford to go, and a still of a five-floor tower says nothing
+ * about a jammed staircase.
+ *
+ * What the still does show is that the stairwell is drawn — a hatched
+ * column at slot 0, clearly a stair — so there is somewhere for a queue
+ * to appear. Whether a queue in it reads as a queue is still open, and
+ * wants either a tower with more poles than this one or a player.
+ */
+test("stairs", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/?seed=4242");
+  await page.waitForFunction(() => window.__understory?.slotPoint !== undefined, null, {
+    timeout: 20_000,
+  });
+
+  const built = await page.evaluate(() => {
+    const h = window.__understory!;
+    // Tall, fed, and with no shaft but the stairs — the shape the
+    // instrument says is worst.
+    const list = [
+      "room.canopy_sails",
+      "room.storeroom",
+      "room.mill",
+      "room.canteen",
+      "room.bunk",
+      "room.storeroom",
+      "room.mill",
+    ];
+    for (let i = 0; i < 9000 && (list.length > 0 || h.view().tower.floors.length < 8); i += 1) {
+      const v = h.view();
+      const fork = v.journey.fork;
+      if (fork && fork.answer === null) h.send({ TakeFork: { branch: 0 } });
+      h.send({ SetStriding: { walking: true } });
+      if (v.tower.floors.length < 8) h.send("BuildFloor");
+      for (let at = list.length - 1; at >= 0; at -= 1) {
+        let done = false;
+        for (let floor = 0; floor < 8 && !done; floor += 1) {
+          for (let slot = 0; slot < 8; slot += 1) {
+            if (h.send({ PlaceRoom: { room: list[at]!, floor, slot } }) === "Ok") {
+              done = true;
+              break;
+            }
+          }
+        }
+        if (done) list.splice(at, 1);
+      }
+      h.step(120);
+    }
+    // Walk on until somebody is actually queueing, then stop there.
+    let queued = 0;
+    for (let i = 0; i < 9000; i += 1) {
+      const v = h.view();
+      const fork = v.journey.fork;
+      if (fork && fork.answer === null) h.send({ TakeFork: { branch: 0 } });
+      h.send({ SetStriding: { walking: true } });
+      queued = v.crew.filter((c) => c.state === "board").length;
+      if (queued >= 1) break;
+      h.step(10);
+    }
+    const v = h.view();
+    return `${v.tower.floors.length} floors, ${v.crew.length} crew, ${queued} queued, ${
+      v.crew.filter((c) => c.stressed).length
+    } stressed, unbought: ${list.join(" ") || "nothing"}`;
+  });
+  console.log(`stairs: ${built}`);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: "capture/fx-stairs.png" });
+});
