@@ -3051,9 +3051,23 @@ Not a task list — the places where existing code assumes something M5 stops be
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
 
-      **Standing at 15 of 137.** Moved this pass: `reinforce`, once the plating comparison stopped
-      counting the wrong thing, and the three region-length rows, on the whole-run measurement
-      that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4 hours).
+      **Standing at 18 of 137.** Moved this pass: `reinforce`, once the plating comparison
+      stopped counting the wrong thing; the three region-length rows, on the whole-run
+      measurement that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4
+      hours); and the three Power rows, on a new instrument.
+
+      **`examples/charge.rs` is that instrument, and it found the Power section was arithmetic
+      nobody had ever checked.** Every row in it was a multiplication done by hand from the
+      constant beside it. Two survive contact and one does not: striding measures 2,712 charge a
+      day against a derived 2,880 (the gap is ticks spent standing at forks), and lamps measure
+      **648 against a derived ~380 — 70% more**. The constant is right and the day it was
+      multiplied by was wrong: exposure is sun *after terrain*, so a canopy region is dark for
+      41–56% of a day rather than the ~33% the bare sun curve implies, and every hand-derived
+      lighting figure in the file inherited that mistake.
+
+      It also puts a number on §6.3's height cost that is worth having: a tower four floors
+      taller earns **nothing at all** and browns out for the entire day, because the new roof
+      shades the sail deck. Not a tax on growing — a wall.
 
       **And the criterion contradicts what this project has actually been doing, which is worth
       settling before somebody grades the other 122.** It says "from run logs rather than from
