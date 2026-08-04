@@ -75,6 +75,59 @@
 //!   moved the break-even (eight floors +16% → +18%), despite dwell
 //!   being 68% of the time a car is busy. The fixed cost that matters
 //!   is not the one inside the shaft.
+//!
+//! ## Making a shaft necessary: four levers, measured
+//!
+//! All four run through `UNDERSTORY_PACK` in under a minute. The figure
+//! quoted is the elevator's haul delta against stairs at each height.
+//!
+//! | lever | 5 floors | 8 | 11 | 14 | 5-floor queueing |
+//! |---|---|---|---|---|---|
+//! | *(shipped)* | +1% | unusable | unusable | +166% | 3,720 |
+//! | `climb_ticks_per_floor` 30 → 45 | **+30%** | +100% | +171% | +200% | 5,442 |
+//! | `climb_ticks_per_floor` 30 → 60 | -44% | +277% | +621% | +337% | 5,680 |
+//! | `carry_capacity` 3 → 2 | +0% | +24% | +93% | +42% | 3,546 |
+//! | `starting_crew` 3 → 6 | -27% | +57% | +164% | +571% | **30,849** |
+//!
+//! **`climb_ticks_per_floor` 30 → 45 is the one that works, and it is a
+//! single number.** It moves the elevator's break-even from fourteen
+//! floors to five, and it makes the dumbwaiter clearly worth building at
+//! five (+26% hauls, +55% crafts) — so the ladder the pack describes,
+//! dumbwaiter first and elevator when tall, starts existing. It costs
+//! the five-floor tower about a third of its hauls, and that loss is the
+//! pressure: a shaft has to be relief from something.
+//!
+//! It is also the *targeted* nerf. `carry_capacity` taxes horizontal
+//! hauling just as hard and barely moves the break-even, which is the
+//! measured argument against a general throughput nerf: what has to get
+//! expensive is **height**, not work.
+//!
+//! Sixty is too far. The five-floor tower halves its output and the lift
+//! still loses there, so the valley moves rather than closing.
+//!
+//! **Crew are the congestion lever, and they are not a slider.** Going
+//! from three to six crew multiplies five-floor queueing by eight —
+//! 3,720 crew-ticks to 30,849 — which is `DESIGN.md` insight 1 exactly:
+//! transport is shared, so every body added loads the same staircase.
+//! But crew arrive as enclave recruits, so this is a reward that creates
+//! the problem the shaft solves, and it wants pairing with the climb
+//! change rather than using alone: at six crew the lift is still -27% at
+//! five floors, because the trips are short whatever the traffic.
+//!
+//! ## The placement decision does not exist
+//!
+//! Worth knowing before anyone tunes `floor_slots`: on the shipped pack
+//! a full-height shaft has **exactly one column it can go in**. The
+//! starting tower's rooms and its built-in staircase occupy columns 0–6
+//! across its floors, leaving slot 7 and nothing else. So the far-edge
+//! placement this harness uses is not a choice it made — it is the only
+//! one available, and the "where you put it" hypothesis above cannot be
+//! a player decision until the tower has spare width.
+//!
+//! Narrowing the tower therefore does the opposite of what it looks
+//! like: at `floor_slots` 7 *or* 6 there is no free column at all and a
+//! full-height lift cannot be built. Run with `UNDERSTORY_COLUMNS=1` to
+//! print what is free.
 
 use std::sync::Arc;
 
@@ -373,6 +426,9 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
     // differ by which rooms fitted as well as by the shaft, and then the
     // comparison is about floor plans.
     let free = free_columns(&game, slots);
+    if std::env::var("UNDERSTORY_COLUMNS").is_ok() {
+        println!("  {height} floors, {slots} slots: free columns {free:?}");
+    }
     let reserved = [Lift::slot(&free)];
 
     // A chain that crosses the whole tower, top to bottom, so a haul has
