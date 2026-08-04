@@ -3019,7 +3019,7 @@ Not a task list — the places where existing code assumes something M5 stops be
       ground floors do not hold all three once the Heartseed, a cell bank and a storeroom have
       taken theirs. It trades M3 coverage `tests/journey.rs` duplicates for M5 coverage that
       exists nowhere else.
-- [x] `make check` and the smoke suite green. 282 Rust tests, clippy clean at `-D warnings`,
+- [x] `make check` and the smoke suite green. 283 Rust tests, clippy clean at `-D warnings`,
       `tsgo`/`oxlint` clean, and 11 Playwright specs — smoke, capture, audio, and the built-bundle
       check. One known flake, documented in `e2e/capture.spec.ts`: the two approach stills come
       out empty on some runs, because that harness interleaves stepping with real-time waits while
