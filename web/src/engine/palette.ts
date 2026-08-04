@@ -175,6 +175,35 @@ export const palette = {
   firefly: hex("#d8ff9a"),
 
   cargo: hex("#b4dc72"),
+  // **A load's own colour, so you can see what is moving and not only
+  // that something is.**
+  //
+  // `DESIGN.md` insight 1 is that transport is contested — every chain
+  // competes for the same stairs — and a player can only reason about
+  // that if they can tell a stalk of bamboo from a coil of rope going up
+  // them. Until now every load was the same green crate, so the
+  // cross-section reported *that* the tower was busy and never *what
+  // with*.
+  //
+  // Keyed by item id, in the renderer rather than in the content pack:
+  // this is a presentation choice, and `ItemInfo` carries a glyph and an
+  // order because those are the only two the simulation needed. Anything
+  // missing falls back to `cargo`, so a new item is drab rather than
+  // invisible.
+  cargoOf: {
+    "item.bamboo": hex("#9ecb63"),
+    "item.poles": hex("#c39a5e"),
+    "item.fiber": hex("#d8d2a6"),
+    "item.rope": hex("#b08d5c"),
+    "item.scrap": hex("#8d9aa0"),
+    "item.alloy": hex("#c8d4dc"),
+    "item.darts": hex("#8fb9a4"),
+    "item.meals": hex("#e0a866"),
+    "item.produce": hex("#d4737b"),
+    "item.mechanisms": hex("#a6a2b8"),
+    "item.charge_cells": hex("#7fd4c8"),
+    "item.seed_bombs": hex("#b7a05e"),
+  } as Record<string, Color>,
 
   // Creatures. Wet, dark, forest-coloured things with their own light
   // in them — not a target gallery, and nothing here is gunmetal. The

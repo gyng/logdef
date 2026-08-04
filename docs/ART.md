@@ -331,5 +331,15 @@ Off `distance` rather than the clock, because terrain intake is paid per pace �
 has an arm that has nothing to do, and a stalled one holds its rest angle, which is the same
 silence a starved mill draws.
 
-The pattern in all three: **the signal already existed in the snapshot and nothing was drawing
-it.** That is where the cheap wins are, and it is a better filter than "what would look nice".
+**Loads have their own colour**, keyed by item id in `palette.cargoOf`. Every crate used to be
+the same green, so the cross-section reported *that* the tower was busy and never *what with* —
+and which chain is winning the stairs is the entire question `DESIGN.md` insight 1 asks. The
+crate also scales a little with the amount, so a full armful reads heavier than a single item;
+`carry_capacity` is 3, so that is a three-step tell rather than a gauge. Kept in the renderer
+rather than the content pack, because it is a presentation choice — `ItemInfo` carries a glyph
+and an order because those are the only two the simulation ever needed.
+
+The pattern in all of them: **the signal already existed in the snapshot and nothing was
+drawing it.** That is where the cheap wins are, and it is a far better filter than "what would
+look nice". What is left by that test is thin — lamps dimming in a brown-out would say a thing
+the legs already say, and rain would say nothing at all.

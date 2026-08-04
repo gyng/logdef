@@ -2868,7 +2868,7 @@ function drawCar(
  * of floating bars is a spreadsheet with legs, which is the exact
  * failure the sprint question names.
  */
-function drawCrew(batch: QuadBatch, { view, layout, clock }: SceneContext): void {
+function drawCrew(batch: QuadBatch, { view, layout, clock, catalog }: SceneContext): void {
   for (const member of view.crew) {
     const { x, y } = crewPosition(layout, member);
     // Phase-offset per crew member from the cosmetic RNG stream, so
@@ -2960,15 +2960,20 @@ function drawCrew(batch: QuadBatch, { view, layout, clock }: SceneContext): void
     );
 
     if (member.carrying) {
-      const crate = unitW * 0.72;
-      batch.push(
-        x - crate * 0.5 + unitW * 0.15,
-        hipY - torsoH - crate * 1.9,
-        crate,
-        crate,
-        palette.cargo,
-        { radius: 2 },
-      );
+      // **The load is its own colour, and its own size.** A crate that
+      // is always the same green says the tower is busy; one that says
+      // *bamboo* or *rope* says which chain is winning the stairs, which
+      // is the question `DESIGN.md` insight 1 is about. Amount scales it
+      // a little too, so a full armful reads heavier than a single item
+      // — `carry_capacity` is 3, so this is a three-step tell rather
+      // than a gauge.
+      const item = catalog.items[member.carrying.item];
+      const tint = (item && palette.cargoOf[item.id]) ?? palette.cargo;
+      const load = unit(member.carrying.count / 3);
+      const crate = unitW * (0.58 + load * 0.24);
+      batch.push(x - crate * 0.5 + unitW * 0.15, hipY - torsoH - crate * 1.9, crate, crate, tint, {
+        radius: 2,
+      });
     }
 
     // Mending: a pole in hand and a small pool of worklight. Repair is
