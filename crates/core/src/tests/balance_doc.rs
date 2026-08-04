@@ -11,7 +11,7 @@ use crate::tests::content;
 const BALANCE_DOC: &str = include_str!("../../../../docs/BALANCE.md");
 
 /// The grades a constant may carry, in increasing order of trust.
-const GRADES: [&str; 2] = ["DESIGNED", "PLAYTESTED"];
+const GRADES: [&str; 3] = ["DESIGNED", "MEASURED", "PLAYTESTED"];
 
 #[test]
 fn every_balance_field_is_documented_with_a_grade() {

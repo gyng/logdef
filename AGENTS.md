@@ -33,9 +33,16 @@ Before implementing anything, in override order:
 4. **`docs/DESIGN.md`** — the distilled design argument; useful for *why*, not a spec
 
 `docs/BALANCE.md` holds every tuning constant with a provenance grade
-(`DESIGNED`/`PLAYTESTED`) — check there before hardcoding a number a designer might want to
-tune, and add a graded row for any new constant (`DECISIONS.md` §7 explains why a test
+(`DESIGNED`/`MEASURED`/`PLAYTESTED`) — check there before hardcoding a number a designer might
+want to tune, and add a graded row for any new constant (`DECISIONS.md` §7 explains why a test
 enforces this).
+
+**`MEASURED` is not `PLAYTESTED` and the difference is load-bearing.** All 133 rows are
+`MEASURED`: an instrument confirms the effect the constant exists to produce, and the limit of
+that measurement is written into the row. None is `PLAYTESTED`, which this file defines as
+somebody having played with it *and with neighbouring values*. Do not promote a row without
+doing that — closing a criterion by redefining a word is the failure the grade exists to
+prevent, and `SYSTEMS.md` §5.11 open question 4 predicted it by name.
 
 ### Architecture in one paragraph
 
@@ -64,10 +71,11 @@ them, the chute, region 3 and the coast, the two creatures that complete the tax
 enclaves, the journal that carries unlocks between runs, and the run log. A run can be played
 from the first pace to an arrival at the Refugia.
 
-Not built: the difficulty pass that would turn `DESIGNED` into `PLAYTESTED` — **44 of 137
-constants are graded**, section by section, each off an instrument (see below). The itch.io
-release cut works and has not been shown to a stranger. Role priorities are cut for good
-rather than deferred (`SYSTEMS.md` §5.10).
+Not built: the difficulty pass. **All 133 balance rows are now `MEASURED`** — every one
+checked against an instrument, section by section — and **none is `PLAYTESTED`**, because
+nobody has played with a value and its neighbours. That gap is the difficulty pass, and it is
+a person's work rather than an agent's. The itch.io release cut works and has not been shown
+to a stranger. Role priorities are cut for good rather than deferred (`SYSTEMS.md` §5.10).
 
 **Read `SYSTEMS.md` §5.11 open question 0 before touching terrain, yields or a chain.** It
 was the largest open finding in the project and it is now answered, but the answer is not the
