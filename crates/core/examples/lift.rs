@@ -218,6 +218,21 @@ const SEEDS: [u64; 3] = [0x00C0_FFEE, 0x0BAD_F00D, 0x00DE_FACE];
 /// which is itself part of the finding.
 const HEIGHTS: [u8; 4] = [5, 8, 11, 14];
 
+/// Ticks the affordability run will wait before giving up: twenty
+/// in-game days, comfortably past a whole session.
+const PATIENCE: u32 = DAY * 20;
+
+/// How tall the affordability run lets its tower get.
+///
+/// **Capped, because an uncapped one answers the wrong question.** Left
+/// to grow whenever nothing else could be placed, it reached ten floors
+/// with **zero poles and forty-three rope on the shelves** and reported
+/// the elevator as never affordable — which is a fact about a tower that
+/// spends every pole on floors, not about a price. Eight is where
+/// `lift.rs`'s own sweep says the stairs hurt badly and a lift is clearly
+/// worth having.
+const GROW_TO: usize = 8;
+
 #[derive(Default, Clone, Copy)]
 struct Sample {
     hauls: u64,
@@ -316,6 +331,278 @@ fn main() {
     }
 
     verdict(&verdicts);
+    when_can_you_afford_one(&pack);
+}
+
+/// Is the cure available before the pain?
+///
+/// **The question re-pricing actually turns on, and it is not about
+/// poles.** Every built shaft in the pack costs rope — a dumbwaiter 3, an
+/// elevator 6 — and rope needs a fiber comb feeding a ropery. Until that
+/// chain runs, a tower's only shaft is the chute, which goes one way,
+/// downward, and carries nobody. So the elevator's 18 poles is not the
+/// gate; the 6 rope is, and the same material gates the cheaper rung
+/// too.
+///
+/// This plays a tower that buys the chain in a sensible order and never
+/// builds a shaft, and reports two things against each other: **the
+/// first tick it could have paid for each shaft**, and **the tick its
+/// crew started queueing in earnest**.
+///
+/// It never builds what it can afford, deliberately: a tower that bought
+/// a dumbwaiter would stop queueing, and the second column would then be
+/// measuring the fix rather than the need.
+///
+/// # Trust the second column, not the first
+///
+/// **`queueing` is solid.** It has come out at 19,000-21,000 ticks —
+/// about twelve minutes at 1x — through every version of this harness,
+/// including the broken ones. A tower's crew accumulate a full crew-day
+/// of standing at a shaft inside the first fifth of a run.
+///
+/// **`affordable` is not, yet, and the honest thing is to say so.**
+/// Three shopping policies have given three answers for the same
+/// question — the dumbwaiter first affordable at 26, 51 and 91 thousand
+/// ticks depending on whether the tower grew, whether it owned a chute,
+/// and in what order it bought things. That is not a fact about a price;
+/// it is a fact about a tower that spends every pole the moment it has
+/// one, so it almost never *holds* a surplus, and "the first tick its
+/// shelves held the price" is then a measurement of its spending habits.
+/// Removing the dumbwaiter's rope entirely moved the number not at all,
+/// which is the tell: rope was never what was binding.
+///
+/// What the column would need to mean something is a tower that stops
+/// buying and starts saving — a policy this does not model — or a
+/// cumulative measure of what it produced rather than what it held. Both
+/// are real work, and until one exists these figures should not be used
+/// to re-price anything.
+///
+/// What *is* safe to take from it: **the chute is affordable from tick
+/// zero and both built shafts are behind the fiber chain**, because a
+/// dumbwaiter needs 3 rope and an elevator 6, and rope needs a comb
+/// feeding a ropery. Whatever the exact timing, a tower's first twelve
+/// minutes of queueing have no answer in them but a chute, which goes
+/// one way, downward, and carries nobody.
+fn when_can_you_afford_one(pack: &Arc<Content>) {
+    println!(
+        "
+=== is the cure available before the pain? ===
+"
+    );
+    println!(
+        "  A tower buying the chain in order and never building a shaft, {} seeds.
+         `affordable` is the first tick its shelves held the price. `queueing` is the
+         first tick crew had spent a whole crew-day standing at a shaft — pain that has
+         accumulated rather than a bad moment.
+",
+        SEEDS.len(),
+    );
+    println!(
+        "{:<14} {:>12} {:>12} {:>10}",
+        "", "affordable", "in minutes", "at 1x"
+    );
+
+    let shafts = ["shaft.chute", "shaft.dumbwaiter", "shaft.elevator"];
+    let mut first = [u32::MAX; 3];
+    let mut queueing = u32::MAX;
+    for seed in SEEDS {
+        let (afford, queued) = afford_run(pack, seed, &shafts);
+        for (i, tick) in afford.iter().enumerate() {
+            first[i] = first[i].min(*tick);
+        }
+        queueing = queueing.min(queued);
+    }
+
+    let say = |tick: u32| -> String {
+        if tick == u32::MAX {
+            "never".into()
+        } else {
+            format!("{tick}")
+        }
+    };
+    let mins = |tick: u32| -> String {
+        if tick == u32::MAX {
+            "-".into()
+        } else {
+            format!("{:.0}m", f64::from(tick) / 30.0 / 60.0)
+        }
+    };
+    for (i, id) in shafts.iter().enumerate() {
+        println!(
+            "{:<14} {:>12} {:>12}",
+            id.trim_start_matches("shaft."),
+            say(first[i]),
+            mins(first[i]),
+        );
+    }
+    println!(
+        "{:<14} {:>12} {:>12}",
+        "queueing",
+        say(queueing),
+        mins(queueing)
+    );
+
+    println!(
+        "
+  Read the gap. If a shaft becomes affordable before `queueing`, the ladder is
+         paced and the price is not the problem; if after, a tower spends that gap with a
+         bottleneck it can see and cannot answer, which is the one shape of difficulty
+         this game should not have."
+    );
+}
+
+/// One seed: the tick each shaft first became affordable, and the tick
+/// crew had queued a whole crew-day between them.
+fn afford_run(pack: &Arc<Content>, seed: u64, shafts: &[&str]) -> ([u32; 3], u32) {
+    let mut game = GameEngine::with_content(seed, Arc::clone(pack));
+    let content = pack.clone();
+    // The order a player would: harvest, then somewhere to put it, then
+    // the two rooms that make a tower liveable, then the fiber chain
+    // that rope comes from. Nothing here is a shaft.
+    // **Least constrained first, because the search takes the *last*
+    // placeable item.** A fiber comb reaches the ground, so `max_floor`
+    // is 1 and it has exactly two floors it can ever stand on — and the
+    // first version of this list put storerooms ahead of it, watched
+    // them take the low slots, and then reported that rope was never
+    // affordable on a tower that had simply never been able to put its
+    // fiber comb anywhere. The same ordering mistake `measure` above
+    // records making with the cutter arm.
+    let mut list = vec![
+        "room.storeroom",
+        "room.canopy_sails",
+        "room.canteen",
+        "room.bunk",
+        "room.mill",
+        "room.storeroom",
+        "room.ropery",
+        // **And a chute, or the tower jams and the answer is a jam.**
+        // Without one it ends the run holding 43 rope, no bamboo
+        // anywhere, a mill with nothing to mill and *zero poles* — so
+        // it can never save the elevator's 18, and the instrument
+        // reports a price problem where there is a shelf-typing problem.
+        // The chute is the one shaft it can afford from tick zero, which
+        // is exactly what `shafts/chute.ron` argues it is for.
+        "shaft.chute",
+        // Floor-capped, so highest priority: tried first.
+        "room.fiber_comb",
+    ];
+    let costs: Vec<Vec<(understory_core::ids::ItemIdx, i64)>> = shafts
+        .iter()
+        .map(|id| {
+            content
+                .shaft_rt(content.shaft_idx(id).expect("the pack has this shaft"))
+                .build_cost
+                .clone()
+        })
+        .collect();
+
+    let mut first = [u32::MAX; 3];
+    let mut queued_crew_ticks = 0u64;
+    let mut queueing = u32::MAX;
+    let slots = content.balance.tower.floor_slots;
+    for tick in 0..PATIENCE {
+        walk(&mut game, 1);
+
+        // Buy what it can, latest first — a strict queue stalls on the
+        // first thing it cannot pay for, and then nothing behind that is
+        // "built later", it is not built at all.
+        if tick.is_multiple_of(60) {
+            let floors = game.state().tower.floors.len() as u8;
+            if let Some(at) = (0..list.len())
+                .rev()
+                .find(|&at| buy(&mut game, list[at], floors, slots))
+            {
+                list.remove(at);
+            } else if game.state().tower.floors.len() < GROW_TO
+                && game.try_send(GameCommand::BuildFloor).is_ok()
+            {
+                // **Nothing could be placed, so make somewhere.** Gating
+                // growth on an empty shopping list was wrong twice over
+                // in this file: a room that cannot be placed never
+                // leaves the list, so the list is never empty, so the
+                // tower never grows — and it then sits on 240 poles at
+                // four floors with a fiber comb it has nowhere to put.
+                // Which reported as "rope is never affordable", a fact
+                // about the harness wearing the clothes of a fact about
+                // the economy.
+                list.push("room.canopy_sails");
+            }
+        }
+
+        for (i, cost) in costs.iter().enumerate() {
+            if first[i] == u32::MAX && affordable(&game, cost) {
+                first[i] = tick;
+            }
+        }
+
+        queued_crew_ticks += game
+            .state()
+            .crew
+            .iter()
+            .filter(|member| matches!(member.state, CrewState::Boarding { .. }))
+            .count() as u64;
+        if queueing == u32::MAX && queued_crew_ticks >= u64::from(DAY) {
+            queueing = tick;
+        }
+        if first.iter().all(|t| *t != u32::MAX) && queueing != u32::MAX {
+            break;
+        }
+    }
+
+    // **Say what the tower actually managed**, because "never
+    // affordable" is exactly the shape of answer that is usually a
+    // harness that failed to build the chain rather than a game that
+    // cannot pay for a shaft. `AGENTS.md` §II rule 1.
+    let state = game.state();
+    let rooms: Vec<&str> = state
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .map(|room| content.room(room.def).id.trim_start_matches("room."))
+        .collect();
+    let held = |id: &str| -> i64 {
+        let Some(item) = content.item_idx(id) else {
+            return -1;
+        };
+        state
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter())
+            .flat_map(|room| room.shelves.iter().map(move |s| (s, room)))
+            .filter(|(shelf, _)| shelf.item == Some(item))
+            .map(|(shelf, _)| shelf.count)
+            .sum::<i64>()
+    };
+    println!(
+        "  seed {seed:#x}: {} floors, unbought [{}], shelves: {} poles, {} fiber, {} rope
+             built: {}",
+        state.tower.floors.len(),
+        list.join(" "),
+        held("item.poles"),
+        held("item.fiber"),
+        held("item.rope"),
+        rooms.join(" "),
+    );
+    (first, queueing)
+}
+
+/// Do the tower's shelves hold this price right now?
+fn affordable(game: &GameEngine, cost: &[(understory_core::ids::ItemIdx, i64)]) -> bool {
+    cost.iter().all(|(item, amount)| {
+        let held: i64 = game
+            .state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter())
+            .flat_map(|room| room.shelves.iter())
+            .filter(|shelf| shelf.item == Some(*item))
+            .map(|shelf| shelf.count)
+            .sum();
+        held >= *amount
+    })
 }
 
 fn row(height: u8, kind: Lift, s: Sample, against: Option<Sample>) {
@@ -817,4 +1104,30 @@ fn free_columns(game: &GameEngine, slots: u8) -> Vec<u8> {
             !taken_by_shaft && !taken_by_room
         })
         .collect()
+}
+
+/// Place a room, or raise a shaft, wherever it will go.
+fn buy(game: &mut GameEngine, id: &str, floors: u8, slots: u8) -> bool {
+    if let Some(shaft) = id.strip_prefix("shaft.") {
+        let _ = shaft;
+        return (0..slots).any(|slot| {
+            game.try_send(GameCommand::BuildShaft {
+                shaft: id.into(),
+                low: 0,
+                high: floors - 1,
+                slot,
+            })
+            .is_ok()
+        });
+    }
+    (0..floors).any(|floor| {
+        (0..slots).any(|slot| {
+            game.try_send(GameCommand::PlaceRoom {
+                room: id.into(),
+                floor,
+                slot,
+            })
+            .is_ok()
+        })
+    })
 }
