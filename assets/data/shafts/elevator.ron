@@ -8,10 +8,24 @@ ShaftDef(
     name: "Elevator",
     short: "ELV",
     kind: Elevator,
-    // Three times a floor's own cost (6 poles) — this is a decision the
-    // player saves for.
+    // **Twelve poles, not eighteen, and the reason is measured rather
+    // than felt.** `examples/lift.rs` plays a tower that buys the chain in
+    // order and never builds a shaft: its crew have accumulated a full
+    // crew-day of standing at a staircase by **tick 20,806 — about
+    // twelve minutes** — and the only shaft it can pay for in that
+    // window is a chute, which goes one way, downward, and carries
+    // nobody. At eighteen poles the lift was the *last* thing a tower
+    // could afford, and `record_golden.rs` needed 124,500 ticks of
+    // walking to bank one.
+    //
+    // That was the right price while a lift was worth +1% at five floors
+    // and was not chosen at all at eight or eleven. It is the wrong one
+    // now `climb_ticks_per_item` has made it worth +54% at five and
+    // +650% at fourteen: a thing the tower needs from minute twelve
+    // should not arrive at minute ninety. Still nearly twice a floor's
+    // own cost, so it is a decision rather than a default.
     build_cost: [
-        CostEntryDef(item: "item.poles", amount: 18),
+        CostEntryDef(item: "item.poles", amount: 12),
         // **Rope, from M5 — and deliberately not mechanisms.**
         //
         // The spec (`SYSTEMS.md` §5.3) gated this behind mechanisms, and
@@ -34,7 +48,15 @@ ShaftDef(
         // to have gone to the ruins". Mechanisms keep the seed thrower,
         // which is a fair consumer for a tier-two item and does not have
         // to exist by minute twenty.
-        CostEntryDef(item: "item.rope", amount: 6),
+        // **Four, not six, because rope is the real gate and six of it
+        // was two gates.** Rope needs a fiber comb
+        // feeding a ropery, and a ropery makes one coil from two fiber
+        // every four seconds — so six coils is a second wait stacked on
+        // top of the chain that produces them. The argument below is
+        // about *which material*, and it is unchanged: fiber comes from
+        // the middle bands, so the gate still says "you have to have
+        // walked ordinary ground".
+        CostEntryDef(item: "item.rope", amount: 4),
     ],
     min_span: 2,
     // Unlimited — the elevator is chosen floors, not a fixed hop.
