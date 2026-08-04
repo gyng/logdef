@@ -98,6 +98,16 @@ fn advance(
             // sees the same picture of demand.
         }
 
+        // **Standing at a post, and that is the whole of it.** No legs,
+        // no queue, and `wait_ticks` held at zero — somebody working a
+        // station is not blocked, they are exactly where they were sent,
+        // and a red tint on them would make the only bottleneck
+        // instrument in the game lie. Leaving is the needs system's job
+        // (hunger and the rota outrank a posting) or the player's.
+        CrewState::Manning { .. } => {
+            crew.wait_ticks = 0;
+        }
+
         CrewState::Sleeping => {
             // Off shift. Rest accrues in `needs`; waking is the
             // assignment pass's job, since a woken crew member is just
@@ -693,6 +703,29 @@ fn assign_idle(
             continue;
         }
 
+        // **A posting, ranked below every need and above every haul.**
+        // Hunger, the rota and damage all outrank it, which is the
+        // point: a station is a standing order about what somebody does
+        // with their working day, not a reason to skip dinner. It beats
+        // hauling because that is the entire trade the player is making
+        // — somebody at a post is somebody not on the stairs.
+        //
+        // The room is looked up fresh every time rather than cached with
+        // the order: a room can be demolished under somebody's feet, and
+        // an id that no longer resolves simply ends the posting.
+        if free_to_choose && let Some(room) = crew[i].stationed {
+            match tower.locate(room) {
+                Some((floor, slot)) => {
+                    let errand = Errand::Station { room, floor, slot };
+                    crew[i].errand = Some(errand);
+                    crew[i].wait_ticks = 0;
+                    crew[i].state = errand_leg(&crew[i], tower, content, queues, daypart, errand);
+                    continue;
+                }
+                None => crew[i].stationed = None,
+            }
+        }
+
         let task = if let Some((item, held)) = crew[i].carrying {
             // Already holding something: find it a home rather than
             // picking up more. Nothing is ever dropped on the floor.
@@ -805,6 +838,10 @@ fn arrive(content: &Content, errand: Errand) -> CrewState {
             ticks_left: meal_ticks(content),
         },
         Errand::Bunk { .. } => CrewState::Sleeping,
+        // No `ticks_left`, unlike every other arm: a posting is
+        // open-ended and ends when the player ends it, the room goes, or
+        // a need pulls them away.
+        Errand::Station { room, .. } => CrewState::Manning { room },
     }
 }
 

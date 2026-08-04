@@ -33,6 +33,7 @@ pub fn apply(
         } => set_room_active(state, *floor, *slot, *active),
         GameCommand::SetPowerPriority { order } => set_power_priority(state, order),
         GameCommand::FocusEnemy { enemy } => focus_enemy(state, *enemy),
+        GameCommand::StationCrew { crew, room } => station_crew(state, *crew, *room),
         GameCommand::BuildShaft {
             shaft,
             low,
@@ -580,5 +581,36 @@ fn focus_enemy(
         return Err(CommandError::NoSuchEnemy { id });
     }
     state.siege.focus = enemy;
+    Ok(())
+}
+
+/// Post somebody to a room, or call them back.
+///
+/// Validated before mutating (`DECISIONS.md` §4): an unknown person or a
+/// room that is not standing is refused whole, so a posting can never
+/// name something that is not there.
+///
+/// It does **not** move anybody or cancel what they are doing. The
+/// assignment pass picks the order up next tick, which means a crew
+/// member mid-delivery finishes it first — the same courtesy every other
+/// errand gets, and the reason nothing a crew member is carrying is ever
+/// dropped.
+fn station_crew(
+    state: &mut GameState,
+    crew: crate::ids::CrewId,
+    room: Option<crate::ids::RoomId>,
+) -> Result<(), CommandError> {
+    if !state.crew.iter().any(|member| member.id == crew) {
+        return Err(CommandError::NoSuchCrew { crew });
+    }
+    if let Some(id) = room
+        && state.tower.locate(id).is_none()
+    {
+        return Err(CommandError::NoRoomThere { floor: 0, slot: 0 });
+    }
+    let Some(member) = state.crew.iter_mut().find(|member| member.id == crew) else {
+        return Err(CommandError::NoSuchCrew { crew });
+    };
+    member.stationed = room;
     Ok(())
 }

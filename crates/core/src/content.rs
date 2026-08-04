@@ -794,6 +794,15 @@ pub struct CrewBalance {
     pub carry_capacity: i64,
     /// Ticks blocked before the cross-section tints a crew member red.
     pub stress_ticks: u32,
+    /// How fast a room runs with somebody standing in it working it, in
+    /// percent of normal.
+    ///
+    /// **The price is the person, not a resource.** A tower has three
+    /// crew and one staircase, so posting somebody to a mill is a
+    /// standing decision to take a porter off the stairs — which is the
+    /// trade `DESIGN.md` insight 1 is about, made explicit rather than
+    /// bolted on as a cost.
+    pub manned_work_pct: i64,
     /// Ticks since a meal before a crew member goes to eat.
     pub hungry_ticks: u32,
     /// Ticks since a meal before they start working slowly. A working

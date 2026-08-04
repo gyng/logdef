@@ -74,6 +74,17 @@ Balance(
         carry_capacity: 3,
         // Two seconds blocked and the cross-section tints them red.
         stress_ticks: 60,
+        // Half again with somebody standing in the room working it.
+        // Enough that posting a person is visibly worth it, never so
+        // much that a manned room outruns its supply — a mill at 150%
+        // still eats one bamboo a craft, so a station moves the
+        // bottleneck onto the chain feeding it rather than removing it.
+        //
+        // **The price is the person.** Three crew and one staircase
+        // means posting somebody is a standing decision to take a porter
+        // off the stairs, which is `DESIGN.md` insight 1 made explicit
+        // rather than a cost bolted on.
+        manned_work_pct: 150,
         // A third of a day, so three meals a day a person. Short enough
         // that the canteen is somewhere people actually go, long enough
         // that eating is not most of what a crew member does.

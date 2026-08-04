@@ -30,6 +30,8 @@ export type CrewStateTag =
   | "unload"
   /** Sat down to a meal. */
   | "eat"
+  /** Standing in a room, working it. */
+  | "man"
   /** Off shift — in a hammock if a bed was free, on the deck if not. */
   | "sleep";
 
@@ -379,6 +381,14 @@ export interface CrewView {
   hunger: number;
   /** Ticks of work left in them. Hover-only, for the same reason. */
   rested: number;
+  /**
+   * The room this person has been posted to, if any.
+   *
+   * A standing order, so it survives them going to eat and to bed. The
+   * roster reads it to say where somebody belongs, not merely where they
+   * are this second.
+   */
+  stationed: number | null;
   shift: ShiftTag;
   /** Actually asleep, as against merely off shift and walking to bed. */
   asleep: boolean;
@@ -627,7 +637,13 @@ export type GameCommand =
    */
   | { SetPowerPriority: { order: PowerUse[] } }
   /** Ask every emplacement to prefer one creature. `null` clears it. */
-  | { FocusEnemy: { enemy: number | null } };
+  | { FocusEnemy: { enemy: number | null } }
+  /**
+   * Post somebody to a room, or call them back. `null` returns them to
+   * hauling. A standing order about somebody's working day, the same
+   * category as the shift rota.
+   */
+  | { StationCrew: { crew: number; room: number | null } };
 
 /** Rust's `CommandResult`: `"Ok"` or `{ Error: … }`. */
 export type CommandResult = "Ok" | { Error: unknown };

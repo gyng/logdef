@@ -105,6 +105,7 @@ function Roster({ game, ui }: Props) {
                   {doing(member)}
                 </span>
               </span>
+              <StationButton game={game} ui={ui} member={member} />
               <button
                 type="button"
                 className={`shift-toggle${night ? " night" : ""}`}
@@ -221,6 +222,60 @@ const POWER_WORDS: Record<PowerUse, string> = {
   Lamps: "the lamps",
   Legs: "the legs",
 };
+
+/**
+ * Post this person to the room the player has selected, or call them
+ * back off wherever they are.
+ *
+ * **Reads the selection rather than offering a picker.** Clicking a room
+ * is already how the player says which one they mean, and a second
+ * chooser inside the roster would be a list of rooms competing with the
+ * cross-section that *is* the list of rooms.
+ *
+ * The button says what it will do, not what is true — "to the mill",
+ * "off the mill" — because a toggle whose label describes state leaves
+ * the player working out the verb.
+ */
+function StationButton({ game, ui, member }: Props & { member: UiState["crew"][number] }) {
+  const posted = member.stationed;
+  const here = ui.selected;
+
+  // Already posted: the button calls them back, wherever they are.
+  //
+  // It does not name the room. The cross-section already says where
+  // somebody is — they are standing in it — and a name here would be a
+  // second, textual copy of a fact the picture carries better
+  // (`DECISIONS.md` §8).
+  if (posted !== null) {
+    return (
+      <button
+        type="button"
+        className="station-toggle on"
+        data-testid={`station-${member.id}`}
+        title={`${member.name} is working a room rather than hauling. Send them back to the stairs.`}
+        onClick={() => game.stationCrew(member.id, null)}
+      >
+        ⏻
+      </button>
+    );
+  }
+
+  // Nothing selected: nothing to post them to, so the control is not
+  // offered at all rather than offered and disabled — a dead button is a
+  // question the player has to answer before they can ignore it.
+  if (!here) return null;
+  return (
+    <button
+      type="button"
+      className="station-toggle"
+      data-testid={`station-${member.id}`}
+      title={`Put ${member.name} to work in the ${here.info.name}. They stop hauling while they are there.`}
+      onClick={() => game.stationCrew(member.id, here.id)}
+    >
+      ＋
+    </button>
+  );
+}
 
 function Schedules({ game, ui }: Props) {
   const catalog = game.getCatalog();

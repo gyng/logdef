@@ -79,6 +79,24 @@ pub enum GameCommand {
         enemy: Option<crate::ids::EnemyId>,
     },
 
+    /// Post somebody to a room, or call them back off it.
+    ///
+    /// **A standing order about somebody's working day**, in the same
+    /// category as the shift rota — which is what makes it allowable
+    /// under `DECISIONS.md` §8. The room runs at `manned_work_pct` while
+    /// they are in it, and the price is not a resource: a tower has
+    /// three crew and one staircase, so posting somebody is a standing
+    /// decision to take a porter off the stairs.
+    ///
+    /// Needs still outrank it. A posted person goes to eat when hungry
+    /// and to bed when their shift ends, and comes back afterwards — a
+    /// station is not a cage.
+    StationCrew {
+        crew: CrewId,
+        /// `None` calls them back to hauling.
+        room: Option<crate::ids::RoomId>,
+    },
+
     /// Build vertical transport. The column costs a slot on every floor
     /// it spans, which is the whole price of circulation.
     BuildShaft {

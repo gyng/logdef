@@ -235,6 +235,10 @@ fn every_command_survives_the_replay_format() {
         C::FocusEnemy {
             enemy: Some(crate::ids::EnemyId(1)),
         },
+        C::StationCrew {
+            crew: crate::ids::CrewId(1),
+            room: Some(crate::ids::RoomId(1)),
+        },
     ];
 
     // Exhaustiveness: if a variant is added and not listed above, this
@@ -256,7 +260,8 @@ fn every_command_survives_the_replay_format() {
             | C::Reinforce
             | C::SetShift { .. }
             | C::SetPowerPriority { .. }
-            | C::FocusEnemy { .. } => {}
+            | C::FocusEnemy { .. }
+            | C::StationCrew { .. } => {}
         }
     }
 

@@ -334,6 +334,7 @@ fn the_view_reports_the_same_states_the_simulation_is_in() {
             CrewState::Loading { .. } => CrewStateTag::Load,
             CrewState::Unloading { .. } => CrewStateTag::Unload,
             CrewState::Eating { .. } => CrewStateTag::Eat,
+            CrewState::Manning { .. } => CrewStateTag::Man,
             CrewState::Sleeping => CrewStateTag::Sleep,
         };
         assert_eq!(rendered.state, expected);
@@ -818,4 +819,103 @@ fn nobody_climbs_down_a_chute() {
             assert!(!riding, "{} tried to travel on a chute", member.name);
         }
     }
+}
+
+/// **A posted crew member works the room and stops hauling.**
+///
+/// Both halves matter and they are the same trade: `manned_work_pct`
+/// buys throughput in one room at the price of a porter on the stairs.
+/// A test that checked only the speed-up would pass on a version that
+/// gave the bonus for free.
+#[test]
+fn posting_somebody_to_a_room_speeds_it_and_costs_a_porter() {
+    use crate::state::CrewState;
+    let run = |post: bool| -> (u64, u64) {
+        let mut game = engine(7301);
+        crate::tests::stock_poles(&mut game, 30);
+        crate::tests::stock_for(&mut game, "room.mill", 2);
+        // A second mill, so there is a room to post somebody to that is
+        // not the one the starting tower came with.
+        let mill = game
+            .state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter())
+            .find(|room| game.content().room(room.def).id == "room.mill")
+            .map(|room| room.id)
+            .expect("the starting tower has a mill");
+
+        // **A bottomless input buffer, and that is the whole setup.**
+        // Measured without it: a manned mill finished *18* crafts
+        // against an unmanned mill's 29, because posting somebody takes
+        // a porter off the stairs and the mill then starved for bamboo.
+        // That is the mechanic working — a station moves the bottleneck
+        // onto the chain feeding the room — but it is not what this test
+        // is about, and a rate that is never the binding constraint
+        // cannot be measured through a supply that is.
+        {
+            let state = game.state_mut_for_test();
+            for floor in &mut state.tower.floors {
+                for room in &mut floor.rooms {
+                    if room.id == mill {
+                        for stack in &mut room.inputs {
+                            stack.max = 1_000_000;
+                            stack.count = 1_000_000;
+                        }
+                        for stack in &mut room.outputs {
+                            stack.max = 1_000_000;
+                        }
+                    }
+                }
+            }
+        }
+
+        if post {
+            let crew = game.state().crew[0].id;
+            game.try_send(crate::command::GameCommand::StationCrew {
+                crew,
+                room: Some(mill),
+            })
+            .expect("the mill is standing and the crew member exists");
+        }
+        crate::tests::step_walking(&mut game, 9000);
+        let manning = game
+            .state()
+            .crew
+            .iter()
+            .filter(|member| matches!(member.state, CrewState::Manning { .. }))
+            .count() as u64;
+        (game.state().stats.crafts_completed, manning)
+    };
+
+    let (alone, none_posted) = run(false);
+    let (posted, standing) = run(true);
+    assert_eq!(none_posted, 0, "nobody was posted and somebody was manning");
+    assert!(
+        standing > 0,
+        "the posted crew member never reached the room"
+    );
+    assert!(
+        posted > alone,
+        "a manned mill finished no more than an unmanned one: {alone} then {posted}"
+    );
+}
+
+/// A posting that names a room which is not there is refused whole.
+#[test]
+fn posting_to_a_room_that_is_not_there_is_refused() {
+    let mut game = engine(7302);
+    let crew = game.state().crew[0].id;
+    let err = game
+        .try_send(crate::command::GameCommand::StationCrew {
+            crew,
+            room: Some(crate::ids::RoomId(9999)),
+        })
+        .expect_err("no such room");
+    assert!(matches!(
+        err,
+        crate::command::CommandError::NoRoomThere { .. }
+    ));
+    assert!(game.state().crew[0].stationed.is_none());
 }

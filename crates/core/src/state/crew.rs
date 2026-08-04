@@ -102,6 +102,15 @@ pub enum CrewState {
     Eating {
         ticks_left: u32,
     },
+    /// Standing in a room, working it.
+    ///
+    /// Open-ended, unlike every other state here: no `ticks_left`,
+    /// because a posting ends when the player ends it, the room goes, or
+    /// a need pulls the person away. That is the whole trade — somebody
+    /// at a station is somebody not on the stairs.
+    Manning {
+        room: RoomId,
+    },
     /// Off shift. In a bunk if one was free, on the deck where they
     /// stopped if not; which it is depends on the errand, not on this
     /// tag. A sleeper takes no tasks, advances no legs, mends nothing,
@@ -140,6 +149,18 @@ pub struct Crew {
     /// Which half of the rota they work. The player sets it; the
     /// simulation never does.
     pub shift: Shift,
+    /// A room this person has been told to stand in and work.
+    ///
+    /// **A standing order, not an errand.** The errand is how they get
+    /// there and clears on arrival like every other; this is *why* they
+    /// went, and it outlives arriving, eating, sleeping and a wave.
+    /// Clearing it is the only thing that sends them back to hauling.
+    ///
+    /// A room id rather than a coordinate, because a room can be
+    /// demolished under somebody's feet and a coordinate would
+    /// re-resolve to whatever took its place — the trap `DamageTarget`
+    /// documents. An id that no longer exists simply ends the posting.
+    pub stationed: Option<RoomId>,
     /// Cosmetic-stream draw. Renderer-only: idle animation phase, and
     /// (frontend-side) which face and which of several equivalent bark
     /// lines are this person's.
@@ -176,22 +197,33 @@ pub enum Errand {
         floor: FloorIdx,
         slot: SlotIdx,
     },
+    /// The room this person has been posted to. Ends in `Manning`
+    /// rather than in a timed job, so they stay put.
+    Station {
+        room: RoomId,
+        floor: FloorIdx,
+        slot: SlotIdx,
+    },
 }
 
 impl Errand {
     #[must_use]
     pub const fn floor(&self) -> FloorIdx {
         match self {
-            Self::Repair { floor, .. } | Self::Meal { floor, .. } | Self::Bunk { floor, .. } => {
-                *floor
-            }
+            Self::Repair { floor, .. }
+            | Self::Meal { floor, .. }
+            | Self::Bunk { floor, .. }
+            | Self::Station { floor, .. } => *floor,
         }
     }
 
     #[must_use]
     pub const fn slot(&self) -> SlotIdx {
         match self {
-            Self::Repair { slot, .. } | Self::Meal { slot, .. } | Self::Bunk { slot, .. } => *slot,
+            Self::Repair { slot, .. }
+            | Self::Meal { slot, .. }
+            | Self::Bunk { slot, .. }
+            | Self::Station { slot, .. } => *slot,
         }
     }
 
@@ -202,7 +234,9 @@ impl Errand {
     pub const fn room(&self) -> Option<RoomId> {
         match self {
             Self::Repair { .. } => None,
-            Self::Meal { room, .. } | Self::Bunk { room, .. } => Some(*room),
+            Self::Meal { room, .. } | Self::Bunk { room, .. } | Self::Station { room, .. } => {
+                Some(*room)
+            }
         }
     }
 
@@ -232,6 +266,7 @@ impl Crew {
             // sleeps at night. The rota is a decision offered, not one
             // demanded before the first pace.
             shift: Shift::Day,
+            stationed: None,
             fidget,
         }
     }

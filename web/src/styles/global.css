@@ -1269,3 +1269,23 @@ button {
   color: var(--text-primary);
   background: var(--bg-raised);
 }
+
+/* Post somebody to the selected room, or call them back. Sits in the
+   roster row beside the shift toggle — both are standing orders about
+   somebody's working day. */
+.station-toggle {
+  padding: 1px var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+}
+
+.station-toggle:hover {
+  color: var(--text-primary);
+}
+
+.station-toggle.on {
+  color: var(--accent-brass);
+  background: color-mix(in srgb, var(--accent-brass) 16%, transparent);
+}

@@ -21,6 +21,17 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     // the priority order — after the cars, before the lamps.
     let mut power = std::mem::replace(&mut state.power, crate::state::Power::new(0));
     let tick = state.tick;
+    // Who is standing in which room, gathered once. A `Vec` rather than
+    // a set, per `DECISIONS.md` §2 — at single-digit crew a linear scan
+    // is cheaper than a hash and, more to the point, ordered.
+    let manned: Vec<crate::ids::RoomId> = state
+        .crew
+        .iter()
+        .filter_map(|member| match member.state {
+            crate::state::CrewState::Manning { room } => Some(room),
+            _ => None,
+        })
+        .collect();
 
     for floor in &mut state.tower.floors {
         for room in &mut floor.rooms {
@@ -58,7 +69,27 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             }
 
             room.progress += 1;
-            if room.progress < rt.craft_ticks {
+            // **Somebody standing in the room shortens the craft, and
+            // the shortening is on the target rather than on the step.**
+            // Scaling progress instead was the obvious version and it
+            // did nothing at all: `manned_work_pct / 100` is integer
+            // division, so 150% advanced by exactly the same 1 as
+            // nobody, and the test caught it at 29 crafts against 29.
+            //
+            // `needs::effective_ticks` is the same idea in the other
+            // direction but clamps to 100, because being hungry can only
+            // slow you down. This is the mirror of it.
+            //
+            // The recipe is untouched: the room still eats one lot of
+            // inputs per craft, so a posting moves the bottleneck onto
+            // the chain feeding the room rather than removing it.
+            let target = if manned.contains(&room.id) {
+                let pct = content.balance.crew.manned_work_pct.max(100);
+                u32::try_from(i64::from(rt.craft_ticks) * 100 / pct).unwrap_or(rt.craft_ticks)
+            } else {
+                rt.craft_ticks
+            };
+            if room.progress < target {
                 continue;
             }
 

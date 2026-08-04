@@ -670,6 +670,23 @@ impl Tower {
         })
     }
 
+    /// Where a room is, by id.
+    ///
+    /// **By id rather than by coordinate**, because a posting outlives
+    /// the layout: a room can be demolished under somebody's feet, and a
+    /// stored coordinate would re-resolve to whatever took its place.
+    /// `None` means the room is gone, which ends the posting.
+    #[must_use]
+    pub fn locate(&self, room: crate::ids::RoomId) -> Option<(FloorIdx, SlotIdx)> {
+        self.floors.iter().find_map(|floor| {
+            floor
+                .rooms
+                .iter()
+                .find(|candidate| candidate.id == room)
+                .map(|found| (floor.index, found.slot))
+        })
+    }
+
     /// Find a room by floor and any slot it covers.
     #[must_use]
     pub fn find_room(&self, floor: FloorIdx, slot: SlotIdx) -> Option<&Room> {

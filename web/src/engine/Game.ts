@@ -272,6 +272,18 @@ export class Game {
     this.send({ SetPowerPriority: { order } });
   }
 
+  /**
+   * Post somebody to the room currently selected, or call them back.
+   *
+   * Uses the selection rather than asking for a room id, because the
+   * player has already told the game which room they mean by clicking
+   * it — and a posting made from the roster with no room in mind would
+   * need a second picker for something the cross-section already does.
+   */
+  stationCrew(crew: number, room: number | null): void {
+    this.send({ StationCrew: { crew, room } });
+  }
+
   setShift(crew: number, shift: ShiftTag): void {
     this.send({ SetShift: { crew, shift } });
   }

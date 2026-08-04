@@ -351,6 +351,9 @@ pub struct CrewView {
     pub hunger: u32,
     /// Ticks of work left in them.
     pub rested: u32,
+    /// The room this person has been posted to, if any. A standing
+    /// order, so it survives them going to eat and to bed.
+    pub stationed: Option<u32>,
     /// Which half of the rota they are on.
     pub shift: ShiftTag,
     /// Actually asleep, as against merely off shift and walking to bed.
@@ -388,6 +391,9 @@ pub enum CrewStateTag {
     Unload,
     /// Sat down to a meal.
     Eat,
+    /// Standing in a room, working it. Somebody at a station is
+    /// somebody not on the stairs.
+    Man,
     /// Off shift — in a hammock if a bed was free, on the deck if not.
     Sleep,
 }
@@ -1067,6 +1073,7 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
                 crate::state::CrewState::Loading { .. } => CrewStateTag::Load,
                 crate::state::CrewState::Unloading { .. } => CrewStateTag::Unload,
                 crate::state::CrewState::Eating { .. } => CrewStateTag::Eat,
+                crate::state::CrewState::Manning { .. } => CrewStateTag::Man,
                 crate::state::CrewState::Sleeping => CrewStateTag::Sleep,
             },
             carrying: member.carrying.map(|(item, count)| StockView {
@@ -1078,6 +1085,7 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
             fidget: member.fidget,
             hunger: member.hunger,
             rested: member.rested,
+            stationed: member.stationed.map(|room| room.0),
             shift: match member.shift {
                 crate::content::Shift::Day => ShiftTag::Day,
                 crate::content::Shift::Night => ShiftTag::Night,
