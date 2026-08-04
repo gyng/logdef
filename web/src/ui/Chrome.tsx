@@ -502,6 +502,7 @@ function TopBar({ game, ui }: Props) {
 const HALT_WORDS: Record<HaltView, string> = {
   walking: "Striding",
   stopped: "Halted",
+  berthed: "Berthed",
   brownout: "No charge",
   fork: "At the fork",
   arrived: "Arrived",

@@ -2318,3 +2318,76 @@ fn shell_work_costs_scrap_and_a_refusal_costs_nothing() {
     game.try_send(GameCommand::Reinforce).expect("affordable");
     assert!(game.state().stock_of(scrap) < held, "the plating was free");
 }
+
+/// **A tower working a ruin does not read as a tower somebody parked.**
+///
+/// Berthing is the one situation in the game a wave cannot be walked
+/// away from (`DECISIONS.md` §11 makes striding the free answer, so
+/// being unable to stride is the only real commitment there is), and
+/// until it had its own halt it looked exactly like a rest stop.
+#[test]
+fn stopping_at_a_ruin_reads_as_berthed_rather_than_halted() {
+    use crate::command::GameCommand;
+    use crate::snapshot::HaltView;
+    let mut game = crate::tests::engine(9101);
+    crate::tests::stock_for(&mut game, "room.salvage_rig", 2);
+    crate::tests::stock_poles(&mut game, 20);
+    let placed = (0..2).any(|floor| {
+        (0..8).any(|slot| {
+            game.try_send(GameCommand::PlaceRoom {
+                room: "room.salvage_rig".into(),
+                floor,
+                slot,
+            })
+            .is_ok()
+        })
+    });
+    assert!(placed, "a rig has to be aboard or this tests nothing");
+
+    // Walk until a ruin is inside the rig's reach, then stop.
+    let reach = game
+        .content()
+        .rooms
+        .iter()
+        .find_map(|room| match room.intake.as_ref()?.source {
+            crate::content::IntakeSource::Ruin { range_paces, .. } => Some(range_paces),
+            _ => None,
+        })
+        .expect("the pack has a ruin intake");
+
+    let mut berthed = false;
+    for _ in 0..4000 {
+        crate::tests::step_walking(&mut game, 30);
+        if game.state().world.ruin_in_reach(reach).is_some() {
+            game.try_send(GameCommand::SetStriding { walking: false })
+                .expect("always legal");
+            game.step(2);
+            berthed = true;
+            break;
+        }
+    }
+    assert!(berthed, "never walked within reach of a ruin");
+    assert_eq!(
+        game.view().journey.halt,
+        HaltView::Berthed,
+        "a tower working a ruin reported as an ordinary halt"
+    );
+
+    // Away from the ruin it is an ordinary halt again — the difference
+    // has to be the ruin, not merely having a rig.
+    game.try_send(GameCommand::SetStriding { walking: true })
+        .expect("always legal");
+    let mut left = false;
+    for _ in 0..4000 {
+        crate::tests::step_walking(&mut game, 30);
+        if game.state().world.ruin_in_reach(reach).is_none() {
+            game.try_send(GameCommand::SetStriding { walking: false })
+                .expect("always legal");
+            game.step(2);
+            left = true;
+            break;
+        }
+    }
+    assert!(left, "never walked back out of reach");
+    assert_eq!(game.view().journey.halt, HaltView::Stopped);
+}

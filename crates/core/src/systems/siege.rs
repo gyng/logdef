@@ -30,9 +30,29 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
 // Provocation
 // ---------------------------------------------------------------------------
 
-/// Walking quietly bleeds attention off. Everything that raises it —
+/// Attention bleeds off on its own. Everything that raises it —
 /// stripping the terrain, burner smoke — is called from the system that
 /// does the provoking, so the cost lands next to the act.
+///
+/// **Unconditional, and it was worth finding out why.** This used to say
+/// "walking quietly bleeds attention off", which reads as though a
+/// stopped tower should keep what it has drawn — and `DECISIONS.md` §11
+/// makes striding the free answer to a wave, so standing still not being
+/// free is an appealing symmetry.
+///
+/// Measured, gating the decay on `strode` is pathological. A berthed
+/// tower never sheds, so provocation climbs to the ceiling and stays
+/// there: `journey.rs`'s berthing comparison went from seconds a seed to
+/// minutes, because every berthed policy sat in permanent siege until
+/// `PATIENCE` ran out, and on the one seed that finished, **careful
+/// berthing fell from +25.5% against never stopping to +0.0%.** That is
+/// M5's fourth exit criterion — is stopping at a ruin ever the right
+/// call — answered "no" by a change made for tidiness.
+///
+/// So the unconditional decay is what keeps a stopped tower out of a
+/// spiral, and the *comment* was the thing that was wrong. What makes
+/// walking the answer to a wave is `cling_ticks` (§11), which only counts
+/// down while the legs run — not this.
 fn decay_provocation(state: &mut GameState, content: &Content) {
     // Nothing to bleed off when nothing has been provoked. Without this
     // guard the decay kept draining the shared accumulator while the

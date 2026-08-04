@@ -216,6 +216,12 @@ pub enum HaltView {
     Walking,
     /// The player stopped it.
     Stopped,
+    /// Stopped at a ruin, with a rig that can reach it.
+    ///
+    /// **The one place a wave cannot be walked away from**, so it must
+    /// not read as an ordinary halt: everything else on this list is a
+    /// tower waiting, and this one is a tower committed.
+    Berthed,
     /// Out of charge, though the player asked for the legs.
     Brownout,
     /// Standing at a fork with no answer. Waiting for the player, and
@@ -789,7 +795,18 @@ fn build_journey(state: &GameState, content: &Content) -> JourneyView {
             answer: fork.answer,
         }),
         branch: world.branch.map(|branch| branch.def.0),
-        halt: halt_reason(state),
+        halt: {
+            // Berthing outranks "stopped" and nothing else: a tower at a
+            // fork, arrived, or browned out is not *choosing* to be
+            // here, and each of those answers "why aren't we moving"
+            // better than the ruin does.
+            let reason = halt_reason(state);
+            if reason == HaltView::Stopped && berthed_at_a_ruin(state, content) {
+                HaltView::Berthed
+            } else {
+                reason
+            }
+        },
         enclave_ahead: world
             .enclave_at(content)
             .filter(|at| *at >= world.distance)
@@ -850,6 +867,38 @@ fn halt_reason(state: &GameState) -> HaltView {
         return HaltView::Brownout;
     }
     HaltView::Stopped
+}
+
+/// Is the tower stopped *at a ruin it can actually work*?
+///
+/// **The one situation in the game a wave cannot be walked away from**,
+/// and until now it looked exactly like a tower somebody had parked.
+/// `DECISIONS.md` §11 makes striding the free answer to a wave, so being
+/// unable to stride is the only real commitment the game has — and a
+/// commitment the player cannot see is one they cannot decide about.
+///
+/// Needs a *working rig with the ruin in its reach*, not merely a ruin
+/// nearby: a tower stopped beside one it has no way to open is parked
+/// rather than berthed, and saying otherwise would promise something it
+/// cannot do.
+fn berthed_at_a_ruin(state: &GameState, content: &Content) -> bool {
+    if state.strode {
+        return false;
+    }
+    state
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .filter(|room| room.active)
+        .filter_map(|room| content.room(room.def).intake.as_ref())
+        .any(|intake| match intake.source {
+            crate::content::IntakeSource::Ruin { range_paces, .. } => {
+                state.world.ruin_in_reach(range_paces).is_some()
+            }
+            crate::content::IntakeSource::Terrain { .. }
+            | crate::content::IntakeSource::Sun { .. } => false,
+        })
 }
 
 fn build_world(state: &GameState, content: &Content) -> WorldView {

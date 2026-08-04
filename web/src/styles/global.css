@@ -429,6 +429,14 @@ button {
   border-color: var(--accent-brass);
 }
 
+/* Berthed: committed, not merely stopped. The one halt a wave cannot
+   be walked away from, so it should not look like the one the player
+   chose for a rest. */
+.stride-toggle.stride-berthed {
+  color: var(--accent-verdigris);
+  border-color: var(--accent-verdigris);
+}
+
 .stride-toggle.stride-arrived {
   color: var(--text-muted);
   border-style: dashed;

@@ -81,7 +81,18 @@ export type CarStateTag = "idle" | "moving" | "dwelling";
  * it. `fork` in particular has to read as *waiting for you* rather than
  * as a frozen game (`SYSTEMS.md` §3.3).
  */
-export type HaltView = "walking" | "stopped" | "brownout" | "fork" | "arrived";
+export type HaltView =
+  | "walking"
+  | "stopped"
+  /**
+   * Stopped at a ruin with a rig that can reach it — **the one place a
+   * wave cannot be walked away from.** Everything else on this list is
+   * a tower waiting; this one is a tower committed.
+   */
+  | "berthed"
+  | "brownout"
+  | "fork"
+  | "arrived";
 
 // ---------------------------------------------------------------------------
 // Per-frame view
