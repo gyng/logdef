@@ -3051,7 +3051,7 @@ Not a task list — the places where existing code assumes something M5 stops be
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
 
-      **Standing at 62 of 137.** Moved this pass: `reinforce`, once the plating comparison
+      **Standing at 69 of 137.** Moved this pass: `reinforce`, once the plating comparison
       stopped counting the wrong thing; the three region-length rows, on the whole-run
       measurement that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4
       hours); and the three Power rows, on a new instrument.
@@ -3126,6 +3126,19 @@ Not a task list — the places where existing code assumes something M5 stops be
       out a queue, small enough that backpressure reaches the arm — and the arm's 40.4% is that
       backpressure arriving, which `AGENTS.md` requires to be visible rather than silently
       absorbed. Enlarging either buffer would hide it.
+
+      **`examples/bestiary.rs` puts one of each creature against one tower**, which nothing had
+      done — the pressure table measures whole waves, so it can say a tower died at provocation
+      500 without saying what killed it. The dart costs confirm the rows almost exactly: a
+      glean-crow dies to **1 dart** (the row derives 1 from its 14 hp), a warden to **19** against
+      a derived 20, a skitter to 2, a mire-hulk to 19.
+
+      The headline is the column nobody had looked at: **no single creature is a threat to a
+      walking tower.** All seven end between 989‰ and 1000‰ undefended, because `cling_ticks`
+      runs out and the stride carries them off. That is `DECISIONS.md` §11 working as written, and
+      it means every dangerous number in the Siege section is about *volume*, not about any one
+      stat block. It also corrects the warden row, whose "about 160 damage" is a **berthed**
+      tower's figure — a walking one takes 2‰.
 
       **The Siege section turned up the worst of the four, and it is M2's exit criterion.**
       `siege_run.rs`'s pressure table compares a bare tower, a plated one and one with "battery +
