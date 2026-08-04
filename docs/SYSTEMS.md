@@ -3051,7 +3051,7 @@ Not a task list — the places where existing code assumes something M5 stops be
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
 
-      **Standing at 39 of 137.** Moved this pass: `reinforce`, once the plating comparison
+      **Standing at 44 of 137.** Moved this pass: `reinforce`, once the plating comparison
       stopped counting the wrong thing; the three region-length rows, on the whole-run
       measurement that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4
       hours); and the three Power rows, on a new instrument.
@@ -3112,6 +3112,26 @@ Not a task list — the places where existing code assumes something M5 stops be
       pruning each finish the band they are in, so the retained window is the constant plus up to
       one `band_max_paces`. Recorded because the next person to measure it will otherwise file a
       bug.
+
+      **The Siege section turned up the worst of the four, and it is M2's exit criterion.**
+      `siege_run.rs`'s pressure table compares a bare tower, a plated one and one with "battery +
+      darts". The battery costs 2 rope; the pressure tower starts with ten poles and no rope;
+      every build was silently refused because nothing checked the return value. **`Shape::
+      Answered` was byte-for-byte the bare tower** — identical 629 hit points lost at provocation
+      300, and zero darts fired at every level of the table. M2 shipped on "answered is
+      meaningfully better off than greedy for the poles it spent" and that comparison had never
+      once run.
+
+      The file already carries a comment about this exact lie happening before, when hard-coded
+      coordinates meant a thornwright was refused for a slot clash. That was fixed by placing
+      rooms anywhere; the *cost* now blocks them instead, and the lesson — **assert the build
+      succeeded** — had not been drawn. It is now, and the harness pays for the rooms first.
+
+      With a battery that exists, the answer is a good one: **972‰ against a bare tower's 951‰ at
+      provocation 100, 198 hit points lost against 316, and 46 creatures seen off for 96 darts**;
+      926‰ against 902‰ at 300. Five Siege constants graded on the curve behind it — a starting
+      tower holds at 100, is worn at 300 and is lost on 4 of 6 seeds at 500, which is the right
+      knee.
 
       **The Transport section is graded off an extension to `throughput.rs`**, and it explains
       that instrument's own result. A car spends **67% of its busy time dwelling and 32% moving**

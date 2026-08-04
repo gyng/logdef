@@ -73,8 +73,8 @@ fn pressure_table() {
          `lost` is hit points still missing at the end, averaged; `worst` is the \n           unluckiest seed of the six.\n"
     );
     println!(
-        "{:<20} {:>5} {:>9} {:>7} {:>7} {:>8} {:>7}    verdict",
-        "tower", "prov", "standing", "lost hp", "worst", "seen off", "mend"
+        "{:<20} {:>5} {:>9} {:>7} {:>7} {:>8} {:>7} {:>6}    verdict",
+        "tower", "prov", "standing", "lost hp", "worst", "seen off", "mend", "darts"
     );
 
     for shape in [Shape::Bare, Shape::Plated, Shape::Answered] {
@@ -84,14 +84,17 @@ fn pressure_table() {
             let mut worst = 0;
             let mut repelled_sum = 0;
             let mut mended_sum = 0;
+            let mut spent_sum = 0i64;
             let mut deaths = 0;
             for seed in 1..=SEEDS {
-                let (standing, lost, repelled, mended, _, _) = press(shape, level, DAYS, seed);
+                let (standing, lost, repelled, mended, _, _, spent) =
+                    press(shape, level, DAYS, seed);
                 standing_sum += standing;
                 lost_sum += lost;
                 worst = worst.max(lost);
                 repelled_sum += repelled;
                 mended_sum += mended;
+                spent_sum += spent;
                 if standing == 0 {
                     deaths += 1;
                 }
@@ -99,11 +102,12 @@ fn pressure_table() {
             let n = i64::try_from(SEEDS).unwrap_or(1);
             let standing = standing_sum / n;
             println!(
-                "{:<20} {level:>5} {standing:>8}‰ {:>7} {worst:>7} {:>8} {:>7}  {}",
+                "{:<20} {level:>5} {standing:>8}‰ {:>7} {worst:>7} {:>8} {:>7} {:>6}  {}",
                 shape.name(),
                 lost_sum / n,
                 repelled_sum / u64::from(SEEDS as u32),
                 mended_sum / u64::from(SEEDS as u32),
+                spent_sum / n,
                 if deaths > 0 {
                     format!("LOST {deaths}/{SEEDS}")
                 } else if standing >= 950 {
@@ -161,8 +165,8 @@ fn does_plating_help() {
     // that the mechanism does nothing.
     for level in [300, 500, 700] {
         for seed in 1..=8u64 {
-            let (_, _, _, _, _, bare) = press(Shape::Bare, level, 3, seed);
-            let (_, _, _, _, _, plated) = press(Shape::Plated, level, 3, seed);
+            let (_, _, _, _, _, bare, _) = press(Shape::Bare, level, 3, seed);
+            let (_, _, _, _, _, plated, _) = press(Shape::Plated, level, 3, seed);
             if bare == 0 && plated == 0 {
                 continue;
             }
@@ -210,14 +214,32 @@ impl Shape {
 }
 
 /// Hold provocation at `level` and see what happens.
-fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64, i64, i64) {
+fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64, i64, i64, i64) {
     let mut engine = GameEngine::new(seed);
     engine.set_speed(SimSpeed::X1);
     let content = engine.content().clone();
 
     if shape == Shape::Answered {
+        // **Paid for first, and then asserted.** This harness has now
+        // lied twice about the same tower in the same way. The first
+        // time, hard-coded coordinates meant the thornwright was refused
+        // for a slot clash and the "answered" tower had a battery with
+        // no dart supply; `build_anywhere` fixed that. The second time —
+        // this one — M5 put 2 rope on a dart battery's price, the
+        // pressure tower starts with ten poles and no rope, every build
+        // was refused, and `Shape::Answered` was *byte-for-byte the bare
+        // tower*: identical 629 hit points lost at provocation 300, and
+        // **zero darts fired at every level of the table**.
+        //
+        // A harness that reports a defence comparison in which nothing
+        // was ever defended is worse than one that crashes. So: stock
+        // it, then insist.
+        pay_for_rooms(&mut engine);
         for room in ["room.dart_battery", "room.thornwright", "room.mill"] {
-            build_anywhere(&mut engine, room);
+            assert!(
+                build_anywhere(&mut engine, room),
+                "the answered tower could not build {room}, so it is not an answered tower"
+            );
         }
     }
     if shape == Shape::Plated {
@@ -231,10 +253,11 @@ fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64,
     // measurement of the siege, not of the economy.
     stock_everything(&mut engine);
 
+    let mut darts_spent = 0i64;
     let ticks = days * TICKS_PER_DAY;
     for tick in 0..ticks {
         if tick % 60 == 0 {
-            stock_everything(&mut engine);
+            darts_spent += stock_everything(&mut engine);
             let siege = &mut engine.state_mut_for_test().siege;
             siege.provocation = level;
             siege.provocation_acc = 0;
@@ -253,6 +276,7 @@ fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64,
         state.stats.hp_repaired,
         understory_core::systems::repair::outstanding_repair_cost(state, &content),
         behind_the_skin_lost(state),
+        darts_spent,
     )
 }
 
@@ -332,10 +356,15 @@ fn total_hp(state: &understory_core::state::GameState) -> i64 {
 /// difference between two towers into a fourfold gap in repair and had
 /// me withdraw a working feature. An instrument that changes the thing
 /// it measures is worse than no instrument.
-fn stock_everything(engine: &mut GameEngine) {
+/// Returns how many darts it had to put back on the racks, which is
+/// exactly how many were fired since the last top-up — the racks are
+/// refilled every 60 ticks, so stock cannot be read for consumption but
+/// the refill can.
+fn stock_everything(engine: &mut GameEngine) -> i64 {
     let content = engine.content().clone();
     let poles = content.item_idx("item.poles");
     let darts = content.item_idx("item.darts");
+    let mut reloaded = 0i64;
     let state = engine.state_mut_for_test();
     for item in [poles, darts].into_iter().flatten() {
         let held = state.stock_of(item);
@@ -351,10 +380,11 @@ fn stock_everything(engine: &mut GameEngine) {
                 && let Some(rack) = room.inputs.iter_mut().find(|s| s.item == darts)
             {
                 let space = rack.space();
-                rack.deposit(space);
+                reloaded += rack.deposit(space);
             }
         }
     }
+    reloaded
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -623,6 +653,32 @@ fn try_build(engine: &mut GameEngine, room: &str, floor: u8, slot: u8) -> bool {
             slot,
         })
         .is_ok()
+}
+
+/// Hand the tower enough of everything to buy its own defences.
+///
+/// Not a measurement of the economy — `press` pins provocation and
+/// stocks the shelves for exactly the same reason. What is being asked
+/// is whether a tower that *has* a battery does better than one that
+/// does not, and making it earn the battery first only measures how long
+/// that takes.
+fn pay_for_rooms(engine: &mut GameEngine) {
+    let content = engine.content().clone();
+    let state = engine.state_mut_for_test();
+    for id in ["item.poles", "item.rope"] {
+        let Some(item) = content.item_idx(id) else {
+            continue;
+        };
+        let mut left = 40;
+        'floors: for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                left -= room.shelve(item, left);
+                if left <= 0 {
+                    break 'floors;
+                }
+            }
+        }
+    }
 }
 
 /// Put a room in the first place it will go.
