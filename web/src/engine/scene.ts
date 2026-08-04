@@ -96,6 +96,7 @@ export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
   drawTower(batch, ctx);
   drawShafts(batch, ctx);
   drawCrew(batch, ctx);
+  drawSmoke(batch, ctx);
   drawSiege(batch, ctx);
   drawPlaceMode(batch, ctx);
   drawLight(batch, ctx);
@@ -343,6 +344,55 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
     colorBottom: ground,
   });
   batch.push(0, layout.groundY - 2, edgeX, 4, fade(atNight(palette.groundLip, dark), 0.7));
+  drawFlood(batch, ctx, underfootKind, edgeX, dark);
+}
+
+/**
+ * Standing water, where the ground is drowned street.
+ *
+ * **Region 2 is named for water and the renderer drew none**, which left
+ * the drowned city reading as ruin-field with a different palette. A
+ * flooded plane is the cheapest thing that makes it its own place.
+ *
+ * Three quads and a shimmer, deliberately: a sheet over the ground, a
+ * bright line at the waterline where it meets the tower's feet, and slow
+ * horizontal bands that drift *against* the stride so the surface reads
+ * as liquid the tower is wading through rather than as painted floor.
+ * The bands are keyed to `clock` rather than to distance, because water
+ * moves whether or not the tower does — a still tower on still water is
+ * the one thing that would look wrong.
+ */
+function drawFlood(
+  batch: QuadBatch,
+  { layout, clock, view, catalog }: SceneContext,
+  underfootKind: number,
+  edgeX: number,
+  dark: number,
+): void {
+  if (catalog.terrain[underfootKind]?.id !== "terrain.drowned_street") return;
+  const depth = layout.viewport.height - layout.groundY;
+  const water = atNight(palette.drownedFar, dark);
+  // The sheet. Paler at the horizon end, sinking to the band's own dark
+  // at the bottom of the frame, so it reads as depth rather than paint.
+  batch.push(0, layout.groundY, edgeX, depth, fade(water, 0.32), {
+    colorBottom: fade(atNight(palette.drownedNear, dark), 0.55),
+  });
+  // The waterline: a bright edge exactly where the ground line is, which
+  // is what tells you the tower is *in* it and not on it.
+  batch.push(0, layout.groundY - 1, edgeX, 3, fade(atNight(palette.skyLow, dark), 0.5));
+  // Slow drifting bands. Against the stride, and cheap — six quads.
+  for (let i = 0; i < 6; i += 1) {
+    const t = (clock * 0.06 + i / 6) % 1;
+    const y = layout.groundY + depth * t * t;
+    const sway = Math.sin(clock * 0.7 + i * 1.7) * layout.slotW * 0.4;
+    batch.push(
+      -layout.slotW + sway - (view.world.distance % 40) * layout.paceW * 0.15,
+      y,
+      edgeX + layout.slotW * 2,
+      Math.max(1, depth * 0.012),
+      fade(atNight(palette.skyLow, dark), 0.16 * (1 - t)),
+    );
+  }
 }
 
 function drawFeature(
@@ -1425,6 +1475,47 @@ function drawEyes(batch: QuadBatch, x: number, y: number, r: number, eye: Color)
  * (the waypost carries the rest of that read). And a tower at the far
  * edge has arrived: feet together, nothing left to walk to.
  */
+/**
+ * How far one step carries the tower, in slot widths.
+ *
+ * **This sets the cadence rather than the other way round.** The ground
+ * scrolls at `layout.paceW` pixels a pace whatever the legs do, so the
+ * only way a foot can stay planted is for the step length to decide the
+ * rhythm. Pick how far a step should look and the tempo falls out.
+ *
+ * 1.8 slots is just inside what the leg can physically reach: at
+ * `GROUND_FRACTION` 0.72 the leg spans about 181 px and a two-bone
+ * joint of that length swings +/-83 px, which is +/-1.04 slots. Asking
+ * for more locks both legs straight and the tower skis — that was tried
+ * at 0.86, where the reach was half this, and it is why the ground line
+ * moved.
+ */
+const STRIDE_SLOTS = 1.8;
+
+/**
+ * Where the knee goes, so both bones keep their length.
+ *
+ * Two-bone IK, bending backwards. The knee used to be a lerp toward the
+ * foot, which was fine while the foot never went far — with the foot
+ * planted it travels a full stride and an unsolved joint would visibly
+ * stretch. A leg that changes length is worse than one that slides.
+ */
+function solveKnee(hipX: number, hipY: number, footX: number, footY: number): number {
+  const dx = footX - hipX;
+  const dy = footY - hipY;
+  const span = Math.hypot(dx, dy) || 1;
+  // Each bone is a little over half the straight-down drop, so a
+  // standing tower has near-straight legs with a hint of bend.
+  const bone = Math.max(Math.abs(hipY - footY), 1) * 0.56;
+  // Past full extension, lock straight rather than snapping. A leg that
+  // pops inside out is worse than one that reaches.
+  if (span >= bone * 2) return hipX + dx * 0.5;
+  const out = Math.sqrt(Math.max(0, bone * bone - (span * 0.5) ** 2));
+  // Perpendicular to the hip-foot line, pushed backwards along travel so
+  // the joint folds the way a bird's does.
+  return hipX + dx * 0.5 - (-dy / span) * out;
+}
+
 function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void {
   const shape = towerShape(view);
   const spanX = shape.slots * layout.slotW;
@@ -1439,23 +1530,46 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
   const settle = halt === "walking" ? 0 : halt === "arrived" ? reach * 0.06 : reach * 0.03;
   const hipY = layout.groundY - reach * 0.1 + settle;
   const footY = layout.groundY + reach * 0.62;
-  const phase = view.world.distance * 0.09;
   const thickness = layout.slotW * 0.24;
+  const strideX = STRIDE_SLOTS * layout.slotW;
+  // Paces of ground one step covers. Derived, so a planted foot lands
+  // exactly where the ground is and the cadence can never drift out of
+  // step with the scroll.
+  const stridePaces = strideX / layout.paceW;
 
   for (let i = 0; i < 2; i += 1) {
     const hipX = layout.originX + spanX * (i === 0 ? 0.26 : 0.74);
-    // Off the gait while walking; a fixed open stance once halted, so
-    // the feet land somewhere deliberate rather than wherever the last
-    // pace happened to leave them.
-    const step = gait ? Math.sin(phase + i * Math.PI) : (i === 0 ? -0.5 : 0.5) * stanceScale;
+    // Two steps to a gait cycle, the legs half a cycle apart, so one
+    // foot is always down.
+    const cycle = view.world.distance / (stridePaces * 2) + i * 0.5;
+    const t = cycle - Math.floor(cycle);
+    const planted = t < 0.5;
+    const swing = planted ? 0 : (t - 0.5) * 2;
+
+    // **Stance: the foot holds still in the world and the tower walks
+    // over it.** This is the whole change. The hip is fixed on screen
+    // and the world scrolls, so a foot genuinely on the ground travels
+    // *backwards across the screen* at exactly the scroll rate — and
+    // that contrast against a fixed hip is what a stride is. What this
+    // replaces swung the foot around the hip through the entire cycle,
+    // including the half it was supposed to be carrying the tower, so
+    // every step skated.
+    //
+    // Derived from `distance` rather than remembered between frames:
+    // this module is a pure function of the snapshot, and the screenshot
+    // harness calls it from inside a stepping loop where nothing has
+    // rendered.
+    const ease = swing * swing * (3 - 2 * swing);
+    const offset = planted ? 0.5 - t * 2 : ease - 0.5;
+    const step = gait ? offset * strideX : (i === 0 ? -0.5 : 0.5) * stanceScale * strideX * 0.5;
     // A brown-out is the legs asking and not being answered: a small
     // stuttering lift that never becomes a step.
     const strain =
       halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 2.3)) ** 5 * reach * 0.08 : 0;
-    const lift = gait * Math.max(0, Math.cos(phase + i * Math.PI)) * reach * 0.22 + strain;
-    const footX = hipX + step * layout.slotW * 0.9;
-    const kneeX = hipX + step * layout.slotW * 0.36;
+    const lift = (gait && !planted ? Math.sin(swing * Math.PI) * reach * 0.16 : 0) + strain;
+    const footX = hipX + step;
     const kneeY = (hipY + footY) / 2 - lift * 0.35;
+    const kneeX = solveKnee(hipX, hipY, footX, footY - lift);
 
     // A shadow that tightens as the foot lands. Cheap, and it does most
     // of the work of making the tower feel heavy.
@@ -1487,6 +1601,82 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
       palette.legJoint,
       { radius: thickness * 0.3 },
     );
+  }
+}
+
+/**
+ * Smoke from a burner that is actually burning.
+ *
+ * **The one difficulty dial in the game, and it was invisible.**
+ * `provocation_per_burn` is 18 a burn and provocation is the only thing
+ * that decides how hard a run gets (`SYSTEMS.md` §2.6) — a tower that
+ * stands up a burner is choosing to be noticed. Measured, an undefended
+ * one dies on 24 runs out of 24. None of that was on screen: the burner
+ * looked like any other room.
+ *
+ * So it smokes, and the plume is the tell. `DECISIONS.md` §8 wants the
+ * fact in the world rather than in a number, and this is the clearest
+ * case of it in the pack — you can see, from across the frame, that the
+ * tower is drawing attention to itself.
+ *
+ * Drawn after the tower so it passes in front of the shell, and before
+ * the light and the vignette so night and distance still touch it. Pure
+ * JS animation off `clock`, like the dappling — no state, nothing in the
+ * snapshot, nothing to desynchronise.
+ */
+function drawSmoke(batch: QuadBatch, ctx: SceneContext): void {
+  const { view, catalog, layout, clock } = ctx;
+  const dark = darkness(view);
+  for (const floor of view.tower.floors) {
+    for (const room of floor.rooms) {
+      // Burning, not merely built: a burner that is switched off, out of
+      // bamboo or wrecked draws nothing, which makes the plume a report
+      // on what the tower is *doing* rather than on what it owns.
+      if (!catalog.rooms[room.def]?.burner) continue;
+      if (!room.active || room.stalled || room.wrecked) continue;
+
+      // **Out of the roof, not out of the room.** Smoke is drawn after
+      // the tower so it passes in front of the shell, which means a
+      // plume started at the burner billows up *through* the floors
+      // above it — somebody's bunk full of woodsmoke. It leaves by the
+      // roof above the burner's own column instead, which is what a flue
+      // does and the only version that does not draw over three rooms on
+      // the way out.
+      const x = slotX(layout, room.slot) + (room.width * layout.slotW) / 2;
+      const vent = floorY(layout, view.tower.floors.length - 1) - layout.floorH * 0.1;
+      // Eight puffs on one rising path, spaced along their own lives so
+      // the column reads as continuous rather than as a pulse.
+      for (let i = 0; i < 8; i += 1) {
+        const t = (clock * 0.22 + i / 8 + hash01(room.id + i * 977)) % 1;
+        // Rises fast and slows, the way heat does.
+        const rise = Math.sqrt(t);
+        // **Sideways more than up**, which is a framing constraint
+        // rather than a physical one: the roof sits about a floor's
+        // height below the HUD, so a plume climbing three floors spends
+        // most of its life off the top of the screen saying nothing. It
+        // leans into the sky it actually has.
+        const y = vent - rise * layout.floorH * 1.1;
+        // Shears sideways as it climbs and loses the vent's push, with a
+        // slow wander so no two puffs take the same line.
+        const drift =
+          rise * rise * layout.slotW * 2.6 + Math.sin(clock * 0.6 + i * 2.1) * layout.slotW * 0.28;
+        const size = layout.slotW * (0.26 + rise * 0.95);
+        // Thins as it spreads, and never quite reaches nothing at the
+        // top of its life — a puff that vanishes at full opacity pops.
+        const alpha = (1 - t) * (1 - t) * 0.55;
+        batch.push(
+          x + drift - size / 2,
+          y - size / 2,
+          size,
+          size,
+          fade(atNight(palette.haze, dark), alpha),
+          {
+            radius: size / 2,
+            softness: size * 0.7,
+          },
+        );
+      }
+    }
   }
 }
 

@@ -256,42 +256,58 @@ visual carries information: the legs report the halt state, a crew member's step
 reports hunger, a stalled room goes quiet. Rain would be the first purely decorative system
 in it.
 
-### Planted feet and IK legs: blocked by geometry, not by effort
+### Planted feet and IK legs — done, and the fix was not in the legs
 
-The obvious win is that the tower's feet **slide**. `drawLegs` swings each foot sinusoidally
-around the hip through the whole cycle, including the half where it is supposed to be bearing
-weight, so every step skates. Planting the foot — holding it still in the world and letting it
-drift backwards across the screen at the scroll rate — is the classic fix and is normally a
-twenty-line change.
+The tower's feet used to **slide**: `drawLegs` swung each foot sinusoidally around the hip
+through the whole cycle, including the half it was supposed to be bearing weight on. Planting
+the foot — holding it still in the world and letting it drift backwards across the screen at
+the scroll rate — is the standard fix.
 
-**It does not fit here, and the arithmetic is worth writing down before somebody else tries.**
-At 1600×900:
+**It failed the first time, and the arithmetic is why.** At `GROUND_FRACTION` 0.86 the leg
+spanned 91 px, so a two-bone joint could swing ±41 px — about half a slot. The ground scrolls
+at `slotW * 0.5` per pace and the tower walks 18 paces a second, so a correctly planted foot
+implied **nine steps a second**. Asking for a calmer two-slot stride was worse: ±82 px against
+a ±41 px reach, both legs locked straight, and the tower skied.
 
-| | |
-|---|---|
-| `reach` (ground to bottom of frame) | ~126 px |
-| Leg span, hip to foot | ~91 px |
-| Each bone, hip–knee and knee–foot | ~50 px |
-| **Maximum horizontal foot reach** | **±41 px, about half a slot width** |
-| `paceW` (ground scroll) | `slotW * 0.5` ≈ 40 px per pace |
-| Tower speed | 0.6 paces/tick at 30 Hz = **18 paces/s** |
+**The fix was in `layout.ts`, not in the legs**, and it came in two parts that compound:
 
-A planted foot must cover exactly the ground the world scrolls. Half a slot of reach is one
-pace of ground, and the tower walks eighteen paces a second — so a physically-correct gait at
-today's scroll rate is **eighteen steps per second**. Asking for a longer, calmer stride makes
-it worse: a two-slot stride is ±82 px against a ±41 px reach, so both legs lock straight and
-the tower skis. That was tried, photographed, and reverted.
+| | before | after |
+|---|---|---|
+| `GROUND_FRACTION` | 0.86 | **0.72** — leg span 91 px → 181 px |
+| `HORIZON_FRACTION` | 0.52 | **0.40** — keeps the parallax band's depth |
+| `paceW` | `slotW * 0.5` | **`slotW * 0.2`** — terrain crosses in 5.6 s, not 2.2 |
+| Cadence | 8.7 steps/s | **1.7 steps/s** |
 
-So **the pendulum is the right call given the geometry**, and the sliding is the price. To fix
-it for real, one of these has to give:
+The leg room was *free*: `slotW` is bound by `byWidth` (80 at 1600×900) rather than `byHeight`
+(95.6), so the tower could be given a quarter of the frame to stand in without getting any
+smaller. 0.72 is the exact floor before it starts shrinking.
 
-1. **`paceW` drops by roughly 15×** — the world scrolls far slower past a tower that walks the
-   same speed. This is a feel decision about the whole game, not a leg fix, and it would
-   change how travel reads everywhere.
-2. **The legs get much longer** — `GROUND_FRACTION` 0.86 leaves only 14% of the frame below
-   the tower. Put it on visible stilts and the reach arrives, at the cost of the cross-section
-   being the thing you look at.
-3. **Leave it.** The feet slide, and at 1× nobody has yet said they noticed.
+The general lesson, which is worth more than the legs: **a walk cycle is not an animation
+problem, it is a units problem.** Foot reach, stride length and scroll rate are one equation,
+and if any two are chosen independently the third is wrong. `STRIDE_SLOTS` in `scene.ts` now
+derives the cadence from the other two so it cannot drift again.
 
-Worth knowing which of those you are choosing rather than discovering it halfway through an
-IK solver.
+### Smoke and water — done
+
+Both are in, both are quads in the existing batch, and neither needed a texture.
+
+**Burner smoke** vents from the roof above the burner's own column — not from the room, because
+smoke draws after the tower and a plume started at the burner billows up through the bunks
+above it. Eight puffs on one rising path, spaced along their own lives so the column is
+continuous rather than pulsed, shearing sideways as they climb. Gated on the burner actually
+*burning*: switched off, out of bamboo or wrecked draws nothing, so the plume reports what the
+tower is doing rather than what it owns.
+
+It also leans sideways harder than physics wants, and that is framing rather than fluid
+dynamics: the roof sits about a floor's height below the HUD, so a plume that climbs three
+floors spends most of its life off the top of the screen.
+
+**Flood water** draws only where the band underfoot is drowned street: a sheet over the ground
+darkening with depth, a bright waterline exactly on the ground line so the tower reads as
+being *in* it, and six slow bands drifting against the stride. The bands run off `clock`
+rather than distance, because water moves whether or not the tower does — a still tower on
+still water is the one thing that would look wrong.
+
+`web/e2e/effects.spec.ts` photographs both. Nothing else does: the capture harness never
+builds a burner, and its drowned-city stills depend on where a nondeterministic script happens
+to stop.

@@ -486,16 +486,37 @@ test("capture stills", async ({ page }) => {
   // §3.6 spiral, arrived at by trying to buy shelf space.
   for (let i = 0; i < 2; i += 1) {
     const store = page.getByTestId("build-room.storeroom");
-    if (await store.isDisabled()) {
-      console.log("capture: skipped a storeroom — the tower could not build it");
-      break;
-    }
-    await store.click();
+    // **Find the gap before selecting the card, and never leave place
+    // mode dangling.** This used to click the card, then look for a
+    // slot, and do nothing if there was not one — leaving the card
+    // pressed and place mode open. Next time round it then waited three
+    // minutes for a button place mode had disabled, and the run timed
+    // out.
+    //
+    // It only started biting when the renderer's cost changed, because
+    // this file drives the sim through real-time waits while the frame
+    // loop is also ticking, so anything moving the frame rate moves the
+    // tower's state at each step. The ordering below does not care.
     const gap = await page.evaluate(() => {
       const at = window.__capture!.freeSlotAny(2);
       return at === null ? null : window.__understory!.slotPoint(at.floor, at.slot);
     });
-    if (gap) await page.mouse.click(gap.x, gap.y);
+    if (!gap) {
+      console.log("capture: skipped a storeroom — nowhere two slots wide left");
+      break;
+    }
+    if (await store.isDisabled()) {
+      console.log("capture: skipped a storeroom — the tower could not build it");
+      break;
+    }
+    // `force` because affordability can flip between that check and this
+    // click: the sim runs underneath and repair spends poles. A missed
+    // storeroom is the worse outcome; a forced click on a card that has
+    // just gone disabled is a no-op.
+    await store.click({ force: true, timeout: 5_000 }).catch(() => {
+      console.log("capture: the storeroom card went away mid-click");
+    });
+    await page.mouse.click(gap.x, gap.y);
     await page.evaluate(() => {
       window.__capture!.walk(2400);
     });

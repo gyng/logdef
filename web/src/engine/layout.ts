@@ -45,9 +45,24 @@ const MAX_SLOT_W = 86;
 /** Floors are taller than slots are wide; the tower should read tall. */
 const FLOOR_ASPECT = 1.35;
 /** Screen height fraction where the tower's feet rest. */
-const GROUND_FRACTION = 0.86;
+// **0.72 rather than 0.86, and the extra 14% of frame is leg room.**
+//
+// Free, which is why it is here: `slotW` is bound by `byWidth` (80 at
+// 1600×900) not by `byHeight` (95.6), so the tower can be given a
+// quarter of the frame to stand in without getting any smaller. 0.72 is
+// the exact floor — below it `byHeight` binds and the tower shrinks.
+//
+// What it buys is a leg that can reach. At 0.86 the leg spanned 91 px
+// and could swing ±42, so a planted foot covered two paces of ground and
+// the gait had to run at nearly nine steps a second to keep up with the
+// scroll. At 0.72 the span is 181 px and the swing ±83. See
+// `STRIDE_SLOTS` in `scene.ts` for the other half of that sum.
+const GROUND_FRACTION = 0.72;
 /** Screen height fraction where the ground plane meets the sky. */
-const HORIZON_FRACTION = 0.52;
+// Lowered with the ground line, so the gap between them — where the far
+// and mid parallax layers live — keeps its depth. Left at 0.52 it would
+// have compressed by 40% and the distance would have gone flat.
+const HORIZON_FRACTION = 0.4;
 /** Fraction of the viewport width the tower's left edge sits at. */
 const TOWER_LEFT_FRACTION = 0.28;
 
@@ -73,9 +88,17 @@ export function computeLayout(viewport: Viewport, shape: TowerShape): Layout {
     originX: Math.round(viewport.width * TOWER_LEFT_FRACTION),
     groundY: Math.round(viewport.height * GROUND_FRACTION),
     horizonY: Math.round(viewport.height * HORIZON_FRACTION),
-    // Terrain scrolls a touch faster than the tower is wide, so the
-    // stride reads as real movement rather than a treadmill.
-    paceW: slotW * 0.5,
+    // **The scroll rate, and it is the gait's other half.**
+    //
+    // A planted foot has to cover exactly the ground that goes past, so
+    // this and the leg length together decide the cadence — there is no
+    // third number to hide a mismatch in. At `slotW * 0.5` a tower with
+    // 181 px legs still had to take 4.3 steps a second; at 0.2 it takes
+    // 1.7, which is the ponderous stride something this size should
+    // have. Terrain crosses the screen in about 5.6 s rather than 2.2.
+    //
+    // Raise this and the tower scuttles. Lower it and it wades.
+    paceW: slotW * 0.2,
     viewport,
   };
 }
