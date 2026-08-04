@@ -311,3 +311,25 @@ still water is the one thing that would look wrong.
 `web/e2e/effects.spec.ts` photographs both. Nothing else does: the capture harness never
 builds a burner, and its drowned-city stills depend on where a nondeterministic script happens
 to stop.
+
+### The wake, the sails and the arm — done, and all three came free with the feet
+
+**Splash and submersion.** A foot landing in the drowned street throws a ring and a little
+spray, and everything below the waterline is re-tinted after the legs draw so the tower wades
+rather than skating on the surface. **None of this was possible before the feet planted** — a
+splash is an *event*, and a pendulum has no touchdown to hang one on. The foot solve is pulled
+out into `feet()` so the water can ask where they are and how long since they landed.
+
+**The sails fill and slacken with `exposure_pct`** — sun after terrain, which is the number
+they are actually paid in. A sail room in dense canopy at 15% and one in open clearing at 100%
+used to draw identically, so the tower's entire charge income was invisible on the one part of
+it that earns the income. Walk into shade now and the canvas goes slack *before* the bank
+starts falling, which is the §8 order: see it in the world first, read it off a gauge second.
+
+**The cutter arm sweeps** while the tower is covering ground, and hangs still when it is not.
+Off `distance` rather than the clock, because terrain intake is paid per pace — a halted tower
+has an arm that has nothing to do, and a stalled one holds its rest angle, which is the same
+silence a starved mill draws.
+
+The pattern in all three: **the signal already existed in the snapshot and nothing was drawing
+it.** That is where the cheap wins are, and it is a better filter than "what would look nice".

@@ -93,6 +93,7 @@ export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
   drawJourneyEdge(batch, ctx);
   drawFork(batch, ctx);
   drawLegs(batch, ctx);
+  drawWake(batch, ctx);
   drawTower(batch, ctx);
   drawShafts(batch, ctx);
   drawCrew(batch, ctx);
@@ -1516,6 +1517,126 @@ function solveKnee(hipX: number, hipY: number, footX: number, footY: number): nu
   return hipX + dx * 0.5 - (-dy / span) * out;
 }
 
+/** One foot, solved: where it is, and how long since it landed. */
+interface Foot {
+  x: number;
+  y: number;
+  /** On the ground. */
+  planted: boolean;
+  /** 0 at touchdown, 1 at lift-off. Only meaningful while planted. */
+  age: number;
+}
+
+/**
+ * Where both feet are this frame.
+ *
+ * Pulled out of `drawLegs` so the water can see them. Splashes and
+ * ripples need to know *when a foot lands*, and planting the feet is
+ * what made that knowable — a pendulum has no touchdown, it is just
+ * continuously somewhere.
+ */
+function feet(view: ViewSnapshot, layout: Layout, clock: number): Foot[] {
+  const shape = towerShape(view);
+  const spanX = shape.slots * layout.slotW;
+  const reach = layout.viewport.height - layout.groundY;
+  const halt = view.journey.halt;
+  const gait = halt === "walking" ? 1 : 0;
+  const stanceScale = halt === "arrived" ? 0.34 : halt === "stopped" ? 0.62 : 1;
+  const settle = halt === "walking" ? 0 : halt === "arrived" ? reach * 0.06 : reach * 0.03;
+  const footY = layout.groundY + reach * 0.62;
+  const strideX = STRIDE_SLOTS * layout.slotW;
+  const stridePaces = strideX / layout.paceW;
+  const out: Foot[] = [];
+  for (let i = 0; i < 2; i += 1) {
+    const hipX = layout.originX + spanX * (i === 0 ? 0.26 : 0.74);
+    const cycle = view.world.distance / (stridePaces * 2) + i * 0.5;
+    const t = cycle - Math.floor(cycle);
+    const planted = t < 0.5;
+    const swing = planted ? 0 : (t - 0.5) * 2;
+    const ease = swing * swing * (3 - 2 * swing);
+    const offset = planted ? 0.5 - t * 2 : ease - 0.5;
+    const step = gait ? offset * strideX : (i === 0 ? -0.5 : 0.5) * stanceScale * strideX * 0.5;
+    const strain =
+      halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 2.3)) ** 5 * reach * 0.08 : 0;
+    const lift = (gait && !planted ? Math.sin(swing * Math.PI) * reach * 0.16 : 0) + strain;
+    out.push({
+      x: hipX + step,
+      y: footY - lift + settle,
+      planted: planted && gait === 1,
+      age: planted ? t * 2 : 0,
+    });
+  }
+  return out;
+}
+
+/**
+ * What the feet do to standing water.
+ *
+ * **Only possible because the feet plant.** A splash is an event, and
+ * before the stance/swing split there was no touchdown to hang one on —
+ * the foot was a pendulum that happened to be near the ground twice a
+ * cycle. Now `age` is 0 at the instant a foot lands, so the ring is just
+ * a function of it.
+ *
+ * Drawn after the legs, which is also what puts the feet *in* the water
+ * rather than on it: the sheet in `drawFlood` goes down before the legs,
+ * so without this pass a foot sits on top of the surface like a coaster.
+ * The skim here is the same water drawn again, thinly, over everything
+ * below the waterline.
+ */
+function drawWake(batch: QuadBatch, ctx: SceneContext): void {
+  const { view, layout, clock, catalog } = ctx;
+  const underfoot = view.world.band;
+  if (underfoot === null || catalog.terrain[underfoot]?.id !== "terrain.drowned_street") return;
+  const dark = darkness(view);
+  const depth = layout.viewport.height - layout.groundY;
+  const edgeX = layout.viewport.width;
+
+  // Everything below the waterline is under water, legs included. Thin
+  // enough that the feet still read, strong enough that they read as
+  // submerged.
+  batch.push(0, layout.groundY, edgeX, depth, fade(atNight(palette.drownedNear, dark), 0.28));
+
+  for (const foot of feet(view, layout, clock)) {
+    if (!foot.planted) continue;
+    // A ring that opens and thins. Two of them, half a beat apart, so
+    // the disturbance has some width to it without needing particles.
+    for (let ring = 0; ring < 2; ring += 1) {
+      const age = Math.min(1, foot.age * 3 + ring * 0.18);
+      if (age >= 1) continue;
+      const r = layout.slotW * (0.18 + age * 0.9);
+      batch.push(
+        foot.x - r,
+        layout.groundY - r * 0.16,
+        r * 2,
+        r * 0.32,
+        fade(atNight(palette.skyLow, dark), (1 - age) * 0.4),
+        {
+          radius: r * 0.16,
+          softness: 3,
+        },
+      );
+    }
+    // And the spray, only in the first moment of the landing.
+    if (foot.age < 0.12) {
+      const burst = 1 - foot.age / 0.12;
+      for (let d = 0; d < 3; d += 1) {
+        const side = d === 1 ? 0 : d === 0 ? -1 : 1;
+        const up = burst * layout.slotW * 0.5;
+        const size = layout.slotW * 0.1 * burst;
+        batch.push(
+          foot.x + side * layout.slotW * 0.3 * (1 - burst) - size / 2,
+          layout.groundY - up - size,
+          size,
+          size,
+          fade(atNight(palette.skyLow, dark), burst * 0.5),
+          { radius: size / 2 },
+        );
+      }
+    }
+  }
+}
+
 function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void {
   const shape = towerShape(view);
   const spanX = shape.slots * layout.slotW;
@@ -2068,6 +2189,12 @@ function drawCrown(
   w: number,
   h: number,
   head: number,
+  /** Sun reaching the roof after terrain, 0-100. Sails read it. */
+  exposure: number,
+  /** Sweep phase off distance walked. The cutter arm reads it. */
+  swing: number,
+  /** Live and fed: a stalled crown holds still. */
+  working: boolean,
 ): void {
   const lit = mix(body, palette.roomBodyLit, 0.35);
   switch (kind) {
@@ -2082,15 +2209,25 @@ function drawCrown(
       // Canted, and tall enough to be the thing you notice about the
       // roof. Two panels at opposing angles read as fabric under
       // tension rather than as a lid.
-      const panel = head * 1.5;
+      //
+      // **They fill and slacken with `exposure_pct`**, which is the sun
+      // *after* terrain — the same number the sails are actually paid
+      // in. A sail room in dense canopy at 15% and one in open clearing
+      // at 100% used to draw identically, so the tower's entire charge
+      // income was invisible on the one part of it that earns the
+      // income. Now the roof answers the route: walk into shade and the
+      // canvas goes slack before the bank starts falling, which is the
+      // §8 order — see it in the world first, read it off a gauge second.
+      const fill = 0.35 + (exposure / 100) * 0.65;
+      const panel = head * 1.5 * (0.72 + fill * 0.28);
       batch.push(x + w * 0.04, y - panel, w * 0.46, panel, palette.sunlight, {
         colorBottom: lit,
-        rotation: -0.16,
+        rotation: -0.16 * fill,
         radius: 2,
       });
       batch.push(x + w * 0.5, y - panel * 0.86, w * 0.46, panel * 0.86, palette.sunlight, {
         colorBottom: lit,
-        rotation: 0.13,
+        rotation: 0.13 * fill,
         radius: 2,
       });
       break;
@@ -2121,9 +2258,17 @@ function drawCrown(
       // The arm. Angled down and outboard, past the room it is bolted
       // to — the cutter arm's own description says it reaches the
       // ground, and until now nothing about it did.
+      //
+      // **And it cuts, when there is anything to cut.** Terrain intake
+      // is paid per pace, so the arm sweeps off `distance` rather than
+      // off the clock: it works while the tower walks, and a tower that
+      // has stopped has an arm hanging still. A stalled or switched-off
+      // arm holds its rest angle, which is the same silence a starved
+      // mill draws (`AGENTS.md` §VII — the stall is the signal).
+      const sweep = working ? Math.sin(swing) * 0.16 : 0;
       const reach = w * 0.75;
       batch.push(x + w * 0.55, y + h * 0.1, reach, Math.max(3, h * 0.12), palette.legJoint, {
-        rotation: 0.42,
+        rotation: 0.42 + sweep,
         radius: 2,
       });
       batch.push(x + w * 0.2, y - head * 0.7, w * 0.38, head * 0.7, lit, { radius: 2 });
@@ -2172,7 +2317,23 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
   const hurt = 1 - unit(room.health_permille / 1000);
   const body = mix(stalled, palette.hurt, hurt * 0.7);
   if (profile.crown !== "none" && head > 4) {
-    drawCrown(batch, profile.crown, body, x, y, w, h, head);
+    // A shaded sail earns nothing and should not look like one that
+    // does; a stalled or halted arm has nothing to cut. Both read off
+    // the snapshot rather than off a timer.
+    const working = room.active && !room.stalled && !room.shaded;
+    drawCrown(
+      batch,
+      profile.crown,
+      body,
+      x,
+      y,
+      w,
+      h,
+      head,
+      room.shaded ? 0 : ctx.view.clock.exposure_pct,
+      ctx.view.world.distance * 0.6,
+      working && ctx.view.journey.halt === "walking",
+    );
   }
   batch.push(x, y, w, h, mix(body, palette.roomBodyLit, 0.25), {
     colorBottom: body,
