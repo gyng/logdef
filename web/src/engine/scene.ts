@@ -94,10 +94,23 @@ export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
   drawFork(batch, ctx);
   drawLegs(batch, ctx);
   drawWake(batch, ctx);
-  drawTower(batch, ctx);
-  drawShafts(batch, ctx);
-  drawCrew(batch, ctx);
-  drawSmoke(batch, ctx);
+  // Everything above the knees rides the body offset. Done by handing
+  // those passes a layout whose ground line has moved, so the whole
+  // tower — shell, rooms, shafts, people, the smoke leaving the roof —
+  // settles together without every one of them learning about it.
+  const shift = bodyOffset(ctx.view, ctx.layout, ctx.clock);
+  const body: SceneContext = {
+    ...ctx,
+    layout: {
+      ...ctx.layout,
+      groundY: ctx.layout.groundY + shift.dy,
+      originX: ctx.layout.originX + shift.dx,
+    },
+  };
+  drawTower(batch, body);
+  drawShafts(batch, body);
+  drawCrew(batch, body);
+  drawSmoke(batch, body);
   drawSiege(batch, ctx);
   drawPlaceMode(batch, ctx);
   drawLight(batch, ctx);
@@ -1517,6 +1530,51 @@ function solveKnee(hipX: number, hipY: number, footX: number, footY: number): nu
   return hipX + dx * 0.5 - (-dy / span) * out;
 }
 
+/**
+ * How much the tower's body is displaced this frame, in pixels.
+ *
+ * **Weight, and being bitten — the only two things allowed to move the
+ * tower.** `DECISIONS.md` §8 rules out spectacle for its own sake, so
+ * there is no screen shake here and no camera at all: what moves is the
+ * *structure*, because the structure is what a footfall and a set of
+ * jaws act on. Terrain and the ground line never move, which is what
+ * keeps it reading as the tower settling rather than the world lurching.
+ *
+ * **Footfall** is a dip on touchdown that recovers over the first
+ * quarter of a stance. It is only possible because the feet plant —
+ * `feet()` reports how long since each landed, and a pendulum has no
+ * landing. Three pixels at 1600×900: enough that something as big as
+ * this reads as heavy, small enough that nobody consciously sees it.
+ *
+ * **Shudder** runs while anything is in `attack`, scaled by how many
+ * things are chewing, and it is horizontal because a bite is a shove
+ * rather than a drop. It is the same information the damage bruise
+ * carries, delivered a second earlier and in the body rather than in a
+ * colour — you feel the tower being worked at before you can see what
+ * it cost.
+ */
+function bodyOffset(view: ViewSnapshot, layout: Layout, clock: number): { dx: number; dy: number } {
+  const scale = layout.slotW / 80;
+  let dy = 0;
+  if (view.journey.halt === "walking") {
+    for (const foot of feet(view, layout, clock)) {
+      if (!foot.planted) continue;
+      // Lands hard, comes back up over the first quarter of the stance.
+      const land = Math.max(0, 1 - foot.age / 0.25);
+      dy = Math.max(dy, land * land * 3 * scale);
+    }
+  }
+  const biting = view.siege.enemies.filter((e) => e.state === "attack").length;
+  const dx =
+    biting === 0
+      ? 0
+      : Math.sin(clock * 34) *
+        Math.min(2.5, 0.9 + biting * 0.5) *
+        scale *
+        (0.6 + 0.4 * Math.sin(clock * 7));
+  return { dx, dy };
+}
+
 /** One foot, solved: where it is, and how long since it landed. */
 interface Foot {
   x: number;
@@ -1649,7 +1707,10 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
   // and open, ready to go either way.
   const stanceScale = halt === "arrived" ? 0.34 : halt === "stopped" ? 0.62 : 1;
   const settle = halt === "walking" ? 0 : halt === "arrived" ? reach * 0.06 : reach * 0.03;
-  const hipY = layout.groundY - reach * 0.1 + settle;
+  // The hip rides the same dip the body does, or the legs detach from
+  // the thing they are carrying.
+  const shift = bodyOffset(view, layout, clock);
+  const hipY = layout.groundY - reach * 0.1 + settle + shift.dy;
   const footY = layout.groundY + reach * 0.62;
   const thickness = layout.slotW * 0.24;
   const strideX = STRIDE_SLOTS * layout.slotW;
@@ -1659,7 +1720,7 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
   const stridePaces = strideX / layout.paceW;
 
   for (let i = 0; i < 2; i += 1) {
-    const hipX = layout.originX + spanX * (i === 0 ? 0.26 : 0.74);
+    const hipX = layout.originX + shift.dx + spanX * (i === 0 ? 0.26 : 0.74);
     // Two steps to a gait cycle, the legs half a cycle apart, so one
     // foot is always down.
     const cycle = view.world.distance / (stridePaces * 2) + i * 0.5;
