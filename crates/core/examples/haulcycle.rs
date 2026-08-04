@@ -1,0 +1,146 @@
+//! What a haul actually costs, in ticks and in trips.
+//!
+//! ```text
+//! cargo run --release -p understory-core --example haulcycle
+//! ```
+//!
+//! `DESIGN.md` insight 1 is that transport is shared rather than
+//! dedicated per chain, so the Crew section's movement constants —
+//! `walk_ticks_per_slot`, `climb_ticks_per_floor`, `load_ticks`,
+//! `unload_ticks`, `carry_capacity` — are what the whole game's pacing
+//! rests on. Their rows are hand arithmetic: "0.4 s a slot, ~3 s to
+//! cross a floor", "two crew at three per trip roughly match the mill".
+//!
+//! Nothing had checked them against a running tower, and the two other
+//! sections that got this treatment both turned out to have a row badly
+//! out — lamps by 70% (`charge.rs`), meals by a third (`needs.rs`). The
+//! arithmetic is not wrong so much as it is arithmetic about an idealised
+//! day: what it misses is queueing, sleep, and the ticks a crew member
+//! spends deciding.
+//!
+//! So this measures the round trip end to end, and the share of a crew
+//! member's day that actually goes into moving things.
+
+use understory_core::GameEngine;
+use understory_core::command::GameCommand;
+use understory_core::state::{CrewState, SimSpeed};
+
+const DAY: u32 = 14_400;
+const DAYS: u32 = 4;
+
+fn main() {
+    println!("=== what does a haul cost? ===\n");
+    println!(
+        "  A fed, housed tower over {DAYS} whole days, first day discarded as warm-up.\n\
+         The rows this checks are hand arithmetic about an idealised trip; what they\n\
+         cannot see is queueing, sleep, and the ticks spent deciding.\n"
+    );
+
+    let mut game = GameEngine::new(0x_4A17);
+    game.set_speed(SimSpeed::X1);
+    for (room, floor, slot) in [("room.canteen", 1u8, 4u8), ("room.bunk", 3, 1)] {
+        for _ in 0..600 {
+            match game.try_send(GameCommand::PlaceRoom {
+                room: room.into(),
+                floor,
+                slot,
+            }) {
+                Ok(()) => break,
+                Err(understory_core::command::CommandError::InsufficientStock { .. }) => {
+                    step(&mut game, 300)
+                }
+                Err(other) => panic!("could not place {room}: {other}"),
+            }
+        }
+    }
+    step(&mut game, DAY);
+
+    let crew = game.state().crew.len() as u64;
+    let hauls_at_start = game.state().stats.hauls_completed;
+    let window = DAY * (DAYS - 1);
+
+    // Where a crew member's ticks go, by the state they are in.
+    let (mut carrying, mut walking, mut climbing, mut boarding, mut idle, mut asleep) =
+        (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+    let mut samples = 0u64;
+    for _ in 0..window {
+        step(&mut game, 1);
+        for member in &game.state().crew {
+            samples += 1;
+            if member.is_carrying() {
+                carrying += 1;
+            }
+            match member.state {
+                CrewState::Walking { .. } => walking += 1,
+                CrewState::Climbing { .. } | CrewState::Riding { .. } => climbing += 1,
+                CrewState::Boarding { .. } => boarding += 1,
+                CrewState::Sleeping => asleep += 1,
+                CrewState::Idle => idle += 1,
+                _ => {}
+            }
+        }
+    }
+
+    let hauls = game.state().stats.hauls_completed - hauls_at_start;
+    println!("crew                             {crew}");
+    println!(
+        "hauls completed a person a day   {:.1}",
+        hauls as f64 / crew as f64 / f64::from(DAYS - 1)
+    );
+    println!(
+        "ticks of crew time a haul        {:.0}   (all crew time, sleep included)",
+        f64::from(window) * crew as f64 / hauls.max(1) as f64
+    );
+    println!(
+        "\nwhere a person's day goes:\n  \
+         carrying a load             {:>5.1}%\n  \
+         walking                     {:>5.1}%\n  \
+         climbing                    {:>5.1}%\n  \
+         **queued at a shaft**       {:>5.1}%\n  \
+         asleep                      {:>5.1}%\n  \
+         idle or otherwise           {:>5.1}%",
+        pct(carrying, samples),
+        pct(walking, samples),
+        pct(climbing, samples),
+        pct(boarding, samples),
+        pct(asleep, samples),
+        pct(idle, samples),
+    );
+    println!(
+        "\n  Three things worth reading off that table.\n\
+         \n\
+         1. **Queueing is 3.4%, and the design rests on it.** `DESIGN.md` insight 1 is\n\
+            that transport is shared rather than dedicated, and a shaft's capacity is\n\
+            the point rather than a limitation to work around. On a *starting* tower\n\
+            that thesis is real but thin — present, not felt. It has to arrive with\n\
+            height and room count or it does not arrive at all.\n\
+         \n\
+         2. **Crew are idle 0.2% of the time.** They are saturated, so anything added\n\
+            to this tower is paid for out of something else it was already doing. That\n\
+            is the shape the game wants, and it also means throughput measurements on\n\
+            a starting tower measure the crew rather than the thing being added.\n\
+         \n\
+         3. **Walking costs nearly three times what climbing does**, 34.2% of a day\n\
+            against 12.1%. `climb_ticks_per_floor` 30 is two and a half times\n\
+            `walk_ticks_per_slot` 12 *per unit*, so the rows read as though vertical\n\
+            movement dominates — and on a four-floor tower it plainly does not, because\n\
+            there is far more horizontal distance to cover than vertical. `DESIGN.md`\n\
+            pillar 2 calls vertical transport the belt; that is a claim about a tall\n\
+            tower, and this is what it looks like before the tower is tall."
+    );
+}
+
+fn pct(n: u64, of: u64) -> f64 {
+    n as f64 * 100.0 / of.max(1) as f64
+}
+
+fn step(game: &mut GameEngine, ticks: u32) {
+    for _ in 0..ticks {
+        if let Some(fork) = game.state().world.fork
+            && fork.answer.is_none()
+        {
+            let _ = game.try_send(GameCommand::TakeFork { branch: 0 });
+        }
+        game.step(1);
+    }
+}

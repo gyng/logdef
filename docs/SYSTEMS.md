@@ -3051,7 +3051,7 @@ Not a task list — the places where existing code assumes something M5 stops be
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
 
-      **Standing at 21 of 137.** Moved this pass: `reinforce`, once the plating comparison
+      **Standing at 28 of 137.** Moved this pass: `reinforce`, once the plating comparison
       stopped counting the wrong thing; the three region-length rows, on the whole-run
       measurement that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4
       hours); and the three Power rows, on a new instrument.
@@ -3081,6 +3081,28 @@ Not a task list — the places where existing code assumes something M5 stops be
       tired, and 35.5% slowed** — and `hungry_work_pct`/`tired_work_pct` are both 60, so that
       last figure is a third of a person's life spent working two-thirds as fast. Whether that is
       too harsh is a judgement for somebody playing. That it is not what the rows claimed is not.
+
+      **`examples/haulcycle.rs` does the movement constants, and turns up something about a
+      pillar.** A crew member on a fed, housed starting tower spends **34.2% of the day walking,
+      12.1% climbing, 25.8% carrying, 3.4% queued, 38.9% asleep and 0.2% idle**, completing 20.1
+      hauls a day each. Three readings:
+
+      - **Walking costs nearly three times what climbing does**, which the per-unit constants
+        hide: `climb_ticks_per_floor` is two and a half times `walk_ticks_per_slot`, so the rows
+        read as though vertical movement dominates. On four floors there is far more horizontal
+        distance than vertical. `DESIGN.md` pillar 2's "vertical transport is the belt" is a
+        claim about a *tall* tower, and the crossover is worth finding before the elevator's
+        price is judged.
+      - **Queueing is 3.4%** — insight 1's contention thesis is present rather than felt on a
+        starting tower, and has to arrive with height and room count or not at all.
+      - **Crew are idle 0.2% of the time.** The tower is saturated, so any throughput measurement
+        taken here measures the crew rather than the thing being added — which is a standing
+        warning for every other instrument in the file, and probably explains a few of the flat
+        readings this project has spent milestones arguing with.
+
+      **The terrain pair is graded too**, on the ceiling measurement in open question 0 rather
+      than on new work: `yield_pct` and `sun_pct` cancel to within two percent on every tower
+      shape, which is exactly what they were written to do.
 
       **And the criterion contradicts what this project has actually been doing, which is worth
       settling before somebody grades the other 122.** It says "from run logs rather than from
