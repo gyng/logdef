@@ -3051,7 +3051,7 @@ Not a task list — the places where existing code assumes something M5 stops be
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.
 
-      **Standing at 18 of 137.** Moved this pass: `reinforce`, once the plating comparison
+      **Standing at 21 of 137.** Moved this pass: `reinforce`, once the plating comparison
       stopped counting the wrong thing; the three region-length rows, on the whole-run
       measurement that is the number they exist to produce (12 of 12 seeds arriving in 2.2–2.4
       hours); and the three Power rows, on a new instrument.
@@ -3068,6 +3068,19 @@ Not a task list — the places where existing code assumes something M5 stops be
       It also puts a number on §6.3's height cost that is worth having: a tower four floors
       taller earns **nothing at all** and browns out for the entire day, because the new roof
       shades the sail deck. Not a tax on growing — a wall.
+
+      **`examples/needs.rs` does the same for M4's crew rows and finds the same shape of
+      mistake.** `hungry_ticks` 4,800 is a third of a day and the row reads it as three meals a
+      person a day. Measured over a week on a tower with a kitchen, beds and nothing attacking
+      it: **2.00 meals a person a day**. Hunger rises around the clock but *eating* does not, and
+      a crew member sleeps about 9.6 of 24 hours — during which hunger climbs past a whole cycle,
+      so they cannot help waking a meal in debt. The clock says three; the rota can deliver two.
+
+      The shares that falls out of are the number the difficulty pass actually wants: a crew
+      member on a well-run tower spends **33.3% of their life hungry, 13.4% starving, 22.0%
+      tired, and 35.5% slowed** — and `hungry_work_pct`/`tired_work_pct` are both 60, so that
+      last figure is a third of a person's life spent working two-thirds as fast. Whether that is
+      too harsh is a judgement for somebody playing. That it is not what the rows claimed is not.
 
       **And the criterion contradicts what this project has actually been doing, which is worth
       settling before somebody grades the other 122.** It says "from run logs rather than from
