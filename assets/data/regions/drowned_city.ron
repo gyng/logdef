@@ -11,8 +11,8 @@ RegionDef(
     id: "region.drowned_city",
     name: "The Drowned City",
     order: 1,
-    length_min_paces: 34000,
-    length_max_paces: 46000,
+    length_min_paces: 9700,
+    length_max_paces: 13100,
     ruin_richness_min_pct: 60,
     ruin_richness_max_pct: 140,
     // Four kinds, comfortably clear of the three-kind minimum. Clearing
@@ -30,7 +30,7 @@ RegionDef(
     // still holds. A shorter region simply fits fewer of them: at the
     // low end of the length roll the second fork falls inside
     // `fork_edge_margin_paces` of the far edge and is skipped.
-    fork_interval_paces: 15000,
+    fork_interval_paces: 4300,
     branches: [
         BranchDef(
             id: "branch.collapsed_district",
@@ -85,7 +85,7 @@ RegionDef(
     enclave: EnclaveDef(
         id: "enclave.high_water",
         name: "High Water",
-        at_paces: 8000,
+        at_paces: 2300,
         // Neighbours, not a merchant's inventory. Every rate here is
         // worse than the chain's own — a mill turns bamboo into poles
         // one for one, a thornwright turns a pole into three darts — so

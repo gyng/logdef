@@ -405,7 +405,7 @@ Balance(
         // still dropping the second one on a short length roll — which
         // is how the rolled length turns into "how many decisions does
         // this region ask".
-        fork_edge_margin_paces: 5000,
+        fork_edge_margin_paces: 1400,
         // About a five-second window at 1x, under two at 4x — the tower
         // covers 80 paces in 133 ticks. If that reads as fiddly in
         // play, the answer is a larger number, not an approach-and-dock

@@ -101,13 +101,28 @@ fn main() {
     // that is a real thing this economy asks of a player rather than a
     // quirk of the fixture. `SYSTEMS.md` §5.11 carries it as an open
     // question, because "remember to switch it off" is a poor answer.
-    off_when_stocked(&mut engine, "room.ropery", "item.rope", 24);
+    // **Six, not twenty-four**, and the difference is shelf space rather
+    // than thrift. A shelf holds one kind, the tower has eight of them,
+    // and twenty-four rope claims two — which it then never gives back,
+    // because nothing eats rope. Measured on a 40-minute journey: 28
+    // rope banked, bamboo with nowhere to land, the mill starved, and a
+    // tower holding four poles of the twelve its elevator costs. Six is
+    // an elevator (4) and a dart battery (2) and not one coil more.
+    off_when_stocked(&mut engine, "room.ropery", "item.rope", 6);
     // And the comb behind it, one material along and for exactly the
     // same reason: with the ropery off, fiber's consumer is gone too,
     // and an intake room with no consumer fills shelves precisely as
     // fast as a production room with none. **This is a pattern, not two
     // incidents.**
-    off_when_stocked(&mut engine, "room.fiber_comb", "item.fiber", 8);
+    off_when_stocked(&mut engine, "room.fiber_comb", "item.fiber", 4);
+    // **And the kitchen, which is the same pattern a third time.** Meals
+    // do have a consumer — crew eat them — but a canteen outruns three
+    // appetites easily, and 24 of them banked claims two of the tower's
+    // eight shelves and never gives them back. Measured on a 40-minute
+    // journey: 24 meals, 12 fiber, 9 rope, bamboo with nowhere to land,
+    // and six poles of the twelve an elevator costs. Twelve is a couple
+    // of days' eating for this crew and one shelf.
+    off_when_stocked(&mut engine, "room.canteen", "item.meals", 12);
     // **No chute in the fixture, and the reason is structural rather
     // than incidental.** A shaft needs one free column on every floor it
     // spans, and once the Heartseed, the cutter arm, a cell bank, two
@@ -136,6 +151,38 @@ fn main() {
     // itself back together. That is the M2 economy, and a fixture
     // recorded against a quieter one would not be recording this game.
     step_walking(&mut engine, 12_000);
+
+    // **The battery before the elevator, and the order is the finding.**
+    // A dart battery is 6 poles and 2 rope; an elevator is 12 and 4.
+    // Bought after the shaft it never became affordable at all once the
+    // journey was scaled for a 40-minute run: the tower spent everything
+    // on the lift, walked its 43,972 paces, *arrived*, and then stood
+    // still earning nothing for the rest of the script. Measured — the
+    // wait ran to tick 141,300 with `arrived true` and no poles at all,
+    // having already built and demolished a thornwright and made twelve
+    // darts, so it was one purchase short of the whole recording.
+    //
+    // A run is now about two fifths as long, so a tower's whole income
+    // is about two fifths of what this script was written against, and
+    // the order it buys in stopped being free. Cheap and load-bearing
+    // first — the rule the shopping lists in `examples/` already follow,
+    // arrived at here the hard way.
+    place_when_affordable(&mut engine, "room.dart_battery", 1, 6);
+    step_walking(&mut engine, 1800);
+
+    // Darts to put in it, from the same argument: a thornwright is 5
+    // poles and it used to sit after the elevator, where the tower had
+    // four poles and needed five. One short, with the whole journey
+    // already walked. Both cheap rooms now come before the expensive
+    // shaft, which is the only ordering a 40-minute run can pay for.
+    place_when_affordable(&mut engine, "room.thornwright", 4, 6);
+    step_walking(&mut engine, 1800);
+
+    // And a demolition, so the stale-task path is covered too.
+    engine
+        .try_send(GameCommand::RemoveRoom { floor: 4, slot: 6 })
+        .expect("the thornwright placed above should still be there");
+    step_walking(&mut engine, 900);
 
     // The elevator: cars, dispatch, dwell, and a charge draw per floor.
     //
@@ -196,19 +243,6 @@ fn main() {
         .expect("always legal");
     step_walking(&mut engine, 900);
 
-    // Darts, and somewhere for them to go. Banked for first: the
-    // script has just spent a stretch of it standing still, and a
-    // stopped tower harvests nothing now, so what it could afford
-    // before the legs stopped is not what it can afford after.
-    place_when_affordable(&mut engine, "room.thornwright", 4, 6);
-    step_walking(&mut engine, 1800);
-
-    // And a demolition, so the stale-task path is covered too.
-    engine
-        .try_send(GameCommand::RemoveRoom { floor: 4, slot: 6 })
-        .expect("the thornwright placed above should still be there");
-    step_walking(&mut engine, 900);
-
     // A battery, and then long enough at speed for the jungle to notice
     // the tower and come and have a look. This is what puts the siege,
     // the damage model, and the repair loop into the fixture — a
@@ -216,7 +250,6 @@ fn main() {
     // Floor 2 rather than floor 1: the elevator's column took slot 7 on
     // every floor it spans, and floor 1's remaining two-wide gap is the
     // only place on the two ground floors a salvage rig can stand.
-    place_when_affordable(&mut engine, "room.dart_battery", 1, 6);
     step_walking(&mut engine, 9000);
 
     // A berth. The rig goes in the last two-wide gap on the ground
@@ -447,7 +480,18 @@ fn place_when_affordable(engine: &mut GameEngine, room: &str, floor: u8, slot: u
             Err(other) => panic!("could not place {room} at {floor}.{slot}: {other}"),
         }
     }
-    panic!("{room} never became affordable");
+    // **Says where it gave up, not just that it did.** "Never became
+    // affordable" is the same sentence whether the tower is jammed, poor,
+    // or standing at the far edge of the journey having already arrived —
+    // and those want opposite fixes. Costs nothing until something fails.
+    let state = engine.state();
+    panic!(
+        "{room} never became affordable at tick {} — {} paces walked, arrived {},          shelves hold {}",
+        state.tick,
+        state.world.distance >> 8,
+        state.arrived,
+        shelf_report(engine),
+    );
 }
 
 /// The same, for a shaft.
@@ -468,7 +512,22 @@ fn build_shaft_when_affordable(engine: &mut GameEngine, shaft: &str, low: u8, hi
         }
     }
     let state = engine.state();
-    let held: Vec<String> = engine
+    panic!(
+        "{shaft} never became affordable at tick {} — {} paces walked, arrived {},          shelves hold {}",
+        state.tick,
+        state.world.distance >> 8,
+        state.arrived,
+        shelf_report(engine),
+    );
+}
+
+/// What is on the shelves, by name. Shared by both "never became
+/// affordable" panics, because the first question either of them raises
+/// is whether the tower was poor or jammed — and those look completely
+/// different here and want opposite fixes.
+fn shelf_report(engine: &GameEngine) -> String {
+    let state = engine.state();
+    engine
         .content()
         .items
         .iter()
@@ -480,11 +539,8 @@ fn build_shaft_when_affordable(engine: &mut GameEngine, shaft: &str, low: u8, hi
                 state.stock_of(understory_core::ids::ItemIdx(i as u16))
             )
         })
-        .collect();
-    panic!(
-        "{shaft} never became affordable; shelves hold {}",
-        held.join(" ")
-    );
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Take the left-hand branch of whatever fork is pending, if any.

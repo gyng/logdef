@@ -1936,9 +1936,10 @@ fn a_palettes_weights_are_the_proportions_it_gets() {
     // That is about twenty bands at the shipped `fork_interval_paces` of
     // 15,000 and it scales down with it: a trial that shortened the
     // journey fivefold cut this sample to 219 bands, under the floor
-    // asserted below. If forks ever get closer together, raise the seed
-    // count rather than the floor.
-    for seed in 1..40u64 {
+    // asserted below. At 4,300 it is about seven bands a seed and forty
+    // seeds gave 299, so the seed count makes up what the sample lost.
+    // Raise this rather than the floor if forks close up again.
+    for seed in 1..140u64 {
         let (mut streams, mut world) = fresh(seed, &content);
         // Region 1 only, and no branches — a branch is a different
         // palette and would muddy the measurement, so this stops at the

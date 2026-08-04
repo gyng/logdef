@@ -901,12 +901,20 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
     // The setup check that actually matters, and the one whose absence
     // produced the blackout sweep above: a tower that cannot keep its
     // lamps on is not measuring transport.
-    assert!(
-        s.brownout < WINDOW / 4,
-        "{height} floors, seed {seed:#x}: browned out on {} of {WINDOW} ticks — this row \
-         would be a measurement of the power budget, not of the shaft",
-        s.brownout,
-    );
+    //
+    // **Marked, not asserted.** Stopping the sweep dead on it throws
+    // away every taller row as well, and the harness tower genuinely
+    // cannot buy more sail than one roof holds — so past eight floors it
+    // is one busy day from the dark whatever the shaft does. Reported
+    // and excluded from the verdict, the same way a lift nobody rode is.
+    if s.brownout > WINDOW / 4 {
+        s.dead = 1;
+        println!(
+            "  ! {height} floors, seed {seed:#x}: browned out on {} of {WINDOW} ticks — \
+             this row is the power budget, not the shaft",
+            s.brownout,
+        );
+    }
     s
 }
 

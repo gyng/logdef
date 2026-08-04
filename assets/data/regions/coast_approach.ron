@@ -19,8 +19,8 @@ RegionDef(
     // is at its most built and the crew at their most numerous, and the
     // run needs somewhere to spend all of that before it ends. At 0.6
     // paces a tick it is roughly 25-33 minutes of 1x walking.
-    length_min_paces: 45000,
-    length_max_paces: 60000,
+    length_min_paces: 12900,
+    length_max_paces: 17100,
     // Poorer than the city. What the sea left is picked over.
     ruin_richness_min_pct: 50,
     ruin_richness_max_pct: 120,
@@ -42,7 +42,7 @@ RegionDef(
     // The same rhythm the player has been learning since region 1. A
     // longer region simply fits more of them — three at the top of the
     // length roll, the most decisions a single region asks.
-    fork_interval_paces: 15000,
+    fork_interval_paces: 4300,
     branches: [
         BranchDef(
             id: "branch.tide_road",
@@ -105,7 +105,7 @@ RegionDef(
     enclave: EnclaveDef(
         id: "enclave.tidewatch",
         name: "Tidewatch",
-        at_paces: 16000,
+        at_paces: 4600,
         // **The coast wants alloy, which nowhere else does.** A tower
         // that ran a forge arrives with something these people cannot
         // make and will pay for; one that never berthed has poles and

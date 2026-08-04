@@ -15,8 +15,8 @@ RegionDef(
     // midpoint is about 55 minutes of unbroken 1x walking; the +/-8,000
     // spread is a little over half a fork interval, so most seeds
     // differ by one fork and none by more than one.
-    length_min_paces: 52000,
-    length_max_paces: 68000,
+    length_min_paces: 14900,
+    length_max_paces: 19400,
     // Likewise rolled once. Wide enough that a lean run and a generous
     // one are different propositions rather than different rounding.
     ruin_richness_min_pct: 60,
@@ -31,7 +31,7 @@ RegionDef(
     // Three forks across a midpoint-length region, about fourteen
     // minutes apart at 1x. Punctuation, not a metronome: the player
     // should learn the rhythm without having to watch for it.
-    fork_interval_paces: 15000,
+    fork_interval_paces: 4300,
     // Three archetypes, so the pair a fork draws differs between forks
     // and between seeds. Every palette clears the three-kind minimum.
     branches: [
@@ -97,7 +97,7 @@ RegionDef(
         // A little past halfway through the shortest roll this region
         // can take, so it lands after a fork or two rather than in the
         // opening minutes, and no run misses it.
-        at_paces: 30000,
+        at_paces: 8600,
         // **What the jungle has, and what it has not.** Timber and
         // thorn in quantity; no metal at all. So it pays in rope and
         // darts and buys scrap, and every rate here is worse than the
