@@ -737,6 +737,22 @@ pub struct CrewBalance {
     pub crew_cap: u8,
     pub walk_ticks_per_slot: u32,
     pub climb_ticks_per_floor: u32,
+    /// Added per item in a climber's arms, per floor.
+    ///
+    /// **The stairs are free for people and dear for goods**, which is
+    /// the whole reason the other two shafts exist: a dumbwaiter carries
+    /// items and no bodies, and an elevator counts a load as a seat.
+    /// Before this, a crew member with three items on their back climbed
+    /// exactly as fast as one going to eat, so the staircase was a
+    /// perfectly good freight line and neither shaft had a job.
+    ///
+    /// Per item rather than a flat laden rate, so `carry_capacity` still
+    /// means something — and bulk still wins: three items in one trip
+    /// costs less than three trips of one, which it must, or crew would
+    /// start ferrying single items to game the rate.
+    ///
+    /// Zero restores the old behaviour exactly.
+    pub climb_ticks_per_item: u32,
     pub load_ticks: u32,
     pub unload_ticks: u32,
     /// Items a crew member carries in one trip.

@@ -188,7 +188,15 @@ fn advance(
         CrewState::Climbing { shaft, to_floor } => {
             crew.wait_ticks = 0;
             let target = Fx::from_int(i32::from(to_floor));
-            let ticks = effective_ticks(balance.climb_ticks_per_floor, pct);
+            // A laden climber is slow, and an empty one is not. The
+            // same sum is in `estimated_trip_ticks`; if these two ever
+            // drift apart, crew choose a shaft on one number and pay
+            // another, and the mistake is invisible from outside.
+            let load = crew.carrying.map_or(0, |(_, count)| count.max(0) as u32);
+            let ticks = effective_ticks(
+                balance.climb_ticks_per_floor + load * balance.climb_ticks_per_item,
+                pct,
+            );
             let step = Fx::ratio(1, ticks.max(1) as i32);
             let arrived = if crew.floor_fx < target {
                 crew.floor_fx += step;
@@ -311,7 +319,8 @@ fn next_leg(
         };
     }
 
-    let Some(shaft) = best_shaft(tower, content, queues, daypart, floor, target_floor) else {
+    let load = crew.carrying.map_or(0, |(_, count)| count.max(0) as u32);
+    let Some(shaft) = best_shaft(tower, content, queues, daypart, floor, target_floor, load) else {
         // Nothing spans this trip. The assignment pass filters for
         // reachability, so this is belt and braces.
         return CrewState::Idle;
@@ -339,6 +348,10 @@ fn best_shaft(
     daypart: DaypartIdx,
     from: FloorIdx,
     to: FloorIdx,
+    // Items in the traveller's arms. Zero when the caller is only
+    // asking whether *any* shaft spans the trip, since reachability is
+    // not a function of what someone is holding.
+    load: u32,
 ) -> Option<ShaftId> {
     tower
         .shafts
@@ -351,7 +364,7 @@ fn best_shaft(
         .min_by_key(|(index, shaft)| {
             let queued = queues.get(*index).copied().unwrap_or(0);
             (
-                super::transport::estimated_trip_ticks(shaft, content, from, to, queued),
+                super::transport::estimated_trip_ticks(shaft, content, from, to, queued, load),
                 // Stable tie-break, so two equal shafts don't flap.
                 shaft.id.0,
             )
@@ -757,7 +770,9 @@ fn errand_leg(
         };
     }
 
-    let Some(shaft) = best_shaft(tower, content, queues, daypart, floor, errand.floor()) else {
+    let load = crew.carrying.map_or(0, |(_, count)| count.max(0) as u32);
+    let Some(shaft) = best_shaft(tower, content, queues, daypart, floor, errand.floor(), load)
+    else {
         // Cut off from it. Stand down rather than spin; the assignment
         // pass will try again once a route exists.
         return CrewState::Idle;
@@ -964,7 +979,7 @@ fn pick_task(
                     continue;
                 }
                 if from_floor != floor.index
-                    && best_shaft(tower, content, queues, daypart, from_floor, floor.index)
+                    && best_shaft(tower, content, queues, daypart, from_floor, floor.index, 0)
                         .is_none()
                 {
                     continue;
@@ -986,7 +1001,8 @@ fn pick_task(
                     continue;
                 };
                 if floor.index != to_floor
-                    && best_shaft(tower, content, queues, daypart, floor.index, to_floor).is_none()
+                    && best_shaft(tower, content, queues, daypart, floor.index, to_floor, 0)
+                        .is_none()
                 {
                     continue;
                 }

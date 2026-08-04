@@ -705,6 +705,12 @@ fn unload_dumbwaiter(state: &mut GameState, shaft_index: usize, sounds: &mut Vec
 /// "the stairs are occupied" is not enough, because five people queued
 /// on a one-body staircase is five times the wait of one, and a crew
 /// member who cannot see that will keep joining the longest line.
+///
+/// `load` is how many items are in their arms. **It has to be here and
+/// not only in the climb**, or the estimate and the trip disagree: crew
+/// would choose the staircase believing it cheap, then pay the laden
+/// rate on it, and go on choosing it forever because nothing they can
+/// see ever changes. Both sides read `climb_ticks_per_item`.
 #[must_use]
 pub fn estimated_trip_ticks(
     shaft: &crate::state::Shaft,
@@ -712,6 +718,7 @@ pub fn estimated_trip_ticks(
     from: FloorIdx,
     to: FloorIdx,
     queued: u32,
+    load: u32,
 ) -> u32 {
     let floors = u32::from(from.abs_diff(to));
     let def = content.shaft(shaft.def);
@@ -725,7 +732,9 @@ pub fn estimated_trip_ticks(
         // an accidental free ride.
         ShaftKind::Chute => u32::MAX,
         ShaftKind::Stairs => {
-            let climb = content.balance.crew.climb_ticks_per_floor * floors;
+            let per_floor = content.balance.crew.climb_ticks_per_floor
+                + load * content.balance.crew.climb_ticks_per_item;
+            let climb = per_floor * floors;
             // Everyone ahead of you climbs before you do. Occupancy
             // costs one more body's worth on top.
             let ahead = queued + u32::from(!shaft.has_room());

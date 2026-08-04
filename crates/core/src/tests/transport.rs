@@ -565,6 +565,18 @@ fn an_underbuilt_tower_shows_its_bottleneck_at_the_shaft() {
 
 /// Estimate for a shaft by kind, at a given queue length.
 fn estimate(game: &crate::engine::GameEngine, kind: ShaftKind, queued: u32) -> u32 {
+    estimate_laden(game, kind, queued, 0)
+}
+
+/// The same, for a crew member with `load` items on their back. The
+/// stairs charge per item per floor and the other shafts do not, which
+/// is the whole reason a built shaft has a job.
+fn estimate_laden(
+    game: &crate::engine::GameEngine,
+    kind: ShaftKind,
+    queued: u32,
+    load: u32,
+) -> u32 {
     let shaft = game
         .state()
         .tower
@@ -572,7 +584,7 @@ fn estimate(game: &crate::engine::GameEngine, kind: ShaftKind, queued: u32) -> u
         .iter()
         .find(|shaft| shaft.kind == kind)
         .expect("shaft is standing");
-    crate::systems::transport::estimated_trip_ticks(shaft, game.content(), 0, 3, queued)
+    crate::systems::transport::estimated_trip_ticks(shaft, game.content(), 0, 3, queued, load)
 }
 
 #[test]
@@ -602,8 +614,10 @@ fn a_longer_climb_costs_more_than_a_shorter_one() {
             .iter()
             .find(|shaft| shaft.kind == kind)
             .expect("standing");
-        let one = crate::systems::transport::estimated_trip_ticks(shaft, game.content(), 0, 1, 0);
-        let three = crate::systems::transport::estimated_trip_ticks(shaft, game.content(), 0, 3, 0);
+        let one =
+            crate::systems::transport::estimated_trip_ticks(shaft, game.content(), 0, 1, 0, 0);
+        let three =
+            crate::systems::transport::estimated_trip_ticks(shaft, game.content(), 0, 3, 0, 0);
         assert!(
             three > one,
             "{kind:?}: three floors ({three}) did not cost more than one ({one})"
@@ -650,6 +664,7 @@ fn the_elevator_earns_its_poles_on_long_climbs_and_busy_ones() {
             0,
             to,
             queued,
+            0,
         )
     };
 

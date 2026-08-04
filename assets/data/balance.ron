@@ -48,6 +48,27 @@ Balance(
         // A full second per floor. Stairs are slow on purpose — that
         // is the pressure the dumbwaiter relieves in M1.
         climb_ticks_per_floor: 30,
+        // Half a second more per item on your back, per floor: an empty
+        // climber takes 30 ticks a floor, a fully laden one 75.
+        //
+        // **The staircase used to be a perfectly good freight line**,
+        // and that is why neither built shaft had a job. Measured on
+        // `examples/lift.rs`: with this at 0 an elevator was worth +1%
+        // at five floors and was not chosen at all at eight or eleven,
+        // where crew queued sixty thousand crew-ticks on the stairs
+        // beside a powered, empty car. It only paid at fourteen floors,
+        // which no tower reaches.
+        //
+        // Per item rather than a flat laden rate, so `carry_capacity`
+        // still means something and bulk still wins — three items in one
+        // trip costs 75 a floor against three trips at 45, or crew would
+        // start ferrying singles to game the rate.
+        //
+        // Chosen over raising `climb_ticks_per_floor` to 45, which moves
+        // the same break-even but taxes a crew member walking to dinner
+        // as hard as one hauling poles. What has to get expensive is
+        // *freight up a staircase*, not being on a staircase.
+        climb_ticks_per_item: 15,
         load_ticks: 15,
         unload_ticks: 15,
         carry_capacity: 3,
