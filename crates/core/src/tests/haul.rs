@@ -712,6 +712,80 @@ fn a_chute_never_throws_away_salvage() {
 }
 
 #[test]
+fn more_salvage_than_anybody_will_buy_is_rubbish() {
+    // The other side of the rule above, and the reason it counts a
+    // quantity rather than answering yes or no.
+    //
+    // Protecting scrap without limit breaks the game the other way: a
+    // salvaging tower fills every shelf with metal nothing can move, the
+    // mill's inbox never clears, and the cutter arm stops. A board's
+    // stock is finite, so the amount worth keeping is finite, and past
+    // it a chute is exactly right to take the rest.
+    let mut game = engine(4105);
+    let scrap = item(game.content(), "item.scrap");
+    let cap = game.content().settlements_take(scrap);
+    assert!(
+        cap > 0,
+        "the pack's settlements buy no scrap at all, so this test is vacuous"
+    );
+
+    crate::tests::stock_for_shaft(&mut game, "shaft.chute", 1);
+    game.try_send(GameCommand::BuildShaft {
+        shaft: "shaft.chute".into(),
+        low: 0,
+        high: 2,
+        slot: 7,
+    })
+    .expect("slot 7 is clear on the lower floors");
+
+    // Well past what every settlement in the run could ever take.
+    //
+    // The shelves are widened to get there, and that is worth noting
+    // rather than working around: a *starting* tower holds 60 units all
+    // told against a 130-unit appetite across three settlements, so on
+    // any small tower scrap is simply never spillable. The cap only
+    // starts mattering to a tower that has built enough storage to hold
+    // more metal than the world will buy, which is the tower this rule
+    // is for.
+    {
+        let state = game.state_mut_for_test();
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                for shelf in &mut room.shelves {
+                    if shelf.item.is_none() {
+                        shelf.max = 60;
+                        shelf.item = Some(scrap);
+                        shelf.count = shelf.max;
+                    }
+                }
+            }
+        }
+    }
+    let before = total_in_flight(game.state(), scrap);
+    assert!(
+        before > cap,
+        "the fixture shelved {before}, which is under the {cap} the boards would take"
+    );
+
+    game.step(12_000);
+    let after = total_in_flight(game.state(), scrap);
+    assert!(
+        after < before,
+        "a tower drowning in scrap threw none of it away"
+    );
+    // Within one crew load of the cap rather than exactly on it: a spill
+    // is a whole armful, decided when the load is picked up, so the last
+    // one can carry the total a little under the line. What must not
+    // happen is the chute emptying the tower.
+    let load = game.content().balance.crew.carry_capacity;
+    assert!(
+        after >= cap - load,
+        "the chute took the salvage well below what the boards will buy: \
+         {after} left, {cap} wanted, one load is {load}"
+    );
+}
+
+#[test]
 fn nobody_climbs_down_a_chute() {
     // Crew must never route *through* one, however fast it looks.
     let mut game = engine(4103);

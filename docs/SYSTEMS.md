@@ -2930,8 +2930,26 @@ Not a task list — the places where existing code assumes something M5 stops be
 
 ### 5.10 Exit criteria
 
-- [ ] **A full run to the Refugia in 2–4 hours**, played rather than scripted, ending as an
+- [~] **A full run to the Refugia in 2–4 hours**, played rather than scripted, ending as an
       arrival rather than a score.
+
+      **The length is measured and it is right; the *played* half still needs a person.**
+      `examples/journey.rs`'s "how long is a whole run" walks every seed start to finish:
+      **12 of 12 reach the Refugia, in 129–147 minutes at 1× — 2.2 to 2.4 hours**, 16 to 18
+      in-game days. One seed had ever been asked before, which for a length rolled per region
+      per run was no answer at all; the spread turns out to be 14%, so the window is not a
+      lucky seed.
+
+      A scripted walker is the **floor**, not the estimate. It never stops, never berths, never
+      reads a board, and answers every fork the instant it appears — a person does all four, and
+      every one of them adds time. So the asymmetry matters: a walker under two hours would not
+      prove the run too short, but a walker over four would prove it too long, because nothing a
+      player does makes a run shorter. At 2.2–2.4 hours the floor sits just inside the window
+      with the whole of the top half free for a player to spend.
+
+      The ending is an arrival rather than a score by construction (§3.7, and `Chrome.tsx`'s
+      arrival card has no rank in it). What is unverified is whether two hours of it is
+      *enjoyable*, which is not a thing a harness can be pointed at.
 - [x] **A shared seed reproduces it.** Unlocks are player-level, never touch `GameState` and
       never enter the replay, so a veteran's recording replays exactly for somebody who has
       unlocked nothing — they watch a tower build a room they could not build themselves. The seed
@@ -2956,11 +2974,43 @@ Not a task list — the places where existing code assumes something M5 stops be
       charge. The tier's decision is about what the tower can *reach* — rope for an elevator,
       alloy for a charge ceiling — rather than about how much a route hands it, and that is a
       better claim than the one this criterion was written against.
-- [~] **Stopping at a ruin is sometimes the wrong call and sometimes the right one.** Scrap now
-      buys something — the forge is real and alloy gates the charge ceiling — and the garden makes
-      berthing cost less than it did, because it is the first intake that runs while the legs are
-      off. Whether the answer is ever genuinely "it depends" still needs somebody playing; the
-      instruments can say the ingredients are there and not that the question is live.
+- [ ] **Stopping at a ruin is sometimes the wrong call and sometimes the right one.**
+      **Measured, and it is not: it is always the wrong call, and the reason is worse than the
+      margin.**
+
+      `examples/journey.rs`'s "is stopping at a ruin ever the right call" runs two towers that
+      differ in exactly one behaviour — same seed, same rig, same battery, same thornwright, same
+      shopping list, one berths at every ruin it can reach and one never stops — and scores both
+      in poles-equivalent per 1,000 ticks, with scrap valued at the enclave's own published
+      4-for-3. **Berthing loses on 12 seeds out of 12, by 29% to 94%**, and `ruin_richness_pct`
+      does not predict it: the 138% seeds lose as badly as the 62% ones.
+
+      **The mechanism is a death spiral, and it is the actual finding.** A berth wakes wardens,
+      wardens go for the rooms, and the room they take is the cutter arm. Measured on seed 4: the
+      arm is at **0 of 260 hit points by tick 20,000 and still there 100,000 ticks later**, with
+      the tower walking the whole region and harvesting nothing. Mending costs poles; poles come
+      from the mill; the mill eats bamboo; bamboo needs the arm. **There is no way out of that
+      inside the tower**, and the run does not end — it continues for another hour as a tower
+      that cannot feed itself.
+
+      The way out is outside the tower: every board buys scrap 4-for-3, and 51 scrap is 38 poles.
+      The harness now sells at the first settlement and it is not enough, because by 30,000 paces
+      the arm has been dead for a day. So a player *can* recover, and only if they notice early.
+
+      Three things this could be, and it is an owner's call which:
+
+      1. **Working as intended** — `DECISIONS.md` §11 makes walking a free answer to any wave, so
+         a tower that stayed and lost its arm made a choice. The objection is that the punishment
+         is unbounded and silent: nothing on screen says "you can no longer recover".
+      2. **A defence problem** — one dart battery does not hold a warden off a rig, so the real
+         entry price of salvaging is higher than the rig's 8 poles suggests.
+      3. **A repair problem** — the tower cannot mend the one room that pays for mending. A
+         reserve, a cheaper first repair, or a warden that prefers panels to rooms would each
+         break the loop.
+
+      What is *not* in doubt is that the criterion as written is unmet. Whether the answer should
+      be "it depends" or "it is a real risk you can be ruined by" is a design decision, and it
+      wants a person playing it before anything is changed.
 - [ ] **Every constant in `BALANCE.md` graded `PLAYTESTED`**, from run logs rather than from
       scripted harnesses. The run log is built (§5.8); the sessions are not. This is the criterion
       §5.11's fourth question expected to be missed honestly, and it is being missed honestly.

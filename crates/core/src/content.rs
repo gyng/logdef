@@ -1096,24 +1096,57 @@ impl Content {
     /// The missing question is this one: an enclave's `Trade`,
     /// `Recruit` and `Reinforce` are *commands*, so what they consume
     /// never appears in any room's inputs and is invisible to a check
-    /// that only reads rooms. Anything a settlement would take is
-    /// therefore worth keeping, whether or not one is in sight —
-    /// **"there is no buyer within forty minutes" is not a reason to
-    /// throw something away**, and a chute that reasoned that way would
-    /// be unpredictable in a way no player could plan around.
+    /// that only reads rooms.
+    ///
+    /// **It returns a quantity rather than a yes, and that is the whole
+    /// of getting it right.** The first version answered "will anybody
+    /// ever take this", and protecting scrap without limit broke the
+    /// game in the other direction: a salvaging tower fills every shelf
+    /// with scrap nothing can move, the mill's inbox never clears, and
+    /// the cutter arm stops. Measured on a whole region, three seeds of
+    /// twelve harvested **zero bamboo** while walking normally, and two
+    /// browned out permanently — 385,000 of 400,000 ticks unable to
+    /// afford to move. Losing your salvage is bad; losing the tower is
+    /// worse.
+    ///
+    /// A board's stock is finite, so the amount worth keeping is finite
+    /// too, and the pack already knows it: every offer that takes this
+    /// item, times how many times it may be taken, plus what recruits
+    /// and shell work cost across every settlement in the run. Below
+    /// that, it is salvage and a chute may not touch it. Above it, it is
+    /// more than anybody in the world will ever buy, and it is rubbish.
+    ///
+    /// Deliberately not conditional on a settlement being *in reach*:
+    /// "there is no buyer within forty minutes" is not a reason to throw
+    /// something away, and a chute that reasoned that way could not be
+    /// planned around. It is the whole run's demand or nothing.
     #[must_use]
-    pub fn settlements_take(&self, item: ItemIdx) -> bool {
+    pub fn settlements_take(&self, item: ItemIdx) -> i64 {
         self.region_runtime
             .iter()
             .filter_map(|region| region.enclave.as_ref())
-            .any(|enclave| {
-                enclave.offers.iter().any(|offer| offer.give.0 == item)
-                    || enclave.recruit_cost.iter().any(|(cost, _)| *cost == item)
-                    || enclave
-                        .reinforce
-                        .as_ref()
-                        .is_some_and(|(cost, _)| cost.iter().any(|(entry, _)| *entry == item))
+            .map(|enclave| {
+                let traded: i64 = enclave
+                    .offers
+                    .iter()
+                    .filter(|offer| offer.give.0 == item)
+                    .map(|offer| offer.give.1 * offer.stock)
+                    .sum();
+                let hired: i64 = enclave
+                    .recruit_cost
+                    .iter()
+                    .filter(|(cost, _)| *cost == item)
+                    .map(|(_, amount)| *amount)
+                    .sum();
+                let plated: i64 = enclave.reinforce.as_ref().map_or(0, |(cost, _)| {
+                    cost.iter()
+                        .filter(|(entry, _)| *entry == item)
+                        .map(|(_, amount)| *amount)
+                        .sum()
+                });
+                traded + hired + plated
             })
+            .sum()
     }
 
     /// Interned index of an item by its authored string ID.

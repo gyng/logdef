@@ -58,6 +58,174 @@ fn main() {
 
     println!("\n=== the whole way ===\n");
     whole_run(1);
+
+    how_long_is_a_run();
+
+    is_berthing_ever_right();
+}
+
+/// **Is stopping at a ruin sometimes right and sometimes wrong?**
+///
+/// M5's fourth exit criterion, and the one most likely to be answered
+/// "yes" by wishful reading. A berth costs time — the legs are off, the
+/// terrain intake that pays for everything stops, and the wardens it
+/// wakes cost poles to mend — and pays in scrap. Whether that trade is
+/// worth taking is *supposed* to depend on the ruin, and the mechanism
+/// that would make it depend is already in the world: `ruin_richness_pct`
+/// is rolled per region per run, from 60% to 140%.
+///
+/// So this asks the narrow, checkable version. Two policies, same seeds,
+/// same distance walked: a walker that never stops, and a prepared tower
+/// that berths at every ruin it can reach and leaves when it has been
+/// hurt enough. **If the richer seeds favour berthing and the leaner ones
+/// do not, the decision is live.** If one policy wins everywhere, it is
+/// not a decision, it is a right answer with a ritual in front of it.
+///
+/// The metric is stated rather than invented: everything is converted to
+/// **poles-equivalent per 1,000 ticks**, with scrap counted at the
+/// enclave's own published rate of four scrap for three poles. That is a
+/// price the game already charges, not a weight chosen to make a number
+/// come out. Per 1,000 ticks because a berth's whole cost is the clock.
+fn is_berthing_ever_right() {
+    println!("\n=== is stopping at a ruin ever the right call? ===\n");
+    println!(
+        "  Same seeds, same region. A walker never stops; a prepared tower berths at\n\
+         every ruin it can reach. Poles-equivalent per 1,000 ticks, with scrap valued\n\
+         at the enclave's own 4-for-3. If richness decides it, the berth is a decision.\n"
+    );
+    println!("seed  rich  ---- never stops ----   ---- berths at every ruin ----   berther");
+    println!("            bamboo scrap  ticks    bamboo scrap  ticks  halted  brownout   wins by");
+    let (mut wins, mut losses) = (0u32, 0u32);
+    let (mut rich_wins, mut lean_wins) = (0u32, 0u32);
+    for seed in 1..=SEEDS {
+        // The control carries the same rig, battery and thornwright and
+        // simply never stops, so the only difference measured is the
+        // berth itself.
+        let walker = play(seed, Policy::Equipped);
+        let berther = play(seed, Policy::Prepared);
+        // Poles-equivalent: milled bamboo one for one, plus scrap at the
+        // board's rate. Both towers are measured over their own elapsed
+        // ticks, which is the point — a berth buys goods with time.
+        let rate = |run: &Run| -> f64 {
+            let poles = run.bamboo as f64 + (run.scrap_taken as f64) * 3.0 / 4.0;
+            poles * 1000.0 / f64::from(run.ticks.max(1))
+        };
+        let (a, b) = (rate(&walker), rate(&berther));
+        let delta = (b - a) * 100.0 / a.max(0.001);
+        if b > a {
+            wins += 1;
+            if walker.richness >= 100 {
+                rich_wins += 1;
+            } else {
+                lean_wins += 1;
+            }
+        } else {
+            losses += 1;
+        }
+        println!(
+            "{seed:<5} {:>3}%  {:>6} {:>5} {:>6}    {:>6} {:>5} {:>6} {:>7} {:>9}   {delta:>+8.1}%",
+            walker.richness,
+            walker.bamboo,
+            walker.scrap_taken,
+            walker.ticks,
+            berther.bamboo,
+            berther.scrap_taken,
+            berther.ticks,
+            berther.halted,
+            berther.brownout,
+        );
+    }
+    println!(
+        "\n  Berthing paid on {wins} seed(s) and cost on {losses}. Of the wins, {rich_wins} were\n\
+         on rich ground (>=100%) and {lean_wins} on lean."
+    );
+    if wins > 0 && losses > 0 {
+        println!(
+            "  **Both answers occur**, which is the criterion: the berth is a decision rather\n\
+             than a ritual in front of a right answer."
+        );
+    } else {
+        println!(
+            "  **One policy wins everywhere**, so the berth is not yet a decision — whatever\n\
+             the fiction says, the player has a dominant option."
+        );
+    }
+}
+
+/// **Is a run 2 to 4 hours? Measured across every seed, not one.**
+///
+/// M5's first exit criterion asks for "a full run to the Refugia in 2–4
+/// hours, played rather than scripted". The *played* half needs a
+/// person. The *2–4 hours* half is a number, and until now exactly one
+/// seed had ever been asked — which for a length that is rolled per
+/// region per run is no answer at all. Region 1 alone rolls 52,000 to
+/// 68,000 paces, so the spread across three regions is wide enough that
+/// one seed could sit comfortably inside the window while its
+/// neighbours fall out of both ends of it.
+///
+/// A scripted walker is the *floor*, not the estimate: it never stops,
+/// never berths, never browses a board, and answers every fork the
+/// instant it appears. A person does all of those and takes longer. So
+/// a walker below two hours does not prove the run is too short — but a
+/// walker *above* four hours proves it is too long, because nothing a
+/// player does makes a run shorter.
+fn how_long_is_a_run() {
+    println!("\n=== how long is a whole run? ===\n");
+    println!(
+        "  Scripted walker, start to arrival. This is the floor: a player stops,\n\
+         berths, reads boards and thinks, and every one of those adds time.\n"
+    );
+    println!("seed   ticks     1x       2x      4x    days  ending");
+    let (mut fastest, mut slowest) = (f64::MAX, 0.0f64);
+    let mut arrivals = 0;
+    for seed in 1..=SEEDS {
+        let mut engine = GameEngine::new(seed);
+        engine.set_speed(SimSpeed::X1);
+        let mut ticks = 0u32;
+        while ticks < 900_000 {
+            if let Some(fork) = engine.state().world.fork
+                && fork.answer.is_none()
+            {
+                let _ = engine.try_send(GameCommand::TakeFork { branch: 0 });
+            }
+            engine.step(1);
+            ticks += 1;
+            if engine.state().arrived || engine.state().siege.lost {
+                break;
+            }
+        }
+        let state = engine.state();
+        let minutes = f64::from(ticks) / 30.0 / 60.0;
+        if state.arrived {
+            arrivals += 1;
+            fastest = fastest.min(minutes);
+            slowest = slowest.max(minutes);
+        }
+        println!(
+            "{seed:<5} {ticks:>7}  {:>5.0}m  {:>5.0}m  {:>5.0}m  {:>4}  {}",
+            minutes,
+            minutes / 2.0,
+            minutes / 4.0,
+            ticks / TICKS_PER_DAY,
+            if state.arrived {
+                "reached the Refugia"
+            } else if state.siege.lost {
+                "lost the Heartseed"
+            } else {
+                "still going"
+            },
+        );
+    }
+    println!(
+        "\n  {arrivals}/{SEEDS} arrived. At 1x the walker's floor runs {fastest:.0}-{slowest:.0} \
+         minutes ({:.1}-{:.1} hours).",
+        fastest / 60.0,
+        slowest / 60.0
+    );
+    println!(
+        "  The criterion wants 2-4 hours for somebody playing. A walker under two hours is\n\
+         not a failure — it is the floor, and a player adds to it. A walker over four is."
+    );
 }
 
 /// What the tower is carrying when the route comparison runs.
@@ -292,6 +460,18 @@ enum Policy {
     /// an earlier version of this one berthed until the ruin was empty
     /// and lost the Heartseed inside a day, every time.
     Prepared,
+    /// **The control for `Prepared`, and the reason a berth can be
+    /// measured at all.** Buys exactly the same rooms — a rig, a battery
+    /// and a thornwright — and then never stops at anything.
+    ///
+    /// Comparing `Prepared` against `Walker` does not measure berthing:
+    /// it measures berthing *plus* three rooms, the poles they cost and
+    /// the slots they took, all at once. Which is how this harness first
+    /// reported that stopping costs 74-97% of a tower's income on every
+    /// seed — a number so lopsided it could only be measuring something
+    /// other than the question. Same tower, one behaviour different, or
+    /// the answer is about the tower.
+    Equipped,
     /// Takes the shadiest branch on offer every time: biomass-rich,
     /// sun-poor. One half of "your route is your power mix".
     Forager,
@@ -305,6 +485,7 @@ impl Policy {
         match self {
             Self::Walker => "walker",
             Self::Prepared => "prepared",
+            Self::Equipped => "equipped",
             Self::Forager => "forager",
             Self::Sunseeker => "sunseeker",
         }
@@ -332,6 +513,16 @@ struct Run {
     /// the exact condition `SYSTEMS.md` §3.10 recorded.
     meals: u64,
     salvaged: i64,
+    /// Scrap **extracted over the run**, not what happens to be on a
+    /// shelf at the end.
+    ///
+    /// `salvaged` above is `stock_of`, a snapshot — a tower that pulled
+    /// two hundred scrap out of the ruins and spent it on shell work
+    /// reads zero. Fine for the table, useless for a comparison, and it
+    /// briefly had this harness reporting that berthing costs 71-95% of
+    /// a tower's income on every seed: the berth's entire income was
+    /// being counted at a moment chosen to miss it.
+    scrap_taken: u64,
     /// Mean sunlight reaching the sails, in percent, over the run.
     exposure: i64,
     /// Ticks the tower could not afford to walk.
@@ -430,6 +621,9 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
         })
         .unwrap_or(60);
 
+    // Owns a rig and the defences to survive using it.
+    let equipped = matches!(policy, Policy::Prepared | Policy::Equipped);
+    // ...and actually stops at ruins. Only `Prepared` does both.
     let salvages = policy == Policy::Prepared;
 
     // **A shopping list worked through as poles allow, rather than a
@@ -453,7 +647,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
     // standing still. Order matters when the starting stock is ten
     // poles and the list costs more than that.
     let mut list: Vec<&str> = Vec::new();
-    if salvages {
+    if equipped {
         list.push("room.salvage_rig");
         list.push("room.dart_battery");
         list.push("room.thornwright");
@@ -555,6 +749,25 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
     let mut ticks = 0u32;
     let mut exposure_total = 0i64;
     let mut brownout = 0u32;
+    // Ticks spent stopped at the ruin currently in reach.
+    let mut berth_ticks = 0u32;
+    // Where the first settlement of the run stands, and whether we have
+    // already emptied our pockets at it.
+    let trade_stop: Option<i64> = content
+        .regions
+        .iter()
+        .enumerate()
+        .find_map(|(region, def)| {
+            let enclave = def.enclave.as_ref()?;
+            Some(
+                engine
+                    .state()
+                    .world
+                    .region_start_of(understory_core::ids::RegionIdx(region as u16))
+                    + understory_core::fx::paces_from_int(enclave.at_paces),
+            )
+        });
+    let mut traded_here = false;
 
     // **A route comparison stops on the clock; everything else stops at
     // the boundary.**
@@ -631,13 +844,81 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
             let _ = engine.try_send(GameCommand::TakeFork { branch: pick });
         }
 
-        // Stop at a ruin, if that is the policy and there is one.
-        if salvages {
+        // **Stop at a settlement and sell the scrap, because otherwise
+        // this policy models somebody who does not know the game.**
+        //
+        // A berthing tower wakes wardens, and wardens go for the rooms.
+        // Measured on seed 4: the cutter arm is at **0 of 260 hit
+        // points** by tick 20,000 and stays there for the remaining
+        // hundred thousand — the tower walks the whole region harvesting
+        // nothing, because mending costs poles, poles come from the
+        // mill, the mill eats bamboo, and bamboo needs the arm. A
+        // destroyed arm is a death spiral with no way out of it *inside
+        // the tower*.
+        //
+        // The way out is outside it. That tower was carrying 51 scrap
+        // and no poles, and every board in the game buys scrap four for
+        // three — 38 poles, and the arm lives.
+        //
+        // Found by position rather than by `berthed_enclave`, which
+        // answers `None` for a tower that is still moving: asking it
+        // before stopping and then stopping only if it said yes is a
+        // chicken-and-egg that silently never fires. It cost an entire
+        // measurement, which came out byte-identical and looked like a
+        // stale build.
+        if equipped
+            && !traded_here
+            && let Some(at) = trade_stop
+            && engine.state().world.distance >= at
+        {
+            traded_here = true;
+            let _ = engine.try_send(GameCommand::SetStriding { walking: false });
+            engine.step(2);
+            for offer in 0..8u8 {
+                while engine.try_send(GameCommand::Trade { offer }).is_ok() {}
+            }
+            let _ = engine.try_send(GameCommand::SetStriding { walking: true });
+        }
+
+        // Stop at a ruin, if that is the policy, there is one, and the
+        // tower has something to strip it with.
+        //
+        // **The rig check is not a detail; without it this policy
+        // deadlocks on tick zero.** Seed 4 starts with a ruin inside the
+        // rig's 60-pace reach, so a tower that berths at anything it can
+        // see stops before it has taken a step. It is then never hurt,
+        // because nothing comes; it never empties the ruin, because it
+        // has no rig; it never affords a rig, because a rig costs poles,
+        // poles come from bamboo, and bamboo is paid for in ground
+        // covered. Measured: **distance 0 and bamboo 0 after 120,000
+        // ticks**, with a cutter arm sitting at full health and an empty
+        // outbox the whole time.
+        //
+        // That is what was behind this instrument reporting that
+        // berthing costs 71-95% of a tower's income on every seed. Three
+        // of the twelve had simply never moved.
+        let can_strip = engine
+            .state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter())
+            .any(|room| {
+                room.active
+                    && matches!(
+                        content.room_rt(room.def).intake_source,
+                        Some(understory_core::content::IntakeSource::Ruin { .. })
+                    )
+            });
+        if salvages && can_strip {
             let here = engine.state().world.ruin_in_reach(rig_reach);
             let walking = engine.state().walking;
             match here {
                 Some(i) => {
                     let held = engine.state().world.features[i].salvage;
+                    if !walking {
+                        berth_ticks += 1;
+                    }
                     if seen_ruin != Some(held) {
                         seen_ruin = Some(held);
                     }
@@ -651,7 +932,56 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
                     let hurt =
                         understory_core::systems::siege::tower_integrity_permille(engine.state())
                             < 880;
-                    let leave = policy == Policy::Prepared && hurt;
+                    // **And leave when there is nowhere left to put what
+                    // the rig pulls out**, which is the half this policy
+                    // was missing and which cost it two whole seeds.
+                    //
+                    // Damage was the only exit. But a ruin does not
+                    // empty on its own — the rig fills its outbox, crew
+                    // move it to a shelf, and if the shelves are full
+                    // the rig stalls with the ruin still holding
+                    // something. `ruin_in_reach` then keeps reporting a
+                    // ruin worth stopping for, for ever, and nothing
+                    // ever hurts a tower that is standing still behind
+                    // its darts. Measured: on 2 of 12 seeds this policy
+                    // spent **388,700 of 400,000 ticks halted** and
+                    // never reached the region boundary at all.
+                    //
+                    // It is not only a harness bug. Scrap has no room
+                    // that eats it unless a forge is built, and a chute
+                    // may not throw it away (§5.4) — so *a salvaging
+                    // tower with no forge really does fill up*, and the
+                    // thing to do about it really is to walk on. This
+                    // models the player noticing.
+                    let full = engine
+                        .state()
+                        .tower
+                        .floors
+                        .iter()
+                        .flat_map(|floor| floor.rooms.iter())
+                        .filter(|room| {
+                            content
+                                .room_rt(room.def)
+                                .intake_item
+                                .is_some_and(|item| Some(item) == content.item_idx("item.scrap"))
+                        })
+                        .all(|room| {
+                            room.outputs
+                                .iter()
+                                .all(understory_core::state::Stack::is_full)
+                        });
+                    // **And a clock, because neither of the other two
+                    // exits is guaranteed to fire.** Two seeds still
+                    // parked for 388,700 of 400,000 ticks with a rig
+                    // that was neither full nor being shot at — three
+                    // and a half in-game days standing at one ruin.
+                    // Whatever the engine is doing there, no person does
+                    // that, and a policy that models a player has to
+                    // have a "this is taking too long" in it. One
+                    // in-game day is already far more patience than the
+                    // decision deserves.
+                    let overstayed = berth_ticks > TICKS_PER_DAY;
+                    let leave = policy == Policy::Prepared && (hurt || full || overstayed);
                     if walking && !leave {
                         let _ = engine.try_send(GameCommand::SetStriding { walking: false });
                     } else if !walking && leave {
@@ -660,6 +990,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
                 }
                 None => {
                     seen_ruin = None;
+                    berth_ticks = 0;
                     if !walking {
                         let _ = engine.try_send(GameCommand::SetStriding { walking: true });
                     }
@@ -737,6 +1068,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
                 .item_idx("item.scrap")
                 .expect("the pack defines scrap"),
         ),
+        scrap_taken: harvested_of(&content, state, "item.scrap"),
         forks: branches.len() / 2,
         branches,
         salvage_seen,

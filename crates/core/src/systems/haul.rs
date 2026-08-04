@@ -1199,7 +1199,13 @@ fn find_destination(
         .flat_map(|f| f.rooms.iter())
         .any(|room| room.active && room.inputs.iter().any(|stack| stack.item == item))
         || content.builds_with(item)
-        || content.settlements_take(item);
+        // **Worth keeping only up to what the whole run's settlements
+        // will ever take.** Below that it is salvage; above it, it is
+        // more than anybody will buy, and the tower is better off
+        // without it. Counted across shelves only — what is in a room's
+        // inbox is already spoken for, and what is in a hand is the load
+        // being decided about.
+        || shelved(tower, item) <= content.settlements_take(item);
     if best.is_none() && !wanted && may_spill {
         for shaft in &tower.shafts {
             if shaft.kind != ShaftKind::Chute {
@@ -1271,6 +1277,22 @@ fn committed_pickup(crew: &[Crew], me: usize, room: RoomId, item: ItemIdx) -> i6
 
 /// How much of `item` is already inbound to `destination`. Prevents
 /// overfilling a buffer that two crew both targeted.
+/// How much of `item` is sitting on the tower's shelves.
+///
+/// Shelves only. A room's inbox is stock already promised to that room's
+/// recipe, and counting it would let a full mill make the tower think it
+/// was richer than it is.
+fn shelved(tower: &Tower, item: ItemIdx) -> i64 {
+    tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .flat_map(|room| room.shelves.iter())
+        .filter(|shelf| shelf.item == Some(item))
+        .map(|shelf| shelf.count)
+        .sum()
+}
+
 fn committed_delivery(
     crew: &[Crew],
     me: usize,
