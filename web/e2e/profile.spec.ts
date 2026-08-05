@@ -48,7 +48,11 @@ test("frame budget", async () => {
   });
   const page = await browser.newPage();
   await page.setViewportSize({ width: 1600, height: 900 });
-  await page.goto("http://localhost:3000/?seed=4242");
+  // The port the config started the server on — this spec makes its own
+  // browser, so it does not inherit `use.baseURL`, and hardcoding 3000
+  // meant `UNDERSTORY_PORT=3100` failed here and nowhere else.
+  const port = process.env.UNDERSTORY_PORT ?? "3000";
+  await page.goto(`http://localhost:${port}/?seed=4242`);
   await page.waitForFunction(() => window.__understory?.slotPoint !== undefined, null, {
     timeout: 20_000,
   });

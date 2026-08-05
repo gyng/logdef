@@ -416,8 +416,24 @@ export class Game {
     return this.bridge.send(cmd);
   }
 
+  /**
+   * A **fresh** snapshot, not the last one published to React.
+   *
+   * `this.latest` is whatever the render loop last handed the UI, which
+   * is up to a frame behind and — more to the point — behind any
+   * command the agent itself just sent. A dogfood run caught it: the
+   * placement tool offered floor 0 slot 0, the agent built there, and
+   * the next `where` still offered the same slot because the snapshot
+   * predated its own storeroom. The command layer then refused, and the
+   * two halves of the game disagreed with each other.
+   *
+   * One extra `view()` per tool call, at agent cadence rather than per
+   * frame, which is nothing — and `DECISIONS.md` §3's "one view a
+   * frame" is about the *render loop*, not about a tool that is asked
+   * something once every few seconds.
+   */
   viewForTool(): ViewSnapshot {
-    return this.latest ?? this.bridge.view();
+    return this.bridge.view();
   }
 
   /** Can the shelves pay for another car in this shaft? */

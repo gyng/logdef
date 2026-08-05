@@ -26,7 +26,8 @@
  * "what is going on" in one call, in the tower's own words.
  */
 import type { Game } from "../engine/Game";
-import type { CatalogSnapshot, GameCommand, ViewSnapshot } from "../bridge/types";
+import type { CatalogSnapshot, GameCommand, RoomInfo, ViewSnapshot } from "../bridge/types";
+import { placementFits } from "../engine/scene";
 
 /** What a tool hands back. Text, because the caller is a model. */
 interface ToolResult {
@@ -38,7 +39,8 @@ interface ToolDef {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  execute: (args: Record<string, unknown>) => ToolResult;
+  /** May be async: `understory_wait` lets the tower run for a while. */
+  execute: (args: Record<string, unknown>) => ToolResult | Promise<ToolResult>;
 }
 
 /** The shape of the proposal, as much of it as we use. */
@@ -76,7 +78,7 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
 
   lines.push(
     `Day ${String(view.clock.day + 1)}, ${catalog.dayparts[view.clock.daypart]?.name ?? "?"} · ` +
-      `${String(view.world.distance)} paces · ${view.journey.halt}`,
+      `${String(Math.round(view.world.distance))} paces · ${view.journey.halt}`,
   );
   lines.push(
     `Charge ${String(view.power.charge)}/${String(view.power.capacity)}` +
@@ -123,12 +125,22 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
   // since M0 and this list did not, because `view.unlocked` is the
   // simulation's answer to "what is not locked" rather than to "what is
   // worth showing".
+  // **Marked by whether the shelves can pay**, because "unlocked" and
+  // "buildable right now" are different questions and an agent that
+  // cannot tell them apart spends its turns being refused for money.
+  const held = new Map(view.stock.map((s) => [s.item, s.count]));
   const buildable: string[] = [];
   for (const at of view.unlocked) {
     const room = catalog.rooms[at];
-    if (room && room.category !== "Heart") buildable.push(room.name);
+    if (!room || room.category === "Heart") continue;
+    const paid = room.build_cost.every((c) => (held.get(c.item) ?? 0) >= c.amount);
+    const cost = room.build_cost
+      .map((c) => `${String(c.amount)} ${catalog.items[c.item]?.name ?? "?"}`)
+      .join(" + ");
+    buildable.push(`${room.id} (${cost})${paid ? "" : " — cannot pay"}`);
   }
-  lines.push(`Can build: ${buildable.join(", ") || "nothing yet"}`);
+  lines.push("");
+  lines.push(`Can build: ${buildable.join("; ") || "nothing yet"}`);
 
   if (view.journey.fork) {
     lines.push("");
@@ -162,6 +174,51 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
 }
 
 /**
+ * Every legal placement for a room, right now.
+ *
+ * **The agent's version of the ghost highlights.** A player sees every
+ * slot a room could take before committing (`drawPlaceMode`); an agent
+ * had nothing, and a dogfood run spent about thirty refused calls per
+ * room walking the floor by hand. Refusals are cheap for the simulation
+ * and expensive for a model — they fill its context with
+ * `SlotOccupied`.
+ *
+ * Shares `placementFits` with the renderer, so the answer cannot drift
+ * from the highlight, and neither can drift from the command layer
+ * without the smoke spec noticing.
+ */
+function legalSpots(
+  view: ViewSnapshot,
+  catalog: CatalogSnapshot,
+  info: RoomInfo,
+): { floor: number; slot: number }[] {
+  const top = view.tower.floors.length - 1;
+  const mode = {
+    kind: "room" as const,
+    id: info.id,
+    width: info.width,
+    frontOnly: info.front_only,
+    maxFloor: info.max_floor,
+    minFloor: info.min_floor,
+    span: 1,
+    hover: null,
+  };
+  const out: { floor: number; slot: number }[] = [];
+  for (const floor of view.tower.floors) {
+    // A garden grows nothing anywhere but the roof, and the command
+    // layer says so — `placementFits` does not know about it because
+    // the renderer greys those floors a different way.
+    if (info.top_floor_only && floor.index !== top) continue;
+    for (let slot = 0; slot + info.width <= floor.slots; slot += 1) {
+      if (placementFits(view, mode, floor.index, slot, catalog.front_slots)) {
+        out.push({ floor: floor.index, slot });
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * Register the game's tools with whatever agent surface is present.
  *
  * Returns a teardown, because the page can rebuild its `Game` (a hot
@@ -181,6 +238,29 @@ export function registerGameTools(game: Game): () => void {
         "first and after anything that might have changed the situation.",
       inputSchema: { type: "object", properties: {} },
       execute: () => say(look(game.viewForTool(), game.getCatalog())),
+    },
+    {
+      name: "understory_wait",
+      description:
+        "Let the tower run for a few seconds and then say what changed. Use this whenever you " +
+        "are waiting for something — poles to be milled, a room to fill, ground to be covered " +
+        "— rather than asking again immediately. Nothing about the tower changes on your turn; " +
+        "it changes because time passed. Capped at 30 seconds; raise the speed first if you " +
+        "want more done per second.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          seconds: { type: "number", description: "Real seconds to let run, 1-30" },
+        },
+        required: ["seconds"],
+      },
+      execute: async (a) => {
+        const want = Math.max(1, Math.min(30, Number(a.seconds) || 1));
+        await new Promise((done) => setTimeout(done, want * 1000));
+        return say(`waited ${String(want)}s.
+
+${look(game.viewForTool(), game.getCatalog())}`);
+      },
     },
     {
       name: "understory_chain",
@@ -213,6 +293,40 @@ export function registerGameTools(game: Game): () => void {
           })
           .filter((l): l is string => l !== null);
         return say(`The chain:\n${lines.join("\n")}`);
+      },
+    },
+    {
+      name: "understory_where_can_it_go",
+      description:
+        "Every floor and slot a given room may legally stand on, right now. Ask this before " +
+        "building: the rules are real and interlocking — weapons and the cutter arm must be " +
+        "on the leading edge, ordinary rooms may not stand there at all, some rooms only " +
+        "reach the ground, a garden needs the roof, and a shaft's column is taken on every " +
+        "floor it spans. An empty answer means widen the hull or add a floor.",
+      inputSchema: {
+        type: "object",
+        properties: { room: { type: "string", description: 'Content id, e.g. "room.mill"' } },
+        required: ["room"],
+      },
+      execute: (a) => {
+        const catalog = game.getCatalog();
+        const view = game.viewForTool();
+        const id = String(a.room);
+        const info = catalog.rooms.find((room) => room.id === id);
+        if (!info) return fail(`no such room: ${id}`);
+        const spots = legalSpots(view, catalog, info);
+        if (spots.length === 0) {
+          return say(
+            `${info.name} cannot stand anywhere on this tower. ` +
+              (info.max_floor !== null
+                ? "It reaches the ground, so a new floor will not help it — widen the hull."
+                : "Widen the hull or add a floor."),
+          );
+        }
+        return say(
+          `${info.name} (${String(info.width)} wide) can go at: ` +
+            spots.map((s) => `floor ${String(s.floor)} slot ${String(s.slot)}`).join(", "),
+        );
       },
     },
     {
@@ -392,10 +506,10 @@ export function registerGameTools(game: Game): () => void {
       description: t.description,
       inputSchema: t.inputSchema,
     })),
-    call: (name: string, args: Record<string, unknown> = {}) => {
+    call: async (name: string, args: Record<string, unknown> = {}) => {
       const tool = tools.find((t) => t.name === name);
       if (!tool) return fail(`no such tool: ${name}`);
-      return tool.execute(args);
+      return await tool.execute(args);
     },
   };
 

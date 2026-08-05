@@ -150,8 +150,18 @@ export class AudioManager {
     // Only a live context may be resumed — an `OfflineAudioContext`
     // throws, because it has not started and starting it is
     // `startRendering`'s job.
-    if ("resume" in ctx && ctx.state === "suspended") {
-      void (ctx as AudioContext).resume();
+    //
+    // **Feature-detecting `resume` does not tell them apart.** It lives
+    // on `BaseAudioContext`, so an offline context has one and it
+    // rejects; the test harness's console filled with an unhandled
+    // `InvalidStateError` on every run. `startRendering` is the property
+    // that is actually exclusive to the offline one.
+    if (!("startRendering" in ctx) && ctx.state === "suspended") {
+      void (ctx as AudioContext).resume().catch(() => {
+        // A context the browser will not resume until the player clicks
+        // is the normal case, not an error: the first gesture calls
+        // `start` again.
+      });
     }
   }
 

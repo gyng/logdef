@@ -7602,6 +7602,31 @@ Neither was visible from inside the game. The halt appears as a leg animation an
 never reaches the sidebar — it took printing the whole situation as *text*, next to itself, for
 either to be obvious.
 
+#### Playing a whole run found three more
+
+`e2e/dogfood.spec.ts` builds a seven-room chain through the tools alone, and asserts two things:
+that the plan *can* be built that way, and that the tool layer and the command layer never
+disagree.
+
+**A player sees where a room may go; an agent had nothing.** The first run walked every slot on
+every floor by hand and spent about thirty refused calls per room. Refusals are cheap for the
+simulation and ruinous for a model — they fill its context with `SlotOccupied`.
+`understory_where_can_it_go` shares `placementFits` with the renderer, so the answer cannot
+drift from the ghost highlights. **The log went from about two hundred refusals to five, and the
+run from 52 seconds to 12.**
+
+**An agent had no way to let time pass.** Nothing about the tower changes on the agent's turn;
+it changes because time passed, and without a wait the loop spent its whole budget being told
+the same price it could not meet — five of seven rooms, and a log that was one refusal repeated.
+`understory_wait` runs the tower for a few seconds and reports what changed, which is the shape
+of almost every turn a player takes.
+
+**And the two layers did disagree.** `where` offered floor 0 slot 0, the agent built there, and
+the next `where` offered it again — because `viewForTool` returned the last snapshot published
+to React, which is behind any command the agent itself just sent. It reads fresh now. One extra
+`view()` per tool call is nothing at agent cadence; `DECISIONS.md` §3's "one view a frame" is
+about the render loop, not about a question asked once every few seconds.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
