@@ -75,13 +75,23 @@ M6 ("The Watch") is shipped: the verbs a player has while a wave is landing, plu
 being cut out of the game entirely (§6.10) and the opening rebuilt around a build ladder
 (§6.11).
 
-**The starting tower is two floors, three crew, a Heartseed and a bed.** Everything else —
+**The starting tower is two floors, three crew, a Heartseed, a bed and one thorn gun.** Everything else —
 the cutter arm, the mill, the burner, the storeroom — is something the player builds, gated
 behind `RoomDef.unlocked_by`: farm, then cutter arm, then burner, and then the whole menu.
 That gate is validated in `engine::commands`, so **a harness that places a canteen on turn
 one now gets `CommandError::Locked` rather than a tower.** Use `tests::engine` (walks the
 ladder, returns a working tower), `tests::opening` (the shipped one), `harness::chain_tower`
-in `examples/`, or `debug_grant` in the browser specs. Charge priority
+in `examples/`, or `debug_grant` in the browser specs.
+
+**Weapons go on the leading edge** (§6.13). `front_only` is validated in
+`engine::commands`, the front is `floor_slots - width`, and the floor is ten slots wide — so
+columns 8-9 are the weapons' and 7 is still the shaft's. A harness that places a battery
+mid-floor gets `NotAtTheFront`; one that puts a shaft on column 8 collides with a cutter arm.
+`tests::disarm` strips the gun *and* the arm from a fixture that needs an **undefended** tower,
+because the arm deals melee damage now and a tower with one is not undefended — four tests had
+quietly started measuring the gun instead of their own subject.
+
+Charge priority
 handed over — it used to *be* the tick order — a creature the emplacements can be told to
 prefer, a person posted to a room, kit that belongs to somebody named, the berth given its own
 halt, and a thief answered by somebody standing in the room. **Read `SYSTEMS.md` §6 before
