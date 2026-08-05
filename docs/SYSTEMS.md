@@ -7627,6 +7627,42 @@ to React, which is behind any command the agent itself just sent. It reads fresh
 `view()` per tool call is nothing at agent cadence; `DECISIONS.md` §3's "one view a frame" is
 about the render loop, not about a question asked once every few seconds.
 
+#### Playing past the chain found the surface had missed a whole milestone
+
+The chain is the easy half. Extending the dogfood through the journey — forks, waypoints,
+recruits, a lift, creatures — turned up three more, and the third is the one worth remembering.
+
+**An answered fork is not a question.** `world.fork` keeps its answer until the tower crosses the
+split, because the choice stays changeable that whole time (§3.3). So a reading of *is there a
+fork* is not a reading of *is anything being asked*, and `look` printed `A FORK is ahead … the
+tower halts until you choose` for the entire approach. **A dogfood agent answered the same fork
+398 times in 400 turns and never got on with the run.** The fork panel had this right from M3 —
+it says "the way is chosen, and stays changeable until the tower crosses" — and the tool was
+written from the snapshot field rather than from the panel that already interpreted it.
+
+**A shaft's question is harder than a room's and had no tool at all.** A room needs one free
+footprint on one floor, which an agent can work out from a text dump; a shaft needs the same
+column free on *every* floor it spans, which no dump makes legible. `where_can_it_go` takes a
+`shaft` now and reports the tallest legal span per column.
+
+**And the tool surface had none of M6's verbs.** The milestone is *entirely* about what a player
+can do while a wave is landing, and the agent could read a list of species and do nothing about
+it: no focus, no charge priority, no reinforcing, no work order, no second car. Worse, `look`
+printed the species and nothing else — not how far off they were, not whether anything was being
+chewed — so the two things a player reads instantly off the cross-section were both invisible.
+The wave now reports id, state, distance and health per creature, plus the tower's integrity, the
+mending bill, the attention level and where the charge goes; and the five verbs are tools.
+
+Nothing failed while they were missing, which is the point: **a tool surface falls behind the
+game silently.** `dogfood.spec.ts` names the verbs that must exist, so the next milestone that
+adds one and forgets the tool fails a spec rather than being discovered a year later.
+
+The run this produced is worth reading on its own: a tower that builds all seven chain rooms by
+Day 1 afternoon **browns out at 16/800 charge** — one burner against a mill, a comb and a ropery,
+all wanting the bamboo the burner also eats. That is `charge_per_burn` and `provocation_per_burn`
+doing exactly what the note at the top of `AGENTS.md` says they do, and it is the first time it
+has been seen from a player's seat rather than from an instrument.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —

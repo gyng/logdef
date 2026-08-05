@@ -26,7 +26,14 @@
  * "what is going on" in one call, in the tower's own words.
  */
 import type { Game } from "../engine/Game";
-import type { CatalogSnapshot, GameCommand, RoomInfo, ViewSnapshot } from "../bridge/types";
+import type {
+  CatalogSnapshot,
+  GameCommand,
+  PowerUse,
+  RoomInfo,
+  ShaftInfo,
+  ViewSnapshot,
+} from "../bridge/types";
 import { placementFits } from "../engine/scene";
 
 /** What a tool hands back. Text, because the caller is a model. */
@@ -143,12 +150,31 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
   lines.push(`Can build: ${buildable.join("; ") || "nothing yet"}`);
 
   if (view.journey.fork) {
+    // **An answered fork is not a question.** `world.fork` keeps its
+    // answer until the tower crosses the split — the choice stays
+    // changeable that whole time, which is the design (§3.3) — so a
+    // reading of "is there a fork" is not a reading of "is anything
+    // being asked". This said `A FORK is ahead ... the tower halts
+    // until you choose` for the whole approach, and a dogfood agent
+    // answered the same fork 398 times in 400 turns and never got on
+    // with the run. The panel had this right all along.
+    const fork = view.journey.fork;
+    const ways = fork.branches
+      .map((b, i) => `${String(i)}=${catalog.branches[b]?.name ?? "?"}`)
+      .join(", ");
     lines.push("");
-    lines.push(
-      `A FORK is ahead. Branches: ${view.journey.fork.branches
-        .map((b, i) => `${String(i)}=${catalog.branches[b]?.name ?? "?"}`)
-        .join(", ")}. The tower halts until you choose.`,
-    );
+    if (fork.answer !== null) {
+      lines.push(
+        `The way is CHOSEN (${String(fork.answer)}), ${String(Math.round(fork.ahead))} paces ` +
+          `off. Branches: ${ways}. Nothing to do — it stays changeable until the tower ` +
+          "crosses, and then it is gone.",
+      );
+    } else {
+      lines.push(
+        `A FORK is ${String(Math.round(fork.ahead))} paces ahead and UNANSWERED. ` +
+          `Branches: ${ways}. Choose before the tower reaches it, or it halts there.`,
+      );
+    }
   }
   if (view.journey.waypoint) {
     const way = catalog.waypoints[view.journey.waypoint.def];
@@ -164,12 +190,39 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
         (t !== null ? ` — ${catalog.traits[t]?.blurb ?? ""}` : ""),
     );
   }
+  // **A wave is a situation, not a list of names.** This printed the
+  // species and nothing else, which cannot tell an agent apart the two
+  // things a player reads instantly off the cross-section: how far away
+  // they still are, and whether anything is being chewed. M6 is
+  // entirely about the verbs available while a wave lands (§6), and a
+  // surface that cannot see a wave cannot use one.
   if (view.siege.enemies.length > 0) {
     lines.push("");
     lines.push(
-      `Creatures: ${view.siege.enemies.map((e) => catalog.enemies[e.def]?.name ?? "?").join(", ")}`,
+      "Creatures (id · what · where · hurt):\n" +
+        view.siege.enemies
+          .map((e) => {
+            const away = Math.round(Math.abs(e.at - view.world.distance));
+            const where = e.state === "approach" ? `${String(away)} paces off` : "at the tower";
+            const hurt = `${String(Math.round(e.hp_permille / 10))}% whole`;
+            const mark = view.siege.focus === e.id ? " ← every emplacement prefers this one" : "";
+            return (
+              `  ${String(e.id)} · ${catalog.enemies[e.def]?.name ?? "?"} · ` +
+              `${e.state}, ${where} · ${hurt}${mark}`
+            );
+          })
+          .join("\n"),
     );
   }
+  lines.push("");
+  lines.push(
+    `Tower ${String(Math.round(view.siege.integrity_permille / 10))}% whole` +
+      (view.siege.repair_cost > 0
+        ? `, ${String(view.siege.repair_cost)} poles of mending outstanding`
+        : "") +
+      ` · attention ${String(view.siege.provocation)}/${String(view.siege.provocation_max)}` +
+      ` · charge goes to ${view.power.priority.join(" then ").toLowerCase()}`,
+  );
   return lines.join("\n");
 }
 
@@ -214,6 +267,54 @@ function legalSpots(
         out.push({ floor: floor.index, slot });
       }
     }
+  }
+  return out;
+}
+
+/**
+ * Every span a shaft may legally rise through, right now.
+ *
+ * **The harder of the two questions, and it had no tool.** A room needs
+ * one free footprint on one floor and the agent can see the floor; a
+ * shaft needs the same column free on *every* floor it spans, which is
+ * a fact about a vertical slice that no text dump of the tower makes
+ * legible. An agent could only guess a column and be told `Occupied`.
+ *
+ * Reported as the tallest legal span per column rather than every
+ * combination, because a shaft that does not reach the top is nearly
+ * always a mistake — the second car and the freight runs both want the
+ * whole height.
+ */
+function legalSpans(
+  view: ViewSnapshot,
+  info: ShaftInfo,
+): { slot: number; low: number; high: number }[] {
+  const floors = view.tower.floors.length;
+  const ceiling = info.max_span === 0 ? floors : Math.min(info.max_span, floors);
+  const out: { slot: number; low: number; high: number }[] = [];
+  const widest = Math.max(...view.tower.floors.map((f) => f.slots));
+  for (let slot = 0; slot < widest; slot += 1) {
+    let best: { low: number; high: number } | null = null;
+    for (let low = 0; low < floors; low += 1) {
+      for (let span = ceiling; span >= info.min_span; span -= 1) {
+        if (low + span > floors) continue;
+        const mode = {
+          kind: "shaft" as const,
+          id: info.id,
+          width: 1,
+          frontOnly: false,
+          maxFloor: null,
+          minFloor: null,
+          span,
+          hover: null,
+        };
+        if (placementFits(view, mode, low, slot)) {
+          if (!best || span > best.high - best.low + 1) best = { low, high: low + span - 1 };
+          break;
+        }
+      }
+    }
+    if (best) out.push({ slot, low: best.low, high: best.high });
   }
   return out;
 }
@@ -302,18 +403,45 @@ ${look(game.viewForTool(), game.getCatalog())}`);
         "building: the rules are real and interlocking — weapons and the cutter arm must be " +
         "on the leading edge, ordinary rooms may not stand there at all, some rooms only " +
         "reach the ground, a garden needs the roof, and a shaft's column is taken on every " +
-        "floor it spans. An empty answer means widen the hull or add a floor.",
+        "floor it spans. An empty answer means widen the hull or add a floor. Pass `shaft` " +
+        "instead of `room` to ask the same about a lift, which is the harder question — a " +
+        "shaft needs its column free on every floor it passes through.",
       inputSchema: {
         type: "object",
-        properties: { room: { type: "string", description: 'Content id, e.g. "room.mill"' } },
-        required: ["room"],
+        properties: {
+          room: { type: "string", description: 'Content id, e.g. "room.mill"' },
+          shaft: {
+            type: "string",
+            description: 'Content id of a shaft instead, e.g. "shaft.elevator"',
+          },
+        },
       },
       execute: (a) => {
         const catalog = game.getCatalog();
         const view = game.viewForTool();
+        if (a.shaft !== undefined) {
+          const want = String(a.shaft);
+          const shaft = catalog.shafts.find((s) => s.id === want);
+          if (!shaft) return fail(`no such shaft: ${want}`);
+          const spans = legalSpans(view, shaft);
+          if (spans.length === 0) {
+            return say(
+              `${shaft.name} has no free column on this tower. Every column is taken on ` +
+                "at least one floor it would have to pass through — widen the hull.",
+            );
+          }
+          return say(
+            `${shaft.name} can rise at: ` +
+              spans
+                .map(
+                  (s) => `slot ${String(s.slot)} from floor ${String(s.low)} to ${String(s.high)}`,
+                )
+                .join(", "),
+          );
+        }
         const id = String(a.room);
         const info = catalog.rooms.find((room) => room.id === id);
-        if (!info) return fail(`no such room: ${id}`);
+        if (!info) return fail(`no such room or shaft: ${id}`);
         const spots = legalSpots(view, catalog, info);
         if (spots.length === 0) {
           return say(
@@ -401,6 +529,115 @@ ${look(game.viewForTool(), game.getCatalog())}`);
           }),
           "the shaft is up",
         ),
+    },
+    {
+      name: "understory_focus_creature",
+      description:
+        "Ask every emplacement to prefer one creature, by the id `look` gives it. This is " +
+        "the whole of it — nobody is ordered to fire, and a gun with a better shot in front " +
+        "of it still takes that shot. Pass no id to go back to no preference. Use it to " +
+        "finish something already hurt, or to pull fire onto whatever is chewing a room.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          creature: {
+            type: "number",
+            description: "Creature id from `look`. Omit to clear the preference.",
+          },
+        },
+      },
+      execute: (a) =>
+        report(
+          send({ FocusEnemy: { enemy: a.creature === undefined ? null : Number(a.creature) } }),
+          a.creature === undefined
+            ? "no creature is preferred now"
+            : "every emplacement has been told to prefer it",
+        ),
+    },
+    {
+      name: "understory_set_charge_priority",
+      description:
+        "Say what the bank pays for first when there is not enough for everything. Lifts, " +
+        "Works, Lamps and Legs in some arrangement — what comes first is served until the " +
+        "charge runs out, and what comes last simply stops. This is the answer to a " +
+        "brown-out: decide what the tower gives up, rather than letting it decide.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          order: {
+            type: "array",
+            items: { type: "string" },
+            description: 'All four of "Lifts", "Works", "Lamps", "Legs", most important first',
+          },
+        },
+        required: ["order"],
+      },
+      execute: (a) => {
+        const want = (a.order as unknown[]).map(String);
+        const legal = ["Lifts", "Works", "Lamps", "Legs"];
+        if (want.length !== 4 || !legal.every((use) => want.includes(use))) {
+          return fail(`give all four of ${legal.join(", ")}, most important first`);
+        }
+        return report(
+          send({ SetPowerPriority: { order: want as PowerUse[] } }),
+          `charge now goes to ${want.join(" then ").toLowerCase()}`,
+        );
+      },
+    },
+    {
+      name: "understory_reinforce",
+      description:
+        "Have the crew thicken the hull: every panel, present and future, gains hit points. " +
+        "Paid in stock and in the crew time it takes, so it competes with everything else " +
+        "they could be doing. Worth it before a stretch you expect to be chewed on, not " +
+        "in the middle of one.",
+      inputSchema: { type: "object", properties: {} },
+      execute: () => report(send("Reinforce"), "the crew are thickening the hull"),
+    },
+    {
+      name: "understory_set_work_order",
+      description:
+        "Rank the kinds of work the crew take on. An idle person goes down this list and " +
+        "takes the first job of a kind that has one waiting, so putting hauling last means " +
+        "doors and mending come first and the shelves fill more slowly. Use it when a wave " +
+        "is landing, and put it back afterwards.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          order: {
+            type: "array",
+            items: { type: "string" },
+            description: "Every job id, most important first",
+          },
+        },
+        required: ["order"],
+      },
+      execute: (a) => {
+        const catalog = game.getCatalog();
+        const want = (a.order as unknown[]).map(String);
+        const known = catalog.jobs.map((job) => job.id);
+        if (want.length !== known.length || !known.every((job) => want.includes(job))) {
+          return fail(`give all of ${known.join(", ")}, most important first`);
+        }
+        return report(
+          send({ SetWorkOrder: { order: want } }),
+          `crew now prefer ${want.join(", ")}`,
+        );
+      },
+    },
+    {
+      name: "understory_add_car",
+      description:
+        "Put another car in a shaft that has room for one. Two cars on one shaft move nearly " +
+        "twice the stock without costing another column, which is the cheap answer to a " +
+        "queue at the doors.",
+      inputSchema: {
+        type: "object",
+        properties: { shaft: { type: "number", description: "Shaft id from `look`" } },
+        required: ["shaft"],
+      },
+      execute: (a) =>
+        report(send({ AddCar: { shaft: Number(a.shaft) } }), "another car is running"),
     },
     {
       name: "understory_set_speed",
