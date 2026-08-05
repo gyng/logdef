@@ -703,8 +703,13 @@ fn when_can_you_afford_one(pack: &Arc<Content>) {
     let mut queueing = u32::MAX;
     for seed in SEEDS {
         let (afford, queued) = afford_run(pack, seed, &shafts);
-        for (i, tick) in afford.iter().enumerate() {
-            first[i] = first[i].min(*tick);
+        // **Zipped, not indexed.** `afford_run` returns a fixed-size
+        // array and the caller decides how many shafts to ask about;
+        // §6.18 took the list from three to two and this kept indexing
+        // three, which is an out-of-bounds panic that only fires once
+        // somebody runs the instrument.
+        for (slot, tick) in first.iter_mut().zip(afford.iter()) {
+            *slot = (*slot).min(*tick);
         }
         queueing = queueing.min(queued);
     }

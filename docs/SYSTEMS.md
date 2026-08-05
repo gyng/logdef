@@ -7049,6 +7049,51 @@ The filter is measured; the *set* is not. Nobody has played a tower choosing bet
 a ward with two front slots and a wave inbound, which is the decision all of this exists to
 create. Carried into §6.9.
 
+### 6.23 Is the lift mandatory? Measured, mostly yes
+
+The ask was to balance the tower so a lift is more or less mandatory. **It already is, and the
+figure is the argument**, so this section is mostly a measurement and one small change.
+
+`examples/lift.rs`, three seeds a row, two whole days after a warm-up:
+
+| floors | stairs only | with a lift |
+| ---: | ---: | ---: |
+| 5 | 107 hauls | 235 **+119%** |
+| 8 | 57 | 203 **+256%** |
+| 11 | 30 | 178 **+493%** |
+| 14 | 15 | 152 **+913%** |
+
+**A stairs-only tower at eight floors does 28% of the work a lifted one does**, and at fourteen
+it does 10%. That is not a tower with a disadvantage; it is a tower that has stopped. The
+design intent — a shaft is the belt, and a tower that grows without one is a factory with no
+belts (`DESIGN.md` pillar 2) — is doing exactly what it says.
+
+Five floors is the only height where a tower survives without one, at 45%. That is the right
+shape: the opening should be playable on stairs, and everything above it should not.
+
+#### What is actually wrong is *when*, not *whether*
+
+The golden recorder walks a scripted tower and prints the tick each purchase lands on. The
+ropery — the last room before rope exists — lands at **tick 46,129 of a run that ends near
+56,000**. A lift bought in the last fifth of a run is a trophy, not infrastructure.
+
+The gate is not the cause. A fiber comb and a ropery are four poles each and both open the
+moment the burner is lit, at tick 2,400 — so a player who *wanted* a lift could have the chain
+by minute ten and skip the canteen and the second burner to do it. The recorder buys comfort
+first, which is a reasonable thing for a script to do and hides the option.
+
+So the one change here is the last coil: **the lift costs 2 rope rather than 3.** A ropery
+makes one coil from two fiber every four seconds, so each coil is a separate wait behind a
+separate pair of fiber, and the third one buys nothing the second did not. The gate is *which*
+material — fiber comes from the middle bands, so it still says "you have to have walked
+ordinary ground" (§5.10) — and three said that no better than two, and said it later.
+
+#### What is not settled
+
+Whether a player *feels* the 28% before they can act on it. The number says a stairs-only tower
+is failing; nothing in the game says so out loud except the crew tinting red at a queue, and
+§6.19 already carries the affordability half of this. Carried into §6.9 with them.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —

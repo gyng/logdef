@@ -68,7 +68,17 @@ ShaftDef(
         // about *which material*, and it is unchanged: fiber comes from
         // the middle bands, so the gate still says "you have to have
         // walked ordinary ground".
-        CostEntryDef(item: "item.rope", amount: 3),
+        // **Two, not three, because rope arrives in ones.** A ropery
+        // makes one coil from two fiber every four seconds, so each
+        // coil is a separate wait behind a separate pair of fiber, and
+        // the last one is the whole difference between a lift that
+        // arrives mid-run and one that arrives at the end of it.
+        //
+        // The gate is *which material*, not how many coils — fiber
+        // comes from the middle bands, so it still says "you have to
+        // have walked ordinary ground" (SYSTEMS.md §5.10). Three said
+        // that no better than two and said it later.
+        CostEntryDef(item: "item.rope", amount: 2),
     ],
     min_span: 2,
     // Unlimited — the elevator is chosen floors, not a fixed hop.
