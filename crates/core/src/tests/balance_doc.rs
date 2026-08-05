@@ -187,8 +187,14 @@ fn a_documented_build_cost_names_everything_the_pack_charges() {
         }
     }
 
+    // **Eight, down from nine, because there is one fewer thing to
+    // build.** `SYSTEMS.md` §6.18 folded the dumbwaiter into the lift,
+    // so its row went with it. This guard exists to catch the table
+    // silently emptying — a needle that stops matching and takes every
+    // check with it — rather than to pin an exact count, so it tracks
+    // the pack rather than blocking a deletion.
     assert!(
-        checked > 8,
+        checked >= 8,
         "only {checked} build-cost rows were found — the table's shape has changed and this \
          test has quietly stopped guarding anything"
     );

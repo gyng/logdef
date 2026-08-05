@@ -3171,7 +3171,8 @@ function drawCar(
     }
   }
 
-  // Dumbwaiter cargo rides visibly rather than invisibly.
+  // Cargo rides visibly rather than invisibly — a lift fetching stock
+  // on its own is the readable half of `SYSTEMS.md` §6.18.
   for (const [index, load] of car.freight.entries()) {
     const glyphless = Math.min(w * 0.3, 8);
     batch.push(x + 6 + index * (glyphless + 2), y + h * 0.3, glyphless, glyphless, palette.cargo, {

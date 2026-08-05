@@ -391,9 +391,9 @@ fn best_shaft(
         .shafts
         .iter()
         .enumerate()
-        // Crew cannot ride a dumbwaiter, however convenient it looks —
-        // nor throw themselves down a chute, however fast it would be.
-        .filter(|(_, shaft)| shaft.kind != ShaftKind::Dumbwaiter && shaft.kind != ShaftKind::Chute)
+        // Nobody throws themselves down a chute, however fast it would
+        // be.
+        .filter(|(_, shaft)| shaft.kind != ShaftKind::Chute)
         .filter(|(_, shaft)| shaft.serves_trip(from, to, daypart))
         .min_by_key(|(index, shaft)| {
             let queued = queues.get(*index).copied().unwrap_or(0);

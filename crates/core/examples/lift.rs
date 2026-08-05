@@ -1,4 +1,14 @@
-//! Does an elevator ever pay, and at what height?
+//! Does a lift ever pay, and at what height?
+//!
+//! **Read the merge first** (`SYSTEMS.md` §6.18). Everything below dated
+//! from when there were two built shafts that went up: a dumbwaiter and
+//! an elevator. There is one now — the lift fetches stock itself
+//! whenever nobody is calling it — so any figure below quoting a
+//! dumbwaiter is the pre-merge pair, kept because the argument for the
+//! merge *is* those figures. The current sweep says the merged shaft is
+//! worth +119% at five floors, +256% at eight, +493% at eleven and
+//! +913% at fourteen, and holds +251% to +271% across every hull width,
+//! where the old elevator fell from +91% to +48%.
 //!
 //! ```text
 //! cargo run --release -p understory-core --example lift
@@ -130,12 +140,16 @@
 //! cross to reach it. So "where you put it is the decision" is not a
 //! guess any more, and the cost of getting it wrong scales with width.
 //!
-//! **The dumbwaiter behaves in the opposite direction, and the reason is
+//! **The dumbwaiter behaved in the opposite direction, and the reason is
 //! structural.** +93% at ten slots, +284% at twelve, holding there —
-//! while its walking *falls*, 9,469 to 4,864. Nothing rides a
-//! dumbwaiter, so nobody walks to one. **Width hurts the shaft you have
-//! to reach and helps the shaft that comes to you**, which is worth
-//! knowing before anybody merges the two.
+//! while its walking *fell*, 9,469 to 4,864. Nothing rides a dumbwaiter,
+//! so nobody walks to one. **Width hurts the shaft you have to reach and
+//! helps the shaft that comes to you.**
+//!
+//! That is the finding the merge was built on, and the merge answered
+//! it: the lift now does the fetching, and its value across width went
+//! from +91%..+48% to +256%..+251% — flat, because the half of its work
+//! that used to need a walk no longer does.
 //!
 //! ## The placement decision does not exist
 //!
@@ -194,10 +208,6 @@ fn content() -> Arc<Content> {
 enum Lift {
     /// The baseline. 30 ticks a floor, one body at a time, free.
     None,
-    /// Item-only, no wait, `batch` 4, spans two or three floors. The
-    /// pack calls it "the inserter", and the ladder the design intends
-    /// is dumbwaiter first, elevator when the tower is tall.
-    Dumb,
     /// 8 ticks a floor, four seats, 5 charge a floor, and a wait for the
     /// car at each end — **put at the far edge of the tower.**
     Elevator,
@@ -207,7 +217,6 @@ impl Lift {
     fn label(self) -> &'static str {
         match self {
             Self::None => "stairs",
-            Self::Dumb => "dumb",
             Self::Elevator => "lift",
         }
     }
@@ -401,13 +410,15 @@ fn main() {
     for height in HEIGHTS {
         let stairs = Sample::mean(&SEEDS.map(|seed| measure(&pack, seed, height, Lift::None)));
         row(height, Lift::None, stairs, None);
+        // **One built shaft, since §6.18.** This was a loop over two
+        // and the shape is kept — `best` still means "the best shaft
+        // for this height", and a pack that adds a second one gets its
+        // comparison back for free.
         let mut best = (Lift::None, stairs);
-        for kind in [Lift::Dumb, Lift::Elevator] {
-            let s = Sample::mean(&SEEDS.map(|seed| measure(&pack, seed, height, kind)));
-            row(height, kind, s, Some(stairs));
-            if s.hauls > best.1.hauls && s.dead == 0 {
-                best = (kind, s);
-            }
+        let s = Sample::mean(&SEEDS.map(|seed| measure(&pack, seed, height, Lift::Elevator)));
+        row(height, Lift::Elevator, s, Some(stairs));
+        if s.hauls > best.1.hauls && s.dead == 0 {
+            best = (Lift::Elevator, s);
         }
         verdicts.push((height, stairs, best));
         println!();
@@ -467,18 +478,16 @@ fn does_width_undo_the_shaft(pack: &Arc<Content>) {
         );
         width_row(width, Lift::None, stairs, None);
         stairs_by_width.push((width, stairs));
-        for kind in [Lift::Dumb, Lift::Elevator] {
-            let s = Sample::mean(
-                &SEEDS.map(|seed| measure_at(pack, seed, WIDTH_SWEEP_HEIGHT, kind, width)),
-            );
-            width_row(width, kind, s, Some(stairs));
-            if kind == Lift::Elevator && s.dead == 0 && stairs.hauls > 0 {
-                let gain = (s.hauls as f64 - stairs.hauls as f64) * 100.0 / stairs.hauls as f64;
-                if width == WIDTHS[0] {
-                    narrow_gain = Some(gain);
-                } else {
-                    wide_gain = Some(gain);
-                }
+        let s = Sample::mean(
+            &SEEDS.map(|seed| measure_at(pack, seed, WIDTH_SWEEP_HEIGHT, Lift::Elevator, width)),
+        );
+        width_row(width, Lift::Elevator, s, Some(stairs));
+        if s.dead == 0 && stairs.hauls > 0 {
+            let gain = (s.hauls as f64 - stairs.hauls as f64) * 100.0 / stairs.hauls as f64;
+            if width == WIDTHS[0] {
+                narrow_gain = Some(gain);
+            } else {
+                wide_gain = Some(gain);
             }
         }
         println!();
@@ -615,8 +624,8 @@ fn when_can_you_afford_one(pack: &Arc<Content>) {
         "", "affordable", "in minutes", "at 1x"
     );
 
-    let shafts = ["shaft.chute", "shaft.dumbwaiter", "shaft.elevator"];
-    let mut first = [u32::MAX; 3];
+    let shafts = ["shaft.chute", "shaft.elevator"];
+    let mut first = [u32::MAX; 2];
     let mut queueing = u32::MAX;
     for seed in SEEDS {
         let (afford, queued) = afford_run(pack, seed, &shafts);
@@ -1106,32 +1115,6 @@ fn measure_at(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift, widt
             Lift::slot(&free, slots),
             height,
         ),
-        // **A dumbwaiter cannot span a tall tower** — `max_span` 3 — so
-        // it goes where the traffic is heaviest: from the cutter arm's
-        // floor up toward the mill. On an eleven-floor tower it
-        // therefore relieves the bottom three floors and nothing else,
-        // which is the answer rather than a limitation of the harness.
-        Lift::Dumb => {
-            let span = game
-                .content()
-                .shaft(
-                    game.content()
-                        .shaft_idx("shaft.dumbwaiter")
-                        .expect("the pack has no dumbwaiter"),
-                )
-                .max_span;
-            // `span` counts floors, `high` is an index, so the top of a
-            // three-floor dumbwaiter starting at 0 is floor 2.
-            let high = (height - 1).min(span - 1);
-            raise(
-                &mut game,
-                "shaft.dumbwaiter",
-                0,
-                high,
-                Lift::slot(&free, slots),
-                height,
-            );
-        }
     }
 
     walk(&mut game, WARMUP);
@@ -1247,39 +1230,48 @@ fn grow(game: &mut GameEngine, height: u8) {
 /// Paid for out of thin air like every other cost in this harness: what
 /// a widening *costs* is `journey.rs`'s question, and this one is about
 /// what it does once it is there.
+///
+/// **The price is per floor, and getting that wrong made this lie.**
+/// The first version handed over one floor's worth and the command
+/// wanted the whole height's, so every widening after the first failed
+/// for want of stock — and `try_send` returning an error was read as
+/// "the pack caps here" and swallowed. The rows at twelve, fourteen and
+/// sixteen slots came out **byte-identical**, which is this repo's
+/// oldest tell and was missed for exactly as long as it took to read
+/// the table. It panics rather than returns now.
 fn widen_to(game: &mut GameEngine, width: u8) {
     if width == 0 {
         return;
     }
-    let cost: Vec<(understory_core::ids::ItemIdx, i64)> = game
-        .content()
-        .balance
-        .tower
-        .widen_cost
-        .iter()
-        .filter_map(|entry| {
-            game.content()
-                .item_idx(&entry.item)
-                .map(|item| (item, entry.amount))
-        })
-        .collect();
-    loop {
-        let now = game
-            .state()
+    let slots_of = |game: &GameEngine| {
+        game.state()
             .tower
             .floors
             .first()
-            .map_or(0, |floor| floor.slots);
-        if now >= width {
-            return;
-        }
+            .map_or(0, |floor| floor.slots)
+    };
+    while slots_of(game) < width {
+        let floors = i64::try_from(game.state().tower.floors.len().max(1)).unwrap_or(1);
+        let cost: Vec<(understory_core::ids::ItemIdx, i64)> = game
+            .content()
+            .balance
+            .tower
+            .widen_cost
+            .iter()
+            .filter_map(|entry| {
+                game.content()
+                    .item_idx(&entry.item)
+                    .map(|item| (item, entry.amount * floors))
+            })
+            .collect();
         give(game, &cost);
-        // A refusal here is `AlreadyWidest` and means the pack caps
-        // below what was asked for — the caller checks that, so this is
-        // the loop simply stopping rather than an error.
-        if game.try_send(GameCommand::WidenTower).is_err() {
-            return;
-        }
+        let before = slots_of(game);
+        game.try_send(GameCommand::WidenTower)
+            .unwrap_or_else(|err| panic!("could not widen to {width} slots: {err}"));
+        assert!(
+            slots_of(game) > before,
+            "a widening that reported success added no slots"
+        );
     }
 }
 

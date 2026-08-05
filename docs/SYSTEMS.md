@@ -6771,6 +6771,89 @@ maximum against a zero — `tests/needs.rs::a_practised_crew_gets_more_done`, tw
 one seed where the second tower's crew start at the ceiling — which honestly answers *does
 any of it reach the tower* and does not answer *is ten percent right*. Carried into §6.9.
 
+### 6.18 One shaft, two jobs
+
+**The dumbwaiter is gone, and the lift does its work.** There were two built shafts that went
+up and down; now there is one, and `shaft.dumbwaiter` no longer exists in the pack, the enum
+or the frontend.
+
+#### Why it was the dumbwaiter that had to go, and not the lift
+
+The ladder the design described was *dumbwaiter first, elevator when the tower is tall*. The
+measurement said something else. `examples/lift.rs`'s width sweep, at eight floors:
+
+| hull | stairs | dumbwaiter | elevator |
+|---|---|---|---|
+| 10 slots | 56 hauls | +93% | +91% |
+| 12 | 56 | **+284%** | +77% |
+| 14 | 56 | +286% | +57% |
+| 16 | 58 | +272% | **+48%** |
+
+The cheap rung beat the dear one at every width, and the gap *widened* as the hull grew — the
+elevator losing nearly half its value while the dumbwaiter held. The cause is one line of
+design: **nothing rides a dumbwaiter, so nobody walks to one.** An elevator's crew have to
+cross the floor to reach it, and a wider floor is further to cross; a dumbwaiter's cargo does
+not walk anywhere.
+
+A ladder whose bottom rung wins on both counts is not a ladder. So the thing that made the
+dumbwaiter good became something the lift does.
+
+#### What the merged shaft is
+
+A lift with nobody calling it goes and fetches stock, in batches of four, using the same
+scoring the crew use — a hungry recipe outranks a shelf. Concretely:
+
+- `seek_freight` runs on a car `dispatch` left idle with no riders, no stops and no load. It
+  is the old dumbwaiter finder, **unchanged in its scoring**, because that scoring is the
+  thing worth keeping.
+- Where a dumbwaiter drove itself to a `target`, the lift pushes the destination onto its
+  `stops`. Its own routing carries the crate, so **a rider calling mid-trip is served on the
+  way** rather than waiting for the freight to finish.
+- `service_stop` unloads freight alongside the riders. A lift already stopping to open its
+  doors puts the crate down while it is there — which is why the merge costs one call rather
+  than a second state machine.
+- **Riders always outrank freight.** Fetching only ever starts on an idle car.
+
+**The daypart program binds freight too**, and forgetting that was the one bug this
+introduced: a lift told not to serve a floor went and fetched from it anyway, because the
+finder scanned the shaft's whole span and knew nothing about the schedule.
+`an_unserved_floor_is_not_stopped_at` caught it. A program is the player saying *this shaft is
+not for that floor right now*, and a statement binding half a shaft's traffic is worse than
+none.
+
+#### What it measured
+
+The same sweep, after:
+
+| hull | stairs | the lift |
+|---|---|---|
+| 10 slots | 57 hauls | +256% |
+| 12 | 55 | +271% |
+| 14 | 56 | +264% |
+| 16 | 57 | +251% |
+
+**Flat across width** — the elevator's collapse from +91% to +48% is gone, because the half of
+the shaft's work that used to require a walk no longer does. Across height it is +119% at five
+floors, +256% at eight, +493% at eleven, +913% at fourteen. The last figure is against a
+stairs-only tower that is nearly dead (15 hauls), so read it as *height without a shaft is
+ruinous* rather than as a number about the lift.
+
+#### The prices
+
+10 poles + 3 rope, between the dumbwaiter's 8+3 and the lift's old 12+4 and nearer the low
+end: this is the cheap rung as well as the dear one now, and a tower that must save for the
+lift or have nothing has no answer at all for the first twelve minutes of queueing `lift.rs`
+measures. `charge_per_floor` drops 5 → 4, because one shaft doing both jobs runs in every gap
+between riders rather than only when called, and the per-floor draw is paid far more often.
+
+#### What is not settled
+
+The merged shaft has not been swept — 10 poles and 4 charge are set against the two rows they
+replace, not measured against neighbours. And there is now exactly **one** built shaft that
+goes up, so the whole "which shaft" decision the ladder was supposed to offer is gone. What is
+left is *whether*, *where* and *how tall*, which §6.9's shaft-placement question already says
+the game teaches nothing about.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -6785,12 +6868,14 @@ any of it reach the tower* and does not answer *is ten percent right*. Carried i
    number*. Nobody has played a run at 20% or at 5%, and the failure mode to watch for is
    the one the modesty is guarding against — a run won by parking one person on one job
    from the first pace, which would mean the bonus is large enough to be a build order.
-2. **Where should a shaft go?** §6.16's width sweep turned `lift.rs`'s oldest hypothesis into
-   a measurement: the elevator's value falls from +91% to +48% as the hull widens, entirely
-   through crew walking a third further to reach it. So placement is a real decision with a
-   real cost — and the game says nothing about it, offers no way to move a shaft once built,
-   and gives a player no reason to think the column matters. Either it should teach it or the
-   cost should not be there.
+2. **Where should a shaft go, and is there a decision left at all?** §6.16's width sweep
+   turned `lift.rs`'s oldest hypothesis into a measurement — the elevator's value fell from
+   +91% to +48% as the hull widened, entirely through crew walking further to reach it. §6.18
+   then folded the dumbwaiter in, and the merged shaft holds +251% to +271% across the same
+   range, so the *placement* cost is much smaller. What replaced it is a thinner question:
+   there is now one built shaft that goes up, so "which shaft" is not a choice any more.
+   Whether, where and how tall are what is left, and the game still teaches none of them and
+   offers no way to move a shaft once built.
 3. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
    instrument cannot tell them apart — the numbers are sized against the kill-shot table and
    nobody has met one. The tell is whether a player who fells one goes looking for the next,

@@ -1392,10 +1392,14 @@ function RoomCard({ game, ui, room }: Props & { room: RoomInfo }) {
 function ShaftCard({ game, ui, shaft }: Props & { shaft: ShaftInfo }) {
   const affordable = game.canAffordShaft(shaft);
   const perFloor = (shaft.ticks_per_floor / 30).toFixed(1);
+  // **One built shaft, two jobs, and the card says both** — the lift
+  // carries people, and fetches stock by itself whenever nobody is
+  // calling it (`SYSTEMS.md` §6.18). This used to branch on a
+  // Dumbwaiter kind that no longer exists.
   const hint = affordable
-    ? shaft.kind === "Dumbwaiter"
-      ? `items only · ${shaft.min_span}–${shaft.max_span} floors · ${perFloor}s a floor`
-      : `${shaft.capacity} aboard · ${perFloor}s a floor · ${shaft.charge_per_floor}⚡ a floor`
+    ? shaft.kind === "Chute"
+      ? `one way, down · ${perFloor}s a floor`
+      : `${shaft.capacity} aboard, or ${shaft.batch} in stock · ${perFloor}s a floor · ${shaft.charge_per_floor}⚡ a floor`
     : "not enough on the shelves";
 
   return (

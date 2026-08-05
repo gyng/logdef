@@ -1,7 +1,13 @@
-// The machine: cars, queues, dwell, and a programmable schedule
-// (SYSTEMS.md §1.3). Clearly the fastest way up and by far the
-// largest charge draw of any shaft — and expensive to build, so it's a
-// mid-game investment rather than an opening move.
+// The machine: cars, queues, dwell, a programmable schedule
+// (SYSTEMS.md §1.3) — and, when nobody is calling it, the inserter.
+//
+// **This is the only built shaft now** (SYSTEMS.md §6.18). There used to
+// be a dumbwaiter beneath it, item-only and autonomous, and
+// examples/lift.rs measured that as the *better* of the two at eight
+// floors — and better still the wider the hull got, because nothing
+// rides a dumbwaiter so nobody walks to one. Two rungs where the lower
+// one wins on both counts is not a ladder. So the lift does that job in
+// the gaps between its riders, and the price below is the one rung's.
 #![enable(implicit_some)]
 ShaftDef(
     id: "shaft.elevator",
@@ -25,7 +31,13 @@ ShaftDef(
     // should not arrive at minute ninety. Still nearly twice a floor's
     // own cost, so it is a decision rather than a default.
     build_cost: [
-        CostEntryDef(item: "item.poles", amount: 12),
+        // **Ten, down from twelve, because this is now the cheap rung
+        // as well as the dear one.** The dumbwaiter it absorbed cost 8
+        // poles and 3 rope and was what a tower bought first; a tower
+        // that has to save for the lift or have nothing is a tower with
+        // no answer at all for its first twelve minutes of queueing.
+        // Between the two prices, nearer the low one.
+        CostEntryDef(item: "item.poles", amount: 10),
         // **Rope, from M5 — and deliberately not mechanisms.**
         //
         // The spec (`SYSTEMS.md` §5.3) gated this behind mechanisms, and
@@ -56,7 +68,7 @@ ShaftDef(
         // about *which material*, and it is unchanged: fiber comes from
         // the middle bands, so the gate still says "you have to have
         // walked ordinary ground".
-        CostEntryDef(item: "item.rope", amount: 4),
+        CostEntryDef(item: "item.rope", amount: 3),
     ],
     min_span: 2,
     // Unlimited — the elevator is chosen floors, not a fixed hop.
@@ -67,6 +79,16 @@ ShaftDef(
     capacity: 4,
     // Nearly 4x the stairs' pace per floor.
     ticks_per_floor: 8,
-    charge_per_floor: 5,
+    // **Four, between the elevator's five and the dumbwaiter's one.**
+    // One shaft doing both jobs runs nearly all the time — it fetches
+    // stock in every gap between riders — so the per-floor draw is paid
+    // far more often than the elevator's ever was. Dropping it is what
+    // stops the merge quietly doubling the tower's lift bill.
+    charge_per_floor: 4,
     cars: 1,
+    // Items moved per autonomous trip, inherited from the dumbwaiter
+    // unchanged: a little more than one crew member's `carry_capacity`
+    // of 3, so the lift beats a hauler on volume without making the
+    // trip pointless.
+    batch: 4,
 )

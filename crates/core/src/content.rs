@@ -327,9 +327,16 @@ pub struct QuartersDef {
 pub enum ShaftKind {
     /// Free, always present, slow, crew-only, one body at a time.
     Stairs,
-    /// Item-only and autonomous. The inserter.
-    Dumbwaiter,
-    /// The machine: cars, queues, dwell, and a programmable schedule.
+    /// The machine: cars, queues, dwell, a programmable schedule — and,
+    /// when nobody is calling it, the inserter.
+    ///
+    /// **There used to be two of these** (`SYSTEMS.md` §6.18). A
+    /// dumbwaiter was item-only and autonomous, and `examples/lift.rs`
+    /// measured it as the best vertical transport in the game at eight
+    /// floors — better than the lift, and *better the wider the hull
+    /// got*, because nothing rides a dumbwaiter so nobody walks to one.
+    /// Two rungs where one wins on both counts is not a ladder, so the
+    /// lift does that job now, in the gaps between its riders.
     Elevator,
     /// One way, down, and out.
     ///
@@ -2625,12 +2632,13 @@ fn validate_shafts(content: &Content, errors: &mut Vec<LoadError>) {
                 path,
                 message: "an elevator with no cars cannot carry anyone".into(),
             }),
-            ShaftKind::Dumbwaiter if shaft.cars == 0 || shaft.batch <= 0 => {
-                errors.push(LoadError {
-                    path,
-                    message: "a dumbwaiter needs a car and a batch size".into(),
-                });
-            }
+            // A lift with no batch is a lift that will not fetch
+            // anything when nobody is calling it (`SYSTEMS.md` §6.18),
+            // which is half a shaft silently.
+            ShaftKind::Elevator if shaft.batch <= 0 => errors.push(LoadError {
+                path,
+                message: "a lift needs a batch size: it moves stock when nobody is riding".into(),
+            }),
             _ => {}
         }
     }

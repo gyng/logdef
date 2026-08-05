@@ -1,4 +1,5 @@
-//! Cars: dispatch, dwell, capacity, and the dumbwaiter.
+//! Cars: dispatch, dwell, capacity, and the freight the lift moves
+//! when nobody is riding it.
 //!
 //! M1's sprint question is whether elevator contention is fun, which
 //! nobody can answer if the elevator is wrong. These tests pin the
@@ -90,15 +91,19 @@ fn a_shaft_column_blocks_its_slot_on_every_floor_it_spans() {
 fn a_span_outside_the_definition_is_refused() {
     let mut game = engine(802);
     game.step(6000);
-    // A dumbwaiter reaches two or three floors, not the whole tower.
+    // **One floor is not a shaft.** `min_span` is 2, and the lift's
+    // `max_span` is 0 — unlimited — since it absorbed the dumbwaiter
+    // (`SYSTEMS.md` §6.18), so the bound that can still be broken is
+    // the lower one. This used to reach for the dumbwaiter's three-floor
+    // ceiling, which no longer exists.
     let error = game
         .try_send(GameCommand::BuildShaft {
-            shaft: "shaft.dumbwaiter".into(),
-            low: 0,
-            high: 3,
+            shaft: "shaft.elevator".into(),
+            low: 1,
+            high: 1,
             slot: 7,
         })
-        .expect_err("four floors is too far for a dumbwaiter");
+        .expect_err("a shaft that spans one floor goes nowhere");
     assert!(matches!(
         error,
         crate::command::CommandError::BadSpan { .. }
@@ -300,7 +305,7 @@ fn programming_a_nonexistent_daypart_is_refused() {
 }
 
 #[test]
-fn a_dumbwaiter_moves_items_without_anybody_carrying_them() {
+fn the_lift_moves_items_without_anybody_carrying_them() {
     let content = content();
     let bamboo = item(&content, "item.bamboo");
 
@@ -308,7 +313,7 @@ fn a_dumbwaiter_moves_items_without_anybody_carrying_them() {
     // storeroom. It was 0 to 1 until M6 cut the opening tower down and
     // moved the storeroom up a floor (`SYSTEMS.md` §6.11); a
     // dumbwaiter's `max_span` is 3, so this still fits.
-    let mut game = with_shaft(811, "shaft.dumbwaiter", 0, 2, 7);
+    let mut game = with_shaft(811, "shaft.elevator", 0, 2, 7);
     // Take the crew out entirely, so anything that moves was moved by
     // the machine.
     game.state_mut_for_test().crew.clear();
@@ -351,10 +356,10 @@ fn a_dumbwaiter_moves_items_without_anybody_carrying_them() {
 }
 
 #[test]
-fn a_dumbwaiter_never_loses_a_load() {
+fn the_lift_never_loses_a_load() {
     let content = content();
     let bamboo = item(&content, "item.bamboo");
-    let mut game = with_shaft(812, "shaft.dumbwaiter", 0, 2, 7);
+    let mut game = with_shaft(812, "shaft.elevator", 0, 2, 7);
     game.state_mut_for_test().crew.clear();
 
     let mut last = total_including_cars(&game, bamboo);
@@ -701,28 +706,44 @@ fn the_elevator_earns_its_poles_on_long_climbs_and_busy_ones() {
 }
 
 #[test]
-fn crew_cannot_be_routed_onto_a_dumbwaiter() {
-    let game = with_shaft(923, "shaft.dumbwaiter", 0, 2, 7);
+fn nobody_is_routed_down_a_chute() {
+    // **The last un-rideable shaft.** This used to be about the
+    // dumbwaiter, which crew could not board because nothing rode it;
+    // §6.18 folded that shaft into the lift and crew ride the result.
+    // What is left is the chute, which goes one way, downward, and
+    // whatever enters it is gone — a route no person should ever be
+    // offered.
+    let game = with_shaft(923, "shaft.elevator", 0, 2, 7);
+    let content = game.content().clone();
+    let rideable = content
+        .shafts
+        .iter()
+        .filter(|shaft| shaft.kind != ShaftKind::Chute)
+        .count();
     assert_eq!(
-        estimate(&game, ShaftKind::Dumbwaiter, 0),
-        u32::MAX,
-        "a dumbwaiter should be infinitely unattractive to a person"
+        rideable,
+        content.shafts.len() - 1,
+        "exactly one shaft in the pack should be un-rideable"
+    );
+    assert!(
+        estimate(&game, ShaftKind::Elevator, 0) < u32::MAX,
+        "the lift carries people as well as freight"
     );
 }
 
 // ---------------------------------------------------------------------------
-// The dumbwaiter's real job: feeding a recipe
+// The job the lift does when nobody is calling it: feeding a recipe
 // ---------------------------------------------------------------------------
 
 #[test]
-fn a_dumbwaiter_feeds_a_hungry_recipe_in_preference_to_a_shelf() {
+fn the_lift_feeds_a_hungry_recipe_in_preference_to_a_shelf() {
     // Spanning the cutter arm on floor 0 and the mill on floor 2, with
     // a storeroom on floor 1 in between. Both are valid destinations
     // for bamboo; the mill's inbox outranks the shelves, and this is
     // the path that actually keeps a chain running.
     let content = content();
     let bamboo = item(&content, "item.bamboo");
-    let mut game = with_shaft(924, "shaft.dumbwaiter", 0, 2, 7);
+    let mut game = with_shaft(924, "shaft.elevator", 0, 2, 7);
     game.state_mut_for_test().crew.clear();
 
     let crafts_before = game.state().stats.crafts_completed;
@@ -764,13 +785,13 @@ fn a_dumbwaiter_feeds_a_hungry_recipe_in_preference_to_a_shelf() {
 }
 
 #[test]
-fn a_dumbwaiter_conserves_across_the_inbox_path_too() {
+fn the_lift_conserves_across_the_inbox_path_too() {
     // The conservation check again, but on the route that actually
     // deposits into a recipe rather than onto shelves — the one the
     // earlier test could not reach.
     let content = content();
     let bamboo = item(&content, "item.bamboo");
-    let mut game = with_shaft(925, "shaft.dumbwaiter", 0, 2, 7);
+    let mut game = with_shaft(925, "shaft.elevator", 0, 2, 7);
     // **And disarmed.** The thorn gun eats two stalks a shot
     // (`SYSTEMS.md` §6.13), so a conservation check that does not know
     // about it reads a fired round as bamboo going missing — measured
@@ -801,12 +822,12 @@ fn a_dumbwaiter_conserves_across_the_inbox_path_too() {
 }
 
 #[test]
-fn a_dumbwaiter_stops_when_there_is_nowhere_to_put_anything() {
+fn the_lift_stops_when_there_is_nowhere_to_put_anything() {
     // Fill every destination and the car should sit still holding
     // nothing, rather than shuttling an empty box or dropping a load.
     let content = content();
     let bamboo = item(&content, "item.bamboo");
-    let mut game = with_shaft(926, "shaft.dumbwaiter", 0, 2, 7);
+    let mut game = with_shaft(926, "shaft.elevator", 0, 2, 7);
     game.state_mut_for_test().crew.clear();
     game.step(9000);
 

@@ -536,7 +536,7 @@ pub struct ShaftInfo {
     pub id: String,
     pub name: String,
     pub short: String,
-    /// One of: Stairs, Dumbwaiter, Elevator.
+    /// One of: Stairs, Elevator, Chute.
     pub kind: String,
     pub build_cost: Vec<CostInfo>,
     pub min_span: u8,
@@ -546,6 +546,9 @@ pub struct ShaftInfo {
     pub ticks_per_floor: u32,
     pub charge_per_floor: i64,
     pub cars: u8,
+    /// Stock the shaft fetches per trip when nobody is riding it
+    /// (`SYSTEMS.md` §6.18).
+    pub batch: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1413,6 +1416,7 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                 ticks_per_floor: shaft.ticks_per_floor,
                 charge_per_floor: shaft.charge_per_floor,
                 cars: shaft.cars,
+                batch: shaft.batch,
             })
             .collect(),
         enemies: content

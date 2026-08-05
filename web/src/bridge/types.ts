@@ -61,7 +61,6 @@ export type EnemyApproach = "Ground" | "Canopy" | "Burrow";
 
 export type ShaftKind =
   | "Stairs"
-  | "Dumbwaiter"
   | "Elevator"
   /**
    * One way, down, and out. No cars, no capacity, no charge and no
@@ -404,7 +403,10 @@ export interface CarView {
   /** Units aboard, against the shaft's capacity. */
   load: number;
   stops: number[];
-  /** Items aboard. Dumbwaiters only. */
+  /**
+   * Items aboard. The lift fetches stock on its own when nobody is
+   * calling it, and this is what it is carrying.
+   */
   freight: StockView[];
 }
 
@@ -475,7 +477,7 @@ export interface StockView {
 /**
  * One item on the tower's shelves, and how much shelf it has.
  *
- * Separate from `StockView` — which also carries a dumbwaiter's freight
+ * Separate from `StockView` — which also carries a lift's freight
  * and what a crew member is holding, neither of which has a capacity.
  *
  * `space` is the shelf capacity currently committed to this item, so
@@ -564,6 +566,8 @@ export interface ShaftInfo {
   capacity: number;
   ticks_per_floor: number;
   charge_per_floor: number;
+  /** Stock the shaft fetches per trip when nobody is riding it. */
+  batch: number;
   cars: number;
 }
 

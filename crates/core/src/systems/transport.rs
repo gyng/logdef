@@ -34,7 +34,6 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             // nothing to advance between ticks.
             ShaftKind::Stairs | ShaftKind::Chute => {}
             ShaftKind::Elevator => run_elevator(state, content, index, daypart, sounds),
-            ShaftKind::Dumbwaiter => run_dumbwaiter(state, content, index, sounds),
         }
     }
 }
@@ -64,6 +63,7 @@ fn run_elevator(
     let ticks_per_floor = content.shaft(def_idx).ticks_per_floor.max(1);
     let charge_per_floor = content.shaft(def_idx).charge_per_floor;
     let capacity = state.tower.shafts[shaft_index].capacity;
+    let batch = content.shaft(def_idx).batch;
     let balance = &content.balance.transport;
 
     let calls = collect_calls(&state.crew, shaft_id);
@@ -108,6 +108,31 @@ fn run_elevator(
         };
 
         state.tower.shafts[shaft_index].cars[car_index] = next;
+
+        // **Nobody is calling, so fetch something.** This is the whole
+        // of what used to be a second kind of shaft (`SYSTEMS.md`
+        // §6.18). A lift standing still is a lift that could be moving
+        // stock, and moving stock is the half of vertical transport
+        // that costs *nobody a walk* — which `examples/lift.rs`
+        // measured as the dumbwaiter's real advantage, and the one that
+        // grows rather than shrinks as a hull widens.
+        //
+        // Riders come first and always: this only runs on a car that
+        // `dispatch` left idle with nothing to serve, no stops and
+        // nobody aboard. A caller appearing next tick finds a car with
+        // a load in it and a stop on its list, which is exactly the
+        // contention the design wants — one shaft, two demands, and the
+        // player watching a queue form behind a crate.
+        let idle_and_free = {
+            let car = &state.tower.shafts[shaft_index].cars[car_index];
+            matches!(car.state, CarState::Idle)
+                && car.riders.is_empty()
+                && car.stops.is_empty()
+                && car.freight.is_empty()
+        };
+        if idle_and_free {
+            seek_freight(state, shaft_index, car_index, batch, daypart);
+        }
 
         // Doors just opened: let people off, then on. Only on the
         // transition, so a long dwell does not re-board every tick.
@@ -360,7 +385,24 @@ fn service_stop(
         }
         moved += 1;
     }
-    state.tower.shafts[shaft_index].cars[car_index].clear_stop(here);
+    // **Freight gets off with the riders.** A lift that has stopped to
+    // open its doors is a lift that can put the crate down, which is
+    // why the merge costs a call here rather than a second state
+    // machine. Ahead of `clear_stop`, so a load that did not fit leaves
+    // the stop standing and the car comes back for it.
+    if !state.tower.shafts[shaft_index].cars[car_index]
+        .freight
+        .is_empty()
+    {
+        unload_freight(state, shaft_index, car_index, sounds);
+        moved += 1;
+    }
+    if state.tower.shafts[shaft_index].cars[car_index]
+        .freight
+        .is_empty()
+    {
+        state.tower.shafts[shaft_index].cars[car_index].clear_stop(here);
+    }
 
     // An empty car with nothing further along its sweep takes its
     // direction from whoever has waited longest here. Without this a
@@ -474,86 +516,52 @@ fn sync_riders(state: &mut GameState, shaft_index: usize, car_index: usize) {
 // Dumbwaiter
 // ---------------------------------------------------------------------------
 
-/// The inserter. No crew involved, no horizontal walk: a dumbwaiter
-/// serves every room on a floor it spans, which is exactly why it earns
-/// its slot column and its charge.
-fn run_dumbwaiter(
-    state: &mut GameState,
-    content: &Content,
-    shaft_index: usize,
-    sounds: &mut Vec<SoundEvent>,
-) {
-    let def_idx = state.tower.shafts[shaft_index].def;
-    let ticks_per_floor = content.shaft(def_idx).ticks_per_floor.max(1);
-    let charge_per_floor = content.shaft(def_idx).charge_per_floor;
-    let batch = content.shaft(def_idx).batch.max(1);
-    let dwell = content.balance.transport.dwell_base_ticks;
-
-    if state.tower.shafts[shaft_index].cars.is_empty() {
-        return;
-    }
-
-    let car = state.tower.shafts[shaft_index].cars[0].clone();
-    match car.state {
-        CarState::Dwelling { ticks_left } if ticks_left > 0 => {
-            state.tower.shafts[shaft_index].cars[0].state = CarState::Dwelling {
-                ticks_left: ticks_left - 1,
-            };
-        }
-        CarState::Dwelling { .. } => {
-            // Dwell over: unload if we arrived, otherwise go looking.
-            if car.target == Some(car.floor()) && !car.freight.is_empty() {
-                unload_dumbwaiter(state, shaft_index, sounds);
-            }
-            state.tower.shafts[shaft_index].cars[0].state = CarState::Idle;
-            state.tower.shafts[shaft_index].cars[0].target = None;
-        }
-        CarState::Idle => {
-            if car.freight.is_empty() {
-                seek_work(state, content, shaft_index, batch);
-            } else if let Some(target) = car.target {
-                state.tower.shafts[shaft_index].cars[0].dir = CarDir::toward(car.floor(), target);
-                state.tower.shafts[shaft_index].cars[0].state = CarState::Moving;
-            }
-        }
-        CarState::Moving => {
-            let cost = charge_per_floor / i64::from(ticks_per_floor).max(1);
-            if !state.power.draw(crate::state::power::PowerUse::Lifts, cost) {
-                return;
-            }
-            let step = Fx::ratio(1, ticks_per_floor as i32);
-            let target = state.tower.shafts[shaft_index].cars[0]
-                .target
-                .unwrap_or_else(|| state.tower.shafts[shaft_index].cars[0].floor());
-            let goal = Fx::from_int(i32::from(target));
-            let car = &mut state.tower.shafts[shaft_index].cars[0];
-            let arrived = if car.pos < goal {
-                car.pos += step;
-                car.pos >= goal
-            } else {
-                car.pos -= step;
-                car.pos <= goal
-            };
-            if arrived {
-                car.pos = goal;
-                car.state = CarState::Dwelling { ticks_left: dwell };
-            }
-        }
-    }
-}
-
 /// Find the best load to move, using the same priority the crew use: a
 /// hungry recipe outranks a shelf.
-fn seek_work(state: &mut GameState, content: &Content, shaft_index: usize, batch: i64) {
+///
+/// **This is the dumbwaiter, and it is now something a lift does when
+/// nobody is calling** (`SYSTEMS.md` §6.18). The scoring is unchanged
+/// from the shaft it used to be, deliberately: `examples/lift.rs`
+/// measured that behaviour as the best vertical transport in the game
+/// at eight floors, and a merge that rewrote it would have thrown away
+/// the thing worth keeping.
+///
+/// What changed is where the load's destination goes. A dumbwaiter had
+/// a `target` and drove itself to it; a lift has `stops`, and putting
+/// the destination there means the car's own routing carries the crate
+/// — so a rider calling mid-trip is served on the way rather than
+/// waiting for the freight to finish. One shaft, two demands, and the
+/// contention between them visible on the cross-section.
+///
+/// **The program binds freight too**, and forgetting that was the one
+/// bug the merge introduced: a lift told not to serve a floor went and
+/// fetched a crate from it anyway, because the freight finder scanned
+/// the shaft's whole span and knew nothing about the schedule.
+/// `an_unserved_floor_is_not_stopped_at` caught it. A daypart program is
+/// the player saying *this shaft is not for that floor right now*, and a
+/// statement that only bound half the shaft's traffic would be worse
+/// than no statement at all.
+fn seek_freight(
+    state: &mut GameState,
+    shaft_index: usize,
+    car_index: usize,
+    batch: i64,
+    daypart: DaypartIdx,
+) {
+    let batch = batch.max(1);
     let (low, high) = (
         state.tower.shafts[shaft_index].low,
         state.tower.shafts[shaft_index].high,
     );
-    let here = state.tower.shafts[shaft_index].cars[0].floor();
+    let program = state.tower.shafts[shaft_index].program(daypart);
+    let here = state.tower.shafts[shaft_index].cars[car_index].floor();
 
     let mut best: Option<(i64, FloorIdx, FloorIdx, ItemIdx, i64)> = None;
 
     for floor in low..=high {
+        if !program.serves(floor) {
+            continue;
+        }
         let Some(source_floor) = state.tower.floor(floor) else {
             continue;
         };
@@ -563,7 +571,7 @@ fn seek_work(state: &mut GameState, content: &Content, shaft_index: usize, batch
                     continue;
                 }
                 let Some((dest_floor, priority)) =
-                    best_dumbwaiter_destination(state, low, high, floor, stack.item)
+                    best_freight_destination(state, low, high, floor, stack.item, program)
                 else {
                     continue;
                 };
@@ -583,12 +591,13 @@ fn seek_work(state: &mut GameState, content: &Content, shaft_index: usize, batch
         return;
     };
 
-    // Nothing to do if we are not at the pickup floor yet.
+    // Not at the pickup floor yet: put it on the list and let the car's
+    // own routing take it there. `dispatch` treats a non-empty `stops`
+    // as reason enough to depart, so this is a call the car makes to
+    // itself.
     if here != from {
-        let car = &mut state.tower.shafts[shaft_index].cars[0];
-        car.target = Some(from);
-        car.dir = CarDir::toward(here, from);
-        car.state = CarState::Moving;
+        let car = &mut state.tower.shafts[shaft_index].cars[car_index];
+        car.add_stop(from);
         return;
     }
 
@@ -596,28 +605,26 @@ fn seek_work(state: &mut GameState, content: &Content, shaft_index: usize, batch
     if taken == 0 {
         return;
     }
-    let car = &mut state.tower.shafts[shaft_index].cars[0];
+    let car = &mut state.tower.shafts[shaft_index].cars[car_index];
     car.freight.push(Stack {
         item,
         count: taken,
         max: taken,
     });
-    car.target = Some(to);
-    car.dir = CarDir::toward(from, to);
-    car.state = CarState::Moving;
-    let _ = content;
+    car.add_stop(to);
 }
 
-fn best_dumbwaiter_destination(
+fn best_freight_destination(
     state: &GameState,
     low: FloorIdx,
     high: FloorIdx,
     from: FloorIdx,
     item: ItemIdx,
+    program: &crate::state::ShaftProgram,
 ) -> Option<(FloorIdx, i64)> {
     let mut best: Option<(i64, i64, FloorIdx)> = None;
     for floor in low..=high {
-        if floor == from {
+        if floor == from || !program.serves(floor) {
             continue;
         }
         let Some(target) = state.tower.floor(floor) else {
@@ -673,9 +680,20 @@ fn withdraw_from_floor(state: &mut GameState, floor: FloorIdx, item: ItemIdx, am
     0
 }
 
-fn unload_dumbwaiter(state: &mut GameState, shaft_index: usize, sounds: &mut Vec<SoundEvent>) {
-    let here = state.tower.shafts[shaft_index].cars[0].floor();
-    let freight = std::mem::take(&mut state.tower.shafts[shaft_index].cars[0].freight);
+/// Put down whatever the car was carrying for this floor.
+///
+/// Called from `service_stop`, so freight and riders get off at the
+/// same stop — which is the merge (`SYSTEMS.md` §6.18) in one line: a
+/// lift that is already stopping to open its doors puts the crate down
+/// while it is there.
+fn unload_freight(
+    state: &mut GameState,
+    shaft_index: usize,
+    car_index: usize,
+    sounds: &mut Vec<SoundEvent>,
+) {
+    let here = state.tower.shafts[shaft_index].cars[car_index].floor();
+    let freight = std::mem::take(&mut state.tower.shafts[shaft_index].cars[car_index].freight);
     let mut delivered = 0u64;
 
     for load in freight {
@@ -688,7 +706,7 @@ fn unload_dumbwaiter(state: &mut GameState, shaft_index: usize, sounds: &mut Vec
             // at a lower slot number swallowed the whole load before
             // the mill three slots along was ever asked. The car had
             // chosen this floor precisely because a hungry recipe was
-            // on it — `best_dumbwaiter_destination` scores an inbox 3
+            // on it — `best_freight_destination` scores an inbox 3
             // against a shelf's 2 — and then unloaded as though it had
             // not.
             //
@@ -719,11 +737,13 @@ fn unload_dumbwaiter(state: &mut GameState, shaft_index: usize, sounds: &mut Vec
         // Anything that did not fit stays aboard rather than vanishing;
         // the car will look for somewhere else to put it.
         if remaining > 0 {
-            state.tower.shafts[shaft_index].cars[0].freight.push(Stack {
-                item: load.item,
-                count: remaining,
-                max: remaining,
-            });
+            state.tower.shafts[shaft_index].cars[car_index]
+                .freight
+                .push(Stack {
+                    item: load.item,
+                    count: remaining,
+                    max: remaining,
+                });
         }
         if load.count > remaining {
             delivered += 1;
@@ -801,7 +821,5 @@ pub fn estimated_trip_ticks(
             let carloads_ahead = queued / u32::from(shaft.capacity.max(1));
             balance.elevator_base_wait_ticks + approach + trip + dwell + carloads_ahead * trip
         }
-        // Crew cannot ride a dumbwaiter.
-        ShaftKind::Dumbwaiter => u32::MAX,
     }
 }
