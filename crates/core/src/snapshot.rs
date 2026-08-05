@@ -181,6 +181,18 @@ pub struct JourneyView {
     pub remaining: f32,
     /// The split ahead, if the route has one the tower has not crossed.
     pub fork: Option<ForkView>,
+    /// The beat the tower is passing, if one is within reach.
+    ///
+    /// **One at a time, and only while it is alongside.** There is no
+    /// list and no id: a waypoint is a moment, and the moment is the
+    /// whole design (`SYSTEMS.md` §6.14). `None` covers "none nearby"
+    /// and "already taken" alike, because from the player's seat those
+    /// are the same thing — nothing to do.
+    pub waypoint: Option<WaypointView>,
+    /// Paces to the next beat still ahead, once it is close enough to
+    /// be worth drawing. `None` when there is nothing coming inside the
+    /// streaming window.
+    pub waypoint_ahead: Option<f32>,
     /// The branch the tower is walking through, if any. Indexes
     /// `catalog.branches`.
     pub branch: Option<u16>,
@@ -207,6 +219,17 @@ pub struct JourneyView {
     pub shell_bonus: i64,
     /// The far edge of the last region, reached. The run is over.
     pub arrived: bool,
+}
+
+/// The beat the tower is passing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WaypointView {
+    /// Indexes `catalog.waypoints`.
+    pub def: u16,
+    /// Whether the shelves can pay for it. Sent rather than derived in
+    /// the frontend so the prompt and the command layer cannot disagree
+    /// about what is takeable.
+    pub affordable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -467,6 +490,7 @@ pub struct CatalogSnapshot {
     pub dayparts: Vec<DaypartInfo>,
     pub enemies: Vec<EnemyInfo>,
     pub regions: Vec<RegionInfo>,
+    pub waypoints: Vec<WaypointInfo>,
     pub branches: Vec<BranchInfo>,
     pub floor_cost: Vec<CostInfo>,
     pub max_floors: u8,
@@ -579,6 +603,26 @@ pub struct TerrainInfo {
     /// Which of those kinds are ruins — a place the tower can berth at
     /// and work, rather than scenery.
     pub ruin_kinds: Vec<bool>,
+}
+
+/// One beat the route can put in front of the tower.
+///
+/// The prose lives here rather than in the view because it is a fact
+/// about the *pack*: the view says which one is alongside and whether
+/// the shelves can pay for it, and sending the same sentence down the
+/// bridge every frame would be a waste of the one call a frame gets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WaypointInfo {
+    pub id: String,
+    pub name: String,
+    pub said: String,
+    pub take: String,
+    pub costs: Vec<CostInfo>,
+    pub gives: Vec<CostInfo>,
+    /// Attention taking it draws. Negative sheds it.
+    pub provocation: i64,
+    /// Ground gained, or lost if negative.
+    pub paces: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -823,6 +867,34 @@ fn build_journey(state: &GameState, content: &Content) -> JourneyView {
             answer: fork.answer,
         }),
         branch: world.branch.map(|branch| branch.def.0),
+        waypoint: {
+            // The one alongside, and only if it has not been answered.
+            // `WAYPOINT_REACH_PACES` lives in `engine::commands` because
+            // that is where the rule is enforced; this reads the same
+            // window through the same helper so the prompt cannot offer
+            // something the command refuses.
+            let reach = crate::fx::paces_from_int(crate::engine::WAYPOINT_REACH_PACES);
+            world
+                .waypoints
+                .iter()
+                .find(|way| !way.taken && (way.at - world.distance).abs() <= reach)
+                .map(|way| WaypointView {
+                    def: way.def,
+                    affordable: content
+                        .waypoint_runtime
+                        .get(way.def as usize)
+                        .is_none_or(|rt| {
+                            rt.costs
+                                .iter()
+                                .all(|(item, want)| state.stock_of(*item) >= *want)
+                        }),
+                })
+        },
+        waypoint_ahead: world
+            .waypoints
+            .iter()
+            .find(|way| !way.taken && way.at > world.distance)
+            .map(|way| paces_to_f32(way.at - world.distance)),
         halt: {
             // Berthing outranks "stopped" and nothing else: a tower at a
             // fork, arrived, or browned out is not *choosing* to be
@@ -1335,6 +1407,21 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
             })
             .collect(),
         regions: build_regions(content),
+        waypoints: content
+            .waypoints
+            .iter()
+            .zip(content.waypoint_runtime.iter())
+            .map(|(way, rt)| WaypointInfo {
+                id: way.id.clone(),
+                name: way.name.clone(),
+                said: way.said.clone(),
+                take: way.take.clone(),
+                costs: cost(&rt.costs),
+                gives: cost(&rt.gives),
+                provocation: way.provocation,
+                paces: way.paces,
+            })
+            .collect(),
         branches: build_branches(content),
         floor_cost: content
             .balance

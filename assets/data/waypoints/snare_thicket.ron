@@ -1,0 +1,27 @@
+// A thicket the tower can push through or walk around.
+//
+// The cheapest possible shape of the verb: no cost, no item, just a
+// choice about *speed against attention*. Pushing through is faster and
+// louder; going round costs nothing but the ground you did not cover.
+#![enable(implicit_some)]
+WaypointDef(
+    id: "waypoint.snare_thicket",
+    name: "Snare Thicket",
+    // Second person, present tense, and short. This is read once as the
+    // thing comes into range and never again.
+    said: "Thorn and wire, grown together. Push through, or go around?",
+    take: "Push through",
+    // Pushing through is the *taken* branch, so the cost is on the take
+    // and doing nothing is free. That is the shape §11 asks for
+    // everywhere: the free answer is always available and never the
+    // best one.
+    costs: [],
+    gives: [],
+    // Loud. Provocation is the one difficulty dial (`SYSTEMS.md` §2.6),
+    // and shoving through a thicket is the noisiest thing a tower can
+    // do that is not lighting a burner.
+    provocation: 60,
+    // And it saves ground: the tower comes out the far side further
+    // along than it went in.
+    paces: 300,
+)

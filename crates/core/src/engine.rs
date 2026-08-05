@@ -7,6 +7,12 @@
 
 mod commands;
 
+/// How near the tower has to be for a waypoint to be takeable.
+/// Re-exported so `snapshot` reads the same window the command
+/// enforces — a prompt that offers what the rule refuses is worse than
+/// no prompt.
+pub(crate) use commands::WAYPOINT_REACH_PACES;
+
 use std::sync::Arc;
 
 use crate::command::{CommandError, CommandResult, GameCommand};

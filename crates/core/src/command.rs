@@ -91,6 +91,14 @@ pub enum GameCommand {
     /// Needs still outrank it. A posted person goes to eat when hungry
     /// and to bed when their shift ends, and comes back afterwards — a
     /// station is not a cage.
+    /// Take the beat the tower is passing.
+    ///
+    /// **Only ever the one in range**, so there is no id to get wrong
+    /// and no way to reach back down the axis for something already
+    /// behind you. Ignoring it is free and is the default — the tower
+    /// walks on and the thing goes by (`SYSTEMS.md` §6.14).
+    TakeWaypoint,
+
     StationCrew {
         crew: CrewId,
         /// `None` calls them back to hauling.
@@ -220,6 +228,8 @@ pub enum CommandError {
     FloorTooLow { floor: FloorIdx, min_floor: u8 },
     /// A weapon, and not on the tower's leading edge.
     NotAtTheFront { slot: SlotIdx, front: SlotIdx },
+    /// Nothing within reach to take.
+    NothingInReach,
     /// Only one of these may exist in a tower.
     AlreadyPlaced { room: String },
     /// A charge ranking that was not all four uses, each exactly once.
@@ -279,6 +289,9 @@ impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CommandError::UnknownRoom { room } => write!(f, "no such room: {room}"),
+            CommandError::NothingInReach => {
+                write!(f, "nothing the tower is passing is close enough to take")
+            }
             CommandError::NotAtTheFront { slot, front } => write!(
                 f,
                 "a weapon goes on the front of the tower: slot {front}, not {slot}"

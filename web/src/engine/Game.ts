@@ -37,6 +37,7 @@ import type {
   SimSpeed,
   StoreView,
   ViewSnapshot,
+  WaypointView,
 } from "../bridge/types";
 
 /** What the React chrome needs. Deliberately small. */
@@ -90,6 +91,8 @@ export interface UiState {
   zoom: number;
   /** Crew the player has picked out. Not simulation state. */
   picked: number[];
+  /** The beat alongside right now, if any. */
+  waypoint: WaypointView | null;
   /**
    * Everything the tower can point at something, with what is on its
    * rack.
@@ -572,6 +575,11 @@ export class Game {
    * mind used to mean finding the same card again and clicking it off,
    * which is a lot of travel to undo a decision you have not made yet.
    */
+  /** Take the beat the tower is passing. */
+  takeWaypoint(): void {
+    this.send("TakeWaypoint");
+  }
+
   cancelPlacement(): void {
     if (!this.placeMode) return;
     this.placeMode = null;
@@ -834,6 +842,7 @@ export class Game {
       zoom: this.renderer.getZoom(),
       picked: this.picked,
       marquee: this.marquee,
+      waypoint: view?.journey.waypoint ?? null,
       weapons: (view?.tower.floors ?? []).flatMap((floor) =>
         floor.rooms
           .map((room) => ({ room, info: this.catalog.rooms[room.def] }))

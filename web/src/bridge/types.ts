@@ -231,6 +231,10 @@ export interface JourneyView {
   remaining: number;
   /** The split ahead, if the route has one the tower has not crossed. */
   fork: ForkView | null;
+  /** The beat alongside right now, if any. */
+  waypoint: WaypointView | null;
+  /** Paces to the next one still ahead. */
+  waypoint_ahead: number | null;
   /** The branch being walked through, if any. Indexes `catalog.branches`. */
   branch: number | null;
   /** Why the tower is standing still, if it is. */
@@ -252,6 +256,13 @@ export interface JourneyView {
   shell_bonus: number;
   /** The far edge of the last region, reached. The run is over. */
   arrived: boolean;
+}
+
+export interface WaypointView {
+  /** Indexes `catalog.waypoints`. */
+  def: number;
+  /** Whether the shelves can pay for it. */
+  affordable: boolean;
 }
 
 export interface ForkView {
@@ -493,6 +504,7 @@ export interface CatalogSnapshot {
   dayparts: DaypartInfo[];
   enemies: EnemyInfo[];
   regions: RegionInfo[];
+  waypoints: WaypointInfo[];
   branches: BranchInfo[];
   floor_cost: CostInfo[];
   max_floors: number;
@@ -620,6 +632,25 @@ export interface OfferInfo {
   stock: number;
 }
 
+/**
+ * One beat the route can put in front of the tower.
+ *
+ * The prose is here rather than in the view because it is a fact about
+ * the pack — the view only says which one is alongside.
+ */
+export interface WaypointInfo {
+  id: string;
+  name: string;
+  said: string;
+  take: string;
+  costs: CostInfo[];
+  gives: CostInfo[];
+  /** Attention taking it draws. Negative sheds it. */
+  provocation: number;
+  /** Ground gained, or lost if negative. */
+  paces: number;
+}
+
 export interface RegionInfo {
   id: string;
   name: string;
@@ -671,6 +702,7 @@ export type GameCommand =
   | { Trade: { offer: number } }
   /** Take somebody aboard, for poles. */
   | "Recruit"
+  | "TakeWaypoint"
   /** Have the settlement plate the tower's shell, for scrap. */
   | "Reinforce"
   /** Commit to branch 0 or 1 of the pending fork. Re-answerable. */

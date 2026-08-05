@@ -1,0 +1,24 @@
+// Clean water, and a chance to be somewhere quiet.
+//
+// **The one that gives nothing you can hold**, which is what makes it
+// interesting. Provocation is the only difficulty dial in the game
+// (`SYSTEMS.md` §2.6) and until now the player could only ever *raise*
+// it — by cutting, by burning, by pushing through. This is the one
+// thing on the route that lowers it, and it costs ground, which is the
+// currency the whole journey layer is denominated in.
+//
+// It also stays out of the shelves entirely. An early draft handed over
+// produce and taught the recorder a lesson about gifts you cannot
+// spend; see `fallen_carrier`.
+#![enable(implicit_some)]
+WaypointDef(
+    id: "waypoint.seep_pool",
+    name: "Seep Pool",
+    said: "Clean water, under the roots. Stop a while and wash the smoke off?",
+    take: "Stop a while",
+    costs: [],
+    gives: [],
+    // The jungle loses interest in something that stopped and washed.
+    provocation: -45,
+    paces: -90,
+)

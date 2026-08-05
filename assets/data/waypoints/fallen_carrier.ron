@@ -1,0 +1,37 @@
+// Somebody else's tower, on its side.
+//
+// **The one that gives rather than asks**, and it is deliberately the
+// first thing most runs meet: a waypoint the player takes and is simply
+// better off for is what teaches that these are worth reading. The ones
+// that cost something come later in the same list and read differently
+// because of it.
+//
+// **Poles rather than scrap, and the reason is the shelf.**
+//
+// Scrap was the first draft: it is the thinnest supply in the game, so
+// a handful reads as worth stopping for. It also has exactly one
+// consumer — a sun-forge, which needs a whole salvage chain — so a
+// tower without one is being handed a material it can only *store*.
+// A shelf holds one kind, and the opening tower has three shelves.
+//
+// Measured on the golden recorder: thirty scrap and forty-three produce
+// squatting the shelves, the fiber the ropery needed with nowhere to
+// land, and the tower unable to afford a dart battery while holding a
+// fortune in things it could not use. **A gift the tower cannot spend
+// is a jam wearing a reward's clothes**, so the beats give what
+// everything wants.
+#![enable(implicit_some)]
+WaypointDef(
+    id: "waypoint.fallen_carrier",
+    name: "Fallen Carrier",
+    said: "A walking tower, down on its side. Nothing moving. Strip it?",
+    take: "Strip it",
+    costs: [],
+    gives: [CostEntryDef(item: "item.poles", amount: 5)],
+    // Quiet work. Picking over a dead machine draws far less than
+    // shoving through a thicket.
+    provocation: 15,
+    // And it costs time rather than ground: the tower stands while the
+    // crew work, so this is negative.
+    paces: -140,
+)

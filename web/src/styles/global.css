@@ -95,6 +95,51 @@ button {
 
 /* Text overlay above the canvas. Pointer-transparent so clicks reach
    the game view underneath. */
+/* The beat the tower is passing. Beside the fork card, never a modal:
+   the world keeps running while you decide, which is the whole point. */
+.waypoint {
+  /* Positioned like the fork card, and *below* it — the two can be on
+     screen together, and a beat must never cover the decision that
+     halts the tower. */
+  position: absolute;
+  top: 23%;
+  right: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(360px, 30%);
+  padding: var(--space-3) var(--space-4);
+}
+
+/* When both are up, the beat sits under the fork rather than on it. */
+.fork ~ .waypoint {
+  top: 52%;
+}
+
+.waypoint-head h2 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.waypoint-head p {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+  opacity: 0.85;
+}
+
+.waypoint-take {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.waypoint-terms {
+  margin: 0;
+  font-size: var(--text-xs);
+  opacity: 0.7;
+}
+
 /* The weapon bar. FTL-shaped: what the tower can point at something,
    and what is on its rack. Dimmed rather than reddened when dry — the
    same language a starved mill speaks. */

@@ -59,6 +59,7 @@ pub fn apply(
         GameCommand::TakeFork { branch } => take_fork(state, content, *branch),
         GameCommand::Trade { offer } => trade(state, content, *offer),
         GameCommand::Recruit => recruit(state, content),
+        GameCommand::TakeWaypoint => take_waypoint(state, content),
         GameCommand::Reinforce => reinforce(state, content),
         GameCommand::SetShift { crew, shift } => set_shift(state, *crew, *shift),
     }
@@ -627,6 +628,83 @@ fn focus_enemy(
 /// member mid-delivery finishes it first — the same courtesy every other
 /// errand gets, and the reason nothing a crew member is carrying is ever
 /// dropped.
+/// How near the tower has to be for a beat to be takeable, in paces.
+///
+/// **Generous, because the tower is moving.** A window this wide is
+/// about eight seconds at the shipped stride — long enough to read the
+/// line and decide, short enough that it is a moment rather than a
+/// standing offer. Too narrow and the verb becomes a reflex test, which
+/// is not a thing this game asks for anywhere else.
+pub(crate) const WAYPOINT_REACH_PACES: i64 = 220;
+
+/// Take the beat the tower is passing.
+///
+/// **Validated to the last check before anything moves**
+/// (`DECISIONS.md` §4): the reach, the "not already taken" and the
+/// stock are all settled before a single item leaves a shelf, so a
+/// refusal is a no-op and an acceptance is fully paid for.
+fn take_waypoint(state: &mut GameState, content: &Content) -> Result<(), CommandError> {
+    let reach = crate::fx::paces_from_int(WAYPOINT_REACH_PACES);
+    let here = state.world.distance;
+    let Some(at) = state
+        .world
+        .waypoints
+        .iter()
+        .position(|way| !way.taken && (way.at - here).abs() <= reach)
+    else {
+        return Err(CommandError::NothingInReach);
+    };
+    let def = state.world.waypoints[at].def as usize;
+    let Some(runtime) = content.waypoint_runtime.get(def) else {
+        return Err(CommandError::NothingInReach);
+    };
+
+    let costs = runtime.costs.clone();
+    check_stock(state, content, &costs)?;
+    spend(state, &costs);
+
+    for (item, amount) in &runtime.gives {
+        // Onto whatever shelves will take it. Anything that does not
+        // fit is lost, and that is the honest outcome rather than a
+        // special case: a tower with nowhere to put six scrap has told
+        // you something about itself.
+        let mut left = *amount;
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                left -= room.shelve(*item, left);
+                if left <= 0 {
+                    break;
+                }
+            }
+            if left <= 0 {
+                break;
+            }
+        }
+    }
+
+    let waypoint = &content.waypoints[def];
+    if waypoint.provocation > 0 {
+        crate::systems::siege::provoke_hundredths(state, content, waypoint.provocation * 100);
+    } else if waypoint.provocation < 0 {
+        // **The only thing on the route that lowers attention.**
+        // Everything else a tower does raises it — cutting, burning,
+        // pushing through — and a dial that only goes one way is a
+        // countdown rather than a decision. Floored at zero rather than
+        // going negative, because provocation is a level and not a
+        // balance.
+        state.siege.provocation = (state.siege.provocation + waypoint.provocation).max(0);
+    }
+    if waypoint.paces != 0 {
+        // Ground gained or lost. Clamped at zero because the axis only
+        // runs one way — a beat that cost more ground than the tower has
+        // walked would put it behind its own start.
+        state.world.distance =
+            (state.world.distance + crate::fx::paces_from_int(waypoint.paces)).max(0);
+    }
+    state.world.waypoints[at].taken = true;
+    Ok(())
+}
+
 fn station_crew(
     state: &mut GameState,
     crew: crate::ids::CrewId,

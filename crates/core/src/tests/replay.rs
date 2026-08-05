@@ -258,6 +258,7 @@ fn every_command_survives_the_replay_format() {
             crew: crate::ids::CrewId(1),
             kit: Some("item.hand_lamp".into()),
         },
+        C::TakeWaypoint,
     ];
 
     // Exhaustiveness: if a variant is added and not listed above, this
@@ -272,6 +273,7 @@ fn every_command_survives_the_replay_format() {
             | C::BuildShaft { .. }
             | C::RemoveShaft { .. }
             | C::SetShaftProgram { .. }
+            | C::TakeWaypoint
             | C::SetStriding { .. }
             | C::TakeFork { .. }
             | C::Trade { .. }

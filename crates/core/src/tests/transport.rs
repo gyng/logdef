@@ -771,6 +771,12 @@ fn a_dumbwaiter_conserves_across_the_inbox_path_too() {
     let content = content();
     let bamboo = item(&content, "item.bamboo");
     let mut game = with_shaft(925, "shaft.dumbwaiter", 0, 2, 7);
+    // **And disarmed.** The thorn gun eats two stalks a shot
+    // (`SYSTEMS.md` §6.13), so a conservation check that does not know
+    // about it reads a fired round as bamboo going missing — measured
+    // here as -2 at tick 5,910. Ammo is a real sink; it is just not
+    // this test's.
+    crate::tests::disarm(&mut game);
     game.state_mut_for_test().crew.clear();
 
     let mut last = total_including_cars(&game, bamboo);

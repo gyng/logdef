@@ -30,6 +30,12 @@ RegionDef(
     // still holds. A shorter region simply fits fewer of them: at the
     // low end of the length roll the second fork falls inside
     // `fork_edge_margin_paces` of the far edge and is skipped.
+    // Roughly how far apart the small beats fall — the things that
+    // come into range, ask one question and go past
+    // (`SYSTEMS.md` §6.14). Sparser than the jungle: the drowned city already has ruins to
+    // berth at, and stacking waypoints on top of them would make one
+    // beat cover the other.
+    waypoint_interval_paces: 1400,
     fork_interval_paces: 4300,
     branches: [
         BranchDef(

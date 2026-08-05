@@ -40,6 +40,21 @@ impl TerrainBand {
 /// Drawn from the **world** stream rather than the cosmetic one,
 /// because M3 turns ruins into berthing sites — where a ruin stands has
 /// to be a fact about the run, not about the frame.
+/// One beat on the route.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Waypoint {
+    pub at: Paces,
+    /// Indexes `content.waypoints`.
+    pub def: u16,
+    /// Answered already. Stays in the list until it is pruned so the
+    /// renderer can draw it going past as a thing that happened.
+    pub taken: bool,
+}
+
+/// Floor on how close two beats may fall, and on how near a fork one
+/// may be. Paces.
+const MIN_WAYPOINT_INTERVAL_PACES: i64 = 400;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Feature {
     pub at: Paces,
@@ -103,6 +118,17 @@ pub struct World {
     pub features: Vec<Feature>,
     /// How far ahead the generator has produced.
     pub generated_to: Paces,
+    /// Beats scattered along the route, sorted by `at`, within the
+    /// live window.
+    ///
+    /// **The answer to "the journey is a screensaver"** (`SYSTEMS.md`
+    /// §6.14). Forks are rare by design and an enclave is a whole
+    /// settlement; a waypoint is the small thing in between that comes
+    /// into range, asks one question and goes past.
+    pub waypoints: Vec<Waypoint>,
+    /// Where the next one falls. Rolled forward as they are placed, the
+    /// same way `next_fork_at` is.
+    pub next_waypoint_at: Paces,
     /// Every region's rolled length and richness, in journey order.
     ///
     /// Rolled once, at run start, rather than on entry to each region.
@@ -156,6 +182,11 @@ impl World {
             distance: 0,
             bands: Vec::new(),
             features: Vec::new(),
+            waypoints: Vec::new(),
+            // The first beat falls a short way in rather than at pace
+            // zero: the opening five minutes are busy enough
+            // (`SYSTEMS.md` §6.11) without a prompt in them.
+            next_waypoint_at: paces_from_int(600),
             generated_to: 0,
             journey,
             region: RegionIdx(0),
@@ -431,6 +462,12 @@ impl World {
         let target = self.distance + paces_from_int(balance.stream_ahead_paces);
 
         while self.generated_to < target {
+            // Beats, placed as the horizon reaches them — before the
+            // fork check, so a waypoint that falls short of a fork line
+            // still gets laid down rather than being lost to the early
+            // return below.
+            self.scatter_waypoints(rng, content);
+
             // Place a fork as soon as the horizon reaches one, so the
             // player sees it coming with the whole streaming window to
             // answer in.
@@ -558,6 +595,56 @@ impl World {
         }
         self.bands.retain(|band| band.end() > cutoff);
         self.features.retain(|feature| feature.at > cutoff);
+        // Pruned on the same window as everything else, so a run of any
+        // length costs the same memory — `AGENTS.md` §VII's rule about
+        // never accumulating unbounded history.
+        self.waypoints.retain(|waypoint| waypoint.at > cutoff);
+    }
+
+    /// Lay down beats up to the generated horizon.
+    ///
+    /// **Off the `world` stream, not `cosmetic`** (`DECISIONS.md` §2).
+    /// Where a waypoint falls and which one it is are facts about the
+    /// run — a shared seed has to reproduce them — and the cosmetic
+    /// stream is explicitly the one that may be perturbed by adding or
+    /// editing content.
+    fn scatter_waypoints(&mut self, rng: &mut Rng, content: &Content) {
+        if content.waypoints.is_empty() {
+            return;
+        }
+        while self.next_waypoint_at <= self.generated_to {
+            let region = self.region_at(self.next_waypoint_at);
+            let authored = content.region(region).waypoint_interval_paces;
+            if authored <= 0 {
+                // This region scatters none. Step past it rather than
+                // spinning: the horizon still has to advance or
+                // `generate_ahead` never terminates.
+                self.next_waypoint_at += paces_from_int(MIN_WAYPOINT_INTERVAL_PACES);
+                continue;
+            }
+            let interval = authored.max(MIN_WAYPOINT_INTERVAL_PACES);
+            // Jittered either side of the interval rather than laid on a
+            // grid: a beat you can time is a beat you stop reading.
+            let step = rng.range(interval / 2, interval * 3 / 2);
+            let at = self.next_waypoint_at;
+            self.next_waypoint_at = at + paces_from_int(step);
+
+            // Never on top of a fork line. A fork already halts the
+            // tower and asks a question; stacking a second prompt on it
+            // turns one decision into a queue.
+            if let Some(fork) = self.fork
+                && (fork.at - at).abs() < paces_from_int(MIN_WAYPOINT_INTERVAL_PACES)
+            {
+                continue;
+            }
+            let def = rng.range(0, content.waypoints.len() as i64 - 1) as u16;
+            self.waypoints.push(Waypoint {
+                at,
+                def,
+                taken: false,
+            });
+        }
+        self.waypoints.sort_by_key(|waypoint| waypoint.at);
     }
 
     fn scatter_features(&mut self, rng: &mut Rng, content: &Content, band: &TerrainBand) {

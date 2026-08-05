@@ -45,6 +45,7 @@ export function Chrome({ game, ui }: Props) {
       <Sidebar game={game} ui={ui} />
       <Roster game={game} ui={ui} />
       {ui.fork && <ForkCard game={game} ui={ui} />}
+      {ui.waypoint && <WaypointCard game={game} ui={ui} />}
       {ui.atEnclave && <EnclaveBoard game={game} ui={ui} />}
       <div className="diagnostics">
         <span>tick {ui.tick}</span>
@@ -638,6 +639,60 @@ function threatWord(pct: number): string {
   if (pct < 100) return "quieter";
   if (pct > 100) return "louder";
   return "as usual";
+}
+
+/**
+ * The beat the tower is passing.
+ *
+ * **A moment, not a menu** (`SYSTEMS.md` §6.14). It appears when the
+ * thing comes alongside, offers one button, and goes away when the
+ * tower has walked past — ignoring it is free and is the default, so
+ * there is deliberately no dismiss control and no way to bring it back.
+ *
+ * Drawn beside the fork card rather than as a modal, because a modal
+ * would stop the world and the whole point is that the tower keeps
+ * walking while you decide.
+ */
+function WaypointCard({ game, ui }: Props) {
+  const here = ui.waypoint;
+  if (!here) return null;
+  const catalog = game.getCatalog();
+  const info = catalog.waypoints[here.def];
+  if (!info) return null;
+
+  const ground =
+    info.paces === 0
+      ? null
+      : info.paces > 0
+        ? `${info.paces} paces gained`
+        : `${-info.paces} paces lost`;
+  const attention =
+    info.provocation === 0 ? null : info.provocation > 0 ? "draws attention" : "sheds attention";
+  const offered = [
+    ...info.gives.map((give) => `${give.amount} ${catalog.items[give.item]?.name ?? "?"}`),
+    ...(ground ? [ground] : []),
+    ...(attention ? [attention] : []),
+  ];
+
+  return (
+    <section className="waypoint panel" data-testid="waypoint" aria-label={info.name}>
+      <header className="waypoint-head">
+        <h2>{info.name}</h2>
+        <p>{info.said}</p>
+      </header>
+      <button
+        type="button"
+        className="waypoint-take"
+        disabled={!here.affordable}
+        data-testid="waypoint-take"
+        onClick={() => game.takeWaypoint()}
+      >
+        <span className="waypoint-verb">{info.take}</span>
+        <Cost game={game} costs={info.costs} />
+      </button>
+      <p className="waypoint-terms">{offered.join(" · ") || "nothing but the time"}</p>
+    </section>
+  );
 }
 
 /**

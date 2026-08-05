@@ -2407,3 +2407,184 @@ fn stopping_at_a_ruin_reads_as_berthed_rather_than_halted() {
     assert!(left, "never walked back out of reach");
     assert_eq!(game.view().journey.halt, HaltView::Stopped);
 }
+
+// ---------------------------------------------------------------------------
+// Waypoints (`SYSTEMS.md` §6.14)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_route_scatters_beats_across_every_seed() {
+    // **Property-tested rather than eyeballed**, per `AGENTS.md` §VII:
+    // a generator checked on one seed is a generator checked on one
+    // seed. Twelve runs, walked far enough to cross a region boundary,
+    // and every one of them has to produce beats — a journey with none
+    // is the screensaver this exists to answer.
+    let content = content();
+    let min_gap = crate::fx::paces_from_int(300);
+
+    for seed in 4000..4012u64 {
+        let mut game = engine(seed);
+        // **Sampled along the way, not read at the end.** The live
+        // window is `stream_ahead_paces` (900) plus
+        // `stream_behind_paces` (300) and the intervals are 1100 and
+        // up, so a tower can genuinely be between beats at any given
+        // instant — seed 4002 was, and an end-of-walk snapshot called
+        // that "met nothing at all". What the generator owes is beats
+        // *over a walk*.
+        let mut seen = 0usize;
+        let mut last: Option<crate::fx::Paces> = None;
+        for _ in 0..100 {
+            crate::tests::step_walking(&mut game, 300);
+            for way in &game.state().world.waypoints {
+                assert!(
+                    (way.def as usize) < content.waypoints.len(),
+                    "seed {seed}: a beat pointing at nothing"
+                );
+                // Sorted, and never stacked. Two prompts in the same
+                // moment is a queue rather than a beat.
+                if let Some(previous) = last
+                    && way.at > previous
+                {
+                    assert!(
+                        way.at - previous >= min_gap,
+                        "seed {seed}: two beats {} apart",
+                        way.at - previous
+                    );
+                }
+                if last.is_none_or(|previous| way.at > previous) {
+                    last = Some(way.at);
+                    seen += 1;
+                }
+            }
+        }
+
+        assert!(
+            seen >= 8,
+            "seed {seed} walked 30,000 ticks and met {seen} beats — the journey is scenery again"
+        );
+    }
+}
+
+#[test]
+fn beats_are_pruned_behind_like_everything_else() {
+    // A run of any length costs the same memory. The whole streaming
+    // window is built on this and a list that only grows would be the
+    // one thing in `World` that leaks.
+    let mut game = engine(4100);
+    crate::tests::step_walking(&mut game, 4_000);
+    let early = game.state().world.waypoints.len();
+    crate::tests::step_walking(&mut game, 60_000);
+    let late = game.state().world.waypoints.len();
+
+    assert!(early > 0, "nothing was generated to prune");
+    assert!(
+        late < early * 6,
+        "beats accumulated rather than being pruned: {early} then {late}"
+    );
+}
+
+#[test]
+fn a_beat_out_of_reach_cannot_be_taken() {
+    // The verb is a *moment*. There is no id in the command precisely
+    // so there is no way to reach back down the axis for something
+    // already behind you — `SYSTEMS.md` §3.5, the journey only runs one
+    // way.
+    let mut game = engine(4200);
+    game.step(1);
+    let refused = game
+        .try_send(GameCommand::TakeWaypoint)
+        .expect_err("the first beat is 600 paces out");
+    assert!(
+        matches!(refused, CommandError::NothingInReach),
+        "refused for the wrong reason: {refused:?}"
+    );
+}
+
+#[test]
+fn taking_a_beat_pays_and_is_paid_once() {
+    // Costs come off the shelves, gifts go on, and the whole thing can
+    // only happen once — a beat that could be taken twice would be an
+    // income rather than an event.
+    let content = content();
+    let poles = item(&content, "item.poles");
+    let mut game = engine(4300);
+
+    // Walk until something is alongside.
+    let mut found = false;
+    for _ in 0..400 {
+        crate::tests::step_walking(&mut game, 150);
+        if game.view().journey.waypoint.is_some() {
+            found = true;
+            break;
+        }
+    }
+    assert!(found, "walked a long way and met nothing");
+
+    let def = game.view().journey.waypoint.expect("just checked").def as usize;
+    let before = game.state().stock_of(poles);
+    let taken = game.try_send(GameCommand::TakeWaypoint);
+    let costs = &content.waypoint_runtime[def].costs;
+    let affordable = costs
+        .iter()
+        .all(|(item, want)| game.state().stock_of(*item) + before >= *want);
+
+    if affordable {
+        assert!(taken.is_ok(), "an affordable beat was refused: {taken:?}");
+        // And it is gone: the same command again finds nothing.
+        assert!(
+            matches!(
+                game.try_send(GameCommand::TakeWaypoint),
+                Err(CommandError::NothingInReach)
+            ),
+            "a beat could be taken twice"
+        );
+        assert!(
+            game.view().journey.waypoint.is_none(),
+            "a taken beat is still being offered"
+        );
+    }
+}
+
+#[test]
+fn a_quiet_beat_lowers_attention_and_a_loud_one_raises_it() {
+    // **The only thing on the route that lowers provocation.**
+    // Everything else a tower does raises it — cutting, burning,
+    // pushing through — and a dial that only goes one way is a
+    // countdown rather than a decision.
+    let content = content();
+    let quiet = content
+        .waypoints
+        .iter()
+        .position(|way| way.provocation < 0)
+        .expect("the pack has a quiet beat");
+    let loud = content
+        .waypoints
+        .iter()
+        .position(|way| way.provocation > 0)
+        .expect("the pack has a loud one");
+
+    let after = |which: usize| -> i64 {
+        let mut game = engine(4400);
+        game.step(1);
+        {
+            let state = game.state_mut_for_test();
+            state.siege.provocation = 200;
+            let at = state.world.distance;
+            state.world.waypoints.clear();
+            state.world.waypoints.push(crate::state::world::Waypoint {
+                at,
+                def: which as u16,
+                taken: false,
+            });
+        }
+        game.try_send(GameCommand::TakeWaypoint)
+            .expect("alongside, and free");
+        game.state().siege.provocation
+    };
+
+    assert!(
+        after(quiet) < 200,
+        "a quiet beat did not shed any attention"
+    );
+    assert!(after(loud) > 200, "a loud beat drew none");
+}

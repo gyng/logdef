@@ -42,6 +42,13 @@ RegionDef(
     // The same rhythm the player has been learning since region 1. A
     // longer region simply fits more of them — three at the top of the
     // length roll, the most decisions a single region asks.
+    // Roughly how far apart the small beats fall — the things that
+    // come into range, ask one question and go past
+    // (`SYSTEMS.md` §6.14). Emptiest, and deliberately. The coast is where the canopy runs
+    // out and the point of it is that there is less out here — a
+    // waypoint every two thousand paces reads as *scarcity* rather
+    // than as the generator having forgotten.
+    waypoint_interval_paces: 2000,
     fork_interval_paces: 4300,
     branches: [
         BranchDef(

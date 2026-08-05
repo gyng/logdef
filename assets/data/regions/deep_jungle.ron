@@ -31,6 +31,14 @@ RegionDef(
     // Three forks across a midpoint-length region, about fourteen
     // minutes apart at 1x. Punctuation, not a metronome: the player
     // should learn the rhythm without having to watch for it.
+    // Roughly how far apart the small beats fall — the things that
+    // come into range, ask one question and go past
+    // (`SYSTEMS.md` §6.14). Thickest of the three. The jungle is where the tower is most
+    // often stopped by something small, and a beat roughly every
+    // eleven hundred paces is about one a minute at the shipped stride
+    // — often enough to be a rhythm, rare enough that the prompt is
+    // still an event when it comes.
+    waypoint_interval_paces: 1100,
     fork_interval_paces: 4300,
     // Three archetypes, so the pair a fork draws differs between forks
     // and between seeds. Every palette clears the three-kind minimum.

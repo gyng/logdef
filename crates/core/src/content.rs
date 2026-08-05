@@ -611,6 +611,51 @@ pub struct ReinforceDef {
     pub times: u8,
 }
 
+/// Something the route puts in front of the tower once and then never
+/// again.
+///
+/// **The answer to "the journey is a screensaver".** Between one fork
+/// and the next the tower walked through scenery and decided nothing:
+/// forks are rare by design (`fork_interval_paces`) and an enclave is a
+/// whole settlement. A waypoint is the small beat in between — it comes
+/// into range, asks one question, and goes past.
+///
+/// Three rules make it a beat rather than a chore:
+///
+/// - **Ignoring it is free.** There is no penalty branch. §11's rule
+///   that walking is always available applies here too: the tower
+///   walking on is the default and it is never wrong, only sometimes
+///   less good.
+/// - **It resolves in one click.** No sub-menu, no follow-up. A thing
+///   that needs a decision *tree* is an enclave.
+/// - **It is gone once passed.** There is no going back down the axis
+///   (`SYSTEMS.md` §3.5), so a waypoint behind you is a thing that
+///   happened rather than a thing you are still owed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WaypointDef {
+    pub id: String,
+    pub name: String,
+    /// One line, second person, read once as it comes into range.
+    pub said: String,
+    /// The label on the button.
+    pub take: String,
+    /// What taking it costs off the shelves. Empty for the ones that
+    /// only ever give.
+    pub costs: Vec<CostEntryDef>,
+    /// What taking it puts on the shelves.
+    pub gives: Vec<CostEntryDef>,
+    /// Attention it draws. The one difficulty dial in the game
+    /// (`SYSTEMS.md` §2.6), so a loud waypoint is a real price.
+    pub provocation: i64,
+    /// Ground gained, or lost if negative.
+    ///
+    /// **Negative is the usual case**, because the honest cost of
+    /// stopping to do something is the walking you did not do — which
+    /// is the currency the whole journey layer is denominated in.
+    pub paces: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EnclaveDef {
@@ -628,6 +673,13 @@ pub struct EnclaveDef {
     /// Crew available to hire here, across the whole run.
     pub recruits: u8,
     pub recruit_cost: Vec<CostEntryDef>,
+}
+
+/// A waypoint's costs and gifts, interned.
+#[derive(Debug, Clone, Default)]
+pub struct WaypointRuntime {
+    pub costs: Vec<(ItemIdx, i64)>,
+    pub gives: Vec<(ItemIdx, i64)>,
 }
 
 /// A stretch of the journey with one character.
@@ -670,6 +722,19 @@ pub struct RegionDef {
     /// Where in the region, if anywhere, people live.
     #[serde(default)]
     pub enclave: Option<EnclaveDef>,
+    /// Roughly how far apart this region scatters waypoints.
+    ///
+    /// Per region rather than global, so a region can have its own
+    /// rhythm — the deep jungle is thick with things to poke at and the
+    /// coast is empty, and that difference is most of what makes them
+    /// feel unlike each other from the walker's seat.
+    ///
+    /// **Zero means none**, which is a real authoring choice rather
+    /// than an oversight: a stretch with nothing to stop for is a
+    /// legitimate thing for a route to have, and it is what makes the
+    /// stretches that do have something read as busy.
+    #[serde(default)]
+    pub waypoint_interval_paces: i64,
 }
 
 // ---------------------------------------------------------------------------
@@ -972,6 +1037,8 @@ pub struct Content {
     /// Sorted by `order`, not by id; `RegionIdx` indexes this, and the
     /// index *is* the position in the journey. See `RegionDef`.
     pub regions: Vec<RegionDef>,
+    pub waypoints: Vec<WaypointDef>,
+    pub waypoint_runtime: Vec<WaypointRuntime>,
     /// Every region's branches, flattened in region order and, within a
     /// region, by branch id; `BranchIdx` indexes this. Each region's
     /// slice is recorded in its `RegionRuntime`, so a fork draws from
@@ -1209,6 +1276,7 @@ impl Content {
         let mut dayparts = parse_dir::<DaypartDef>(source, "dayparts", &mut errors, &mut hasher);
         let mut enemies = parse_dir::<EnemyDef>(source, "enemies", &mut errors, &mut hasher);
         let mut regions = parse_dir::<RegionDef>(source, "regions", &mut errors, &mut hasher);
+        let mut waypoints = parse_dir::<WaypointDef>(source, "waypoints", &mut errors, &mut hasher);
 
         if !errors.is_empty() {
             return Err(errors);
@@ -1221,6 +1289,7 @@ impl Content {
         shafts.sort_by(|a, b| a.id.cmp(&b.id));
         terrain.sort_by(|a, b| a.id.cmp(&b.id));
         enemies.sort_by(|a, b| a.id.cmp(&b.id));
+        waypoints.sort_by(|a, b| a.id.cmp(&b.id));
         // Dayparts and regions are the exceptions: both index a
         // sequence — the day, and the journey — so sorting either by id
         // would make the index lie about position. See `DECISIONS.md`
@@ -1262,8 +1331,10 @@ impl Content {
             dayparts,
             enemies,
             regions,
+            waypoints,
             branches,
             content_hash: hasher.digest(),
+            waypoint_runtime: Vec::new(),
             room_runtime: Vec::new(),
             shaft_runtime: Vec::new(),
             terrain_runtime: Vec::new(),
@@ -1678,6 +1749,29 @@ impl Content {
     /// `resolve` only because the journey is a chunk of its own; it runs
     /// as part of the same pass.
     fn resolve_journey(&mut self, errors: &mut Vec<LoadError>) {
+        let mut waypoint_runtime = Vec::with_capacity(self.waypoints.len());
+        for waypoint in &self.waypoints {
+            let intern = |list: &Vec<CostEntryDef>, errors: &mut Vec<LoadError>| {
+                list.iter()
+                    .filter_map(|entry| match self.item_idx(&entry.item) {
+                        Some(idx) => Some((idx, entry.amount)),
+                        None => {
+                            errors.push(LoadError {
+                                path: format!("waypoints/{}", waypoint.id),
+                                message: format!("unknown item {}", entry.item),
+                            });
+                            None
+                        }
+                    })
+                    .collect()
+            };
+            waypoint_runtime.push(WaypointRuntime {
+                costs: intern(&waypoint.costs, errors),
+                gives: intern(&waypoint.gives, errors),
+            });
+        }
+        self.waypoint_runtime = waypoint_runtime;
+
         let mut branch_runtime = Vec::with_capacity(self.branches.len());
         for branch in &self.branches {
             branch_runtime.push(BranchRuntime {

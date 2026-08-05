@@ -186,6 +186,19 @@ fn main() {
     // dismantled by the jungle at tick 20,100 with both arms wrecked
     // and no poles to mend them. Cutting harder is not free.
     off_when_stocked(&mut engine, "room.canteen", "item.meals", 12);
+    // **And the thorn gun, once the opening is over.**
+    //
+    // It burns two raw stalks a shot (`SYSTEMS.md` §6.13) — the weapon
+    // a tower can always feed and never the efficient one — and by this
+    // point the tower has a chain to run and a shopping list to pay
+    // for. Switching it off is the upgrade path its own definition
+    // describes, and it is what a player does when nothing is
+    // attacking and the mill is short.
+    //
+    // Measured without it: the recorder walked its whole journey and
+    // died on a thornwright at two poles, having spent the difference
+    // on ammunition for a gun nothing was shooting at.
+    off_when_stocked(&mut engine, "room.thorn_gun", "item.bamboo", 0);
     off_when_stocked(&mut engine, "room.ropery", "item.rope", 6);
     // And the comb behind it, one material along and for exactly the
     // same reason: with the ropery off, fiber's consumer is gone too,
@@ -498,10 +511,61 @@ fn step_walking(engine: &mut GameEngine, ticks: u32) {
     let mut left = ticks;
     while left > 0 {
         answer_any_fork(engine);
+        // **And take every beat the route offers** (`SYSTEMS.md`
+        // §6.14). A waypoint is a moment: it comes into range, asks one
+        // question, and goes past — so a script that only checks every
+        // few thousand ticks misses most of them, and this is the same
+        // reason forks are answered here rather than in the body.
+        //
+        // Taking them is also what pays for the shopping list. Without
+        // it the recorder walked its whole journey and died on the
+        // elevator at zero poles, which is a fixture that cannot be
+        // recorded — and a tower that ignored every offer on the way.
+        //
+        // **Two rules, and a player would keep both.** Nothing that
+        // costs anything, because the opening cannot spare it and this
+        // script is not a trading strategy; and nothing at all until
+        // there is somewhere to put it. Taking every gift on offer with
+        // three shelves to your name is how the recorder ended up
+        // holding twenty scrap, twenty bamboo and *no poles* — the
+        // shelf jam, arriving as a reward.
+        take_a_free_beat(engine);
         let chunk = left.min(300);
         engine.step(chunk);
         left -= chunk;
     }
+}
+
+/// Take the beat the tower is passing, if it is free and there is
+/// somewhere to put what it gives.
+///
+/// A gift you cannot store is not a gift: a shelf holds one kind, so
+/// six scrap arriving in a tower with three shelves is three materials
+/// competing for the room the poles need. Waiting for a storeroom is
+/// what a player does and it costs the fixture nothing — the beats keep
+/// coming.
+fn take_a_free_beat(engine: &mut GameEngine) {
+    let shelves: usize = engine
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .map(|room| room.shelves.len())
+        .sum();
+    if shelves <= 3 {
+        return;
+    }
+    let Some(view) = engine.view().journey.waypoint else {
+        return;
+    };
+    if !engine.content().waypoints[view.def as usize]
+        .costs
+        .is_empty()
+    {
+        return;
+    }
+    let _ = engine.try_send(GameCommand::TakeWaypoint);
 }
 
 /// Switch a room off once the tower holds enough of what it makes.

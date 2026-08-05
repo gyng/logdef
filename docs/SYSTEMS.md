@@ -6497,6 +6497,66 @@ room that also cuts, and one gun that burns what the tower harvests. The tower d
 with the tools it works with rather than growing a separate set for fighting, which is the whole
 of `DECISIONS.md` §8 — defenders rather than soldiers.
 
+### 6.14 Beats on the route
+
+**"Right now it's like a screensaver."** Between one fork and the next the tower walked
+through scenery and decided nothing. Forks are rare by design (`fork_interval_paces` is 4,300)
+and an enclave is a whole settlement; there was no small thing in between.
+
+A **waypoint** is that small thing. It comes into range, asks one question, and goes past.
+
+| | fork | enclave | waypoint |
+|---|---|---|---|
+| Stops the tower | yes, until answered | no, you berth | **no** |
+| Decision shape | which way | a whole board | **one button** |
+| Ignoring it | impossible | free | **free, and the default** |
+| Comes back | — | no | **no** |
+
+Three rules make it a beat rather than a chore:
+
+- **Ignoring it is free.** There is no penalty branch. §11's rule that walking is always
+  available applies here too — the tower walking on is never wrong, only sometimes less good.
+- **It resolves in one click.** `TakeWaypoint` carries no id, because the only one you can
+  take is the one alongside. A thing that needs a decision *tree* is an enclave.
+- **It is gone once passed.** The axis runs one way (§3.5), so a waypoint behind you is a
+  thing that happened rather than a thing you are still owed.
+
+Generated off the **`world` stream, not `cosmetic`** (`DECISIONS.md` §2): where a beat falls
+and which one it is are facts about the run, and a shared seed has to reproduce them.
+Per-region intervals, so a region has its own rhythm — the deep jungle is thick with them
+(1,100 paces), the coast is nearly empty (2,000), and zero means none at all, which is a real
+authoring choice rather than an oversight.
+
+#### The four in the pack, and what the fourth one taught
+
+| | asks | gives | attention | ground |
+|---|---|---|---|---|
+| Seep Pool | stop and wash | — | **−45** | −90 |
+| Fallen Carrier | strip it | 5 poles | +15 | −140 |
+| Wire Tangle | 4 poles | 2 mechanisms | +10 | −110 |
+| Snare Thicket | push through | — | +60 | **+300** |
+
+**The Seep Pool is the only thing in the game that lowers provocation.** Everything else a
+tower does raises it — cutting, burning, pushing through — and a dial that only goes one way is
+a countdown rather than a decision.
+
+**Two of these gave the wrong things at first, and the golden recorder found it.** The Fallen
+Carrier handed over scrap and the Seep Pool handed over produce: both thin supplies, both
+plausible, and both with almost no consumer in a young tower. A shelf holds one kind and the
+opening tower has three shelves. Measured: **thirty scrap and forty-three produce squatting the
+shelves**, the fiber the ropery needed with nowhere to land, and a tower that could not afford
+a dart battery while holding a fortune in things it could not use.
+
+**A gift the tower cannot spend is a jam wearing a reward's clothes.** The beats give poles,
+mechanisms, ground and quiet — things every tower wants.
+
+#### What it did to the fixture
+
+`record_golden.rs` takes beats as it walks, which is both coverage and solvency: without them
+it walked its whole journey and died on the elevator at zero poles. It takes only *free* ones,
+and only once a storeroom exists — two rules a player would keep, and the second is the one the
+scrap-and-produce failure taught.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -6505,22 +6565,29 @@ of `DECISIONS.md` §8 — defenders rather than soldiers.
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
+1. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
+   screensaver" by putting something in front of the player roughly once a minute, and the
+   failure mode of that fix is the opposite complaint: a prompt often enough to become
+   wallpaper. The tell is whether anybody reads the second one. Note also that the streaming
+   window (900 ahead, 300 behind) is *narrower* than the interval, so beats can appear without
+   being seen coming — deliberate for now, and the first thing to change if they read as
+   pop-ups.
+2. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
    edge from the shaft column, which is a placement fix — but every layout puzzle now has two
    more answers, and `floor_slots`' own row is explicit that its value was chosen for scarcity.
    Nobody has played a ten-wide tower against an eight-wide one. It is on the difficulty pass's
    list and it is the change on that list most likely to have made the game softer by accident.
-2. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
+3. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
    of what a posting does and cleans up after itself. If nobody ever uses the permanent form
    once they have the temporary one, that is not two verbs, it is one verb and a trap — and
    the tell is whether anybody posts somebody *for the run* rather than *for the minute*.
-3. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+4. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-4. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+5. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves
