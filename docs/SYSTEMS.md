@@ -6412,6 +6412,42 @@ fixture:
 - **`top_floor_only` was enforced only inside the sails** (§6.10), so cutting them cut the
   rule and left the garden dimmed by the snapshot while it grew at full rate.
 
+### 6.12 Picking people out, and pushing them
+
+**Stationing answered "this is your job"; it did not answer "everybody on the mill, now".**
+M6's posting is a standing order — somebody works a room until the player says otherwise —
+and during a wave, or a jam, what a player wants is a shove that they do not then have to
+remember to undo.
+
+- **Click a person** to pick them out; click again to drop them. A person beats the room
+  behind them, which is unavoidably where they are standing.
+- **Drag a box** over the tower to pick out everybody in it. Crew cluster, so clicking each
+  in turn does not work — two of three are often on the same pixel.
+- **Right-click a room** to push everybody picked at it.
+- **Right-click nothing** to let them all go.
+
+**The push expires by itself, and that is the whole reason it is safe.** `until_tired` on
+`StationCrew` sets `Crew::post_until_tired`, and `needs.rs` clears the posting when `rested`
+falls to `tired_ticks`. A push lasts the rest of somebody's shift and no longer. A permanent
+version of the same verb would leave half the crew standing in a room nobody remembers sending
+them to, which is a worse tower than the one the player started with.
+
+Calling somebody back always clears the flag, so a push followed by a real posting does not
+inherit the expiry.
+
+**None of the selection is in `GameState`.** Who is highlighted is a fact about somebody's
+attention, not about the tower: it never enters a replay, and two people watching the same
+seed are free to have different people picked. What *is* in the simulation is the posting and
+its expiry, because those change what the tower does.
+
+**Right-click means three things and they cannot collide**, because only one of them is ever
+in progress: push the people you have picked, put the placement cursor down, or let the
+selection go — in that order.
+
+Drawn on the people rather than in a panel (`DECISIONS.md` §8): a soft ring under the feet for
+picked, a brighter one for pushed. Two marks, because a job and a shove read identically on a
+cross-section and are not the same thing.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -6420,13 +6456,17 @@ fixture:
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+1. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
+   of what a posting does and cleans up after itself. If nobody ever uses the permanent form
+   once they have the temporary one, that is not two verbs, it is one verb and a trap — and
+   the tell is whether anybody posts somebody *for the run* rather than *for the minute*.
+2. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-2. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+3. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

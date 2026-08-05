@@ -171,6 +171,23 @@ pub struct Crew {
     /// re-resolve to whatever took its place — the trap `DamageTarget`
     /// documents. An id that no longer exists simply ends the posting.
     pub stationed: Option<RoomId>,
+    /// Does the posting end when this person runs out of energy?
+    ///
+    /// **The difference between a job and a push.** M6's stationing is a
+    /// standing order: somebody works a room until the player says
+    /// otherwise. This is the other thing a player wants — *everybody
+    /// on the mill, now* — and it would be a trap if it were also
+    /// permanent, because the moment you stop looking it is still true
+    /// and half the crew are standing in a room nobody remembers
+    /// sending them to.
+    ///
+    /// So it expires by itself, on the one clock that already means
+    /// "this person has given what they have": `tired_ticks`. A push
+    /// lasts the rest of somebody's shift and no longer.
+    ///
+    /// `serde(default)` so replays recorded before it still load.
+    #[serde(default)]
+    pub post_until_tired: bool,
     /// A kit this person is carrying, if the tower has lent them one.
     ///
     /// **Held, not consumed.** The item leaves the shelves while it is
@@ -277,6 +294,7 @@ impl Crew {
             floor_fx: Fx::ZERO,
             slot_fx: Fx::ZERO,
             carrying: None,
+            post_until_tired: false,
             task: None,
             state: CrewState::Idle,
             wait_ticks: 0,

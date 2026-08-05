@@ -33,7 +33,11 @@ pub fn apply(
         } => set_room_active(state, *floor, *slot, *active),
         GameCommand::SetPowerPriority { order } => set_power_priority(state, order),
         GameCommand::FocusEnemy { enemy } => focus_enemy(state, *enemy),
-        GameCommand::StationCrew { crew, room } => station_crew(state, *crew, *room),
+        GameCommand::StationCrew {
+            crew,
+            room,
+            until_tired,
+        } => station_crew(state, *crew, *room, *until_tired),
         GameCommand::EquipCrew { crew, kit } => equip_crew(state, content, *crew, kit.as_deref()),
         GameCommand::BuildShaft {
             shaft,
@@ -615,6 +619,7 @@ fn station_crew(
     state: &mut GameState,
     crew: crate::ids::CrewId,
     room: Option<crate::ids::RoomId>,
+    until_tired: bool,
 ) -> Result<(), CommandError> {
     if !state.crew.iter().any(|member| member.id == crew) {
         return Err(CommandError::NoSuchCrew { crew });
@@ -628,6 +633,10 @@ fn station_crew(
         return Err(CommandError::NoSuchCrew { crew });
     };
     member.stationed = room;
+    // A posting that is not temporary is a standing order, so calling
+    // somebody back always clears the flag too — otherwise a push
+    // followed by a real posting would still expire.
+    member.post_until_tired = until_tired && room.is_some();
     Ok(())
 }
 

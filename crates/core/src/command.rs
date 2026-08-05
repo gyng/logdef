@@ -95,6 +95,13 @@ pub enum GameCommand {
         crew: CrewId,
         /// `None` calls them back to hauling.
         room: Option<crate::ids::RoomId>,
+        /// End the posting when they run out of energy.
+        ///
+        /// A *push* rather than a job — see `Crew::post_until_tired`.
+        /// Defaulted so replays recorded before it still load, and so
+        /// the plain "post somebody here" command is unchanged.
+        #[serde(default)]
+        until_tired: bool,
     },
 
     /// Lend somebody a kit off the shelves, or take it back.

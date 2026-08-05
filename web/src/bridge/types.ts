@@ -424,6 +424,13 @@ export interface CrewView {
    */
   stationed: number | null;
   /**
+   * Is that posting a *push* — one that ends when they tire?
+   *
+   * Drawn differently from a standing posting, because the two read as
+   * the same thing on a cross-section and are not.
+   */
+  post_until_tired: boolean;
+  /**
    * A kit this person is carrying, if the tower has lent them one.
    *
    * Held rather than consumed: it is off the shelves while they have it
@@ -689,7 +696,18 @@ export type GameCommand =
    * hauling. A standing order about somebody's working day, the same
    * category as the shift rota.
    */
-  | { StationCrew: { crew: number; room: number | null } }
+  | {
+      StationCrew: {
+        crew: number;
+        room: number | null;
+        /**
+         * End the posting when they run out of energy — a *push*
+         * rather than a job. Optional, and absent means a standing
+         * posting, which is what M6's stationing has always been.
+         */
+        until_tired?: boolean;
+      };
+    }
   /**
    * Lend somebody a kit off the shelves, or take it back. `null` hands
    * in whatever they are carrying.

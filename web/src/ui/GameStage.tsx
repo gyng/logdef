@@ -66,15 +66,33 @@ export function GameStage({ bridge }: Props) {
         className={ui?.placing ? "stage-canvas placing" : "stage-canvas"}
         onPointerMove={(event) => game?.handlePointerMove(event.clientX, event.clientY)}
         onPointerLeave={() => game?.handlePointerLeave()}
+        // Drag to lasso a group of crew; a short drag is a click and
+        // `handleClick` keeps it.
+        onPointerDown={(event) =>
+          game?.handlePointerDown(event.clientX, event.clientY, event.button)
+        }
+        onPointerUp={(event) => game?.handlePointerUp(event.clientX, event.clientY)}
         onClick={(event) => game?.handleClick(event.clientX, event.clientY)}
         // **Right-click puts the placement cursor down.** Picking a room
         // and changing your mind used to mean finding the same card
         // again and clicking it off — a lot of travel to undo a decision
         // you have not made yet. The browser menu is suppressed only
         // over the canvas, so text elsewhere still behaves.
+        // **Right-click means three things, in this order.** Push the
+        // people you have picked at the room under the pointer; failing
+        // that, put the placement cursor down; failing that, let go of
+        // the selection. Each is the "undo the thing I am in the middle
+        // of" gesture for whichever thing that is, which is why they
+        // can share a button without ambiguity — only one of them is
+        // ever in progress.
         onContextMenu={(event) => {
           event.preventDefault();
-          game?.cancelPlacement();
+          if (game?.pushSelectedTo(event.clientX, event.clientY)) return;
+          if (ui?.placing) {
+            game?.cancelPlacement();
+            return;
+          }
+          game?.releaseSelected();
         }}
         // A wheel notch is ~100 deltaY, so this is about 10% a notch and
         // multiplicative — see `Game.zoomBy` for why it is not additive.
@@ -82,6 +100,18 @@ export function GameStage({ bridge }: Props) {
         data-testid="game-canvas"
       />
       <div ref={labelsRef} className="stage-labels" />
+      {ui?.marquee && (
+        <div
+          className="marquee"
+          data-testid="marquee"
+          style={{
+            left: Math.min(ui.marquee.x0, ui.marquee.x1),
+            top: Math.min(ui.marquee.y0, ui.marquee.y1),
+            width: Math.abs(ui.marquee.x1 - ui.marquee.x0),
+            height: Math.abs(ui.marquee.y1 - ui.marquee.y0),
+          }}
+        />
+      )}
       {game && ui && <Chrome game={game} ui={ui} />}
     </div>
   );

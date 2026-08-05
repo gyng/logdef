@@ -54,6 +54,14 @@ export interface SceneContext {
   catalog: CatalogSnapshot;
   layout: Layout;
   placeMode: PlaceMode | null;
+  /**
+   * Crew the player has picked out.
+   *
+   * Presentation only — a selection is a fact about somebody's
+   * attention rather than about the tower, and it never enters
+   * `GameState`.
+   */
+  picked: readonly number[];
   /** Wall-clock seconds since load. Cosmetic wobble only. */
   clock: number;
 }
@@ -3097,9 +3105,34 @@ function drawCar(
  * of floating bars is a spreadsheet with legs, which is the exact
  * failure the sprint question names.
  */
-function drawCrew(batch: QuadBatch, { view, layout, clock, catalog }: SceneContext): void {
+function drawCrew(batch: QuadBatch, { view, layout, clock, catalog, picked }: SceneContext): void {
   for (const member of view.crew) {
     const { x, y } = crewPosition(layout, member);
+
+    // **Picked out, and pushed, drawn as two different things.**
+    //
+    // A ring under the feet says "I have hold of this person"; a second
+    // brighter one says "and they are on a push that will expire". Both
+    // are marks on the person rather than a panel somewhere else, which
+    // is `DECISIONS.md` §8 — the selection is a thing you can see in the
+    // world, and the numbers stay on hover.
+    if (picked.includes(member.id)) {
+      const ring = layout.slotW * 0.42;
+      // Soft-edged rather than alpha'd: the batch takes a colour and a
+      // softness, and a feathered ring under the feet reads as a
+      // highlight rather than as a sticker.
+      batch.push(x - ring / 2, y - ring * 0.16, ring, ring * 0.3, palette.lamplight, {
+        radius: ring,
+        softness: ring * 0.25,
+      });
+    }
+    if (member.post_until_tired) {
+      const ring = layout.slotW * 0.3;
+      batch.push(x - ring / 2, y - ring * 0.2, ring, ring * 0.32, palette.sunlight, {
+        radius: ring,
+        softness: ring * 0.2,
+      });
+    }
     // Phase-offset per crew member from the cosmetic RNG stream, so
     // nobody bobs, steps or breathes in lockstep. One draw, four uses.
     const phase = (member.fidget / 65535) * Math.PI * 2;

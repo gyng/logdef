@@ -370,6 +370,12 @@ pub struct CrewView {
     /// The room this person has been posted to, if any. A standing
     /// order, so it survives them going to eat and to bed.
     pub stationed: Option<u32>,
+    /// Is that posting a *push* — one that ends when they tire?
+    ///
+    /// Drawn differently, because the two read as the same thing on a
+    /// cross-section and are not: one is a job and one is "everybody on
+    /// the mill, now".
+    pub post_until_tired: bool,
     /// Which half of the rota they are on.
     pub shift: ShiftTag,
     /// Actually asleep, as against merely off shift and walking to bed.
@@ -1161,6 +1167,7 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
             hunger: member.hunger,
             rested: member.rested,
             stationed: member.stationed.map(|room| room.0),
+            post_until_tired: member.post_until_tired,
             shift: match member.shift {
                 crate::content::Shift::Day => ShiftTag::Day,
                 crate::content::Shift::Night => ShiftTag::Night,

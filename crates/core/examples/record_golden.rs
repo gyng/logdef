@@ -602,6 +602,7 @@ fn staff(engine: &mut GameEngine, floor: u8, slot: u8, count: usize) {
             .try_send(GameCommand::StationCrew {
                 crew: who,
                 room: Some(room),
+                until_tired: false,
             })
             .expect("posting somebody to a room that exists is always legal");
     }

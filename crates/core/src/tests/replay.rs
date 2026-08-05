@@ -244,6 +244,15 @@ fn every_command_survives_the_replay_format() {
         C::StationCrew {
             crew: crate::ids::CrewId(1),
             room: Some(crate::ids::RoomId(1)),
+            until_tired: false,
+        },
+        // The temporary half, because a command's *shape* is what this
+        // test is guarding and a defaulted field that nothing ever sets
+        // is a field the round trip never sees.
+        C::StationCrew {
+            crew: crate::ids::CrewId(1),
+            room: Some(crate::ids::RoomId(1)),
+            until_tired: true,
         },
         C::EquipCrew {
             crew: crate::ids::CrewId(1),

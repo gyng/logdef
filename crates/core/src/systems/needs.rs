@@ -46,6 +46,18 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
 
         if member.shift == awake_shift {
             member.rested = member.rested.saturating_sub(1);
+            // **A push ends when the person does.** `post_until_tired`
+            // is the temporary half of stationing: *everybody on the
+            // mill, now*, which is a thing a player wants and which
+            // would be a trap if it outlived their attention. It
+            // expires on the one clock that already means "this person
+            // has given what they have", so a push lasts the rest of a
+            // shift and no longer, and the tower goes back to hauling
+            // without anybody having to remember.
+            if member.post_until_tired && member.rested <= balance.tired_ticks {
+                member.stationed = None;
+                member.post_until_tired = false;
+            }
         } else {
             // Asleep, or on the way to bed. Only actual sleep refills:
             // walking to a bunk is still walking.

@@ -57,6 +57,10 @@ interface TestHooks {
   zoom(): number;
   /** One notch in, without a round trip through the DOM. */
   zoomIn(): void;
+  /** Where a crew member is standing, in client coordinates. */
+  crewPoint(id: number): { x: number; y: number } | null;
+  /** Who the player has picked out. */
+  picked(): number[];
   verifyGolden(): ReplayReport;
   exportReplay(): string;
   /** Centre of a slot in client coordinates, from the live layout. */
@@ -552,4 +556,91 @@ test("zoom and right-click are the two verbs the canvas answers", async ({ page 
     window.__understory!.view().tower.floors.reduce((n, floor) => n + floor.rooms.length, 0),
   );
   expect(after).toBe(before);
+});
+
+test("crew can be picked out and pushed at a room", async ({ page }) => {
+  await boot(page);
+  await openLadder(page);
+
+  const crew = await page.evaluate(() => window.__understory!.view().crew.map((m) => m.id));
+  expect(crew.length).toBeGreaterThan(1);
+
+  // Pause, or the person walks out from under the click.
+  await page.getByTestId("speed-Paused").click();
+  const where = async (id: number) =>
+    page.evaluate((who) => window.__understory!.crewPoint(who), id);
+
+  // **Click somebody to pick them out.** A person has to beat the room
+  // they are standing in, which is unavoidably directly behind them.
+  const first = await where(crew[0]!);
+  expect(first).not.toBeNull();
+  await page.mouse.click(first!.x, first!.y);
+  await expect.poll(() => page.evaluate(() => window.__understory!.picked())).toEqual([crew[0]]);
+
+  // Clicking again takes them back out, so one gesture does both.
+  await page.mouse.click(first!.x, first!.y);
+  await expect.poll(() => page.evaluate(() => window.__understory!.picked())).toEqual([]);
+
+  // **Marquee for the group.** Clicking each in turn does not work and
+  // should not be made to: crew cluster, so two of three are often
+  // standing on the same pixel and the second click toggles the first
+  // back off. Dragging a box over the tower is the gesture for "these
+  // people" and it is what the feature is for.
+  const box = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>("[data-testid='game-canvas']")!;
+    const rect = canvas.getBoundingClientRect();
+    return { x0: rect.left + 4, y0: rect.top + 4, x1: rect.right - 4, y1: rect.bottom - 4 };
+  });
+  await page.mouse.move(box.x0, box.y0);
+  await page.mouse.down();
+  await page.mouse.move((box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, { steps: 4 });
+  await expect(page.getByTestId("marquee")).toBeVisible();
+  await page.mouse.move(box.x1, box.y1, { steps: 4 });
+  await page.mouse.up();
+  await expect
+    .poll(() => page.evaluate(() => window.__understory!.picked().length))
+    .toBe(crew.length);
+
+  const mill = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const catalog = hooks.catalog();
+    for (const floor of hooks.view().tower.floors) {
+      for (const room of floor.rooms) {
+        if (catalog.rooms[room.def]?.id === "room.mill") {
+          return { id: room.id, floor: floor.index, slot: room.slot };
+        }
+      }
+    }
+    return null;
+  });
+  expect(mill).not.toBeNull();
+
+  const target = await page.evaluate(
+    (at) => window.__understory!.slotPoint(at.floor, at.slot),
+    mill!,
+  );
+  await page.mouse.click(target!.x, target!.y, { button: "right" });
+
+  // **A push, not a posting**: both are standing in the mill, and both
+  // are flagged as the kind of order that expires when they tire.
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (id) =>
+          window.__understory!.view().crew.filter((m) => m.stationed === id && m.post_until_tired)
+            .length,
+        mill!.id,
+      ),
+    )
+    .toBe(crew.length);
+
+  // Right-click on nothing lets them go again.
+  await page.mouse.click(4, 4, { button: "right" });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__understory!.view().crew.filter((m) => m.stationed !== null).length,
+      ),
+    )
+    .toBe(0);
 });

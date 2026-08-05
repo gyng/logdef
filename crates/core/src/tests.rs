@@ -246,6 +246,7 @@ pub(crate) fn staff(game: &mut GameEngine, floor: u8, slot: u8, count: usize) ->
             .try_send(crate::command::GameCommand::StationCrew {
                 crew: who,
                 room: Some(room),
+                until_tired: false,
             })
             .is_ok()
         {

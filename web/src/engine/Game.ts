@@ -88,6 +88,10 @@ export interface UiState {
   placing: string | null;
   /** The player's lens over the fitted layout. 1 is the fit. */
   zoom: number;
+  /** Crew the player has picked out. Not simulation state. */
+  picked: number[];
+  /** The marquee being dragged, in client coordinates. */
+  marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   day: number;
   daypart: string;
   /** Which daypart, as an index into the catalog. */
@@ -219,6 +223,13 @@ export class Game {
       // double-mount produces in development.
       (hooks as Record<string, unknown>).zoom = () => this.renderer.getZoom();
       (hooks as Record<string, unknown>).zoomIn = () => this.zoomBy(1.15);
+      // Where a crew member is standing, so a spec can click one
+      // without knowing anything about the layout.
+      (hooks as Record<string, unknown>).crewPoint = (id: number) => {
+        const member = this.latest?.crew.find((who) => who.id === id);
+        return member ? this.renderer.crewPointOf(member) : null;
+      };
+      (hooks as Record<string, unknown>).picked = () => [...this.picked];
       // The same thing for the terrain strip: the screenshot harness
       // has to be able to frame a ruin, and only the renderer knows
       // where a given parallax layer put it. The distance is passed in
@@ -512,6 +523,13 @@ export class Game {
   }
 
   handlePointerMove(clientX: number, clientY: number): void {
+    if (this.dragFrom) {
+      const from = this.dragFrom;
+      if (Math.hypot(clientX - from.x, clientY - from.y) >= 6) {
+        this.marquee = { x0: from.x, y0: from.y, x1: clientX, y1: clientY };
+        this.publish(true);
+      }
+    }
     if (!this.placeMode) return;
     this.placeMode.hover = this.renderer.pick(clientX, clientY);
   }
@@ -551,7 +569,108 @@ export class Game {
     this.publish(true);
   }
 
+  // -------------------------------------------------------------------
+  // Selecting people, and pushing them at a room
+  // -------------------------------------------------------------------
+
+  /**
+   * Who the player has picked out.
+   *
+   * **Not in `GameState`.** A selection is a fact about somebody's
+   * attention, not about the tower: it does not belong in a replay, and
+   * two people watching the same seed should be free to have different
+   * people highlighted.
+   */
+  private picked: number[] = [];
+
+  /** The marquee, while it is being dragged. Client coordinates. */
+  private marquee: { x0: number; y0: number; x1: number; y1: number } | null = null;
+
+  private dragFrom: { x: number; y: number } | null = null;
+
+  handlePointerDown(clientX: number, clientY: number, button: number): void {
+    // Left button only, and never while placing — a drag mid-placement
+    // is somebody lining up a room, not lassoing a crew.
+    if (button !== 0 || this.placeMode) return;
+    this.dragFrom = { x: clientX, y: clientY };
+  }
+
+  handlePointerUp(clientX: number, clientY: number): void {
+    const from = this.dragFrom;
+    this.dragFrom = null;
+    this.marquee = null;
+    if (!from) return;
+    // Under a few pixels this was a click, and `handleClick` owns it.
+    if (Math.hypot(clientX - from.x, clientY - from.y) < 6) {
+      this.publish(true);
+      return;
+    }
+    this.picked = this.renderer.crewInBox({
+      x0: from.x,
+      y0: from.y,
+      x1: clientX,
+      y1: clientY,
+    });
+    this.publish(true);
+  }
+
+  /**
+   * Send everybody selected to a room until they run out of energy.
+   *
+   * **A push, not a posting.** `until_tired` is what makes it safe to
+   * do in a hurry: it expires on its own, so a player who shouts
+   * "everybody on the mill" during a wave does not find half the crew
+   * still standing there two days later. See `Crew::post_until_tired`.
+   *
+   * Returns whether it went anywhere, so the caller can fall back to
+   * whatever else a right-click means.
+   */
+  pushSelectedTo(clientX: number, clientY: number): boolean {
+    if (this.picked.length === 0) return false;
+    const hit = this.renderer.pick(clientX, clientY);
+    if (!hit) return false;
+    const room = this.findRoom(hit.floor, hit.slot);
+    if (room === null) return false;
+    for (const crew of this.picked) {
+      this.send({ StationCrew: { crew, room: room.id, until_tired: true } });
+    }
+    this.publish(true);
+    return true;
+  }
+
+  /** Call everybody selected back to hauling, and drop the selection. */
+  releaseSelected(): void {
+    for (const crew of this.picked) {
+      this.send({ StationCrew: { crew, room: null, until_tired: false } });
+    }
+    this.picked = [];
+    this.publish(true);
+  }
+
+  clearSelection(): void {
+    if (this.picked.length === 0) return;
+    this.picked = [];
+    this.publish(true);
+  }
+
   handleClick(clientX: number, clientY: number): void {
+    // **A person first, and only while not placing.** Picking somebody
+    // out is the cheapest gesture on the screen and it has to beat
+    // selecting the room they are standing in — which is, unavoidably,
+    // directly behind them.
+    if (!this.placeMode) {
+      const who = this.renderer.pickCrew(clientX, clientY);
+      if (who !== null) {
+        // Clicking somebody already picked takes them out again, so the
+        // same gesture builds and unbuilds a selection.
+        this.picked = this.picked.includes(who)
+          ? this.picked.filter((id) => id !== who)
+          : [...this.picked, who];
+        this.publish(true);
+        return;
+      }
+    }
+
     // **A creature first, and only while not placing.** Naming one is a
     // live order given during a wave, and it has to beat selecting the
     // room behind it — a creature is on top of the tower's face, which
@@ -663,6 +782,7 @@ export class Game {
       view,
       catalog: this.catalog,
       placeMode: this.placeMode,
+      picked: this.picked,
       clock: (now - this.startedMs) / 1000,
     });
 
@@ -703,6 +823,8 @@ export class Game {
       selectedActive: this.selectedRoomActive(),
       placing: this.placeMode?.id ?? null,
       zoom: this.renderer.getZoom(),
+      picked: this.picked,
+      marquee: this.marquee,
       day: view?.clock.day ?? 0,
       daypart: view === null ? "—" : (this.catalog.dayparts[view.clock.daypart]?.name ?? "—"),
       daypartIndex: view?.clock.daypart ?? 0,

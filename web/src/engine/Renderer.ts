@@ -14,18 +14,21 @@ import { clampZoom, computeLayout, hitSlot, slotX, floorY, type Layout } from ".
 import {
   drawScene,
   edgeScreenX,
+  crewPosition,
   enemyPosition,
   featurePoint,
   forkGeometry,
   towerShape,
   type PlaceMode,
 } from "./scene";
-import type { CatalogSnapshot, FeatureView, ViewSnapshot } from "../bridge/types";
+import type { CatalogSnapshot, CrewView, FeatureView, ViewSnapshot } from "../bridge/types";
 
 export interface RenderInput {
   view: ViewSnapshot;
   catalog: CatalogSnapshot;
   placeMode: PlaceMode | null;
+  /** Crew the player has picked out. Presentation only. */
+  picked: readonly number[];
   clock: number;
 }
 
@@ -96,6 +99,7 @@ export class Renderer {
       catalog,
       layout,
       placeMode: input.placeMode,
+      picked: input.picked,
       clock: input.clock,
     });
     this.batch.flush(viewport.width, viewport.height);
@@ -131,6 +135,55 @@ export class Renderer {
       if (d < 26 && (!best || d < best.d)) best = { id: enemy.id, d };
     }
     return best?.id ?? null;
+  }
+
+  /**
+   * Which crew member is under the pointer, if any.
+   *
+   * The same shape as `pickEnemy`, and the same 26px forgiveness: a
+   * person on a cross-section is a small thing and asking for pixel
+   * accuracy would make selecting one a chore rather than a gesture.
+   */
+  pickCrew(clientX: number, clientY: number): number | null {
+    if (!this.layout || !this.view) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    let best: { id: number; d: number } | null = null;
+    for (const member of this.view.crew) {
+      const at = crewPosition(this.layout, member);
+      const d = Math.hypot(at.x - x, at.y - (y + 8));
+      if (d < 26 && (!best || d < best.d)) best = { id: member.id, d };
+    }
+    return best?.id ?? null;
+  }
+
+  /** Where a crew member's feet are, in client coordinates. */
+  crewPointOf(member: CrewView): { x: number; y: number } | null {
+    if (!this.layout) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    const at = crewPosition(this.layout, member);
+    return { x: rect.left + at.x, y: rect.top + at.y - 8 };
+  }
+
+  /** Everybody whose feet fall inside a client-space rectangle. */
+  crewInBox(box: { x0: number; y0: number; x1: number; y1: number }): number[] {
+    if (!this.layout || !this.view) return [];
+    const rect = this.canvas.getBoundingClientRect();
+    const left = Math.min(box.x0, box.x1) - rect.left;
+    const right = Math.max(box.x0, box.x1) - rect.left;
+    const top = Math.min(box.y0, box.y1) - rect.top;
+    const bottom = Math.max(box.y0, box.y1) - rect.top;
+    const found: number[] = [];
+    for (const member of this.view.crew) {
+      const at = crewPosition(this.layout, member);
+      // A person is drawn upward from their feet, so the box catches
+      // anyone whose body overlaps it rather than only their soles.
+      if (at.x >= left && at.x <= right && at.y >= top - 24 && at.y <= bottom + 4) {
+        found.push(member.id);
+      }
+    }
+    return found;
   }
 
   pick(clientX: number, clientY: number): { floor: number; slot: number } | null {

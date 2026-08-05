@@ -95,6 +95,17 @@ button {
 
 /* Text overlay above the canvas. Pointer-transparent so clicks reach
    the game view underneath. */
+/* The lasso. Drawn in DOM rather than in the batch because it is a
+   tool, not part of the world: it should sit over the labels and it
+   should not be in a screenshot of the tower. */
+.marquee {
+  position: absolute;
+  z-index: var(--z-labels);
+  border: 1px solid var(--accent, #8fd6a8);
+  background: rgb(143 214 168 / 12%);
+  pointer-events: none;
+}
+
 .stage-labels {
   position: absolute;
   inset: 0;

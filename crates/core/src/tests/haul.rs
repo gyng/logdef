@@ -906,6 +906,7 @@ fn posting_somebody_to_a_room_speeds_it_and_costs_a_porter() {
             game.try_send(crate::command::GameCommand::StationCrew {
                 crew,
                 room: Some(mill),
+                until_tired: false,
             })
             .expect("the mill is standing and the crew member exists");
         }
@@ -941,6 +942,7 @@ fn posting_to_a_room_that_is_not_there_is_refused() {
         .try_send(crate::command::GameCommand::StationCrew {
             crew,
             room: Some(crate::ids::RoomId(9999)),
+            until_tired: false,
         })
         .expect_err("no such room");
     assert!(matches!(
@@ -948,4 +950,151 @@ fn posting_to_a_room_that_is_not_there_is_refused() {
         crate::command::CommandError::NoRoomThere { .. }
     ));
     assert!(game.state().crew[0].stationed.is_none());
+}
+
+#[test]
+fn a_push_ends_when_the_person_does() {
+    // **The temporary half of stationing.** `StationCrew` with
+    // `until_tired` is the "everybody on the mill, now" verb, and the
+    // whole reason it is safe is that it expires by itself — a
+    // permanent version of it would leave half the crew standing in a
+    // room nobody remembers sending them to.
+    let content = content();
+    let mut game = engine(920);
+    let mill = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .find(|room| game.content().room(room.def).id == "room.mill")
+        .map(|room| room.id)
+        .expect("the fixture tower has a mill");
+    let who = game.state().crew[0].id;
+
+    game.try_send(GameCommand::StationCrew {
+        crew: who,
+        room: Some(mill),
+        until_tired: true,
+    })
+    .expect("the mill is standing and the crew member exists");
+
+    let posted = |game: &crate::engine::GameEngine| {
+        game.state()
+            .crew
+            .iter()
+            .find(|member| member.id == who)
+            .and_then(|member| member.stationed)
+    };
+    assert_eq!(posted(&game), Some(mill));
+
+    // Run them down to tired. `rested` only falls on their own shift,
+    // which is where the expiry has to bite — a push that survived the
+    // night would be back on in the morning.
+    {
+        let state = game.state_mut_for_test();
+        let member = state
+            .crew
+            .iter_mut()
+            .find(|member| member.id == who)
+            .expect("still aboard");
+        member.rested = content.balance.crew.tired_ticks + 2;
+    }
+    crate::tests::step_walking(&mut game, 300);
+
+    assert_eq!(
+        posted(&game),
+        None,
+        "a push outlived the person it was pushing"
+    );
+    assert!(
+        !game
+            .state()
+            .crew
+            .iter()
+            .any(|member| member.post_until_tired),
+        "the flag survived the posting it belonged to"
+    );
+}
+
+#[test]
+fn a_standing_posting_does_not_expire() {
+    // The other side of the same coin: an ordinary posting is a job,
+    // and a tired person keeps it. If this ever stops being true, the
+    // player has lost the ability to say "this is your work now".
+    let content = content();
+    let mut game = engine(921);
+    let mill = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .find(|room| game.content().room(room.def).id == "room.mill")
+        .map(|room| room.id)
+        .expect("the fixture tower has a mill");
+    let who = game.state().crew[0].id;
+
+    game.try_send(GameCommand::StationCrew {
+        crew: who,
+        room: Some(mill),
+        until_tired: false,
+    })
+    .expect("legal");
+    {
+        let state = game.state_mut_for_test();
+        let member = state
+            .crew
+            .iter_mut()
+            .find(|member| member.id == who)
+            .expect("still aboard");
+        member.rested = content.balance.crew.tired_ticks / 2;
+    }
+    crate::tests::step_walking(&mut game, 300);
+
+    assert_eq!(
+        game.state()
+            .crew
+            .iter()
+            .find(|member| member.id == who)
+            .and_then(|member| member.stationed),
+        Some(mill),
+        "an exhausted person was quietly taken off their job"
+    );
+}
+
+#[test]
+fn calling_somebody_back_clears_the_push() {
+    // A push followed by "back to hauling" must not leave the flag set,
+    // or the *next* posting expires for a reason the player never asked
+    // for. Cheap to get wrong and invisible until it bites.
+    let mut game = engine(922);
+    let mill = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .find(|room| game.content().room(room.def).id == "room.mill")
+        .map(|room| room.id)
+        .expect("the fixture tower has a mill");
+    let who = game.state().crew[0].id;
+
+    for (room, until_tired) in [(Some(mill), true), (None, false), (Some(mill), false)] {
+        game.try_send(GameCommand::StationCrew {
+            crew: who,
+            room,
+            until_tired,
+        })
+        .expect("legal");
+    }
+
+    assert!(
+        !game
+            .state()
+            .crew
+            .iter()
+            .any(|member| member.post_until_tired),
+        "a push left its flag behind for the next posting to inherit"
+    );
 }
