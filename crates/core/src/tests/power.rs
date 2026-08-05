@@ -811,3 +811,44 @@ fn a_partial_charge_ranking_is_rejected() {
         "a rejected ranking still changed the order"
     );
 }
+
+#[test]
+fn a_paused_game_is_not_a_brown_out() {
+    // **Found by playing the game through its own agent tools**
+    // (`SYSTEMS.md` §6.31). The first `look` of a fresh run printed
+    // `Day 1, Morning · 0 paces · brownout` directly above
+    // `Charge 800/800`, and the two facts the snapshot ships disagreed:
+    // `power.brownout` was false and `journey.halt` said otherwise.
+    //
+    // The cause was that `halt_reason` read "the player wants to walk
+    // and the tower did not move" as a brown-out, and at tick 0 nothing
+    // has moved because time is not running.
+    let game = crate::tests::opening(2300);
+    let view = game.view();
+    assert!(!view.power.brownout, "a fresh tower is not browned out");
+    assert_ne!(
+        view.journey.halt,
+        crate::snapshot::HaltView::Brownout,
+        "a paused game announced a brown-out with a full bank"
+    );
+}
+
+#[test]
+fn the_two_brown_out_facts_agree() {
+    // The property behind it: a tower that says it is halted *for* a
+    // brown-out had better be in one. The legs read `journey.halt` and
+    // the audio reads it too (§4.6), so a disagreement here is two
+    // subsystems telling the player different things.
+    let mut game = crate::tests::engine(2301);
+    for _ in 0..600 {
+        game.step(30);
+        let view = game.view();
+        if view.journey.halt == crate::snapshot::HaltView::Brownout {
+            assert!(
+                view.power.brownout,
+                "halt said brown-out at tick {} while power did not",
+                view.tick
+            );
+        }
+    }
+}

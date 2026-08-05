@@ -7548,6 +7548,60 @@ One seed, one buying order. And a player is given no reason to think width unloc
 the card says *"2 more slots, at the back"*, which is true and says nothing about the only
 thing it is really for. Carried into §6.9.
 
+### 6.31 The game as tools an agent can use
+
+**WebMCP**: a page declares what it can do, and an agent in the browser calls those
+declarations instead of clicking pixels. `web/src/mcp/provider.ts` registers Understory's verbs
+through `navigator.modelContext` when it exists, and always mirrors them onto
+`window.__webmcp` — the API is a proposal and is not in most browsers, so without the mirror
+the tools would exist only where the spec has shipped and could never be exercised.
+
+#### The tools are the player's verbs, not the engine's
+
+`window.__understory` has exposed `step`, `grant` and a raw command channel since M0, and
+**none of it is here.** Those are debug hooks: an agent handed `grant` does not play the game,
+it edits the save, and whatever it then tells you about the design is worthless. Every tool is
+something a player can do with a mouse, and the refusals are the same refusals — `Locked`,
+`InsufficientStock`, `NotAtTheFront`.
+
+**The refusal is the interesting half.** `engine::commands` rejects with a typed error that
+says exactly what was wrong, and an agent that only hears "failed" cannot correct itself.
+Passing it through verbatim is most of why a tool beats a click.
+
+And one `look` rather than twenty getters, for the reason `DECISIONS.md` §3 gives about the
+bridge: twenty small reads is twenty round trips and a model that has to remember which it
+called.
+
+#### Playing it found two bugs in the first call
+
+`e2e/dogfood.spec.ts` plays a run through `__webmcp` alone — no test hooks, no grants. The very
+first `look` printed:
+
+```
+Day 1, Morning · 0 paces · brownout
+Charge 800/800
+...
+Can build: Bunk, Garden, Heartseed, Thorn Gun
+```
+
+**A freshly opened game announced a brown-out with a full bank.** `halt_reason` read "the
+player wants to walk and the tower did not move" as a brown-out, and at tick 0 nothing has
+moved because nothing has run. `power.brownout` was false throughout, so the two facts the
+snapshot ships disagreed — and the legs and the audio both read `journey.halt` (§4.6), so two
+subsystems were telling the player different things.
+
+It reads `power.brownout` now, which makes them agree by construction. **The first attempt
+guarded on `speed != Paused` and broke a fixture**, because `debugStep` runs ticks *while*
+paused — the speed is not a proxy for whether time is running, and the existing test caught it.
+
+**And the build list offered the Heartseed**, which is unique and already standing, so it could
+only ever produce a rejection. The sidebar has filtered it since M0; the tool did not, because
+`view.unlocked` answers "what is not locked" rather than "what is worth showing".
+
+Neither was visible from inside the game. The halt appears as a leg animation and the Heartseed
+never reaches the sidebar — it took printing the whole situation as *text*, next to itself, for
+either to be obvious.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —

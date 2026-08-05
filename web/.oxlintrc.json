@@ -37,7 +37,8 @@
           "__understory",
           "__understoryRaw",
           "__capture",
-          "__audio"
+          "__audio",
+          "__webmcp"
         ]
       }
     ]

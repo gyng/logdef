@@ -22,6 +22,7 @@ import { commandFailed } from "../bridge";
 import { POWER_USES } from "../bridge/types";
 import type {
   CatalogSnapshot,
+  CommandResult,
   CostInfo,
   CrewView,
   EnclaveInfo,
@@ -401,6 +402,22 @@ export class Game {
    */
   addCar(shaft: number): void {
     this.send({ AddCar: { shaft } });
+  }
+
+  /**
+   * The command channel and the snapshot, for the WebMCP tools.
+   *
+   * Named rather than reusing the private `send`, so the agent surface
+   * is a deliberate, greppable list of what a tool may do — and so it
+   * cannot quietly grow to include the debug hooks (`step`, `grant`)
+   * that would let an agent edit the save instead of playing.
+   */
+  sendForTool(cmd: GameCommand): CommandResult {
+    return this.bridge.send(cmd);
+  }
+
+  viewForTool(): ViewSnapshot {
+    return this.latest ?? this.bridge.view();
   }
 
   /** Can the shelves pay for another car in this shaft? */

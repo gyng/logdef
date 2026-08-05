@@ -1111,8 +1111,29 @@ fn halt_reason(state: &GameState) -> HaltView {
         return HaltView::Fork;
     }
     if state.walking {
-        // The player asked for the legs and did not get them.
-        return HaltView::Brownout;
+        // **The player asked for the legs and did not get them — unless
+        // time is not running.** A paused simulation has not moved
+        // because nothing has moved, and reading that as a brown-out
+        // made a freshly opened game announce one: tick 0, charge
+        // 800/800, `halt: brownout`. Found by playing the game through
+        // its own agent tools (`SYSTEMS.md` §6.31), which print the
+        // halt beside the charge and made the contradiction obvious in
+        // a way the legs alone never had.
+        //
+        // `power.brownout` was false throughout, so the two facts the
+        // snapshot ships disagreed with each other — and the fix is to
+        // stop inferring one from the absence of movement and read the
+        // other. **A brown-out is the bank refusing to pay**, which
+        // `power.brownout` already records; "wanted to walk and did
+        // not" is true of a tower nobody has started yet.
+        //
+        // The first attempt guarded on `speed != Paused` and broke four
+        // fixtures, because `debugStep` runs ticks *while* paused — so
+        // the speed is not a proxy for whether time is running. This
+        // condition needs no proxy.
+        if state.power.brownout {
+            return HaltView::Brownout;
+        }
     }
     HaltView::Stopped
 }

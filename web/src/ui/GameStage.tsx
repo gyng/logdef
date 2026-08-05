@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { Game, type UiState } from "../engine/Game";
 import type { Bridge } from "../bridge";
 import { Chrome } from "./Chrome";
+import { registerGameTools } from "../mcp/provider";
 
 interface Props {
   bridge: Bridge;
@@ -38,11 +39,16 @@ export function GameStage({ bridge }: Props) {
       return;
     }
 
+    // **The page declares what it can do** (`SYSTEMS.md` §6.31). Torn
+    // down with the engine, because a tool closing over a disposed
+    // `Game` is worse than no tool.
+    const unregister = registerGameTools(instance);
     const unsubscribe = instance.subscribe(setUi);
     instance.start();
     setGame(instance);
 
     return () => {
+      unregister();
       unsubscribe();
       instance.dispose();
       setGame(null);

@@ -9,17 +9,28 @@ import { defineConfig } from "@playwright/test";
 // first AND stop playwright from colliding with your port by running
 // tests in a different terminal against a different port, or just
 // accept that `make e2e` will refuse to start while you're running it.
+//
+// **The port is overridable, and that is not a convenience.** Playwright
+// refuses to start when it thinks 3000 is taken, and it thinks so for a
+// half-dead listener that answers a TCP connect and never a request —
+// a state a killed test wrapper can leave behind and which `dev-stop`
+// does not clear, because nothing is LISTENING for it to find. When
+// that happens the whole browser suite is unrunnable and the error
+// names the port rather than the cause. `UNDERSTORY_PORT=3100` gets you
+// working again in one command.
+const PORT = Number.parseInt(process.env.UNDERSTORY_PORT ?? "3000", 10);
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 180_000,
   retries: 1,
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: `http://localhost:${String(PORT)}`,
     headless: true,
   },
   webServer: {
-    command: "npm run dev",
-    port: 3000,
+    command: `npm run dev -- --port ${String(PORT)}`,
+    port: PORT,
     reuseExistingServer: false,
     timeout: 30_000,
   },
