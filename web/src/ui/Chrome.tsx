@@ -1043,6 +1043,14 @@ function EnclaveBoard({ game, ui }: Props) {
           </span>
         </button>
       )}
+      {/*
+        **Somebody in particular, before you pay** (`SYSTEMS.md` §6.29).
+        This read "Ask someone to come aboard" and handed over the next
+        name off a list — forty traits existed and you never chose
+        between them, because you never saw one first. The offer is
+        drawn when the tower berths and held until it walks on, so
+        passing costs you the visit rather than nothing.
+      */}
       <button
         type="button"
         className="enclave-recruit"
@@ -1050,9 +1058,21 @@ function EnclaveBoard({ game, ui }: Props) {
         data-testid="recruit"
         onClick={() => game.recruit()}
       >
-        {ui.recruits > 0
-          ? `Ask someone to come aboard · ${costLine(catalog, ui.enclave?.recruit_cost ?? [])}`
-          : "Nobody else is coming"}
+        {ui.recruits > 0 && ui.recruit ? (
+          <>
+            <span className="recruit-who">{ui.recruit.name}</span>
+            <span className="recruit-trait">
+              {ui.recruit.trait_at !== null
+                ? (catalog?.traits[ui.recruit.trait_at]?.blurb ?? "wants to come aboard")
+                : "wants to come aboard"}
+            </span>
+            <span className="recruit-cost">
+              {costLine(catalog, ui.enclave?.recruit_cost ?? [])}
+            </span>
+          </>
+        ) : (
+          "Nobody else is coming"
+        )}
       </button>
     </aside>
   );

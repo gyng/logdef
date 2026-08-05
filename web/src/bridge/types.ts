@@ -136,6 +136,8 @@ export interface ViewSnapshot {
    * into `catalog.jobs`.
    */
   work: number[];
+  /** Who the settlement the tower is standing at is offering. */
+  recruit: RecruitInfo | null;
   stats: RunStats;
 }
 
@@ -581,6 +583,13 @@ export interface DefenceInfo {
   range_paces: number;
   /** Which approaches it answers. Empty means all of them. */
   targets: string[];
+}
+
+/** The person a settlement is offering. */
+export interface RecruitInfo {
+  name: string;
+  /** Index into `catalog.traits`, if they have one. */
+  trait_at: number | null;
 }
 
 /** Something true about a person, as the roster needs it. */

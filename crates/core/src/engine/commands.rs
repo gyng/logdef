@@ -209,7 +209,14 @@ fn recruit(state: &mut GameState, content: &Content) -> Result<(), CommandError>
 
     spend(state, &cost);
     state.enclave_recruits[region] -= 1;
-    state.add_crew(content);
+    // **The person who was standing there**, not the next roll
+    // (`SYSTEMS.md` §6.29). The offer was drawn when the tower berthed
+    // and is what the board has been showing; taking it must hand over
+    // that person or the card was a lie.
+    match state.recruit_offer.take() {
+        Some(offered) => state.add_crew_with(content, Some(offered)),
+        None => state.add_crew(content),
+    }
     Ok(())
 }
 

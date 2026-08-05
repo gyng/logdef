@@ -7474,6 +7474,30 @@ person during a quiet minute is a screen full of punctuation. A mark on everybod
 is wallpaper, and wallpaper is not a signal. What earns a glyph is a state you would otherwise
 have opened a panel to learn.
 
+### 6.29 A recruit is a person, not a purchase
+
+**§6.9's first open question, closed.** Recruiting was: berth at a settlement, pay the price,
+receive the next name off `names.ron`. Forty traits existed (§6.25) and a player never chose
+between them, because nobody was ever *shown* before the money changed hands.
+
+The settlement offers somebody now. The board says who they are and what is true about them —
+*Marek · sleeps through daylight, and does not mind the dark* — and `Recruit` hands over that
+person rather than a fresh roll.
+
+**Drawn once when the tower berths and held until it walks on.** Rolling every tick would let a
+player stand still and watch the names cycle until an *Ox* came up; drawing on arrival means
+the person standing there is the person standing there, and **passing costs you the visit
+rather than nothing** — a region has one to three recruits in it and walking on spends the
+chance.
+
+There is no separate decline verb, deliberately. Not recruiting *is* declining, and a button
+that said so would only be a second way to do nothing.
+
+The trait roll moved out of `add_crew` into `GameState::roll_trait`, so an offer can be drawn
+without anybody joining, and `next_crew_name` reads the name the next person will carry rather
+than rolling one — names come from the pack by index and never from a stream (`DECISIONS.md`
+§2), so showing one costs no entropy at all.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -7482,11 +7506,10 @@ have opened a panel to learn.
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **Should a recruit be an offer?** §6.25 gives everybody a trait and stops there: recruiting
-   is still a purchase, not a choice — you pay and receive the next name on a list. A trait is
-   only half a decision until you can look at one and decline. The machinery is mostly there
-   (`enclave_recruits` is already a per-region budget), and what is missing is the person being
-   somebody in particular *before* you say yes.
+1. **Answered by §6.29.** A settlement offers somebody in particular now, drawn on arrival and
+   held until the tower walks on. What is *not* settled is whether the choice is interesting at
+   one to three recruits a region — a decision you make twice a run may be too rare to learn
+   from, and that wants a person rather than an instrument.
 2. **Answered by §6.26, and this question had the mechanism backwards.** It read: *a tower
    that harvests from every floor with one mill jams — bamboo claims every shelf and poles have
    nowhere to land.* Measured, it is the other way round: the mill converts everything, every

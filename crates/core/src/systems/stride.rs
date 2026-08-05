@@ -15,7 +15,34 @@ use crate::state::GameState;
 
 use super::{SoundEvent, power};
 
+/// Draw the settlement's offer when the tower stops at one, and drop it
+/// when it walks on.
+///
+/// **Once per berth, never rerolled** (`SYSTEMS.md` §6.29). Drawing it
+/// every tick would let a player watch the names cycle; drawing it on
+/// arrival and holding it means the person standing there is the person
+/// standing there, and passing costs you the visit rather than nothing.
+fn tend_the_offer(state: &mut GameState, content: &Content) {
+    let here = state.world.berthed_enclave(content, state.strode);
+    match here {
+        Some(region)
+            if state
+                .enclave_recruits
+                .get(region.get())
+                .copied()
+                .unwrap_or(0)
+                > 0 =>
+        {
+            if state.recruit_offer.is_none() {
+                state.recruit_offer = state.roll_trait(content);
+            }
+        }
+        _ => state.recruit_offer = None,
+    }
+}
+
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
+    tend_the_offer(state, content);
     let before = state
         .world
         .band_at(state.world.distance)

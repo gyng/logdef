@@ -2588,3 +2588,62 @@ fn a_quiet_beat_lowers_attention_and_a_loud_one_raises_it() {
     );
     assert!(after(loud) > 200, "a loud beat drew none");
 }
+
+#[test]
+fn a_settlement_offers_somebody_in_particular() {
+    // **A recruit is a person, not a purchase** (`SYSTEMS.md` §6.29).
+    // Forty traits existed and a player never chose between them,
+    // because the board said "ask someone to come aboard" and handed
+    // over the next name off a list.
+    let content = content();
+    let mut game = engine(2100);
+    assert!(
+        game.state().recruit_offer.is_none(),
+        "a tower on the road is being offered somebody"
+    );
+
+    // Stand it at the settlement its region has. Asked of the world
+    // rather than computed, so this cannot drift from the rule.
+    let at = game
+        .state()
+        .world
+        .enclave_ahead(&content)
+        .map(|(_, at)| at)
+        .expect("region 1 has a settlement");
+    {
+        let state = game.state_mut_for_test();
+        state.world.distance = at;
+        state.walking = false;
+    }
+    game.step(4);
+
+    let offered = game.state().recruit_offer;
+    assert!(offered.is_some(), "a berthed tower was offered nobody");
+
+    // **Held, not rerolled.** Drawing every tick would let a player
+    // watch the names cycle until a rare one came up.
+    game.step(600);
+    assert_eq!(
+        game.state().recruit_offer,
+        offered,
+        "the offer changed while the tower stood still"
+    );
+
+    // And taking it hands over *that* person.
+    let name = game.state().next_crew_name(&content);
+    crate::tests::stock_poles(&mut game, 60);
+    let before = game.state().crew.len();
+    game.try_send(GameCommand::Recruit)
+        .expect("a paid-for recruit should come aboard");
+    let joined = &game.state().crew[before];
+    assert_eq!(joined.name, name, "somebody else came aboard");
+    assert_eq!(
+        joined.traits.first().copied(),
+        offered,
+        "the person who joined is not the person the board showed"
+    );
+    assert!(
+        game.state().recruit_offer.is_none(),
+        "the settlement is still offering somebody it has already sent"
+    );
+}

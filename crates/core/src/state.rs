@@ -158,6 +158,19 @@ pub struct GameState {
     /// list per enclave when a second landed. A second landed.
     pub enclave_stock: Vec<Vec<i64>>,
     pub enclave_recruits: Vec<u8>,
+    /// Who the settlement the tower is standing at is offering.
+    ///
+    /// **A recruit is a person now, not a purchase** (`SYSTEMS.md`
+    /// §6.29). It used to be: pay the price, receive the next name off
+    /// the list. Forty traits existed and you never chose between them,
+    /// because you never saw one before you paid.
+    ///
+    /// Drawn once when the tower berths and held until it walks on, so
+    /// it cannot be rerolled by stepping away and back — the person
+    /// standing there is the person standing there. `None` away from a
+    /// settlement, or once its recruits are spent.
+    #[serde(default)]
+    pub recruit_offer: Option<crate::ids::TraitIdx>,
     /// How many more times each settlement will plate the shell. Only
     /// one of them does any, but the shape follows the others.
     pub shell_work_left: Vec<u8>,
@@ -249,6 +262,7 @@ impl GameState {
                     })
                 })
                 .collect(),
+            recruit_offer: None,
             enclave_recruits: content
                 .regions
                 .iter()
@@ -351,6 +365,51 @@ impl GameState {
     /// The roll still happens and is still discarded, so the `sim`
     /// stream advances identically whether or not this rule changes
     /// again.
+    /// Draw one trait, weighted.
+    ///
+    /// **Weighted, so rare means rare.** A flat roll over forty traits
+    /// has no rare ones by definition; the striking ones carry a tenth
+    /// of a common one's weight, so a run's roster is mostly quirks with
+    /// the occasional person you remember.
+    ///
+    /// On the `sim` stream, never `cosmetic` — a trait changes how fast
+    /// somebody gets hungry and how much they carry, so it is economic
+    /// (`DECISIONS.md` §2).
+    pub fn roll_trait(&mut self, content: &Content) -> Option<crate::ids::TraitIdx> {
+        if content.traits.is_empty() {
+            return None;
+        }
+        let total: u64 = content.traits.iter().map(|def| u64::from(def.weight)).sum();
+        let pick = if total == 0 {
+            self.rng.sim.next_u32() as usize % content.traits.len()
+        } else {
+            let mut roll = u64::from(self.rng.sim.next_u32()) % total;
+            let mut chosen = content.traits.len() - 1;
+            for (at, def) in content.traits.iter().enumerate() {
+                let weight = u64::from(def.weight);
+                if roll < weight {
+                    chosen = at;
+                    break;
+                }
+                roll -= weight;
+            }
+            chosen
+        };
+        Some(crate::ids::TraitIdx(u16::try_from(pick).unwrap_or(0)))
+    }
+
+    /// The name the next person aboard will carry.
+    ///
+    /// Read rather than rolled — `add_crew` takes the next name by
+    /// index, never from a stream, so an offer can name somebody
+    /// without touching any RNG at all.
+    #[must_use]
+    pub fn next_crew_name(&self, content: &Content) -> String {
+        let names = &content.crew_names;
+        let index = (self.next_crew_id as usize).saturating_sub(1) % names.len();
+        names[index].clone()
+    }
+
     fn place_starting_crew(&mut self, content: &Content) {
         for _ in 0..content.balance.crew.starting_crew {
             self.add_crew(content);
@@ -370,6 +429,16 @@ impl GameState {
     /// see `content::CrewNames`. `fidget` is the one cosmetic draw, and
     /// the renderer's only source of per-person variety.
     pub fn add_crew(&mut self, content: &Content) {
+        self.add_crew_with(content, None);
+    }
+
+    /// The same, with the trait already decided.
+    ///
+    /// A settlement's offer is drawn when the tower berths and shown on
+    /// the board, so taking it has to hand over *that* person
+    /// (`SYSTEMS.md` §6.29) rather than rolling a fresh one — otherwise
+    /// the card was a lie. `None` rolls, which is every other caller.
+    pub fn add_crew_with(&mut self, content: &Content, given: Option<crate::ids::TraitIdx>) {
         let names = &content.crew_names;
         let id = CrewId(self.next_crew_id);
         self.next_crew_id += 1;
@@ -385,30 +454,8 @@ impl GameState {
         // `DECISIONS.md` §2 exists to keep the two apart. Recruiting
         // somebody perturbing the economy stream is correct — recruiting
         // *is* an economic act.
-        // **Weighted, so rare means rare.** A flat roll over forty
-        // traits has no rare ones by definition; the striking traits
-        // carry a tenth of a common one's weight, so a run's roster is
-        // mostly quirks with the occasional person you remember.
-        if !content.traits.is_empty() {
-            let total: u64 = content.traits.iter().map(|def| u64::from(def.weight)).sum();
-            let pick = if total == 0 {
-                self.rng.sim.next_u32() as usize % content.traits.len()
-            } else {
-                let mut roll = u64::from(self.rng.sim.next_u32()) % total;
-                let mut chosen = content.traits.len() - 1;
-                for (at, def) in content.traits.iter().enumerate() {
-                    let weight = u64::from(def.weight);
-                    if roll < weight {
-                        chosen = at;
-                        break;
-                    }
-                    roll -= weight;
-                }
-                chosen
-            };
-            member
-                .traits
-                .push(crate::ids::TraitIdx(u16::try_from(pick).unwrap_or(0)));
+        if let Some(drawn) = given.or_else(|| self.roll_trait(content)) {
+            member.traits.push(drawn);
         }
 
         // And whatever that trait already knows how to do. A rank

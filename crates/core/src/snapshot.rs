@@ -60,6 +60,11 @@ pub struct ViewSnapshot {
     /// What kind of work idle crew reach for first, best first, as
     /// indices into `catalog.jobs`.
     pub work: Vec<u8>,
+    /// **Who** the settlement the tower is standing at is offering
+    /// (`SYSTEMS.md` §6.29). A recruit used to be a purchase — pay, and
+    /// receive the next name off a list. This is the person, before you
+    /// decide. `None` away from a settlement or once its are spent.
+    pub recruit: Option<RecruitInfo>,
     pub stats: RunStats,
 }
 
@@ -583,6 +588,14 @@ pub struct DefenceInfo {
     pub targets: Vec<String>,
 }
 
+/// The person a settlement is offering.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecruitInfo {
+    pub name: String,
+    /// Index into `catalog.traits`, if they have one.
+    pub trait_at: Option<u16>,
+}
+
 /// Something true about a person, as the roster needs it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraitInfo {
@@ -837,6 +850,10 @@ pub fn build_view(state: &GameState, content: &Content, alpha: f32) -> ViewSnaps
             .iter()
             .map(|job| u8::try_from(job.index()).unwrap_or(0))
             .collect(),
+        recruit: state.recruit_offer.map(|at| RecruitInfo {
+            name: state.next_crew_name(content),
+            trait_at: Some(at.0),
+        }),
         stats: state.stats.clone(),
     }
 }

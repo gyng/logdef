@@ -131,6 +131,8 @@ export interface UiState {
   chargeIncome: number;
   chargeSpend: number;
   brownout: boolean;
+  /** Who this settlement is offering, if the tower is standing at one. */
+  recruit: ViewSnapshot["recruit"];
   /** Charge ranking, best first. */
   powerPriority: PowerUse[];
   /** Work ranking, best first, as indices into `catalog.jobs`. */
@@ -936,6 +938,7 @@ export class Game {
       chargeIncome: view?.power.income_last ?? 0,
       chargeSpend: view?.power.spent_last ?? 0,
       brownout: view?.power.brownout ?? false,
+      recruit: view?.recruit ?? null,
       powerPriority: view?.power.priority ?? POWER_USES,
       workOrder: view?.work ?? this.catalog.jobs.map((_, at) => at),
       walking: view?.power.walking ?? true,
