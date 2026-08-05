@@ -306,19 +306,6 @@ pub(crate) fn stock_item(game: &mut GameEngine, id: &str, amount: i64) {
 /// The elevator became a tier-two building at M5 — 18 poles, 6 rope and
 /// 2 mechanisms — so every test that builds one has to be handed parts
 /// it has no chain for.
-/// Can the shelves pay for this room right now?
-pub(crate) fn can_afford(game: &GameEngine, room: &str) -> bool {
-    let content = game.content();
-    let Some(idx) = content.room_idx(room) else {
-        return false;
-    };
-    content
-        .room_rt(idx)
-        .build_cost
-        .iter()
-        .all(|(item, amount)| game.state().stock_of(*item) >= *amount)
-}
-
 pub(crate) fn stock_for_shaft(game: &mut GameEngine, shaft: &str, times: i64) {
     let costs: Vec<(String, i64)> = game
         .content()
