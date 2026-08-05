@@ -50,7 +50,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     // at full rate is a diegetic lie (`DECISIONS.md` §8): the flag the
     // cross-section dims is the flag that stops the crop.
     let top = state.tower.top_floor();
-    let manned = super::manned_rooms(state);
+    let manned = super::manned_rooms(state, content);
 
     // Both of these are one tick old, deliberately. Intake runs fourth
     // and stride runs eleventh, because tick order *is* charge priority

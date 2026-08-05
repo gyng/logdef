@@ -1011,6 +1011,15 @@ pub struct CrewBalance {
     /// trade `DESIGN.md` insight 1 is about, made explicit rather than
     /// bolted on as a cost.
     pub manned_work_pct: i64,
+    /// Ticks of a job before somebody is a rank better at it.
+    #[serde(default)]
+    pub practice_per_rank: u32,
+    /// How many ranks there are to get.
+    #[serde(default)]
+    pub max_rank: u8,
+    /// What one rank is worth, in percent.
+    #[serde(default)]
+    pub rank_bonus_pct: u32,
     /// Ticks since a meal before a crew member goes to eat.
     pub hungry_ticks: u32,
     /// Ticks since a meal before they start working slowly. A working

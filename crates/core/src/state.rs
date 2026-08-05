@@ -19,7 +19,7 @@ use crate::ids::{CrewId, ItemIdx, RoomId, ShaftId};
 use crate::rng::RngStreams;
 
 pub use clock::Clock;
-pub use crew::{Crew, CrewState, Errand, HaulDestination, HaulPickup, HaulTask};
+pub use crew::{Crew, CrewState, Errand, HaulDestination, HaulPickup, HaulTask, Job};
 pub use power::Power;
 pub use siege::{DamageTarget, Enemy, EnemyState, Health, Siege};
 pub use tower::{
@@ -165,6 +165,22 @@ pub struct GameState {
     /// can be noticed and sounded once for the tower rather than once
     /// per crew member; every other reader derives it from the daypart.
     pub shift_now: Shift,
+    /// What kind of work an idle crew member reaches for first.
+    ///
+    /// **One order for the whole tower, not a rota per person.** A
+    /// per-person matrix is the shape that turns crew into a
+    /// spreadsheet, and it answers a question the player is rarely
+    /// asking: what they want to say is *stop mending and get the
+    /// harvest in*, which is one sentence about the tower. Somebody who
+    /// should be doing one specific thing has `stationed` for that
+    /// already, and it is per-person precisely because it is the
+    /// exception.
+    ///
+    /// Needs are not in here — see `Job`. `serde(default)` is not
+    /// enough for a `Vec` that must be a full permutation, so old saves
+    /// get the default order through `work_order` below.
+    #[serde(default = "default_work_order")]
+    pub work: Vec<Job>,
     pub stats: RunStats,
     /// Monotonic allocators. Never reuse an ID, even after removal —
     /// a stale reference should fail to resolve, not silently alias.
@@ -172,6 +188,11 @@ pub struct GameState {
     pub next_crew_id: u32,
     pub next_shaft_id: u32,
     pub next_enemy_id: u32,
+}
+
+/// The order an untouched tower works in. See `Job` for the argument.
+fn default_work_order() -> Vec<Job> {
+    Job::ALL.to_vec()
 }
 
 impl GameState {
@@ -201,6 +222,7 @@ impl GameState {
             // spurious `ShiftChange` for a handover that already
             // happened before the run began.
             shift_now: Shift::Day,
+            work: default_work_order(),
             stats: RunStats {
                 // One slot per item in the pack, so a harvest counter is
                 // never a lookup that can miss.

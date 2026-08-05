@@ -85,6 +85,24 @@ true in theory. Each one closes off a v1 failure mode by construction — see `v
    Personality lives in barks and portraits; there is no relationship mechanic to
    maintain.
 
+   **Amended at M6 (`SYSTEMS.md` §6.17): crew get better at what they do.** This call
+   originally read "not stat blocks", full stop, and that sentence was doing two jobs at
+   once — refusing a *character sheet*, and refusing the idea that time aboard the tower
+   changes anybody. The first refusal stands. The second turned out to be the reason the
+   crew felt interchangeable: three people who are identical on day one and identical on
+   day nine are three units, and naming them does not fix it.
+
+   So practice exists, on four terms that keep the first refusal intact. It is **earned by
+   doing and never assigned** — there is no screen where a player spends anything, because
+   the moment there is one the crew are a build order. It is **small**: three ranks, ten
+   percent each, enough that the veteran on your stairs is *your* veteran and never enough
+   that there is a correct assignment. It is **shown as pips and hover text**, never as a
+   number in the primary layer (`DECISIONS.md` §8). And **it cannot be lost or spent**,
+   because it is a fact about a person rather than a resource about a unit.
+
+   What has not changed: no levels, no classes, no equipment slots beyond the one kit, no
+   experience bar, and nothing a player is meant to be counting.
+
 ---
 
 ## 3. Design pillars

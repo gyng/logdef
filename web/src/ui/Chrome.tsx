@@ -15,6 +15,7 @@ import type { Game, UiState } from "../engine/Game";
 import type {
   CatalogSnapshot,
   CostInfo,
+  CrewView,
   EnclaveInfo,
   HaltView,
   RoomInfo,
@@ -106,6 +107,7 @@ function Roster({ game, ui }: Props) {
                   {doing(member)}
                 </span>
               </span>
+              <Practice catalog={game.getCatalog()} member={member} />
               <KitButton game={game} ui={ui} member={member} />
               <StationButton game={game} ui={ui} member={member} />
               <button
@@ -127,6 +129,7 @@ function Roster({ game, ui }: Props) {
         })}
       </ul>
       <Schedules game={game} ui={ui} />
+      <WorkOrder game={game} ui={ui} />
       <PowerOrder game={game} ui={ui} />
     </aside>
   );
@@ -171,6 +174,96 @@ function Roster({ game, ui }: Props) {
  * simulation wants all four exactly once, and a drag that can drop
  * outside the list has to invent a rule for what that means.
  */
+/**
+ * How practised somebody is, as pips rather than as numbers.
+ *
+ * **Hover-only precision** (`DECISIONS.md` §8): what the card shows is
+ * that this person has been doing something for a while, and the title
+ * says which job and how far. There is no tick count anywhere, because
+ * the rank *is* the fact — `Crew::rank` is an integer division and there
+ * is nothing finer underneath for a player to chase.
+ *
+ * Only the best job is drawn. A four-column grid of everybody's skill at
+ * everything is a spreadsheet, and the whole argument for letting
+ * practice exist at all (`DESIGN.md` structural call 4) is that it stays
+ * a fact about a person rather than a build to optimise.
+ */
+function Practice({ catalog, member }: { catalog: CatalogSnapshot; member: CrewView }) {
+  let best = 0;
+  for (let at = 1; at < member.ranks.length; at += 1) {
+    if ((member.ranks[at] ?? 0) > (member.ranks[best] ?? 0)) best = at;
+  }
+  const rank = member.ranks[best] ?? 0;
+  if (rank === 0) return null;
+  const job = catalog.jobs[best]?.name ?? "the work";
+  return (
+    <span
+      className="roster-practice"
+      data-testid={`practice-${member.id}`}
+      title={`${member.name} has done a lot of ${job} — ${rank} of ${catalog.max_rank}`}
+      aria-label={`practised at ${job}`}
+    >
+      {"•".repeat(rank)}
+    </span>
+  );
+}
+
+/**
+ * What idle crew reach for first.
+ *
+ * Shaped exactly like the charge order below it, because it is the same
+ * kind of statement — one sentence about the whole tower rather than a
+ * rota per person. Somebody who should be doing one specific thing is
+ * what the station button is for, and it is per-person precisely because
+ * it is the exception.
+ *
+ * Needs are not in the list. A player who could rank hauling above
+ * dinner would only be building the starvation trap, and offering it as
+ * a setting would be the game pretending a mistake is a strategy.
+ */
+function WorkOrder({ game, ui }: Props) {
+  const jobs = game.getCatalog().jobs;
+  const move = (from: number, by: number) => {
+    const next = [...ui.workOrder];
+    const to = from + by;
+    if (to < 0 || to >= next.length) return;
+    [next[from], next[to]] = [next[to]!, next[from]!];
+    game.setWorkOrder(next);
+  };
+  return (
+    <>
+      <h2 className="section-title schedule-title">Work</h2>
+      <ol className="power-order" data-testid="work-order">
+        {ui.workOrder.map((job, at) => (
+          <li key={job} className="power-row">
+            <span className="power-name">{jobs[job]?.name ?? "work"}</span>
+            <span className="power-moves">
+              <button
+                type="button"
+                disabled={at === 0}
+                title={`Reach for ${jobs[job]?.name ?? "this"} before the one above`}
+                data-testid={`work-up-${job}`}
+                onClick={() => move(at, -1)}
+              >
+                ▲
+              </button>
+              <button
+                type="button"
+                disabled={at === ui.workOrder.length - 1}
+                title={`Leave ${jobs[job]?.name ?? "this"} until after the one below`}
+                data-testid={`work-down-${job}`}
+                onClick={() => move(at, 1)}
+              >
+                ▼
+              </button>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
+
 function PowerOrder({ game, ui }: Props) {
   const move = (from: number, by: number) => {
     const next = [...ui.powerPriority];

@@ -17,6 +17,99 @@ use crate::content::Shift;
 use crate::fx::Fx;
 use crate::ids::{CrewId, FloorIdx, ItemIdx, RoomId, ShaftId, SlotIdx};
 
+/// A kind of work, and the unit the player's work order ranks.
+///
+/// **Four, and needs are not among them.** Sleeping and eating outrank
+/// every one of these and are not reorderable, because they are not
+/// jobs — a player who could rank hauling above dinner would only be
+/// building the starvation trap, and offering it as a setting would be
+/// the game pretending a mistake is a strategy.
+///
+/// The enum order is the default order, and it is an argument rather
+/// than a habit: something happening now (a thief in the outbox) beats
+/// something that already happened (a wrecked panel), which beats a
+/// standing order (a post), which beats the background work that is
+/// always there (a haul). A player who disagrees can say so.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Job {
+    /// Go and stand between a thief and what it is taking.
+    Answer,
+    /// Mend damage.
+    Mend,
+    /// Go to the room you were posted to, and work it.
+    Man,
+    /// Carry something somewhere.
+    Haul,
+}
+
+impl Job {
+    /// Every job, in the default order. See the type doc for the
+    /// argument the order makes.
+    pub const ALL: [Self; 4] = [Self::Answer, Self::Mend, Self::Man, Self::Haul];
+
+    /// This job's slot in a practice array.
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Answer => 0,
+            Self::Mend => 1,
+            Self::Man => 2,
+            Self::Haul => 3,
+        }
+    }
+
+    /// What this variant serialises as — the spelling a `SetWorkOrder`
+    /// has to use. Shipped in the catalog beside the display name so the
+    /// frontend never keeps its own list of enum spellings to drift.
+    #[must_use]
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Answer => "Answer",
+            Self::Mend => "Mend",
+            Self::Man => "Man",
+            Self::Haul => "Haul",
+        }
+    }
+
+    /// What the tower calls it.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Answer => "answering",
+            Self::Mend => "mending",
+            Self::Man => "working a post",
+            Self::Haul => "hauling",
+        }
+    }
+
+    /// The job somebody in this state is practising, if any.
+    ///
+    /// **Walking and climbing are hauling, wherever they are going.**
+    /// What a porter learns is the building — which stair is quicker
+    /// with a crate on, where the landings are — and that knowledge does
+    /// not evaporate because this particular trip is toward a broken
+    /// panel. Standing still and working is the job you are stood in.
+    ///
+    /// Idle, eating and sleeping teach nothing, which is why a tower
+    /// with nothing to do is a tower that is not getting better at
+    /// anything.
+    #[must_use]
+    pub const fn practised_by(state: &CrewState) -> Option<Self> {
+        match state {
+            CrewState::Walking { .. }
+            | CrewState::Boarding { .. }
+            | CrewState::Climbing { .. }
+            | CrewState::Riding { .. }
+            | CrewState::Loading { .. }
+            | CrewState::Unloading { .. } => Some(Self::Haul),
+            CrewState::Repairing { .. } => Some(Self::Mend),
+            CrewState::Manning { .. } => Some(Self::Man),
+            CrewState::Shooing { .. } => Some(Self::Answer),
+            CrewState::Idle | CrewState::Eating { .. } | CrewState::Sleeping => None,
+        }
+    }
+}
+
 /// Where a haul is going. Priority order is the enum order — feeding a
 /// live recipe beats stockpiling, always.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,6 +289,22 @@ pub struct Crew {
     /// regret. It survives sleeping, eating and a wave — it is theirs
     /// until you say otherwise.
     pub kit: Option<ItemIdx>,
+    /// Ticks of practice at each job, indexed by `Job::index`.
+    ///
+    /// **Earned by doing, never spent, and capped.** There is no screen
+    /// where a player assigns points, because the moment there is one
+    /// the crew are a build to optimise rather than people who have
+    /// been here a while. Practice accrues from the work somebody
+    /// actually did, tops out, and is read as a rank rather than as a
+    /// number the player is meant to be counting.
+    ///
+    /// It cannot be lost. Somebody who spent a week on the stairs and is
+    /// now stood at a gun still knows the stairs — that is what makes it
+    /// a fact about a person rather than a slider.
+    ///
+    /// `serde(default)` so replays recorded before it still load.
+    #[serde(default)]
+    pub practice: [u32; 4],
     /// Cosmetic-stream draw. Renderer-only: idle animation phase, and
     /// (frontend-side) which face and which of several equivalent bark
     /// lines are this person's.
@@ -308,8 +417,41 @@ impl Crew {
             shift: Shift::Day,
             stationed: None,
             kit: None,
+            practice: [0; 4],
             fidget,
         }
+    }
+
+    /// How practised this person is at a job, in ranks.
+    ///
+    /// Zero is "new to it", and the ceiling is `max_rank`. Integer
+    /// division, so the rank a player sees and the bonus the simulation
+    /// applies are the same fact — a pip on the card is not a rounding
+    /// of something finer going on underneath.
+    #[must_use]
+    pub fn rank(&self, job: Job, content: &crate::content::Content) -> u8 {
+        let balance = &content.balance.crew;
+        if balance.practice_per_rank == 0 {
+            return 0;
+        }
+        u8::try_from(self.practice[job.index()] / balance.practice_per_rank)
+            .unwrap_or(u8::MAX)
+            .min(balance.max_rank)
+    }
+
+    /// Put a tick of practice in, up to the ceiling.
+    ///
+    /// Stopping at the ceiling rather than letting the count run on is
+    /// deliberate: an uncapped counter is a number that keeps going up
+    /// forever with nothing attached to it, which is exactly the kind of
+    /// stat this design does not want lying around in a save file.
+    pub fn practise(&mut self, job: Job, content: &crate::content::Content) {
+        let balance = &content.balance.crew;
+        let ceiling = balance
+            .practice_per_rank
+            .saturating_mul(u32::from(balance.max_rank));
+        let slot = &mut self.practice[job.index()];
+        *slot = slot.saturating_add(1).min(ceiling);
     }
 
     /// The damage they are assigned to, if that is what they are up to.

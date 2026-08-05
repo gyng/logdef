@@ -18,7 +18,7 @@
 //! production, so a meal cooked this tick can be eaten this tick.
 
 use crate::content::{Content, Shift};
-use crate::state::{Crew, CrewState, GameState};
+use crate::state::{Crew, CrewState, GameState, Job};
 
 use super::SoundEvent;
 
@@ -40,6 +40,14 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         // Hunger rises awake or asleep. You do not stop needing to eat
         // because you are in bed.
         member.hunger = member.hunger.saturating_add(1);
+
+        // **Practice is a tick of doing the thing.** Not a reward paid
+        // out on completing a haul, which would make a run of short
+        // trips worth more than the same time spent on one long one and
+        // hand the player a way to farm it. Time spent is time spent.
+        if let Some(job) = Job::practised_by(&member.state) {
+            member.practise(job, content);
+        }
         if member.is_asleep() {
             asleep += 1;
         }
@@ -114,6 +122,12 @@ pub fn is_awake(crew: &Crew, state: &GameState, content: &Content) -> bool {
 ///
 /// Floored at 1 so the worst case is crawling rather than stopped. A
 /// need that halts the tower is a death spiral rather than a pressure.
+///
+/// **Practice is deliberately not in here.** Being fed and rested is
+/// the baseline and neglect is what costs you; being *good at your job*
+/// is a separate multiplier that stacks on top (`practice_pct`), and
+/// keeping them apart is what stops a veteran's rank quietly cancelling
+/// out an empty pantry. A starving expert is still starving.
 #[must_use]
 pub fn work_pct(crew: &Crew, content: &Content, lit: bool) -> u32 {
     let balance = &content.balance.crew;
@@ -142,6 +156,16 @@ pub fn work_pct(crew: &Crew, content: &Content, lit: bool) -> u32 {
     pct.clamp(1, 100)
 }
 
+/// How much faster this person is at a job for having done it before.
+///
+/// 100 at no practice, rising by `rank_bonus_pct` a rank. This is the
+/// one multiplier in the game allowed above 100 — see `work_pct` for
+/// why every other one is not.
+#[must_use]
+pub fn practice_pct(crew: &Crew, job: Job, content: &Content) -> u32 {
+    100 + u32::from(crew.rank(job, content)) * content.balance.crew.rank_bonus_pct
+}
+
 /// How long an action actually takes for this crew member.
 ///
 /// **The percentage scales the duration of an action, never the
@@ -158,9 +182,14 @@ pub fn work_pct(crew: &Crew, content: &Content, lit: bool) -> u32 {
 /// Scaling the tick count keeps a single integer division, leaves the
 /// Fx precision exactly where it already is, and makes the penalties
 /// inspectable as tick counts.
+///
+/// The ceiling is 1,000 rather than 100 because `practice_pct` composes
+/// into the figure passed in and is allowed to push it past par. It is
+/// still a ceiling: an action that took a tenth of its authored time
+/// would be an action the player cannot see happening.
 #[must_use]
 pub fn effective_ticks(ticks: u32, pct: u32) -> u32 {
-    let pct = pct.clamp(1, 100);
+    let pct = pct.clamp(1, 1000);
     // Saturating, because a u32 tick count times 100 can overflow and a
     // wrapped duration would read as an instant action.
     ticks.saturating_mul(100) / pct

@@ -91,6 +91,15 @@ pub enum GameCommand {
     /// Needs still outrank it. A posted person goes to eat when hungry
     /// and to bed when their shift ends, and comes back afterwards — a
     /// station is not a cage.
+    /// Set the order idle crew reach for work in.
+    ///
+    /// **The whole order at once, and it must be a permutation.** A
+    /// command that raised one job would be easier to validate and
+    /// would let a save hold a work order with a job missing from it,
+    /// which is a state with no meaning — every job has to be somewhere
+    /// in the list, because every job still has to be *reachable*.
+    SetWorkOrder { order: Vec<crate::state::Job> },
+
     /// Widen the hull.
     ///
     /// **New frame goes on the back, not the front**, and everything
@@ -240,6 +249,8 @@ pub enum CommandError {
     NotAtTheFront { slot: SlotIdx, front: SlotIdx },
     /// Nothing within reach to take.
     NothingInReach,
+    /// A work order that is not a permutation of every job.
+    NotAWorkOrder,
     /// The hull is already as wide as it goes.
     AlreadyWidest { slots: u8 },
     /// Only one of these may exist in a tower.
@@ -303,6 +314,9 @@ impl std::fmt::Display for CommandError {
             CommandError::UnknownRoom { room } => write!(f, "no such room: {room}"),
             CommandError::AlreadyWidest { slots } => {
                 write!(f, "the hull is already {slots} slots across")
+            }
+            CommandError::NotAWorkOrder => {
+                write!(f, "a work order has to list every job exactly once")
             }
             CommandError::NothingInReach => {
                 write!(f, "nothing the tower is passing is close enough to take")

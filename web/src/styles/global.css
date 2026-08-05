@@ -1133,6 +1133,19 @@ button {
   line-height: 1;
 }
 
+/*
+ * Practice, as pips. Small, dim and to the side of the name — this is
+ * meant to be noticed on the second or third look, the way you notice
+ * somebody has been here a while, rather than read as a stat line.
+ */
+.roster-practice {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+
 .roster-who {
   display: flex;
   flex: 1;

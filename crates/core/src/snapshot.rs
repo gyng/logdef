@@ -57,6 +57,9 @@ pub struct ViewSnapshot {
     /// about what is buildable — a card that offers something the
     /// command layer refuses is worse than no card.
     pub unlocked: Vec<u16>,
+    /// What kind of work idle crew reach for first, best first, as
+    /// indices into `catalog.jobs`.
+    pub work: Vec<u8>,
     pub stats: RunStats,
 }
 
@@ -399,6 +402,11 @@ pub struct CrewView {
     /// cross-section and are not: one is a job and one is "everybody on
     /// the mill, now".
     pub post_until_tired: bool,
+    /// How practised they are at each job, in ranks, in the catalog's
+    /// job order. Ranks rather than tick counts: the pip on the card
+    /// and the figure the simulation applies are the same fact, and
+    /// there is no finer number underneath for a player to chase.
+    pub ranks: Vec<u8>,
     /// Which half of the rota they are on.
     pub shift: ShiftTag,
     /// Actually asleep, as against merely off shift and walking to bed.
@@ -500,6 +508,22 @@ pub struct CatalogSnapshot {
     pub floor_slots: u8,
     pub stress_ticks: u32,
     pub ticks_per_day: u32,
+    /// The kinds of work, in `Job::ALL` order — which is the *default*
+    /// work order and not necessarily the current one. `view.work` is
+    /// the current one, as indices into this.
+    pub jobs: Vec<JobInfo>,
+    /// How many ranks of practice there are to get. The frontend draws
+    /// this many pip slots and no more.
+    pub max_rank: u8,
+}
+
+/// A kind of work, as the panel that ranks them needs it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobInfo {
+    /// The spelling a `SetWorkOrder` has to use.
+    pub id: String,
+    /// What the tower calls it.
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -709,6 +733,11 @@ pub fn build_view(state: &GameState, content: &Content, alpha: f32) -> ViewSnaps
         crew: build_crew(state, content),
         stock: build_stock(state),
         unlocked: build_unlocked(state, content),
+        work: state
+            .work
+            .iter()
+            .map(|job| u8::try_from(job.index()).unwrap_or(0))
+            .collect(),
         stats: state.stats.clone(),
     }
 }
@@ -1243,6 +1272,10 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
             rested: member.rested,
             stationed: member.stationed.map(|room| room.0),
             post_until_tired: member.post_until_tired,
+            ranks: crate::state::Job::ALL
+                .iter()
+                .map(|job| member.rank(*job, content))
+                .collect(),
             shift: match member.shift {
                 crate::content::Shift::Day => ShiftTag::Day,
                 crate::content::Shift::Night => ShiftTag::Night,
@@ -1452,6 +1485,14 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
             .collect(),
         widen_slots: content.balance.tower.widen_slots,
         max_slots: content.balance.tower.max_slots,
+        jobs: crate::state::Job::ALL
+            .iter()
+            .map(|job| JobInfo {
+                id: job.id().to_string(),
+                name: job.name().to_string(),
+            })
+            .collect(),
+        max_rank: content.balance.crew.max_rank,
         max_floors: content.balance.tower.max_floors,
         floor_slots: content.balance.tower.floor_slots,
         stress_ticks: content.balance.crew.stress_ticks,

@@ -140,16 +140,50 @@ pub enum SoundEvent {
 /// A `Vec` rather than a set, per `DECISIONS.md` §2 — at single-digit
 /// crew a linear scan is cheaper than a hash and, more to the point,
 /// ordered.
+///
+/// Each entry carries how practised that person is at working a post,
+/// because the room is where that practice is spent and the room has no
+/// other way to find out.
 #[must_use]
-pub fn manned_rooms(state: &GameState) -> Vec<crate::ids::RoomId> {
+pub fn manned_rooms(state: &GameState, content: &Content) -> Vec<(crate::ids::RoomId, u8)> {
     state
         .crew
         .iter()
         .filter_map(|member| match member.state {
-            crate::state::CrewState::Manning { room } => Some(room),
+            crate::state::CrewState::Manning { room } => {
+                Some((room, member.rank(crate::state::Job::Man, content)))
+            }
             _ => None,
         })
         .collect()
+}
+
+/// What a posting is worth to a room, in percent of the normal rate.
+///
+/// **The best person in the room, not the sum of them.** Two people at
+/// a mill is already worth something — `crew_required` counts heads —
+/// and adding their ranks on top would make stacking bodies the answer
+/// to everything, which is the shape this design keeps refusing. What
+/// the rank says is *somebody here knows this machine*, and a second
+/// person does not make that truer.
+#[must_use]
+pub fn post_pct(
+    content: &Content,
+    room: crate::ids::RoomId,
+    manned: &[(crate::ids::RoomId, u8)],
+) -> i64 {
+    let best = manned
+        .iter()
+        .filter(|(id, _)| *id == room)
+        .map(|(_, rank)| *rank)
+        .max();
+    match best {
+        None => 100,
+        Some(rank) => {
+            content.balance.crew.manned_work_pct.max(100)
+                + i64::from(rank) * i64::from(content.balance.crew.rank_bonus_pct)
+        }
+    }
 }
 
 /// Is this room staffed enough to run at all?
@@ -164,13 +198,13 @@ pub fn manned_rooms(state: &GameState) -> Vec<crate::ids::RoomId> {
 pub fn staffed(
     content: &Content,
     room: &crate::state::tower::Room,
-    manned: &[crate::ids::RoomId],
+    manned: &[(crate::ids::RoomId, u8)],
 ) -> bool {
     let need = content.room_rt(room.def).crew_required;
     if need == 0 {
         return true;
     }
-    manned.iter().filter(|id| **id == room.id).count() >= need as usize
+    manned.iter().filter(|(id, _)| *id == room.id).count() >= need as usize
 }
 
 pub fn tick(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {

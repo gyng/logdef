@@ -21,7 +21,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     // the priority order — after the cars, before the lamps.
     let mut power = std::mem::replace(&mut state.power, crate::state::Power::new(0));
     let tick = state.tick;
-    let manned = super::manned_rooms(state);
+    let manned = super::manned_rooms(state, content);
 
     for floor in &mut state.tower.floors {
         for room in &mut floor.rooms {
@@ -79,8 +79,14 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             // The recipe is untouched: the room still eats one lot of
             // inputs per craft, so a posting moves the bottleneck onto
             // the chain feeding the room rather than removing it.
-            let target = if manned.contains(&room.id) {
-                let pct = content.balance.crew.manned_work_pct.max(100);
+            //
+            // **And a practised hand on the machine shortens it
+            // further.** `post_pct` is 100 for an empty room, the
+            // posting bonus for a room with somebody in it, and that
+            // plus their rank for a room with somebody in it who has
+            // been doing this a while.
+            let pct = super::post_pct(content, room.id, &manned);
+            let target = if pct > 100 {
                 u32::try_from(i64::from(rt.craft_ticks) * 100 / pct).unwrap_or(rt.craft_ticks)
             } else {
                 rt.craft_ticks

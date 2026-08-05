@@ -6633,6 +6633,98 @@ the opposite of what M6 spent a milestone establishing with `climb_ticks_per_ite
 `examples/lift.rs`. The price is reasoned against `floor_cost` rather than measured against a
 tower that wanted one, because no instrument widens yet. Carried into §6.9.
 
+### 6.17 Practice, and the order the tower works in
+
+Two things, and they are one thing: **what somebody is good at, and what the tower
+reaches for first.**
+
+#### The work order
+
+`assign_idle`'s ladder was hardcoded and had been since M0. It is still a ladder, and the
+top of it is still fixed — a trip already under way, the rota, and dinner, in that order —
+but the four rungs below are now `GameState.work`, which the player sets.
+
+| Job | What it is |
+| --- | --- |
+| answering | Go and stand between a thief and what it is taking |
+| mending | Put damage back |
+| working a post | Go to the room you were stationed to |
+| hauling | Carry something somewhere |
+
+The enum order is the default order and it is an argument rather than a habit: something
+happening *now* beats something that already happened, which beats a standing order, which
+beats the background work that is always there. A player who disagrees says so, and the
+one that matters most is **whether a stationed gunner leaves the post to mend a wall**.
+By default they do.
+
+**Needs are not jobs and are not offered as settings.** There is no rung for eating or
+sleeping, because a player who could rank hauling above dinner would only be building the
+starvation trap — offering it as a setting would be the game pretending a mistake is a
+strategy. `tests/needs.rs::no_work_order_lets_anybody_skip_dinner` is that property.
+
+`SetWorkOrder` takes the whole order and rejects anything that is not a permutation. A
+list with a job left out is a list that has quietly made that job unreachable: nobody
+would ever mend again and nothing would say so.
+
+**One order for the tower, not a rota per person.** A per-person matrix is the shape that
+turns crew into a spreadsheet, and it answers a question the player is rarely asking —
+what they want to say is *stop mending and get the harvest in*, which is one sentence
+about the whole tower. Somebody who should be doing one specific thing has `stationed`
+already, and that is per-person precisely because it is the exception.
+
+#### Practice
+
+**This is the one place `DESIGN.md`'s fourth structural call has been amended rather than
+followed.** That call read "named individuals with jobs, not stat blocks", and the second
+half was doing work the first half did not need: three people who are identical on day one
+and identical on day nine are three units, and naming them does not fix it.
+
+A tick of doing a job is a tick of practice at it. 3,600 ticks — a bit under half a day
+shift — is a rank; three ranks is the ceiling; each is worth ten percent. What that buys,
+per job:
+
+- **hauling** — every leg is quicker: the walk, the climb, the loading, the unloading
+- **mending** — a repair shift is shorter
+- **answering** — a shooing is shorter
+- **working a post** — the room's craft is shorter, on top of `manned_work_pct`
+
+Eating, sleeping and the *length* of a posting are untouched, and the omissions are
+deliberate: eating faster is not a skill anybody wants modelled, sleep is the one thing in
+the game left deliberately un-optimisable, and a posting has no duration to shorten.
+`arrive` decides all five in one place and says so.
+
+**Walking and climbing count as hauling wherever they are going.** What a porter learns is
+the building — which stair is quicker with a crate on, where the landings are — and that
+does not evaporate because this particular trip is toward a broken panel.
+
+Four terms keep this from being a character sheet:
+
+1. **Earned by doing, never assigned.** There is no screen where a player spends anything.
+2. **Small.** +30% at the ceiling. Enough that the veteran on your stairs is *your*
+   veteran; never enough that there is a correct assignment.
+3. **Shown as pips, with the numbers on hover** (`DECISIONS.md` §8), and only the best job
+   per person — a four-column grid of everybody's skill at everything is the spreadsheet
+   this design keeps refusing.
+4. **Cannot be lost or spent.** Somebody who spent a week on the stairs and is now stood at
+   a gun still knows the stairs.
+
+It is also **the first multiplier in the game allowed above 100%.** `work_pct` still clamps
+there, because being fed and rested is the baseline and neglect is what costs you; practice
+is a separate figure that stacks on top, so a starving expert is still starving. Keeping
+them apart is what stops a rank quietly cancelling an empty pantry.
+
+**A posting takes the best rank in the room, not the sum.** Two people at a mill is already
+worth something — `crew_required` counts heads — and adding ranks on top would make
+stacking bodies the answer to everything. What a rank says is *somebody here knows this
+machine*, and a second person does not make that truer.
+
+#### What is not settled
+
+Nobody has played a run at 20% a rank or at 5%. The measurement behind these numbers is a
+maximum against a zero — `tests/needs.rs::a_practised_crew_gets_more_done`, two towers on
+one seed where the second tower's crew start at the ceiling — which honestly answers *does
+any of it reach the tower* and does not answer *is ten percent right*. Carried into §6.9.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -6641,39 +6733,45 @@ tower that wanted one, because no instrument widens yet. Carried into §6.9.
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **Does widening undo the shaft?** §6.16 lets the hull grow sideways, and a wider floor is
+1. **Is ten percent a rank the right ten percent?** §6.17's practice was measured as a
+   maximum against a zero: two towers, one seed, one of them starting at the ceiling, and
+   the veterans get more done. That answers *does it reach the tower* and not *is this the
+   number*. Nobody has played a run at 20% or at 5%, and the failure mode to watch for is
+   the one the modesty is guarding against — a run won by parking one person on one job
+   from the first pace, which would mean the bonus is large enough to be a build order.
+2. **Does widening undo the shaft?** §6.16 lets the hull grow sideways, and a wider floor is
    more room per storey — which is *less* reason to climb, and M6 spent a milestone establishing
    that a shaft has to earn its column (`climb_ticks_per_item`, `examples/lift.rs`). Nothing has
    measured a widened tower's haul distances. `lift.rs` is the natural home for the question and
    the answer might be that widening should cost more, or cap lower, or that the two are simply
    different tools — but "we did not check" is not one of the options.
-2. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
+3. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
    instrument cannot tell them apart — the numbers are sized against the kill-shot table and
    nobody has met one. The tell is whether a player who fells one goes looking for the next,
    because that is the jungle becoming a gallery, which `DECISIONS.md` §8 rules out.
-3. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
+4. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
    screensaver" by putting something in front of the player roughly once a minute, and the
    failure mode of that fix is the opposite complaint: a prompt often enough to become
    wallpaper. The tell is whether anybody reads the second one. Note also that the streaming
    window (900 ahead, 300 behind) is *narrower* than the interval, so beats can appear without
    being seen coming — deliberate for now, and the first thing to change if they read as
    pop-ups.
-4. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
+5. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
    edge from the shaft column, which is a placement fix — but every layout puzzle now has two
    more answers, and `floor_slots`' own row is explicit that its value was chosen for scarcity.
    Nobody has played a ten-wide tower against an eight-wide one. It is on the difficulty pass's
    list and it is the change on that list most likely to have made the game softer by accident.
-5. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
+6. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
    of what a posting does and cleans up after itself. If nobody ever uses the permanent form
    once they have the temporary one, that is not two verbs, it is one verb and a trap — and
    the tell is whether anybody posts somebody *for the run* rather than *for the minute*.
-6. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+7. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-7. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+8. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

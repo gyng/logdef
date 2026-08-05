@@ -132,6 +132,11 @@ export interface ViewSnapshot {
    * refuses is worse than no card.
    */
   unlocked: number[];
+  /**
+   * What kind of work idle crew reach for first, best first, as indices
+   * into `catalog.jobs`.
+   */
+  work: number[];
   stats: RunStats;
 }
 
@@ -448,6 +453,15 @@ export interface CrewView {
    * and back on them when they hand it in.
    */
   kit: number | null;
+  /**
+   * How practised this person is at each job, in ranks, in
+   * `catalog.jobs` order.
+   *
+   * Ranks rather than tick counts, deliberately: the pip on the card and
+   * the figure the simulation applies are the same fact, and there is no
+   * finer number underneath for a player to chase.
+   */
+  ranks: number[];
   shift: ShiftTag;
   /** Actually asleep, as against merely off shift and walking to bed. */
   asleep: boolean;
@@ -517,6 +531,21 @@ export interface CatalogSnapshot {
   floor_slots: number;
   stress_ticks: number;
   ticks_per_day: number;
+  /**
+   * The kinds of work, in the *default* order — not necessarily the
+   * current one. `view.work` is the current one, as indices into this.
+   */
+  jobs: JobInfo[];
+  /** How many ranks there are to get. This many pip slots, no more. */
+  max_rank: number;
+}
+
+/** A kind of work, as the panel that ranks them needs it. */
+export interface JobInfo {
+  /** The spelling a `SetWorkOrder` has to use. */
+  id: string;
+  /** What the tower calls it. */
+  name: string;
 }
 
 export interface ShaftInfo {
@@ -728,6 +757,8 @@ export type GameCommand =
    * would leave the rest ranked by an accident of list position.
    */
   | { SetPowerPriority: { order: PowerUse[] } }
+  /** Every job exactly once, best first. Anything else is refused. */
+  | { SetWorkOrder: { order: string[] } }
   /** Ask every emplacement to prefer one creature. `null` clears it. */
   | { FocusEnemy: { enemy: number | null } }
   /**

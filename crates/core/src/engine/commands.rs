@@ -61,6 +61,7 @@ pub fn apply(
         GameCommand::Recruit => recruit(state, content),
         GameCommand::TakeWaypoint => take_waypoint(state, content),
         GameCommand::WidenTower => widen_tower(state, content),
+        GameCommand::SetWorkOrder { order } => set_work_order(state, order),
         GameCommand::Reinforce => reinforce(state, content),
         GameCommand::SetShift { crew, shift } => set_shift(state, *crew, *shift),
     }
@@ -629,6 +630,24 @@ fn focus_enemy(
 /// member mid-delivery finishes it first — the same courtesy every other
 /// errand gets, and the reason nothing a crew member is carrying is ever
 /// dropped.
+/// Set the tower's work order.
+///
+/// Rejects anything that is not a permutation of every job, because a
+/// list with a job missing is a list that has quietly made that job
+/// unreachable — nobody would ever mend again and nothing would say so.
+fn set_work_order(state: &mut GameState, order: &[crate::state::Job]) -> Result<(), CommandError> {
+    use crate::state::Job;
+    if order.len() != Job::ALL.len()
+        || !Job::ALL
+            .iter()
+            .all(|job| order.iter().filter(|had| *had == job).count() == 1)
+    {
+        return Err(CommandError::NotAWorkOrder);
+    }
+    state.work = order.to_vec();
+    Ok(())
+}
+
 /// Widen the hull, and slide everything aboard back to make room.
 ///
 /// **The new frame goes on the back.** It is the only arrangement that

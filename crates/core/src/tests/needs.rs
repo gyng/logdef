@@ -6,7 +6,7 @@
 //! scheduling problem, and neither is allowed to make the bottleneck
 //! instrument lie.
 
-use crate::command::GameCommand;
+use crate::command::{CommandError, GameCommand};
 use crate::content::Shift;
 use crate::ids::CrewId;
 use crate::state::{CrewState, Errand};
@@ -801,4 +801,219 @@ fn equipping_what_the_tower_does_not_have_is_refused() {
         .expect_err("a pole is not something to carry");
     assert!(matches!(wrong, CommandError::NotAKit { .. }));
     assert!(game.state().crew[0].kit.is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Practice and the work order (`SYSTEMS.md` §6.17)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn practice_comes_from_the_work_actually_done() {
+    // **Earned by doing, and only by doing.** There is no screen where
+    // a player assigns this, which is the whole reason it is allowed to
+    // exist at all — a tower that has been hauling all morning has
+    // people who are better at hauling, and nothing else has moved.
+    use crate::state::Job;
+    let content = content();
+    let mut game = engine(1700);
+    game.step(3000);
+
+    let hauled: u32 = game
+        .state()
+        .crew
+        .iter()
+        .map(|member| member.practice[Job::Haul.index()])
+        .sum();
+    assert!(hauled > 0, "an hour of hauling taught nobody anything");
+
+    // And nothing else, because nothing else happened. An undamaged
+    // tower with no thief in it teaches no mending and no answering.
+    for member in &game.state().crew {
+        assert_eq!(
+            member.practice[Job::Mend.index()],
+            0,
+            "{} got better at mending an undamaged tower",
+            member.name
+        );
+        assert_eq!(
+            member.practice[Job::Answer.index()],
+            0,
+            "{} got better at answering a thief that never came",
+            member.name
+        );
+    }
+    let _ = content;
+}
+
+#[test]
+fn practice_stops_at_the_ceiling() {
+    // An uncapped counter is a number going up forever with nothing
+    // attached to it. The rank stops, so the count stops with it.
+    use crate::state::Job;
+    let content = content();
+    let ceiling = content.balance.crew.practice_per_rank * u32::from(content.balance.crew.max_rank);
+    let mut game = engine(1701);
+
+    {
+        let state = game.state_mut_for_test();
+        for member in &mut state.crew {
+            member.practice[Job::Haul.index()] = ceiling;
+        }
+    }
+    game.step(600);
+
+    for member in &game.state().crew {
+        assert_eq!(
+            member.practice[Job::Haul.index()],
+            ceiling,
+            "{} went past the ceiling",
+            member.name
+        );
+        assert_eq!(
+            member.rank(Job::Haul, &content),
+            content.balance.crew.max_rank,
+            "the ceiling and the top rank disagree"
+        );
+    }
+}
+
+#[test]
+fn a_practised_crew_gets_more_done() {
+    // The point of the whole thing. Two identical towers, one seed, one
+    // difference: the crew of the second have done this before.
+    //
+    // Measured on hauls completed rather than on a tick count, because
+    // a tick count would be measuring `effective_ticks` — which is a
+    // unit test one file over — rather than measuring whether any of it
+    // reaches the tower.
+    use crate::state::Job;
+    let content = content();
+    let ceiling = content.balance.crew.practice_per_rank * u32::from(content.balance.crew.max_rank);
+
+    let mut green = engine(1702);
+    green.step(5400);
+
+    let mut veteran = engine(1702);
+    {
+        let state = veteran.state_mut_for_test();
+        for member in &mut state.crew {
+            member.practice[Job::Haul.index()] = ceiling;
+        }
+    }
+    veteran.step(5400);
+
+    assert!(
+        veteran.state().stats.hauls_completed > green.state().stats.hauls_completed,
+        "practice bought nothing: {} hauls against {}",
+        veteran.state().stats.hauls_completed,
+        green.state().stats.hauls_completed
+    );
+}
+
+#[test]
+fn the_work_order_decides_what_an_idle_person_starts() {
+    // A tower with damage *and* a haul available. Under the default
+    // order somebody goes to mend; put hauling first and the same tower
+    // on the same tick leaves the wall alone.
+    use crate::state::{CrewState, Job};
+
+    let mends_under = |order: Vec<Job>| {
+        let mut game = engine(1703);
+        game.try_send(GameCommand::SetWorkOrder { order })
+            .expect("a full permutation");
+        // Break every panel, so a mend is always the nearest thing to do.
+        {
+            let state = game.state_mut_for_test();
+            for floor in &mut state.tower.floors {
+                floor.panel.hp = 1;
+            }
+        }
+        crate::tests::stock_poles(&mut game, 200);
+        game.step(900);
+        game.state()
+            .crew
+            .iter()
+            .filter(|member| {
+                matches!(member.state, CrewState::Repairing { .. })
+                    || member.repair_target().is_some()
+            })
+            .count()
+    };
+
+    let by_default = mends_under(Job::ALL.to_vec());
+    let hauling_first = mends_under(vec![Job::Answer, Job::Haul, Job::Mend, Job::Man]);
+
+    assert!(
+        by_default > 0,
+        "nobody mended a tower with every panel at one hit point"
+    );
+    assert!(
+        hauling_first < by_default,
+        "putting hauling first changed nothing: {hauling_first} mending against {by_default}"
+    );
+}
+
+#[test]
+fn a_work_order_with_a_job_missing_is_refused() {
+    // A list with a job left out is a list that has quietly made that
+    // job unreachable — nobody would ever mend again and nothing would
+    // say so.
+    use crate::state::Job;
+    let mut game = engine(1704);
+    let before = game.state().work.clone();
+
+    for bad in [
+        vec![Job::Haul, Job::Mend, Job::Man],
+        vec![Job::Haul, Job::Haul, Job::Mend, Job::Man],
+        Vec::new(),
+    ] {
+        let err = game
+            .try_send(GameCommand::SetWorkOrder { order: bad })
+            .expect_err("not a permutation");
+        assert!(matches!(err, CommandError::NotAWorkOrder), "{err:?}");
+    }
+    assert_eq!(
+        game.state().work,
+        before,
+        "a refused order changed the tower"
+    );
+}
+
+#[test]
+fn no_work_order_lets_anybody_skip_dinner() {
+    // **Needs are not jobs and are not offered as settings.** Whatever
+    // the player ranks first, a hungry crew member still goes and eats
+    // — a game that let you turn that off would be offering a mistake
+    // as a strategy.
+    use crate::state::{CrewState, Job};
+    let content = content();
+    let mut game = engine(1705);
+    game.try_send(GameCommand::SetWorkOrder {
+        order: vec![Job::Haul, Job::Man, Job::Mend, Job::Answer],
+    })
+    .expect("a full permutation");
+
+    // Something to eat. The fixture has no canteen, and a shelf with
+    // meals on it is a meal as far as `find_meal` is concerned — which
+    // is the point of this test rather than a shortcut around it: what
+    // is under test is that the *ladder* still stops for dinner, not
+    // that the canteen works.
+    crate::tests::stock_item(&mut game, "item.meals", 6);
+    {
+        let state = game.state_mut_for_test();
+        for member in &mut state.crew {
+            member.hunger = content.balance.crew.hungry_ticks + 1;
+        }
+    }
+    let before = game.state().stats.meals_eaten;
+    game.step(3600);
+    assert!(
+        game.state().stats.meals_eaten > before
+            || game
+                .state()
+                .crew
+                .iter()
+                .any(|member| matches!(member.state, CrewState::Eating { .. })),
+        "everybody worked through dinner because hauling was ranked first"
+    );
 }

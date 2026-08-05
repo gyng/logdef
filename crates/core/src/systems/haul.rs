@@ -19,10 +19,10 @@ use crate::content::{Content, ShaftKind};
 use crate::fx::Fx;
 use crate::ids::{DaypartIdx, FloorIdx, ItemIdx, RoomId, ShaftId, SlotIdx};
 use crate::state::crew::HaulPickup;
-use crate::state::{Crew, CrewState, Errand, GameState, HaulDestination, HaulTask, Tower};
+use crate::state::{Crew, CrewState, Errand, GameState, HaulDestination, HaulTask, Job, Tower};
 
 use super::SoundEvent;
-use super::needs::{effective_ticks, work_pct};
+use super::needs::{effective_ticks, practice_pct, work_pct};
 
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     // Move the crew out so each member can be advanced while the tower
@@ -64,6 +64,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         daypart,
         poles,
         awake_shift,
+        &state.work,
     );
 
     state.crew = crew;
@@ -91,7 +92,13 @@ fn advance(
     // Starving, tired, and working unlit compose into one figure that
     // stretches the *duration* of every leg. See `needs::effective_ticks`
     // for why it is the duration and never the `Fx` step.
-    let pct = work_pct(crew, content, lit);
+    //
+    // **Practice at hauling multiplies straight into it**, and it is
+    // sound to fold in here because every leg this figure reaches — the
+    // walk, the climb, the loading and the unloading — is porter work.
+    // The two states that are somebody else's job, `Repairing` and
+    // `Shooing`, get their durations from `arrive` and never read this.
+    let pct = work_pct(crew, content, lit) * practice_pct(crew, Job::Haul, content) / 100;
 
     match crew.state {
         CrewState::Idle => {
@@ -597,6 +604,7 @@ fn assign_idle(
     daypart: DaypartIdx,
     poles: i64,
     awake_shift: crate::content::Shift,
+    work: &[Job],
 ) {
     for i in 0..crew.len() {
         let off_shift = crew[i].shift != awake_shift;
@@ -699,89 +707,132 @@ fn assign_idle(
             continue;
         }
 
-        // **A thief outranks damage**, and the order is the argument: a
-        // wrecked panel has already happened and will still be there in
-        // a minute, while a crow in the outbox is taking something right
-        // now. Both sit below hunger and the rota, because neither is
-        // worth skipping dinner over.
-        if free_to_choose
-            && let Some((floor, slot)) = super::siege::thief_at_work(enemies, content, crew)
-        {
-            let errand = Errand::Shoo { floor, slot };
-            crew[i].errand = Some(errand);
-            crew[i].wait_ticks = 0;
-            crew[i].state = errand_leg(&crew[i], tower, content, queues, daypart, errand);
-            continue;
-        }
-
-        // Damage outranks a new errand, but not a delivery already under
-        // way: a crew member holding something finishes that first,
-        // because putting a load down where it does not belong to go and
-        // mend a wall would lose the load. A stranded carrier mends
-        // while holding it, per `free_to_choose` above — mending costs
-        // the load nothing, since `repair::run` never touches
-        // `carrying`.
-        if free_to_choose
-            && let Some((target, floor, slot)) =
-                super::repair::pick_repair(tower, content, poles, crew, i, crew[i].floor())
-        {
-            let errand = Errand::Repair {
-                target,
-                floor,
-                slot,
-            };
-            crew[i].errand = Some(errand);
-            crew[i].wait_ticks = 0;
-            crew[i].state = errand_leg(&crew[i], tower, content, queues, daypart, errand);
-            continue;
-        }
-
-        // **A posting, ranked below every need and above every haul.**
-        // Hunger, the rota and damage all outrank it, which is the
-        // point: a station is a standing order about what somebody does
-        // with their working day, not a reason to skip dinner. It beats
-        // hauling because that is the entire trade the player is making
-        // — somebody at a post is somebody not on the stairs.
+        // **The four jobs, in whatever order the player put them.**
+        // Everything above this line is fixed and always outranks them:
+        // a trip already under way, the rota, and dinner. Those are not
+        // jobs and are not offered as settings — see `Job`.
         //
-        // The room is looked up fresh every time rather than cached with
-        // the order: a room can be demolished under somebody's feet, and
-        // an id that no longer resolves simply ends the posting.
-        if free_to_choose && let Some(room) = crew[i].stationed {
-            match tower.locate(room) {
-                Some((floor, slot)) => {
-                    let errand = Errand::Station { room, floor, slot };
-                    crew[i].errand = Some(errand);
-                    crew[i].wait_ticks = 0;
-                    crew[i].state = errand_leg(&crew[i], tower, content, queues, daypart, errand);
-                    continue;
+        // Note where `free_to_choose` bites. Somebody carrying something
+        // that has a home to go to fails every arm but the haul,
+        // whatever the order says, which is what keeps the order a
+        // preference about *what to start* rather than a licence to put
+        // a crate down in a corridor.
+        let mut chose = false;
+        for job in work {
+            match job {
+                // A crow in the outbox is taking something right now,
+                // which is the argument for it going first by default: a
+                // wrecked panel has already happened and will still be
+                // there in a minute.
+                Job::Answer => {
+                    if free_to_choose
+                        && let Some((floor, slot)) =
+                            super::siege::thief_at_work(enemies, content, crew)
+                    {
+                        let errand = Errand::Shoo { floor, slot };
+                        crew[i].errand = Some(errand);
+                        crew[i].wait_ticks = 0;
+                        crew[i].state =
+                            errand_leg(&crew[i], tower, content, queues, daypart, errand);
+                        chose = true;
+                    }
                 }
-                None => crew[i].stationed = None,
+
+                // Never above a delivery already under way: putting a
+                // load down where it does not belong in order to go and
+                // mend a wall would lose the load. A stranded carrier
+                // mends while holding it, per `free_to_choose` above —
+                // mending costs the load nothing, since `repair::run`
+                // never touches `carrying`.
+                Job::Mend => {
+                    if free_to_choose
+                        && let Some((target, floor, slot)) = super::repair::pick_repair(
+                            tower,
+                            content,
+                            poles,
+                            crew,
+                            i,
+                            crew[i].floor(),
+                        )
+                    {
+                        let errand = Errand::Repair {
+                            target,
+                            floor,
+                            slot,
+                        };
+                        crew[i].errand = Some(errand);
+                        crew[i].wait_ticks = 0;
+                        crew[i].state =
+                            errand_leg(&crew[i], tower, content, queues, daypart, errand);
+                        chose = true;
+                    }
+                }
+
+                // A standing order about what somebody does with their
+                // working day. Above hauling by default because that is
+                // the entire trade the player is making — somebody at a
+                // post is somebody not on the stairs — and a player who
+                // ranks hauling higher is saying *the post can wait
+                // until the shelves are clear*, which is a real thing to
+                // want and is visible the moment they say it.
+                //
+                // The room is looked up fresh rather than cached with
+                // the order: a room can be demolished under somebody's
+                // feet, and an id that no longer resolves simply ends
+                // the posting.
+                Job::Man => {
+                    if free_to_choose && let Some(room) = crew[i].stationed {
+                        match tower.locate(room) {
+                            Some((floor, slot)) => {
+                                let errand = Errand::Station { room, floor, slot };
+                                crew[i].errand = Some(errand);
+                                crew[i].wait_ticks = 0;
+                                crew[i].state =
+                                    errand_leg(&crew[i], tower, content, queues, daypart, errand);
+                                chose = true;
+                            }
+                            None => crew[i].stationed = None,
+                        }
+                    }
+                }
+
+                Job::Haul => {
+                    let task = if let Some((item, held)) = crew[i].carrying {
+                        // Already holding something: find it a home
+                        // rather than picking up more. Nothing is ever
+                        // dropped on the floor. This is a re-home rather
+                        // than a pickup, so a shelf is a legitimate
+                        // destination — and so is a chute, which is the
+                        // escape hatch for a carrier the tower has no
+                        // room for.
+                        find_destination(tower, content, crew, i, item, held, false, true).map(
+                            |(destination, to_floor, to_slot, _)| HaulTask {
+                                item,
+                                amount: held,
+                                pickup: None,
+                                to_floor,
+                                to_slot,
+                                destination,
+                            },
+                        )
+                    } else {
+                        pick_task(tower, content, crew, i, queues, daypart)
+                    };
+                    if let Some(task) = task {
+                        crew[i].wait_ticks = 0;
+                        crew[i].task = Some(task);
+                        let next = next_leg(&crew[i], tower, content, queues, daypart);
+                        crew[i].state = next;
+                        chose = true;
+                    }
+                }
+            }
+            if chose {
+                break;
             }
         }
 
-        let task = if let Some((item, held)) = crew[i].carrying {
-            // Already holding something: find it a home rather than
-            // picking up more. Nothing is ever dropped on the floor.
-            // Already carrying: this is a re-home, not a pickup, so a
-            // shelf is a legitimate destination.
-            // Already holding it, so a chute is a legitimate home — this
-            // is the escape hatch for a carrier the tower has no room
-            // for.
-            find_destination(tower, content, crew, i, item, held, false, true).map(
-                |(destination, to_floor, to_slot, _)| HaulTask {
-                    item,
-                    amount: held,
-                    pickup: None,
-                    to_floor,
-                    to_slot,
-                    destination,
-                },
-            )
-        } else {
-            pick_task(tower, content, crew, i, queues, daypart)
-        };
-
-        let Some(task) = task else {
+        if !chose {
             // Nothing to do is not stress. `wait_ticks` drives the red
             // tint, and a crew member standing around because the
             // tower has no work is telling the player something quite
@@ -789,12 +840,7 @@ fn assign_idle(
             // staircase — conflating them makes the only bottleneck
             // instrument in the game lie.
             crew[i].wait_ticks = 0;
-            continue;
-        };
-        crew[i].wait_ticks = 0;
-        crew[i].task = Some(task);
-        let next = next_leg(&crew[i], tower, content, queues, daypart);
-        crew[i].state = next;
+        }
     }
 }
 
@@ -829,7 +875,7 @@ fn errand_leg(
 
     if floor == errand.floor() {
         if slot == errand.slot() {
-            return arrive(content, errand);
+            return arrive(crew, content, errand);
         }
         return CrewState::Walking {
             to_slot: errand.slot(),
@@ -854,13 +900,21 @@ fn errand_leg(
 }
 
 /// What standing on the spot means, per errand.
-fn arrive(content: &Content, errand: Errand) -> CrewState {
+///
+/// **Two of the five get shorter with practice, and three do not.** A
+/// repair shift and a shooing are work, and somebody who has done a lot
+/// of either is quicker at it. A meal, a bed and a post are not: eating
+/// faster is not a skill anybody wants modelled, sleep is the one thing
+/// in the game that is deliberately not optimisable, and a post has no
+/// duration at all — what practice buys a stationed worker is in
+/// `production`, not here.
+fn arrive(crew: &Crew, content: &Content, errand: Errand) -> CrewState {
     match errand {
         Errand::Repair { target, .. } => CrewState::Repairing {
             target,
-            ticks_left: super::repair::shift_ticks(
-                content,
-                content.balance.siege.repair_hp_per_shift,
+            ticks_left: effective_ticks(
+                super::repair::shift_ticks(content, content.balance.siege.repair_hp_per_shift),
+                practice_pct(crew, Job::Mend, content),
             ),
         },
         // A meal takes as long as the canteen takes to cook one. Not
@@ -879,7 +933,10 @@ fn arrive(content: &Content, errand: Errand) -> CrewState {
         // short enough that a thief is not answered by a porter lost for
         // the rest of the day.
         Errand::Shoo { .. } => CrewState::Shooing {
-            ticks_left: content.balance.siege.shoo_ticks,
+            ticks_left: effective_ticks(
+                content.balance.siege.shoo_ticks,
+                practice_pct(crew, Job::Answer, content),
+            ),
         },
     }
 }

@@ -649,3 +649,60 @@ test("crew can be picked out and pushed at a room", async ({ page }) => {
     )
     .toBe(0);
 });
+
+test("the work order is the player's, and practice shows on the card", async ({ page }) => {
+  await boot(page);
+
+  // **The order the tower reaches for work in** (`SYSTEMS.md` §6.17).
+  // Four jobs, and the panel is two arrows per row exactly like the
+  // charge order it sits under.
+  const before = await page.evaluate(() => window.__understory!.view().work);
+  expect(before.length).toBe(4);
+
+  // Push whatever is second up to the top, and check the simulation
+  // agrees rather than only the widget.
+  const second = before[1]!;
+  await page.getByTestId(`work-up-${second}`).click();
+  await expect.poll(() => page.evaluate(() => window.__understory!.view().work[0])).toBe(second);
+
+  // A refused order must not move anything. The command layer rejects
+  // anything that is not every job exactly once, and the panel can only
+  // ever produce permutations — so this asks the bridge directly.
+  const refused = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const held = hooks.view().work.slice();
+    const sent = hooks.send({ SetWorkOrder: { order: ["Haul", "Mend"] } });
+    return { sent, held, after: hooks.view().work };
+  });
+  expect(refused.sent).not.toBe(true);
+  expect(refused.after).toEqual(refused.held);
+
+  // And practice, as far as a smoke test should go with it.
+  //
+  // **The accrual is a Rust test, not this one.** A rank is 3,600 ticks
+  // of one job and crew are idle between tasks, so waiting for a pip in
+  // a browser is a minute of real time on a good run and a flake on a
+  // slow one — `tests/needs.rs` covers whether practice accrues, whether
+  // it stops at the ceiling, and whether it buys the tower anything.
+  // What is only checkable here is the wire: that every crew member
+  // arrives with a rank per job, inside the ceiling the catalog
+  // advertises, and that a fresh tower shows no pips because nobody has
+  // done anything yet.
+  const wire = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const catalog = hooks.catalog();
+    return {
+      jobs: catalog.jobs.map((job) => job.id),
+      maxRank: catalog.max_rank,
+      ranks: hooks.view().crew.map((member) => member.ranks),
+      who: hooks.view().crew[0]?.id ?? null,
+    };
+  });
+  expect(wire.jobs).toEqual(["Answer", "Mend", "Man", "Haul"]);
+  expect(wire.ranks.length).toBeGreaterThan(0);
+  for (const ranks of wire.ranks) {
+    expect(ranks.length).toBe(wire.jobs.length);
+    expect(Math.max(...ranks)).toBeLessThanOrEqual(wire.maxRank);
+  }
+  await expect(page.getByTestId(`practice-${wire.who}`)).toHaveCount(0);
+});

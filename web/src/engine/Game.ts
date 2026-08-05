@@ -122,6 +122,8 @@ export interface UiState {
   brownout: boolean;
   /** Charge ranking, best first. */
   powerPriority: PowerUse[];
+  /** Work ranking, best first, as indices into `catalog.jobs`. */
+  workOrder: number[];
   walking: boolean;
   /** How much attention the tower has drawn, against its ceiling. */
   provocation: number;
@@ -304,6 +306,20 @@ export class Game {
    */
   setPowerPriority(order: PowerUse[]): void {
     this.send({ SetPowerPriority: { order } });
+  }
+
+  /**
+   * Rank the kinds of work idle crew reach for.
+   *
+   * Takes catalog indices and posts the names the simulation knows,
+   * because the wire format is the `Job` enum and the panel thinks in
+   * list positions. Sent whole for the same reason the charge order is:
+   * anything that is not every job exactly once is refused, and a
+   * partial order would leave the rest ranked by an accident.
+   */
+  setWorkOrder(order: number[]): void {
+    const named = order.map((at) => this.catalog.jobs[at]?.id).filter((id) => id !== undefined);
+    this.send({ SetWorkOrder: { order: named } });
   }
 
   /**
@@ -875,6 +891,7 @@ export class Game {
       chargeSpend: view?.power.spent_last ?? 0,
       brownout: view?.power.brownout ?? false,
       powerPriority: view?.power.priority ?? POWER_USES,
+      workOrder: view?.work ?? this.catalog.jobs.map((_, at) => at),
       walking: view?.power.walking ?? true,
       provocation: view?.siege.provocation ?? 0,
       provocationMax: view?.siege.provocation_max ?? 0,

@@ -260,6 +260,9 @@ fn every_command_survives_the_replay_format() {
         },
         C::TakeWaypoint,
         C::WidenTower,
+        C::SetWorkOrder {
+            order: crate::state::Job::ALL.to_vec(),
+        },
     ];
 
     // Exhaustiveness: if a variant is added and not listed above, this
@@ -276,6 +279,7 @@ fn every_command_survives_the_replay_format() {
             | C::SetShaftProgram { .. }
             | C::TakeWaypoint
             | C::WidenTower
+            | C::SetWorkOrder { .. }
             | C::SetStriding { .. }
             | C::TakeFork { .. }
             | C::Trade { .. }

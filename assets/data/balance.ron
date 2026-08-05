@@ -197,6 +197,24 @@ Balance(
         // off the stairs, which is `DESIGN.md` insight 1 made explicit
         // rather than a cost bolted on.
         manned_work_pct: 150,
+        // **Practice.** A day's shift is 8,640 ticks, so 3,600 is a bit
+        // under half a shift of one job — near enough that somebody who
+        // spent a morning on the stairs is visibly better at the stairs
+        // by lunch, and far enough that a person who does a bit of
+        // everything gets there slowly. Three ranks at 10% is +30% at
+        // the ceiling, reached in about an hour and a quarter of doing
+        // one thing.
+        //
+        // Ten percent is deliberately modest. It has to be *worth*
+        // noticing without being worth building around: a tower that
+        // wins by parking one person on one job for the whole run has
+        // turned people into a build order, which is the thing
+        // `DESIGN.md`'s fourth structural call is for. What +30% buys is
+        // that the veteran on your stairs is your veteran, not that
+        // there is a correct assignment.
+        practice_per_rank: 3600,
+        max_rank: 3,
+        rank_bonus_pct: 10,
         // A third of a day, so three meals a day a person. Short enough
         // that the canteen is somewhere people actually go, long enough
         // that eating is not most of what a crew member does.
