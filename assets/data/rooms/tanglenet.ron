@@ -1,0 +1,52 @@
+// **The tower that makes the ground sticky.**
+//
+// Nets, thrown short and often. It does almost no damage — a tanglenet
+// does not kill things, it holds them at arm's length while the legs
+// carry the tower out from under them, which is `DECISIONS.md` §11's
+// walking-away made into a room. The fantasy is the one this game keeps
+// reaching for and rarely gets to say outright: **you are not fighting,
+// you are declining to be caught.**
+//
+// **And it gives rope a consumer that is not a build cost**, which is a
+// recorded problem rather than a bonus. `BALANCE.md`'s ropery row and
+// `SYSTEMS.md` §5.11 both carry it: rope's only consumer is a one-off,
+// so a ropery left running fills the tower with something nothing eats
+// and "remember to switch it off" is a poor answer. A tanglenet eats
+// rope for as long as there is anything to throw it at.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.tanglenet",
+    name: "Tanglenet",
+    short: "TNG",
+    category: Defence,
+    unlocked_by: "room.burner",
+    front_only: true,
+    // One slot, like the thorn gun and the dart battery.
+    width: 1,
+    build_cost: [
+        CostEntryDef(item: "item.poles", amount: 4),
+        CostEntryDef(item: "item.rope", amount: 2),
+    ],
+    defence: DefenceDef(
+        ammo: "item.rope",
+        ammo_per_shot: 1,
+        // Ground only. Things that walk up to the tower can be tangled;
+        // a leaper already in the air cannot, and neither can something
+        // under the floor.
+        targets: [Ground],
+        // Twelve on the rack, the largest magazine in the pack, because
+        // a net is cheap and the whole point is throwing a lot of them.
+        buffer_max: 12,
+        // **Four damage, and it is meant to look inadequate.** Three
+        // times what a skitter takes from a thorn gun's single shot,
+        // spread over a reload a fifth as long — so against a crowd of
+        // small things it is the best room in the game, and against one
+        // large thing it is nearly useless. That is the shape a swarm
+        // answer should have.
+        damage: 4,
+        // Fast. Twice a dart battery's rate.
+        reload_ticks: 20,
+        // Short. A net is thrown, not fired.
+        range_paces: 12,
+    ),
+)

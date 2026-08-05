@@ -2570,3 +2570,167 @@ fn ordinary_creatures_leave_nothing() {
         "more than the residents are carrying something"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Weapons that answer one kind of trouble (`SYSTEMS.md` §6.22)
+// ---------------------------------------------------------------------------
+
+/// Put a weapon on the leading edge of a floor and load its rack.
+fn arm(game: &mut crate::engine::GameEngine, room: &str, floor: u8) {
+    let (width, ammo, rack) = {
+        let content = game.content();
+        let idx = content
+            .room_idx(room)
+            .unwrap_or_else(|| panic!("the pack has no {room}"));
+        let defence = content
+            .room(idx)
+            .defence
+            .as_ref()
+            .unwrap_or_else(|| panic!("{room} is not an emplacement"));
+        (
+            content.room(idx).width,
+            defence.ammo.clone(),
+            defence.buffer_max,
+        )
+    };
+    let cost: Vec<(String, i64)> = {
+        let content = game.content();
+        let idx = content.room_idx(room).expect("checked above");
+        content
+            .room_rt(idx)
+            .build_cost
+            .iter()
+            .map(|(item, n)| (content.item(*item).id.clone(), *n))
+            .collect()
+    };
+    for (item, n) in cost {
+        crate::tests::stock_item(game, &item, n * 2);
+    }
+    let slots = game.state().tower.floors[floor as usize].slots;
+    game.try_send(GameCommand::PlaceRoom {
+        room: room.into(),
+        floor,
+        slot: slots - width,
+    })
+    .unwrap_or_else(|err| panic!("could not arm {room} on floor {floor}: {err}"));
+
+    // Load the rack directly: how ammo *reaches* a weapon is the haul
+    // system's job and has its own tests, and waiting for a porter here
+    // would make this a haul test wearing a defence test's clothes.
+    let ammo_idx = item(game.content(), &ammo);
+    let state = game.state_mut_for_test();
+    for floor in &mut state.tower.floors {
+        for room in &mut floor.rooms {
+            for stack in &mut room.inputs {
+                if stack.item == ammo_idx {
+                    stack.count = rack;
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_mast_looks_up_and_a_ward_looks_down() {
+    // **The whole of §6.22 in one test.** Every weapon used to answer
+    // everything, which made the set a ladder of damage numbers with a
+    // best rung. A lantern mast cannot see a ground creature and a root
+    // ward cannot see a canopy one, so which ones you own is a decision
+    // about what you expect rather than about how much damage you want.
+    let content = content();
+    let skitter = content.enemy_idx("enemy.skitter").expect("a ground pest");
+    let leaper = content
+        .enemy_idx("enemy.canopy_leaper")
+        .expect("something out of the trees");
+
+    let survives = |weapon: &str, creature: crate::ids::EnemyIdx| -> bool {
+        let mut game = engine(1900);
+        crate::tests::disarm(&mut game);
+        hold_the_repairs_off(&mut game);
+        arm(&mut game, weapon, 3);
+        let hp = place_creature(&mut game, creature, 20);
+        game.step(1200);
+        game.state()
+            .siege
+            .enemies
+            .first()
+            .is_some_and(|enemy| enemy.hp >= hp)
+    };
+
+    assert!(
+        !survives("room.lantern_mast", leaper),
+        "a mast did nothing about the thing it exists for"
+    );
+    assert!(
+        survives("room.lantern_mast", skitter),
+        "a mast shot at something on the ground"
+    );
+    assert!(
+        survives("room.root_ward", leaper),
+        "a ward shot at something in the trees"
+    );
+}
+
+#[test]
+fn a_tanglenet_eats_rope() {
+    // Rope's only consumer used to be a build cost, which is a one-off:
+    // `BALANCE.md`'s ropery row and §5.11 both carry "a room whose
+    // consumer is a one-off is a room you turn off" as an open problem.
+    // A tanglenet is the standing consumer.
+    let content = content();
+    let rope = item(&content, "item.rope");
+    let skitter = content.enemy_idx("enemy.skitter").expect("a ground pest");
+
+    let mut game = engine(1901);
+    crate::tests::disarm(&mut game);
+    hold_the_repairs_off(&mut game);
+    arm(&mut game, "room.tanglenet", 3);
+
+    let held = |game: &crate::engine::GameEngine| -> i64 {
+        game.state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter())
+            .flat_map(|room| room.inputs.iter())
+            .filter(|stack| stack.item == rope)
+            .map(|stack| stack.count)
+            .sum()
+    };
+
+    let before = held(&game);
+    assert!(before > 0, "the net was never loaded");
+    place_creature(&mut game, skitter, 5);
+    game.step(600);
+    assert!(
+        held(&game) < before,
+        "a tanglenet fired without spending any rope: {before} then {}",
+        held(&game)
+    );
+}
+
+#[test]
+fn every_weapon_answers_something() {
+    // A `targets` list naming an approach no creature in the pack uses
+    // would be a room that can never fire, and nothing else would say
+    // so — the content pack is validated for exactly this class of
+    // mistake elsewhere (`content::validate`), and this is that check
+    // for the new axis.
+    let content = content();
+    for room in &content.rooms {
+        let Some(defence) = room.defence.as_ref() else {
+            continue;
+        };
+        if defence.targets.is_empty() {
+            continue;
+        }
+        assert!(
+            defence.targets.iter().any(|approach| content
+                .enemies
+                .iter()
+                .any(|enemy| enemy.approach == *approach)),
+            "{} answers only approaches nothing in the pack uses",
+            room.id
+        );
+    }
+}

@@ -1,0 +1,60 @@
+// **The tower that lights its own canopy.**
+//
+// The upward answer, and the one weapon in the pack that is not a
+// weapon. Leapers and gliders come out of the trees onto the upper
+// decks, and what stops them is not being shot — it is a mast of lamps
+// that makes the branches above the tower somewhere a thing does not
+// want to launch from. `DECISIONS.md` §8: defenders rather than
+// soldiers, and creatures defending territory rather than a gallery to
+// clear. A lantern says *we are awake up here* and the leaper goes
+// somewhere else.
+//
+// It burns charge cells, so a tower that wants the sky covered is a
+// tower that has built the alloy chain and is spending its stored
+// charge on light instead of on lifts. That is the trade: `Lamps` and
+// `Lifts` already compete for the bank (`state/power.rs`), and this
+// puts a third claim on the same shelf.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.lantern_mast",
+    name: "Lantern Mast",
+    short: "LTN",
+    category: Defence,
+    // Behind the burner like the rest of the menu, and behind the
+    // cellwright in practice, since nothing else makes a charge cell.
+    unlocked_by: "room.burner",
+    // On the leading edge with every weapon (`SYSTEMS.md` §6.13), and
+    // the deck reserved for them (§6.21).
+    front_only: true,
+    // Two slots, and the widest thing on the deck: a mast is a mast.
+    // `front_slots` is sized against exactly this.
+    width: 2,
+    build_cost: [
+        CostEntryDef(item: "item.poles", amount: 5),
+        CostEntryDef(item: "item.rope", amount: 2),
+    ],
+    defence: DefenceDef(
+        ammo: "item.charge_cells",
+        ammo_per_shot: 1,
+        // **Canopy only, and that is the whole design** (§6.22). It
+        // cannot see the ground and it cannot see the legs. A tower that
+        // builds nothing but masts has a beautiful roof and loses its
+        // shafts.
+        targets: [Canopy],
+        // Four cells on the rack. A cell is expensive — alloy, a
+        // cellwright, a whole chain — so this holds few and asks the
+        // haul system for them steadily rather than in a burst.
+        buffer_max: 4,
+        // Between a thorn gun's 8 and a dart battery's 15. It is not
+        // meant to out-damage the battery; it is meant to reach the
+        // thing the battery is pointed away from.
+        damage: 12,
+        // Slow. A lantern is not a rate of fire, it is a presence, and
+        // a cell every four seconds is what the chain behind it can
+        // actually feed.
+        reload_ticks: 120,
+        // Tall rather than far: the canopy overhangs the tower, so the
+        // range that matters is the one directly above it.
+        range_paces: 20,
+    ),
+)

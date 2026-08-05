@@ -6987,6 +6987,68 @@ Every fixture in the repo already avoided these columns, so turning the rule on 
 measured number anywhere. That says the rule agrees with how towers were already being built;
 it does not say what it costs a player who wanted that slot.
 
+### 6.22 Weapons that answer one kind of trouble
+
+**Every emplacement used to answer every approach**, and that made the set a ladder rather than
+a loadout: a dart battery beat a thorn gun at everything, so there was a best weapon and the
+rest were worse ones. Variety was a damage number.
+
+`DefenceDef.targets` is the axis it now lives on. Creatures already arrive three ways — along
+the ground, out of the canopy, and up through the legs — and each is a genuinely different
+problem. A weapon that answers one of them well and the others not at all is a *choice*.
+
+| weapon | eats | answers | damage | reload | range | the fantasy |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| thorn gun | bamboo | all | 8 | 90 | 5 | the thing you can always feed |
+| dart battery | darts | all | 15 | 40 | 60 | the standoff workhorse |
+| seed thrower | seed bombs | all | 8 | 90 | 30 | the mid-range answer |
+| **lantern mast** | charge cells | canopy | 12 | 120 | 20 | *lighting your own canopy* |
+| **tanglenet** | rope | ground | 4 | 20 | 12 | *making the ground sticky* |
+| **root ward** | alloy | burrow | 25 | 75 | 10 | *guarding your own legs* |
+
+The three that answer everything stay generalists — an empty `targets` means all — so the
+opening tower is not suddenly a puzzle. The new three are specialists, and each one asks the
+tower for something different.
+
+#### Each is a different demand on the chain, not a different number
+
+- **The lantern mast burns charge cells**, which need alloy, a cellwright and a chain. `Lamps`
+  and `Lifts` already compete for the bank (`state/power.rs`); this puts a third claim on it.
+  It is two slots wide — exactly `front_slots` — so a floor with a mast on it is a floor that
+  is watching the sky and doing nothing else.
+- **The tanglenet burns rope**, and that closes a problem this project has carried since M5.
+  Rope's only consumer was a build cost, which is a one-off, so a ropery left running filled the
+  tower with something nothing ate and the answer was *remember to switch it off* — recorded as
+  a poor one by §5.11 and by `BALANCE.md`'s ropery row. A tanglenet eats rope for as long as
+  there is anything to throw it at.
+- **The root ward burns alloy**, the dearest material in the game: a salvage rig, a ruin worth
+  stopping at, and a forge. So answering burrowers is something a tower that *berthed* can do
+  and one that walked past every ruin cannot. §5.10 wanted route choice to reach into another
+  layer, and this is it reaching into defence.
+
+#### The tone gate
+
+M6 cut crew fighting boarders and weapon loadouts rather than softening them (§6), so a new
+weapon has to earn its place against `DECISIONS.md` §8 — defenders rather than soldiers,
+creatures defending territory rather than a gallery to clear.
+
+**The lantern mast is the clearest pass**: it is not a gun. It is a mast of lamps that makes the
+branches above the tower somewhere a leaper does not want to launch from. It says *we are awake
+up here*, and the creature goes somewhere else.
+
+**The tanglenet is the second**: it does almost no damage, and it is not supposed to. It holds
+something at arm's length while the legs carry the tower out from under it — §11's walking-away
+made into a room.
+
+The root ward is the one that reads most like a weapon, and it is deliberately the one pointed
+at the ground the tower is about to walk over rather than at a creature across a field.
+
+#### What is not settled
+
+The filter is measured; the *set* is not. Nobody has played a tower choosing between a mast and
+a ward with two front slots and a wave inbound, which is the decision all of this exists to
+create. Carried into §6.9.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -6995,7 +7057,13 @@ it does not say what it costs a player who wanted that slot.
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **What actually binds a tower, if not crew?** §6.20's sweep went looking for the pressure
+1. **Is the weapon set a loadout or a checklist?** §6.22 gave weapons an approach they answer
+   and three specialists to go with the generalists. The filter is measured — a mast leaves a
+   skitter alone, a ward leaves a leaper alone. What is not measured is whether *choosing*
+   between them is interesting: two front slots a floor against three kinds of trouble should
+   be a real squeeze, and it might instead be a checklist a tall tower simply completes. That
+   needs a person and a wave, not an instrument.
+2. **What actually binds a tower, if not crew?** §6.20's sweep went looking for the pressure
    that would make a second car necessary and found the opposite: three crew to eight buys
    **+4% hauls**, and hauls plateau near 225 however much transport is thrown at them. Every
    design argument in this project rests on transport contention being the constraint
@@ -7003,19 +7071,19 @@ it does not say what it costs a player who wanted that slot.
    to show it — it holds the room count fixed while varying the crew — or the binding
    constraint moved and nothing noticed. Until this is answered, "add crew, add pressure" is a
    claim rather than a mechanism.
-2. **Can a thirty-minute run contain a shaft?** §6.19 hit thirty minutes and did not ship it:
+3. **Can a thirty-minute run contain a shaft?** §6.19 hit thirty minutes and did not ship it:
    at that length a tower reaches the Refugia holding four poles of the ten a lift costs, and
    never gets the rest, because arriving ends its income. Four compensations were measured and
    all four were worse. The choices are a slightly longer run, a cheaper shaft, or mid-run
    income that rises without jamming the shelves — and the third is the one nothing has found
    yet. This is the largest open balance question in the project.
-3. **Is ten percent a rank the right ten percent?** §6.17's practice was measured as a
+4. **Is ten percent a rank the right ten percent?** §6.17's practice was measured as a
    maximum against a zero: two towers, one seed, one of them starting at the ceiling, and
    the veterans get more done. That answers *does it reach the tower* and not *is this the
    number*. Nobody has played a run at 20% or at 5%, and the failure mode to watch for is
    the one the modesty is guarding against — a run won by parking one person on one job
    from the first pace, which would mean the bonus is large enough to be a build order.
-4. **Where should a shaft go, and is there a decision left at all?** §6.16's width sweep
+5. **Where should a shaft go, and is there a decision left at all?** §6.16's width sweep
    turned `lift.rs`'s oldest hypothesis into a measurement — the elevator's value fell from
    +91% to +48% as the hull widened, entirely through crew walking further to reach it. §6.18
    then folded the dumbwaiter in, and the merged shaft holds +251% to +271% across the same
@@ -7023,33 +7091,33 @@ it does not say what it costs a player who wanted that slot.
    there is now one built shaft that goes up, so "which shaft" is not a choice any more.
    Whether, where and how tall are what is left, and the game still teaches none of them and
    offers no way to move a shaft once built.
-5. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
+6. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
    instrument cannot tell them apart — the numbers are sized against the kill-shot table and
    nobody has met one. The tell is whether a player who fells one goes looking for the next,
    because that is the jungle becoming a gallery, which `DECISIONS.md` §8 rules out.
-6. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
+7. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
    screensaver" by putting something in front of the player roughly once a minute, and the
    failure mode of that fix is the opposite complaint: a prompt often enough to become
    wallpaper. The tell is whether anybody reads the second one. Note also that the streaming
    window (900 ahead, 300 behind) is *narrower* than the interval, so beats can appear without
    being seen coming — deliberate for now, and the first thing to change if they read as
    pop-ups.
-7. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
+8. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
    edge from the shaft column, which is a placement fix — but every layout puzzle now has two
    more answers, and `floor_slots`' own row is explicit that its value was chosen for scarcity.
    Nobody has played a ten-wide tower against an eight-wide one. It is on the difficulty pass's
    list and it is the change on that list most likely to have made the game softer by accident.
-8. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
+9. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
    of what a posting does and cleans up after itself. If nobody ever uses the permanent form
    once they have the temporary one, that is not two verbs, it is one verb and a trap — and
    the tell is whether anybody posts somebody *for the run* rather than *for the minute*.
-9. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+10. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-10. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+11. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

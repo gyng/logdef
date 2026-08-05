@@ -502,6 +502,20 @@ const fn wave_eligible_default() -> bool {
 pub struct DefenceDef {
     pub ammo: String,
     pub ammo_per_shot: i64,
+    /// Which approaches this emplacement can answer. Empty means all.
+    ///
+    /// **The axis variety lives on** (`SYSTEMS.md` §6.22). Every weapon
+    /// used to answer everything, which made the set a ladder of damage
+    /// numbers: there was a best one and the rest were worse. Creatures
+    /// already arrive three ways — along the ground, out of the canopy,
+    /// and up through the legs — and each of those is a different
+    /// problem, so a weapon that answers one of them well and the others
+    /// not at all is a *choice* rather than a tier.
+    ///
+    /// It also gives the front deck (§6.21) something to be scarce
+    /// about: two columns a floor, three kinds of trouble.
+    #[serde(default)]
+    pub targets: Vec<Approach>,
     pub buffer_max: i64,
     pub damage: i64,
     pub reload_ticks: u32,

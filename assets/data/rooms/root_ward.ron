@@ -1,0 +1,52 @@
+// **The tower that guards its own legs.**
+//
+// Burrowers go under. They do not touch a panel or a deck — they come
+// up through the legs and the shaft columns, which is the one attack
+// that can cut a tower's circulation in two, and it is the signature
+// emergency of the whole design (`content::Approach::Burrow`). Every
+// other emplacement in the pack is pointed outward and upward and can
+// do nothing at all about it.
+//
+// So this one points down. Alloy spikes, driven into the ground the
+// tower is about to walk over, at the only range that means anything
+// for something already underneath you.
+//
+// **It is the most expensive ammo in the game and that is deliberate.**
+// Alloy needs a salvage rig, a ruin worth stopping at, and a forge — so
+// answering burrowers is a thing a tower that *berthed* can do, and one
+// that walked past every ruin cannot. `SYSTEMS.md` §5.10 wanted route
+// choice to reach into another layer; this is it reaching into defence.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.root_ward",
+    name: "Root Ward",
+    short: "RWD",
+    category: Defence,
+    unlocked_by: "room.burner",
+    front_only: true,
+    width: 1,
+    build_cost: [
+        CostEntryDef(item: "item.poles", amount: 5),
+        CostEntryDef(item: "item.alloy", amount: 1),
+    ],
+    defence: DefenceDef(
+        ammo: "item.alloy",
+        ammo_per_shot: 1,
+        // Burrow only, and it is the only thing in the pack that
+        // answers a burrower at all.
+        targets: [Burrow],
+        // Four spikes on the rack. Alloy is dear and this is not a room
+        // that should be able to stockpile its way out of a bad route.
+        buffer_max: 4,
+        // The hardest hit in the pack. A burrower that reaches a shaft
+        // column is an emergency, so what answers it should end the
+        // question rather than trade with it.
+        damage: 25,
+        // And slowly, which is the price of that. Two and a half
+        // seconds between spikes.
+        reload_ticks: 75,
+        // Short, because a burrower is not somewhere you can see it
+        // coming from. This answers what is already at the legs.
+        range_paces: 10,
+    ),
+)

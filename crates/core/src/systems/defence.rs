@@ -142,8 +142,21 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             // sat idle while something chewed on the tower would be a
             // trap rather than a decision.
             let range = crate::fx::paces_from_int(defence.range_paces);
+            // **And whether this emplacement answers that approach at
+            // all** (`SYSTEMS.md` §6.22). An empty `targets` means all
+            // three, which is what the thorn gun and the dart battery
+            // are; a lantern mast looks up and nothing else.
+            //
+            // Part of `in_reach` rather than a separate filter so the
+            // *focus* is bound by it too: a player who names a burrower
+            // for a mast that cannot see the ground should get the
+            // mast's own nearest target, not silence.
+            let answers = |enemy: &crate::state::siege::Enemy| {
+                defence.targets.is_empty()
+                    || defence.targets.contains(&content.enemy(enemy.def).approach)
+            };
             let in_reach = |enemy: &&crate::state::siege::Enemy| {
-                !enemy.state.is_going() && (enemy.at - tower_at).abs() <= range
+                !enemy.state.is_going() && (enemy.at - tower_at).abs() <= range && answers(enemy)
             };
             let focused = state
                 .siege
