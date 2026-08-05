@@ -1,0 +1,18 @@
+// **Eats twice as often as anybody else.**
+//
+// The pure cost trait, and the pack needs one or every draw is a gift.
+// A canteen's output is the tightest chain in the opening — meals come
+// from produce, produce comes from a farm that needs two of three crew
+// standing in it — so one person eating at twice the rate is a real
+// claim on it, and the tower feels it as the larder emptying rather
+// than as a number.
+//
+// Deliberately *not* paired with a compensating bonus. Somebody can
+// just be hungry; a crew where every quirk nets to zero is a crew of
+// interchangeable people wearing labels.
+TraitDef(
+    id: "trait.big_appetite",
+    name: "Big appetite",
+    blurb: "hungry again before the plates are cleared",
+    hunger_pct: 50,
+)

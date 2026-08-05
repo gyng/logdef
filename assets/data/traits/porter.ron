@@ -1,0 +1,19 @@
+// **Came up on the stairs of somewhere else.**
+//
+// Arrives already practised at hauling (`SYSTEMS.md` §6.17) and carries
+// one more per trip. The one trait that is straightforwardly good, and
+// it is bounded by the same argument practice is: a rank is ten
+// percent, the ceiling is three, and it cannot be spent or stacked.
+//
+// What it actually buys is *time* — a tower that recruits one of these
+// gets the veteran it would otherwise have spent a day and a half
+// making, which matters most in a run that is only half an hour long
+// (§6.19).
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.porter",
+    name: "Porter",
+    blurb: "knows stairs, and how much a person can carry",
+    carry_bonus: 1,
+    practised_at: Haul,
+)

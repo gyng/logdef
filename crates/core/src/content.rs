@@ -392,6 +392,47 @@ pub struct ShaftDef {
     pub batch: i64,
 }
 
+/// Something true about one person, drawn when they come aboard.
+///
+/// **Shaped like a need, not like a bonus.** A trait that read "+10% to
+/// everything" would turn the crew back into a build order, which is
+/// the thing `DESIGN.md`'s fourth structural call spends its whole
+/// length refusing and which M6 had to thread a needle around for
+/// practice (`SYSTEMS.md` §6.17). So these change what somebody *needs*
+/// and what they arrive already knowing — the rota and the canteen are
+/// where they land, not a throughput multiplier.
+///
+/// Every field is a percentage of the pack's own constant, so a trait
+/// is always readable as "this person, against everybody else" rather
+/// than as an absolute nobody can check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TraitDef {
+    pub id: String,
+    pub name: String,
+    /// One line, in the tower's own words, for the roster card.
+    pub blurb: String,
+    /// Scales how long this person goes before wanting a meal. Under
+    /// 100 is a bigger appetite.
+    #[serde(default = "hundred")]
+    pub hunger_pct: i64,
+    /// Scales rest gained in a bed.
+    #[serde(default = "hundred")]
+    pub bunk_rest_pct: i64,
+    /// Scales rest gained sleeping on the deck, with no bed free.
+    #[serde(default = "hundred")]
+    pub deck_rest_pct: i64,
+    /// Items carried per trip, on top of `carry_capacity`. Negative is
+    /// allowed and is the interesting direction: somebody who carries
+    /// less is somebody you post to a room.
+    #[serde(default)]
+    pub carry_bonus: i64,
+    /// Comes aboard already practised at this job (`SYSTEMS.md` §6.17),
+    /// at one rank.
+    #[serde(default)]
+    pub practised_at: Option<crate::state::Job>,
+}
+
 /// How a creature reaches the tower, and therefore what it threatens.
 /// Each arm is a lesson: ground teaches ammo economics, canopy teaches
 /// that height is exposure, burrow teaches transport redundancy.
@@ -1122,6 +1163,8 @@ pub struct Content {
     /// index *is* the position in the journey. See `RegionDef`.
     pub regions: Vec<RegionDef>,
     pub waypoints: Vec<WaypointDef>,
+    /// Something true about one person, drawn when they come aboard.
+    pub traits: Vec<TraitDef>,
     pub waypoint_runtime: Vec<WaypointRuntime>,
     pub enemy_runtime: Vec<EnemyRuntime>,
     /// Every region's branches, flattened in region order and, within a
@@ -1364,6 +1407,7 @@ impl Content {
         let mut enemies = parse_dir::<EnemyDef>(source, "enemies", &mut errors, &mut hasher);
         let mut regions = parse_dir::<RegionDef>(source, "regions", &mut errors, &mut hasher);
         let mut waypoints = parse_dir::<WaypointDef>(source, "waypoints", &mut errors, &mut hasher);
+        let mut traits = parse_dir::<TraitDef>(source, "traits", &mut errors, &mut hasher);
 
         if !errors.is_empty() {
             return Err(errors);
@@ -1377,6 +1421,7 @@ impl Content {
         terrain.sort_by(|a, b| a.id.cmp(&b.id));
         enemies.sort_by(|a, b| a.id.cmp(&b.id));
         waypoints.sort_by(|a, b| a.id.cmp(&b.id));
+        traits.sort_by(|a, b| a.id.cmp(&b.id));
         // Dayparts and regions are the exceptions: both index a
         // sequence — the day, and the journey — so sorting either by id
         // would make the index lie about position. See `DECISIONS.md`
@@ -1419,6 +1464,7 @@ impl Content {
             enemies,
             regions,
             waypoints,
+            traits,
             branches,
             content_hash: hasher.digest(),
             waypoint_runtime: Vec::new(),

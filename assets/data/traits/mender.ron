@@ -1,0 +1,15 @@
+// **Arrives knowing how a wall goes back together.**
+//
+// Practised at mending, and carrying less than most because their hands
+// are full of somebody else's tools. The negative `carry_bonus` is the
+// interesting half: somebody who is a poor porter is somebody you
+// *post* to a room (§6.12) rather than leave on the stairs, which is a
+// decision the stationing system has wanted a reason for since M6.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.mender",
+    name: "Mender",
+    blurb: "better with a wall than with a crate",
+    carry_bonus: -1,
+    practised_at: Mend,
+)

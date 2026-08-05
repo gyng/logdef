@@ -1017,3 +1017,143 @@ fn no_work_order_lets_anybody_skip_dinner() {
         "everybody worked through dinner because hauling was ranked first"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Traits (`SYSTEMS.md` §6.25)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn everybody_aboard_is_somebody_in_particular() {
+    let content = content();
+    assert!(!content.traits.is_empty(), "the pack defines no traits");
+    let game = engine(1950);
+    for member in &game.state().crew {
+        assert_eq!(
+            member.traits.len(),
+            1,
+            "{} came aboard with {} trait(s)",
+            member.name,
+            member.traits.len()
+        );
+        assert!(
+            member
+                .traits
+                .iter()
+                .all(|idx| idx.get() < content.traits.len()),
+            "{} has a trait the pack does not define",
+            member.name
+        );
+    }
+}
+
+#[test]
+fn a_trait_rolls_on_the_sim_stream_not_the_cosmetic_one() {
+    // **The firewall, from the other side** (`DECISIONS.md` §2). A name
+    // and a `fidget` are cosmetic because they must never move an
+    // economic roll. A trait changes how fast somebody gets hungry and
+    // how much they carry, so it is *not* cosmetic — and the property
+    // that proves it is on the right stream is that different seeds
+    // give different traits while the same seed gives the same ones.
+    let traits_for = |seed: u64| -> Vec<usize> {
+        engine(seed)
+            .state()
+            .crew
+            .iter()
+            .flat_map(|member| member.traits.iter().map(|idx| idx.get()))
+            .collect()
+    };
+    assert_eq!(traits_for(1951), traits_for(1951), "the same seed differed");
+    let mut differed = false;
+    for seed in 1952..1962 {
+        if traits_for(seed) != traits_for(1951) {
+            differed = true;
+            break;
+        }
+    }
+    assert!(differed, "ten seeds all produced the same crew");
+}
+
+#[test]
+fn a_big_appetite_eats_sooner() {
+    // Traits are shaped like needs rather than like bonuses, and this
+    // is the one that only costs. The tower feels it as the larder
+    // emptying, not as a number.
+    let content = content();
+    let idx = content
+        .traits
+        .iter()
+        .position(|def| def.id == "trait.big_appetite")
+        .expect("the pack defines a big appetite");
+
+    let mut game = engine(1953);
+    {
+        let state = game.state_mut_for_test();
+        for member in &mut state.crew {
+            member.traits.clear();
+        }
+        state.crew[0]
+            .traits
+            .push(crate::ids::TraitIdx(u16::try_from(idx).expect("small")));
+    }
+
+    let hungry = crate::systems::needs::hungry_ticks(&game.state().crew[0], &content);
+    let plain = crate::systems::needs::hungry_ticks(&game.state().crew[1], &content);
+    assert!(
+        hungry < plain,
+        "a big appetite waited as long as anybody else: {hungry} against {plain}"
+    );
+}
+
+#[test]
+fn somebody_who_sleeps_rough_well_frees_a_bed() {
+    // The rota is the system traits exist to make interesting. A
+    // nocturnal crew member rests on bare deck about as well as most
+    // people do in a bunk, so the tower gets a bed back.
+    let content = content();
+    let nocturnal = content
+        .traits
+        .iter()
+        .find(|def| def.id == "trait.nocturnal")
+        .expect("the pack defines a nocturnal");
+    let light = content
+        .traits
+        .iter()
+        .find(|def| def.id == "trait.light_sleeper")
+        .expect("the pack defines a light sleeper");
+    assert!(
+        nocturnal.deck_rest_pct > 100 && light.deck_rest_pct < 100,
+        "the two sleep traits should point in opposite directions"
+    );
+}
+
+#[test]
+fn a_trait_that_says_it_is_practised_arrives_practised() {
+    use crate::state::Job;
+    let content = content();
+    let game = engine(1954);
+    for member in &game.state().crew {
+        for idx in &member.traits {
+            let Some(job) = content.traits[idx.get()].practised_at else {
+                continue;
+            };
+            assert!(
+                member.rank(job, &content) > 0,
+                "{} is a {} and knows nothing about it",
+                member.name,
+                content.traits[idx.get()].name
+            );
+            // And only that job — a trait is a head start, not a
+            // finished veteran.
+            for other in Job::ALL {
+                if other != job {
+                    assert_eq!(
+                        member.rank(other, &content),
+                        0,
+                        "{} arrived practised at something their trait never mentioned",
+                        member.name
+                    );
+                }
+            }
+        }
+    }
+}

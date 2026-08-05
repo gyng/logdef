@@ -455,6 +455,8 @@ export interface CrewView {
    * and back on them when they hand it in.
    */
   kit: number | null;
+  /** What is true about this person, as indices into `catalog.traits`. */
+  traits: number[];
   /**
    * How practised this person is at each job, in ranks, in
    * `catalog.jobs` order.
@@ -542,8 +544,18 @@ export interface CatalogSnapshot {
    * current one. `view.work` is the current one, as indices into this.
    */
   jobs: JobInfo[];
+  /** Things that can be true about a person, in pack order. */
+  traits: TraitInfo[];
   /** How many ranks there are to get. This many pip slots, no more. */
   max_rank: number;
+}
+
+/** Something true about a person, as the roster needs it. */
+export interface TraitInfo {
+  id: string;
+  name: string;
+  /** One line, in the tower's own words. */
+  blurb: string;
 }
 
 /** A kind of work, as the panel that ranks them needs it. */

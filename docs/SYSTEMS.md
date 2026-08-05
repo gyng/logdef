@@ -7178,6 +7178,67 @@ The chain now has to be scaled by hand to match the intake, and nothing in the g
 that. A player who builds four arms and one mill gets the jam this section found by accident.
 Carried into §6.9.
 
+### 6.25 Traits: everybody aboard is somebody in particular
+
+**One trait per person, drawn when they come aboard.**
+
+Three crew who are identical on day one and identical on day nine are three units, and naming
+them does not fix it — that was §6.17's argument for practice, and this is its other half.
+Practice is what somebody *became*; a trait is what they arrived as.
+
+| trait | what it is |
+| --- | --- |
+| Nocturnal | rests on bare deck about as well as most people do in a bed |
+| Light sleeper | gets almost nothing out of sleeping rough |
+| Big appetite | hungry again before the plates are cleared |
+| Porter | knows stairs; carries one more, and arrives practised at hauling |
+| Mender | better with a wall than with a crate; carries one *less* |
+
+#### Shaped like a need, not like a bonus
+
+A trait that read "+10% to everything" would turn the crew back into a build order, which is
+what `DESIGN.md`'s fourth structural call spends its length refusing. So every one of these
+lands on the **rota** or the **canteen** — systems the game already has and barely uses.
+
+`SetShift` has existed since M4 and most towers never touch it, because putting somebody on
+nights is a straight loss. Somebody who rests *better* off-shift is the first reason to open
+the roster and move a name. And the two sleep traits point in opposite directions on purpose:
+one hands the tower a bunk back, the other makes the second bunk a decision.
+
+**The mender's negative carry is the most interesting field in the file.** Somebody who is a
+poor porter is somebody you *post* to a room (§6.12) rather than leave on the stairs — which is
+a reason the stationing system has wanted since it shipped.
+
+And the big appetite is deliberately **not** paired with a compensating bonus. Somebody can
+just be hungry. A crew where every quirk nets to zero is a crew of interchangeable people
+wearing labels.
+
+#### Which stream it rolls on, and why that is the whole determinism question
+
+**The `sim` stream, not `cosmetic`.** A name and a `fidget` are cosmetic precisely so that
+adding a bark can never perturb an economic roll (`DECISIONS.md` §2). A trait changes how fast
+somebody gets hungry and how much they carry — it *is* economic — so it belongs on the stream
+that already carries the economy. Recruiting somebody perturbing that stream is correct:
+recruiting is an economic act.
+
+`a_trait_rolls_on_the_sim_stream_not_the_cosmetic_one` holds it from both sides: the same seed
+gives the same crew, and ten seeds do not all give the same one.
+
+Every field is a percentage of the pack's own constant, so a trait always reads as *this
+person, against everybody else* rather than as an absolute nobody can check. They compose
+multiplicatively, so a pack that adds a sixth trait cannot drive a stat negative by accident.
+
+#### What it does not do
+
+**There is no offer, and no accept or reject.** Recruiting is still: berth at an enclave, pay
+the price, and the next name off `names.ron` comes aboard — now with a trait attached. Turning
+that into *this named person, with these traits, yes or no* is the obvious next thing and it is
+not built.
+
+Nor is there race. It is nearly free in the simulation and expensive everywhere else: `ART.md`
+has fourteen prompts unwritten and the game ships zero images, with portraits done as
+`fidget % faces`. It would commit the setting in a way the fiction has not yet.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -7186,18 +7247,23 @@ Carried into §6.9.
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **Does anything teach a player to scale the chain with the intake?** §6.24 uncapped the
+1. **Should a recruit be an offer?** §6.25 gives everybody a trait and stops there: recruiting
+   is still a purchase, not a choice — you pay and receive the next name on a list. A trait is
+   only half a decision until you can look at one and decline. The machinery is mostly there
+   (`enclave_recruits` is already a per-region budget), and what is missing is the person being
+   somebody in particular *before* you say yes.
+2. **Does anything teach a player to scale the chain with the intake?** §6.24 uncapped the
    cutter arm, so a tower can now harvest from every floor — and a tower that does, with one
    mill, jams: bamboo claims every shelf and poles have nowhere to land. The instrument found
    this by halving its own hauls. The game says nothing, and the failure looks like the tower
    breaking rather than like a chain that needs a second mill.
-2. **Is the weapon set a loadout or a checklist?** §6.22 gave weapons an approach they answer
+3. **Is the weapon set a loadout or a checklist?** §6.22 gave weapons an approach they answer
    and three specialists to go with the generalists. The filter is measured — a mast leaves a
    skitter alone, a ward leaves a leaper alone. What is not measured is whether *choosing*
    between them is interesting: two front slots a floor against three kinds of trouble should
    be a real squeeze, and it might instead be a checklist a tall tower simply completes. That
    needs a person and a wave, not an instrument.
-3. **What actually binds a tower, if not crew?** *Answered by 6.24*: one cutter arm, because max_floor and front_only together allowed exactly one. Kept because the method is the lesson - the plateau was visible for a milestone and read as crew not mattering. §6.20's sweep went looking for the pressure
+4. **What actually binds a tower, if not crew?** *Answered by 6.24*: one cutter arm, because max_floor and front_only together allowed exactly one. Kept because the method is the lesson - the plateau was visible for a milestone and read as crew not mattering. §6.20's sweep went looking for the pressure
    that would make a second car necessary and found the opposite: three crew to eight buys
    **+4% hauls**, and hauls plateau near 225 however much transport is thrown at them. Every
    design argument in this project rests on transport contention being the constraint
@@ -7205,19 +7271,19 @@ Carried into §6.9.
    to show it — it holds the room count fixed while varying the crew — or the binding
    constraint moved and nothing noticed. Until this is answered, "add crew, add pressure" is a
    claim rather than a mechanism.
-4. **Can a thirty-minute run contain a shaft?** §6.19 hit thirty minutes and did not ship it:
+5. **Can a thirty-minute run contain a shaft?** §6.19 hit thirty minutes and did not ship it:
    at that length a tower reaches the Refugia holding four poles of the ten a lift costs, and
    never gets the rest, because arriving ends its income. Four compensations were measured and
    all four were worse. The choices are a slightly longer run, a cheaper shaft, or mid-run
    income that rises without jamming the shelves — and the third is the one nothing has found
    yet. This is the largest open balance question in the project.
-5. **Is ten percent a rank the right ten percent?** §6.17's practice was measured as a
+6. **Is ten percent a rank the right ten percent?** §6.17's practice was measured as a
    maximum against a zero: two towers, one seed, one of them starting at the ceiling, and
    the veterans get more done. That answers *does it reach the tower* and not *is this the
    number*. Nobody has played a run at 20% or at 5%, and the failure mode to watch for is
    the one the modesty is guarding against — a run won by parking one person on one job
    from the first pace, which would mean the bonus is large enough to be a build order.
-6. **Where should a shaft go, and is there a decision left at all?** §6.16's width sweep
+7. **Where should a shaft go, and is there a decision left at all?** §6.16's width sweep
    turned `lift.rs`'s oldest hypothesis into a measurement — the elevator's value fell from
    +91% to +48% as the hull widened, entirely through crew walking further to reach it. §6.18
    then folded the dumbwaiter in, and the merged shaft holds +251% to +271% across the same
@@ -7225,33 +7291,33 @@ Carried into §6.9.
    there is now one built shaft that goes up, so "which shaft" is not a choice any more.
    Whether, where and how tall are what is left, and the game still teaches none of them and
    offers no way to move a shaft once built.
-7. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
+8. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
    instrument cannot tell them apart — the numbers are sized against the kill-shot table and
    nobody has met one. The tell is whether a player who fells one goes looking for the next,
    because that is the jungle becoming a gallery, which `DECISIONS.md` §8 rules out.
-8. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
+9. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
    screensaver" by putting something in front of the player roughly once a minute, and the
    failure mode of that fix is the opposite complaint: a prompt often enough to become
    wallpaper. The tell is whether anybody reads the second one. Note also that the streaming
    window (900 ahead, 300 behind) is *narrower* than the interval, so beats can appear without
    being seen coming — deliberate for now, and the first thing to change if they read as
    pop-ups.
-9. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
+10. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
    edge from the shaft column, which is a placement fix — but every layout puzzle now has two
    more answers, and `floor_slots`' own row is explicit that its value was chosen for scarcity.
    Nobody has played a ten-wide tower against an eight-wide one. It is on the difficulty pass's
    list and it is the change on that list most likely to have made the game softer by accident.
-10. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
+11. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
    of what a posting does and cleans up after itself. If nobody ever uses the permanent form
    once they have the temporary one, that is not two verbs, it is one verb and a trap — and
    the tell is whether anybody posts somebody *for the run* rather than *for the minute*.
-11. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+12. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-12. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+13. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

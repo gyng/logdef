@@ -355,8 +355,36 @@ impl GameState {
         let index = (self.next_crew_id as usize).saturating_sub(2) % names.len();
         let fidget = (self.rng.cosmetic.next_u32() & 0xFFFF) as u16;
         let rested = content.balance.crew.rested_max_ticks;
-        self.crew
-            .push(Crew::new(id, names[index].clone(), fidget, rested));
+        let mut member = Crew::new(id, names[index].clone(), fidget, rested);
+
+        // **One trait, drawn on the `sim` stream** (`SYSTEMS.md` §6.25).
+        // Not `cosmetic`, which is where `fidget` above comes from: a
+        // trait changes how fast somebody gets hungry and how much they
+        // carry, so it is economic, and the firewall in
+        // `DECISIONS.md` §2 exists to keep the two apart. Recruiting
+        // somebody perturbing the economy stream is correct — recruiting
+        // *is* an economic act.
+        if !content.traits.is_empty() {
+            let pick = self.rng.sim.next_u32() as usize % content.traits.len();
+            member
+                .traits
+                .push(crate::ids::TraitIdx(u16::try_from(pick).unwrap_or(0)));
+        }
+
+        // And whatever that trait already knows how to do. A rank
+        // rather than a full ceiling: they have done this before, not
+        // for years (`SYSTEMS.md` §6.17).
+        for idx in &member.traits {
+            if let Some(job) = content
+                .traits
+                .get(idx.get())
+                .and_then(|def| def.practised_at)
+            {
+                member.practice[job.index()] = content.balance.crew.practice_per_rank;
+            }
+        }
+
+        self.crew.push(member);
     }
 
     /// Put `amount` of an item on whatever shelves will take it.

@@ -1,0 +1,19 @@
+// **Sleeps through daylight and works the dark without noticing.**
+//
+// The rota is the system this exists for. `SetShift` has been in the
+// game since M4 and most towers never touch it, because putting
+// somebody on nights is a straight loss — they sleep while the tower
+// walks and the day crew carry the same load with one fewer pair of
+// hands. Somebody who rests *better* off-shift is the first reason to
+// open the roster and move a name.
+//
+// Expressed as bed rest rather than as a work bonus on purpose: this
+// person is not better at their job, they are cheaper to house.
+TraitDef(
+    id: "trait.nocturnal",
+    name: "Nocturnal",
+    blurb: "sleeps through daylight, and does not mind the dark",
+    // Rests as well on bare deck as most people do in a bed, which
+    // quietly hands the tower a bunk back.
+    deck_rest_pct: 200,
+)

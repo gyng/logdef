@@ -402,6 +402,9 @@ pub struct CrewView {
     /// cross-section and are not: one is a job and one is "everybody on
     /// the mill, now".
     pub post_until_tired: bool,
+    /// What is true about this person, as indices into
+    /// `catalog.traits`. At most one today.
+    pub traits: Vec<u16>,
     /// How practised they are at each job, in ranks, in the catalog's
     /// job order. Ranks rather than tick counts: the pip on the card
     /// and the figure the simulation applies are the same fact, and
@@ -517,9 +520,20 @@ pub struct CatalogSnapshot {
     /// work order and not necessarily the current one. `view.work` is
     /// the current one, as indices into this.
     pub jobs: Vec<JobInfo>,
+    /// Things that can be true about a person, in pack order.
+    pub traits: Vec<TraitInfo>,
     /// How many ranks of practice there are to get. The frontend draws
     /// this many pip slots and no more.
     pub max_rank: u8,
+}
+
+/// Something true about a person, as the roster needs it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraitInfo {
+    pub id: String,
+    pub name: String,
+    /// One line, in the tower's own words.
+    pub blurb: String,
 }
 
 /// A kind of work, as the panel that ranks them needs it.
@@ -1285,6 +1299,7 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
             rested: member.rested,
             stationed: member.stationed.map(|room| room.0),
             post_until_tired: member.post_until_tired,
+            traits: member.traits.iter().map(|idx| idx.0).collect(),
             ranks: crate::state::Job::ALL
                 .iter()
                 .map(|job| member.rank(*job, content))
@@ -1506,6 +1521,15 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
             .map(|job| JobInfo {
                 id: job.id().to_string(),
                 name: job.name().to_string(),
+            })
+            .collect(),
+        traits: content
+            .traits
+            .iter()
+            .map(|def| TraitInfo {
+                id: def.id.clone(),
+                name: def.name.clone(),
+                blurb: def.blurb.clone(),
             })
             .collect(),
         max_rank: content.balance.crew.max_rank,

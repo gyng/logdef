@@ -107,6 +107,14 @@ function Roster({ game, ui }: Props) {
                 >
                   {doing(member)}
                 </span>
+                {/*
+                  **Who they are, under what they are doing.** One line,
+                  in the tower's own words (`SYSTEMS.md` §6.25) — "sleeps
+                  through daylight" rather than "deck_rest +100%". The
+                  numbers are the pack's business; what a player needs is
+                  a reason to remember this person.
+                */}
+                <Traits catalog={game.getCatalog()} member={member} />
               </span>
               <Practice catalog={game.getCatalog()} member={member} />
               <KitButton game={game} ui={ui} member={member} />
@@ -298,6 +306,26 @@ function AddCarButton({
     >
       +car
     </button>
+  );
+}
+
+/**
+ * What is true about somebody, in words rather than percentages.
+ *
+ * Renders nothing for a person with no traits, so a pack without any is
+ * a roster that looks exactly as it did before.
+ */
+function Traits({ catalog, member }: { catalog: CatalogSnapshot; member: CrewView }) {
+  const mine = member.traits.map((at) => catalog.traits[at]).filter((entry) => entry !== undefined);
+  if (mine.length === 0) return null;
+  return (
+    <span className="roster-traits" data-testid={`traits-${member.id}`}>
+      {mine.map((entry) => (
+        <span key={entry.id} className="roster-trait" title={entry.blurb}>
+          {entry.name}
+        </span>
+      ))}
+    </span>
   );
 }
 

@@ -69,12 +69,25 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         } else {
             // Asleep, or on the way to bed. Only actual sleep refills:
             // walking to a bunk is still walking.
+            // **And how well they sleep is a fact about them**
+            // (`SYSTEMS.md` §6.25). A nocturnal crew member rests as
+            // well on bare deck as most people do in a bed, which hands
+            // the tower a bunk back; a light sleeper gets almost
+            // nothing from the deck and makes the second bunk a
+            // decision. Applied to the *rate*, not to a cap, so the
+            // rota is where it is felt.
             let gain = match member.state {
                 CrewState::Sleeping => {
                     if member.errand.is_some_and(|errand| errand.is_bunk()) {
-                        balance.rest_gain_per_tick
+                        scale(
+                            balance.rest_gain_per_tick,
+                            member.trait_pct(content, |t| t.bunk_rest_pct),
+                        )
                     } else {
-                        balance.no_bunk_rest_gain
+                        scale(
+                            balance.no_bunk_rest_gain,
+                            member.trait_pct(content, |t| t.deck_rest_pct),
+                        )
                     }
                 }
                 _ => 0,
@@ -132,7 +145,7 @@ pub fn is_awake(crew: &Crew, state: &GameState, content: &Content) -> bool {
 pub fn work_pct(crew: &Crew, content: &Content, lit: bool) -> u32 {
     let balance = &content.balance.crew;
     let mut pct = 100u32;
-    if crew.hunger >= balance.starving_ticks {
+    if crew.hunger >= starving_ticks(crew, content) {
         pct = pct * balance.hungry_work_pct / 100;
     }
     if crew.rested <= balance.tired_ticks {
@@ -154,6 +167,35 @@ pub fn work_pct(crew: &Crew, content: &Content, lit: bool) -> u32 {
         }
     }
     pct.clamp(1, 100)
+}
+
+/// How long this person goes before wanting a meal.
+///
+/// The pack's constant scaled by their traits (`SYSTEMS.md` §6.25).
+/// Floored at one tick: a trait that took it to zero would be somebody
+/// permanently at the canteen, which is a deadlock rather than an
+/// appetite.
+#[must_use]
+pub fn hungry_ticks(crew: &Crew, content: &Content) -> u32 {
+    scale(
+        content.balance.crew.hungry_ticks,
+        crew.trait_pct(content, |t| t.hunger_pct),
+    )
+}
+
+/// The same, for the point at which hunger starts slowing somebody down.
+#[must_use]
+pub fn starving_ticks(crew: &Crew, content: &Content) -> u32 {
+    scale(
+        content.balance.crew.starving_ticks,
+        crew.trait_pct(content, |t| t.hunger_pct),
+    )
+}
+
+/// A tick count times a percentage, floored at one.
+fn scale(ticks: u32, pct: i64) -> u32 {
+    let scaled = i64::from(ticks) * pct.max(0) / 100;
+    u32::try_from(scaled).unwrap_or(ticks).max(1)
 }
 
 /// How much faster this person is at a job for having done it before.

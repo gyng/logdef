@@ -1,0 +1,16 @@
+// **Gets almost nothing out of sleeping rough.**
+//
+// A bunk is 3 poles and one slot, and most towers put up one and stop.
+// This person makes the second bunk a decision: without a bed they come
+// back onto shift barely rested and work the whole day on the tired
+// multiplier, which is visible in the cross-section as somebody moving
+// slowly rather than as a warning.
+//
+// The mirror of `trait.nocturnal`, and they should be read together —
+// one of them frees a bed and the other needs one.
+TraitDef(
+    id: "trait.light_sleeper",
+    name: "Light sleeper",
+    blurb: "no good at all on a hard deck",
+    deck_rest_pct: 25,
+)

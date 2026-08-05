@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::content::Shift;
 use crate::fx::Fx;
-use crate::ids::{CrewId, FloorIdx, ItemIdx, RoomId, ShaftId, SlotIdx};
+use crate::ids::{CrewId, FloorIdx, ItemIdx, RoomId, ShaftId, SlotIdx, TraitIdx};
 
 /// A kind of work, and the unit the player's work order ranks.
 ///
@@ -305,6 +305,21 @@ pub struct Crew {
     /// `serde(default)` so replays recorded before it still load.
     #[serde(default)]
     pub practice: [u32; 4],
+    /// What is true about this person, drawn when they came aboard.
+    ///
+    /// **Not a cosmetic draw**, unlike `fidget` below, and the
+    /// difference is the firewall (`DECISIONS.md` §2): a trait changes
+    /// how fast somebody gets hungry and how much they carry, so it is
+    /// economic and rolls on the `sim` stream. A name is cosmetic and a
+    /// trait is not, and putting them on the same stream would let
+    /// renaming somebody move an economic roll.
+    ///
+    /// A `Vec` holding at most one today. The shape is here so a second
+    /// trait is a content change rather than a save-format change.
+    ///
+    /// `serde(default)` so replays recorded before it still load.
+    #[serde(default)]
+    pub traits: Vec<TraitIdx>,
     /// Cosmetic-stream draw. Renderer-only: idle animation phase, and
     /// (frontend-side) which face and which of several equivalent bark
     /// lines are this person's.
@@ -418,6 +433,7 @@ impl Crew {
             stationed: None,
             kit: None,
             practice: [0; 4],
+            traits: Vec::new(),
             fidget,
         }
     }
@@ -452,6 +468,35 @@ impl Crew {
             .saturating_mul(u32::from(balance.max_rank));
         let slot = &mut self.practice[job.index()];
         *slot = slot.saturating_add(1).min(ceiling);
+    }
+
+    /// Fold every trait's percentage into one figure, as a percentage.
+    ///
+    /// Multiplicative rather than additive, so two traits that each
+    /// halve something halve it twice — and so a pack that adds a
+    /// sixth trait cannot accidentally make a stat go negative.
+    #[must_use]
+    pub fn trait_pct(
+        &self,
+        content: &crate::content::Content,
+        of: impl Fn(&crate::content::TraitDef) -> i64,
+    ) -> i64 {
+        self.traits
+            .iter()
+            .filter_map(|idx| content.traits.get(idx.get()))
+            .fold(100, |acc, def| acc * of(def).max(0) / 100)
+    }
+
+    /// Items this person carries on top of `carry_capacity`, from their
+    /// traits. May be negative: somebody who is a poor porter is
+    /// somebody you post to a room.
+    #[must_use]
+    pub fn trait_carry_bonus(&self, content: &crate::content::Content) -> i64 {
+        self.traits
+            .iter()
+            .filter_map(|idx| content.traits.get(idx.get()))
+            .map(|def| def.carry_bonus)
+            .sum()
     }
 
     /// The damage they are assigned to, if that is what they are up to.

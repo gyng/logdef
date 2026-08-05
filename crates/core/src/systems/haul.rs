@@ -697,7 +697,7 @@ fn assign_idle(
 
         // Hungry. An errand outranking a new haul, but never a delivery
         // that could still be finished.
-        if crew[i].hunger >= content.balance.crew.hungry_ticks
+        if crew[i].hunger >= crate::systems::needs::hungry_ticks(&crew[i], content)
             && free_to_choose
             && let Some(errand) = find_meal(tower, content, crew[i].floor())
         {
@@ -1087,10 +1087,15 @@ fn pick_task(
     // A harness is one more thing in the arms, for the one person
     // wearing it — `DESIGN.md` insight 1 answered by equipment rather
     // than by architecture, and much smaller than a shaft.
+    // A kit is lent and can be taken back; a trait came aboard with the
+    // person (`SYSTEMS.md` §6.25). They stack, and a trait's bonus may
+    // be *negative* — somebody who carries less is somebody you post to
+    // a room rather than leave on the stairs.
     let carry_bonus = crew[me]
         .kit
         .and_then(|item| content.item(item).kit.as_ref())
-        .map_or(0, |kit| kit.carry_bonus);
+        .map_or(0, |kit| kit.carry_bonus)
+        + crew[me].trait_carry_bonus(content);
     let capacity = (content.balance.crew.carry_capacity + carry_bonus).max(1);
     let from_floor = crew[me].floor();
     let from_slot = crew[me].slot();

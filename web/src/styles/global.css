@@ -1134,6 +1134,24 @@ button {
 }
 
 /*
+ * Who somebody is, under what they are doing. Small and quiet: this is
+ * a fact about a person, not a stat line, and it should read the way a
+ * name does rather than the way a number does.
+ */
+.roster-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.roster-trait {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: italic;
+  line-height: 1.3;
+}
+
+/*
  * Practice, as pips. Small, dim and to the side of the name — this is
  * meant to be noticed on the second or third look, the way you notice
  * somebody has been here a while, rather than read as a stat line.
