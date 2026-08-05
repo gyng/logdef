@@ -45,6 +45,27 @@ Balance(
         // people, more jobs.
         floor_slots: 10,
         floor_cost: [CostEntryDef(item: "item.poles", amount: 6)],
+        // **Widening costs more than growing**, which is the shape the
+        // design asks for: a floor goes on top of what is already
+        // there, and a wider hull is new frame along the *whole*
+        // height. Ten poles against a floor's six, and unlike a floor
+        // it buys nothing until you put something in it.
+        //
+        // The gain is two slots, so it is 5 poles a slot against a
+        // floor's 6-for-eight — cheaper per slot and dearer per
+        // purchase, which is what makes it the considered option rather
+        // than the default one.
+        widen_cost: [CostEntryDef(item: "item.poles", amount: 10)],
+        // Two at a time. One slot is not a room — everything in the
+        // pack except a cell bank and a thorn gun is two wide or more —
+        // so a one-slot widening would be a purchase that visibly did
+        // nothing.
+        widen_slots: 2,
+        // Sixteen: six more than the starting ten, or three widenings.
+        // Past that the cross-section stops fitting on one screen,
+        // which is the same constraint `max_floors` answers vertically
+        // and the whole art direction rests on.
+        max_slots: 16,
         // One body on the stairs at a time. Two crew is already a
         // queue, which is the whole thesis in miniature.
         stairs_capacity: 1,

@@ -507,6 +507,12 @@ export interface CatalogSnapshot {
   waypoints: WaypointInfo[];
   branches: BranchInfo[];
   floor_cost: CostInfo[];
+  /** What one widening costs. Dearer than a floor. */
+  widen_cost: CostInfo[];
+  /** Slots one widening adds. */
+  widen_slots: number;
+  /** How wide the hull may get. */
+  max_slots: number;
   max_floors: number;
   floor_slots: number;
   stress_ticks: number;
@@ -703,6 +709,7 @@ export type GameCommand =
   /** Take somebody aboard, for poles. */
   | "Recruit"
   | "TakeWaypoint"
+  | "WidenTower"
   /** Have the settlement plate the tower's shell, for scrap. */
   | "Reinforce"
   /** Commit to branch 0 or 1 of the pending fork. Re-answerable. */

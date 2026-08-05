@@ -60,6 +60,7 @@ pub fn apply(
         GameCommand::Trade { offer } => trade(state, content, *offer),
         GameCommand::Recruit => recruit(state, content),
         GameCommand::TakeWaypoint => take_waypoint(state, content),
+        GameCommand::WidenTower => widen_tower(state, content),
         GameCommand::Reinforce => reinforce(state, content),
         GameCommand::SetShift { crew, shift } => set_shift(state, *crew, *shift),
     }
@@ -628,6 +629,53 @@ fn focus_enemy(
 /// member mid-delivery finishes it first — the same courtesy every other
 /// errand gets, and the reason nothing a crew member is carrying is ever
 /// dropped.
+/// Widen the hull, and slide everything aboard back to make room.
+///
+/// **The new frame goes on the back.** It is the only arrangement that
+/// keeps the leading edge where it was — weapons are `front_only`, and
+/// growing at the front would leave every gun two slots inside the
+/// tower's own nose, still standing where the front used to be. Adding
+/// at the back costs a shift of every stored slot index instead, which
+/// is a loop rather than a design problem.
+///
+/// Shafts move with the rooms, for the same reason: a shaft occupies a
+/// slot *column*, and a column that did not shift would come out
+/// running through whatever the rooms slid into.
+fn widen_tower(state: &mut GameState, content: &Content) -> Result<(), CommandError> {
+    let balance = &content.balance.tower;
+    let by = balance.widen_slots;
+    let current = state
+        .tower
+        .floors
+        .first()
+        .map_or(balance.floor_slots, |floor| floor.slots);
+    if by == 0 || current.saturating_add(by) > balance.max_slots.max(balance.floor_slots) {
+        return Err(CommandError::AlreadyWidest { slots: current });
+    }
+
+    // Validated and paid before anything moves (`DECISIONS.md` §4): a
+    // half-widened tower with the rooms shifted and the walls not is
+    // not a state this game has a name for.
+    let cost = balance
+        .widen_cost
+        .iter()
+        .filter_map(|entry| content.item_idx(&entry.item).map(|idx| (idx, entry.amount)))
+        .collect::<Vec<_>>();
+    check_stock(state, content, &cost)?;
+    spend(state, &cost);
+
+    for floor in &mut state.tower.floors {
+        floor.slots = floor.slots.saturating_add(by);
+        for room in &mut floor.rooms {
+            room.slot = room.slot.saturating_add(by);
+        }
+    }
+    for shaft in &mut state.tower.shafts {
+        shaft.slot = shaft.slot.saturating_add(by);
+    }
+    Ok(())
+}
+
 /// How near the tower has to be for a beat to be takeable, in paces.
 ///
 /// **Generous, because the tower is moving.** A window this wide is

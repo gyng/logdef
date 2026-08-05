@@ -462,3 +462,131 @@ fn a_farm_with_nobody_in_it_grows_nothing() {
     assert_eq!(run(1), 0, "one person ran a farm that asks for two");
     assert!(run(2) > 0, "two people posted to a farm grew nothing");
 }
+
+// ---------------------------------------------------------------------------
+// Growing sideways (`SYSTEMS.md` §6.16)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn widening_adds_slots_at_the_back_and_keeps_the_front() {
+    // **The whole reason it grows backwards.** Weapons are `front_only`
+    // (§6.13), so a hull that grew at the nose would leave every gun it
+    // owns standing two slots *inside* the tower — at the place the
+    // front used to be. Adding at the back and sliding everything up
+    // costs a loop and keeps the leading edge where it was.
+    let content = content();
+    let mut game = crate::tests::opening(40);
+    crate::tests::stock_item(&mut game, "item.poles", 60);
+
+    let by = content.balance.tower.widen_slots;
+    let before: Vec<(u8, u8)> = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter().map(move |room| (floor.index, room.slot)))
+        .collect();
+    let width_before = game.state().tower.floors[0].slots;
+
+    game.try_send(GameCommand::WidenTower)
+        .expect("affordable, and the hull is not at its widest");
+
+    let after: Vec<(u8, u8)> = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter().map(move |room| (floor.index, room.slot)))
+        .collect();
+
+    assert_eq!(game.state().tower.floors[0].slots, width_before + by);
+    assert_eq!(
+        after,
+        before
+            .iter()
+            .map(|(floor, slot)| (*floor, slot + by))
+            .collect::<Vec<_>>(),
+        "the rooms did not slide back with the hull"
+    );
+
+    // And the front weapon is still on the front: the gun the tower
+    // ships with sits at `slots - width` before and after.
+    let gun = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .find(|room| game.content().room(room.def).id == "room.thorn_gun")
+        .expect("the tower sets out with one");
+    assert_eq!(
+        gun.slot,
+        game.state().tower.floors[0].slots - game.content().room(gun.def).width,
+        "widening left the gun behind its own leading edge"
+    );
+}
+
+#[test]
+fn a_widened_hull_has_somewhere_new_to_build() {
+    // The purchase has to *buy* something, or it is a number going up.
+    let mut game = crate::tests::opening(41);
+    crate::tests::stock_item(&mut game, "item.poles", 90);
+
+    // Fill the ground floor's usable span, so nothing more fits.
+    let mut placed = 0;
+    while game
+        .try_send(GameCommand::PlaceRoom {
+            room: "room.bunk".into(),
+            floor: 1,
+            slot: 3 + placed * 2,
+        })
+        .is_ok()
+    {
+        placed += 1;
+        crate::tests::stock_item(&mut game, "item.poles", 20);
+    }
+    let full = placed;
+    assert!(full > 0, "nothing fitted on floor 1 to begin with");
+
+    game.try_send(GameCommand::WidenTower).expect("affordable");
+    crate::tests::stock_item(&mut game, "item.poles", 20);
+
+    // **The new deck is at the back**, which follows from where the
+    // frame went: everything aboard slid *up* by `widen_slots`, so the
+    // slots it vacated are the low ones. Slot 0 is new hull, and it is
+    // new hull the stairs used to stand in.
+    let _ = full;
+    assert!(
+        game.try_send(GameCommand::PlaceRoom {
+            room: "room.bunk".into(),
+            floor: 1,
+            slot: 0,
+        })
+        .is_ok(),
+        "a widened hull had nowhere new to put anything"
+    );
+}
+
+#[test]
+fn the_hull_stops_widening_somewhere() {
+    // `max_slots` is the same promise `max_floors` makes vertically:
+    // the cross-section fits on one screen, which the whole art
+    // direction rests on.
+    let content = content();
+    let mut game = crate::tests::opening(42);
+    let mut widenings = 0;
+    loop {
+        crate::tests::stock_item(&mut game, "item.poles", 40);
+        match game.try_send(GameCommand::WidenTower) {
+            Ok(()) => widenings += 1,
+            Err(CommandError::AlreadyWidest { .. }) => break,
+            Err(other) => panic!("widening failed for the wrong reason: {other:?}"),
+        }
+        assert!(widenings < 50, "the hull widened without limit");
+    }
+    assert!(widenings > 0, "the hull could never widen at all");
+    assert!(
+        game.state().tower.floors[0].slots <= content.balance.tower.max_slots,
+        "the hull went past its own ceiling"
+    );
+}

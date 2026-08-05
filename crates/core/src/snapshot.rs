@@ -493,6 +493,9 @@ pub struct CatalogSnapshot {
     pub waypoints: Vec<WaypointInfo>,
     pub branches: Vec<BranchInfo>,
     pub floor_cost: Vec<CostInfo>,
+    pub widen_cost: Vec<CostInfo>,
+    pub widen_slots: u8,
+    pub max_slots: u8,
     pub max_floors: u8,
     pub floor_slots: u8,
     pub stress_ticks: u32,
@@ -1435,6 +1438,20 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                 })
             })
             .collect(),
+        widen_cost: content
+            .balance
+            .tower
+            .widen_cost
+            .iter()
+            .filter_map(|entry| {
+                content.item_idx(&entry.item).map(|item| CostInfo {
+                    item: item.0,
+                    amount: entry.amount,
+                })
+            })
+            .collect(),
+        widen_slots: content.balance.tower.widen_slots,
+        max_slots: content.balance.tower.max_slots,
         max_floors: content.balance.tower.max_floors,
         floor_slots: content.balance.tower.floor_slots,
         stress_ticks: content.balance.crew.stress_ticks,

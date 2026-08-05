@@ -91,6 +91,16 @@ pub enum GameCommand {
     /// Needs still outrank it. A posted person goes to eat when hungry
     /// and to bed when their shift ends, and comes back afterwards — a
     /// station is not a cage.
+    /// Widen the hull.
+    ///
+    /// **New frame goes on the back, not the front**, and everything
+    /// already aboard shifts up a couple of slots to make room. That is
+    /// the one arrangement that keeps the *leading edge* where it was:
+    /// weapons are `front_only` (`SYSTEMS.md` §6.13), and a tower that
+    /// grew at the front would leave every gun it owns two slots inside
+    /// its own nose.
+    WidenTower,
+
     /// Take the beat the tower is passing.
     ///
     /// **Only ever the one in range**, so there is no id to get wrong
@@ -230,6 +240,8 @@ pub enum CommandError {
     NotAtTheFront { slot: SlotIdx, front: SlotIdx },
     /// Nothing within reach to take.
     NothingInReach,
+    /// The hull is already as wide as it goes.
+    AlreadyWidest { slots: u8 },
     /// Only one of these may exist in a tower.
     AlreadyPlaced { room: String },
     /// A charge ranking that was not all four uses, each exactly once.
@@ -289,6 +301,9 @@ impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CommandError::UnknownRoom { room } => write!(f, "no such room: {room}"),
+            CommandError::AlreadyWidest { slots } => {
+                write!(f, "the hull is already {slots} slots across")
+            }
             CommandError::NothingInReach => {
                 write!(f, "nothing the tower is passing is close enough to take")
             }

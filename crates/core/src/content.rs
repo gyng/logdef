@@ -950,6 +950,15 @@ pub struct TowerBalance {
     pub max_floors: u8,
     pub floor_slots: u8,
     pub floor_cost: Vec<CostEntryDef>,
+    /// What one widening costs. Dearer than a floor — see the pack.
+    #[serde(default)]
+    pub widen_cost: Vec<CostEntryDef>,
+    /// Slots one widening adds.
+    #[serde(default)]
+    pub widen_slots: u8,
+    /// How wide the hull may get.
+    #[serde(default)]
+    pub max_slots: u8,
     pub stairs_capacity: u8,
     /// Items placed on the starting storeroom's shelves so the first
     /// floor is buildable before the mill has ever run.

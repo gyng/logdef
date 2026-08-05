@@ -6599,6 +6599,40 @@ distinction this game makes nowhere else. Anything that does not fit on a shelf 
 is the same rule the waypoints keep: a tower with nowhere to put two alloy has told you
 something about itself.
 
+### 6.16 Growing sideways
+
+**"More buildings, more people, more jobs."** The tower could only ever grow *up*. It can now
+grow out as well: `WidenTower` adds `widen_slots` (2) to every floor, up to `max_slots` (16),
+for 10 poles against a floor's 6.
+
+**Dearer than growing, and unlike a floor it buys nothing until you put something in it.** A
+floor goes on top of what is already there; a wider hull is new frame along the whole height.
+Per slot it is cheaper (5 against 6-for-eight), which is what makes it the considered option
+rather than the default one.
+
+#### The new frame goes on the back
+
+Everything aboard slides *forward* by two slots — rooms and shafts alike — and the hull grows
+at the tail.
+
+That is the one arrangement that works. Weapons are `front_only` (§6.13), so a tower that grew
+at the nose would leave every gun it owns standing two slots *inside* itself, at the place the
+front used to be. Growing at the back costs a loop over every stored slot index instead, which
+is a chore rather than a design problem. Shafts move with the rooms for the same reason: a
+shaft occupies a slot *column*, and a column that did not shift would come out running through
+whatever the rooms slid into.
+
+The visible consequence is that **the new deck appears behind the stairs**, which move forward
+with everything else. A widened tower has open frame at its tail, which is exactly where a
+player would expect to be able to build.
+
+#### What is not settled
+
+A wider hull is more floor per storey, and therefore *less* reason to build a shaft — which is
+the opposite of what M6 spent a milestone establishing with `climb_ticks_per_item` and
+`examples/lift.rs`. The price is reasoned against `floor_cost` rather than measured against a
+tower that wanted one, because no instrument widens yet. Carried into §6.9.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -6607,33 +6641,39 @@ something about itself.
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
+1. **Does widening undo the shaft?** §6.16 lets the hull grow sideways, and a wider floor is
+   more room per storey — which is *less* reason to climb, and M6 spent a milestone establishing
+   that a shaft has to earn its column (`climb_ticks_per_item`, `examples/lift.rs`). Nothing has
+   measured a widened tower's haul distances. `lift.rs` is the natural home for the question and
+   the answer might be that widening should cost more, or cap lower, or that the two are simply
+   different tools — but "we did not check" is not one of the options.
+2. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
    instrument cannot tell them apart — the numbers are sized against the kill-shot table and
    nobody has met one. The tell is whether a player who fells one goes looking for the next,
    because that is the jungle becoming a gallery, which `DECISIONS.md` §8 rules out.
-2. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
+3. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
    screensaver" by putting something in front of the player roughly once a minute, and the
    failure mode of that fix is the opposite complaint: a prompt often enough to become
    wallpaper. The tell is whether anybody reads the second one. Note also that the streaming
    window (900 ahead, 300 behind) is *narrower* than the interval, so beats can appear without
    being seen coming — deliberate for now, and the first thing to change if they read as
    pop-ups.
-3. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
+4. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
    edge from the shaft column, which is a placement fix — but every layout puzzle now has two
    more answers, and `floor_slots`' own row is explicit that its value was chosen for scarcity.
    Nobody has played a ten-wide tower against an eight-wide one. It is on the difficulty pass's
    list and it is the change on that list most likely to have made the game softer by accident.
-4. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
+5. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
    of what a posting does and cleans up after itself. If nobody ever uses the permanent form
    once they have the temporary one, that is not two verbs, it is one verb and a trap — and
    the tell is whether anybody posts somebody *for the run* rather than *for the minute*.
-5. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+6. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-6. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+7. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

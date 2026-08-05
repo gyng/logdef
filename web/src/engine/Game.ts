@@ -89,6 +89,8 @@ export interface UiState {
   placing: string | null;
   /** The player's lens over the fitted layout. 1 is the fit. */
   zoom: number;
+  /** How wide the hull is, in slots. */
+  slots: number;
   /** Crew the player has picked out. Not simulation state. */
   picked: number[];
   /** The beat alongside right now, if any. */
@@ -670,6 +672,11 @@ export class Game {
     this.publish(true);
   }
 
+  /** Can the shelves pay for a widening? */
+  canAffordWidening(): boolean {
+    return this.catalog.widen_cost.every((cost) => this.stockOf(cost.item) >= cost.amount);
+  }
+
   handleClick(clientX: number, clientY: number): void {
     // **A person first, and only while not placing.** Picking somebody
     // out is the cheapest gesture on the screen and it has to beat
@@ -840,6 +847,7 @@ export class Game {
       selectedActive: this.selectedRoomActive(),
       placing: this.placeMode?.id ?? null,
       zoom: this.renderer.getZoom(),
+      slots: view?.tower.floors[0]?.slots ?? this.catalog.floor_slots,
       picked: this.picked,
       marquee: this.marquee,
       waypoint: view?.journey.waypoint ?? null,

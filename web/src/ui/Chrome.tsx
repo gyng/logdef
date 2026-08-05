@@ -1143,6 +1143,33 @@ function Sidebar({ game, ui }: Props) {
               <Cost game={game} costs={catalog.floor_cost} />
             </button>
           </li>
+          <li>
+            {/*
+              **Widening, beside growing.** A floor goes on top of what
+              is already there; a wider hull is new frame along the
+              whole height, and it costs more for that reason
+              (`SYSTEMS.md` §6.16). The new deck arrives at the *back* —
+              everything aboard slides forward — which is what keeps the
+              weapons on the leading edge.
+            */}
+            <button
+              type="button"
+              className="build-card"
+              disabled={!game.canAffordWidening() || ui.slots >= catalog.max_slots}
+              data-testid="widen-tower"
+              onClick={() => game.send("WidenTower")}
+            >
+              <span className="build-name">
+                Widen the hull
+                <span className="build-hint">
+                  {ui.slots >= catalog.max_slots
+                    ? "as wide as it goes"
+                    : `${catalog.widen_slots} more slots, at the back`}
+                </span>
+              </span>
+              <Cost game={game} costs={catalog.widen_cost} />
+            </button>
+          </li>
           {buildable.map((room) => (
             <li key={room.id}>
               <RoomCard game={game} ui={ui} room={room} />

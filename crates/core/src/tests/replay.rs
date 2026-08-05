@@ -259,6 +259,7 @@ fn every_command_survives_the_replay_format() {
             kit: Some("item.hand_lamp".into()),
         },
         C::TakeWaypoint,
+        C::WidenTower,
     ];
 
     // Exhaustiveness: if a variant is added and not listed above, this
@@ -274,6 +275,7 @@ fn every_command_survives_the_replay_format() {
             | C::RemoveShaft { .. }
             | C::SetShaftProgram { .. }
             | C::TakeWaypoint
+            | C::WidenTower
             | C::SetStriding { .. }
             | C::TakeFork { .. }
             | C::Trade { .. }

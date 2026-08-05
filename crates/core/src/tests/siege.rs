@@ -727,7 +727,6 @@ fn the_moment_something_gives_way_has_its_own_sound() {
     assert!(ever_breached, "a panel fell in without a sound");
 }
 
-
 #[test]
 fn the_pack_defines_creatures_that_each_teach_something() {
     let content = content();
