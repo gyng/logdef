@@ -298,8 +298,15 @@ fn a_garden_built_over_is_a_garden_in_the_dark() {
         slot: 6,
     })
     .expect("the roof has room at slot 6");
+    // **And staffed**, because a farm with nobody in it grows nothing
+    // at any exposure — `crew_required` is 2 (`SYSTEMS.md` §6.11).
+    assert_eq!(crate::tests::staff(&mut game, top, 6, 2), 2);
+    // **Long enough for them to get there.** Posting is an order, not
+    // a teleport: the crew have to climb to the roof before they are
+    // `Manning` anything, and a 900-tick window spent mostly on the
+    // stairs measured a farm that grew nothing.
     game.state_mut_for_test().clock.tick_of_day = noon;
-    game.step(900);
+    game.step(2400);
     let on_the_roof = grown(&game);
     assert!(on_the_roof > 0, "a garden in full noon grew nothing");
 
@@ -339,10 +346,10 @@ fn a_burner_turns_bamboo_into_charge() {
     game.step(3000);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.burner".into(),
-        // A burner is a chimney: `min_floor` 2 keeps it above the works.
-        // Slot 1, because the starting layout already has floor 2's
-        // right-hand slots.
-        floor: 2,
+        // A burner is a chimney: `min_floor` keeps it above the works.
+        // The roof, because the fixture tower's floor 2 is full and
+        // this test only needs a second burner somewhere.
+        floor: 3,
         slot: 1,
     })
     .expect("affordable");
@@ -375,7 +382,7 @@ fn a_burner_turns_bamboo_into_charge() {
 fn switching_a_room_off_stops_it() {
     let content = content();
     let bamboo = item(&content, "item.bamboo");
-    // The starting tower's own burner, at floor 2 slot 5. Placing a
+    // The fixture tower's own burner, at floor 3 slot 5. Placing a
     // second one would leave the first burning through the "switched
     // off" half of this test.
     let mut game = engine(706);
@@ -394,7 +401,7 @@ fn switching_a_room_off_stops_it() {
     }
 
     game.try_send(GameCommand::SetRoomActive {
-        floor: 2,
+        floor: 3,
         slot: 5,
         active: false,
     })
@@ -692,6 +699,10 @@ fn the_sun_scales_a_garden_rather_than_switching_it_on_and_off() {
             slot: 6,
         })
         .expect("the roof has room at slot 6");
+        // Two people in it, because a farm without them grows nothing
+        // — and *only* two, so the third is not free to haul the crop
+        // away and the count stays what grew rather than what moved.
+        assert_eq!(crate::tests::staff(&mut game, top, 6, 2), 2);
         {
             let state = game.state_mut_for_test();
             for band in &mut state.world.bands {
@@ -699,11 +710,9 @@ fn the_sun_scales_a_garden_rather_than_switching_it_on_and_off() {
             }
             state.clock.tick_of_day = noon;
             state.walking = false;
-            // No crew, so nothing empties the garden's buffer and the
-            // count is what grew rather than what was hauled.
-            state.crew.clear();
         }
-        game.step(900);
+        // Long enough for the crew to reach the roof and then farm.
+        game.step(2400);
         game.state()
             .tower
             .floors

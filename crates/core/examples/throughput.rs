@@ -45,6 +45,10 @@ struct Sample {
 
 fn measure(label: &str, build_shaft: bool) -> Sample {
     let mut game = GameEngine::new(0xC0FFEE);
+    // **The opening ladder first** (`SYSTEMS.md` §6.11). M6 cut the
+    // starting tower to a Heartseed and a bed, so the chain this
+    // instrument measures is one it now has to build.
+    understory_core::harness::chain_tower(&mut game, 4);
 
     // **A canteen and a bunk before anything is measured.** Without
     // them this harness measures a starving, exhausted tower and
@@ -175,14 +179,33 @@ fn measure(label: &str, build_shaft: bool) -> Sample {
     }
 }
 
-/// Buy the two rooms that stop this being a measurement of neglect.
+/// Buy the rooms that stop this being a measurement of neglect.
 ///
-/// Floor 1 slot 4 and floor 3 slot 1 are the two-wide gaps the starting
-/// layout leaves on floors that are not the one the elevator's column
-/// will take.
+/// **Wherever they fit, rather than at named slots.** This used to pin
+/// the canteen to floor 1 slot 4 and the bunk to floor 3 slot 1 — the
+/// two-wide gaps the old pre-built starting tower left. M6 cut that
+/// tower down to a Heartseed and a bed (`SYSTEMS.md` §6.11), so the
+/// gaps are wherever the harness's own ladder did not land.
 fn make_it_a_home(game: &mut GameEngine) {
-    place_when_affordable(game, "room.canteen", 1, 4);
-    place_when_affordable(game, "room.bunk", 3, 1);
+    for room in ["room.canteen", "room.bunk"] {
+        let cost: Vec<(String, i64)> = {
+            let content = game.content();
+            let idx = content.room_idx(room).expect("the pack defines it");
+            content
+                .room_rt(idx)
+                .build_cost
+                .iter()
+                .map(|(item, n)| (content.item(*item).id.clone(), *n))
+                .collect()
+        };
+        for (item, n) in cost {
+            understory_core::harness::give(game, &item, n * 2);
+        }
+        assert!(
+            understory_core::harness::place_anywhere(game, room),
+            "could not place {room}: this is a measurement of a tower that was never built"
+        );
+    }
     // **And somewhere to save, which is a separate thing from somewhere
     // to live.**
     //
@@ -196,14 +219,11 @@ fn make_it_a_home(game: &mut GameEngine) {
     // the bamboo waiting to become the next one. A tower that cannot
     // save cannot buy, however much it earns.
     //
-    // **On the roof since M6.** Floor 2 slot 5 is where the starting
-    // burner now stands — the sails used to hold the roof and the
-    // burner did not exist, and cutting the sails swapped the two, so
-    // the top deck is the free one now.
-    // This panicked on a slot clash rather than measuring anything,
-    // which is the fourth instrument in this project to be broken by a
-    // change nothing thought to run it against.
-    place_when_affordable(game, "room.storeroom", 3, 5);
+    understory_core::harness::give(game, "item.poles", 12);
+    assert!(
+        understory_core::harness::place_anywhere(game, "room.storeroom"),
+        "could not place a second storeroom: this measures a shelf jam rather than a shaft"
+    );
 }
 
 /// Hand the tower a shaft's whole price, so the two samples differ by
@@ -252,27 +272,6 @@ fn endow(game: &mut GameEngine, shaft: &str) {
         }
         assert!(left <= 0, "nowhere to put {shaft}'s own price");
     }
-}
-
-/// Place `room` as soon as the tower can pay for it. Waiting for the
-/// money rather than hardcoding "by now there will be five poles" is
-/// what keeps a harness measuring the same tower across a balance
-/// change instead of panicking mid-script.
-fn place_when_affordable(game: &mut GameEngine, room: &str, floor: u8, slot: u8) {
-    for _ in 0..400 {
-        match game.try_send(GameCommand::PlaceRoom {
-            room: room.into(),
-            floor,
-            slot,
-        }) {
-            Ok(()) => return,
-            Err(understory_core::command::CommandError::InsufficientStock { .. }) => {
-                step_walking(game, 300);
-            }
-            Err(other) => panic!("could not place {room} at {floor}.{slot}: {other}"),
-        }
-    }
-    panic!("{room} never became affordable");
 }
 
 /// Step, answering any fork before it can bring the tower to a halt.

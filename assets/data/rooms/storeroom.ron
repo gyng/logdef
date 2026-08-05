@@ -6,6 +6,10 @@ RoomDef(
     id: "room.storeroom",
     name: "Storeroom",
     short: "STR",
+    // **Behind the cutter arm**, which is the first moment shelves
+    // mean anything: before there is bamboo the Heartseed's three
+    // shelves are three more than the tower needs. `SYSTEMS.md` §6.11.
+    unlocked_by: "room.cutter_arm",
     category: Storage,
     width: 2,
     build_cost: [CostEntryDef(item: "item.poles", amount: 3)],

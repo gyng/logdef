@@ -13,6 +13,13 @@ RoomDef(
     id: "room.fiber_comb",
     name: "Fiber Comb",
     short: "FIB",
+    // **Opens once the burner is lit**, which is where the opening
+    // ends. `SYSTEMS.md` §6.11: a first-turn menu with twenty cards on
+    // it is the loudest thing in the game and says nothing, so the menu
+    // grows as the tower does. This is a fact about the tower, not the
+    // player — the journal (§5.7) is the other kind of unlock and can
+    // only filter a menu.
+    unlocked_by: "room.burner",
     category: Intake,
     width: 2,
     // A pole under a cutter arm. It reaches for what is already lying

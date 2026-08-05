@@ -13,6 +13,10 @@ RoomDef(
     id: "room.burner",
     name: "Burner",
     short: "BRN",
+    // **Gated behind `room.cutter_arm`** — there is no fuel until something cuts it. The opening
+    // ladder is farm, cutter arm, burner, and then the whole
+    // menu (`SYSTEMS.md` §6.11).
+    unlocked_by: "room.cutter_arm",
     category: Energy,
     width: 2,
     // **A chimney, so it goes up.** The renderer already vents its smoke
@@ -30,7 +34,13 @@ RoomDef(
     // floor, and a second claimant there would be a rule rather than a
     // decision. Two is enough to put the burner above the bamboo that
     // feeds it.
-    min_floor: 2,
+    //
+    // **One, not two, since M6 cut the opening tower to two floors.**
+    // What this constant is for is a *direction* — intake is pinned to
+    // the ground because it reaches the ground, so something has to be
+    // pinned above it or a whole chain sits beside its own intake and
+    // never hauls upward. Floor 1 says that at the new scale.
+    min_floor: 1,
     build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
     burner: BurnerDef(
         fuel: "item.bamboo",

@@ -21,22 +21,18 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     // the priority order — after the cars, before the lamps.
     let mut power = std::mem::replace(&mut state.power, crate::state::Power::new(0));
     let tick = state.tick;
-    // Who is standing in which room, gathered once. A `Vec` rather than
-    // a set, per `DECISIONS.md` §2 — at single-digit crew a linear scan
-    // is cheaper than a hash and, more to the point, ordered.
-    let manned: Vec<crate::ids::RoomId> = state
-        .crew
-        .iter()
-        .filter_map(|member| match member.state {
-            crate::state::CrewState::Manning { room } => Some(room),
-            _ => None,
-        })
-        .collect();
+    let manned = super::manned_rooms(state);
 
     for floor in &mut state.tower.floors {
         for room in &mut floor.rooms {
             let rt = content.room_rt(room.def);
             if rt.craft_ticks == 0 || !room.is_working(content, tick) {
+                continue;
+            }
+            if !super::staffed(content, room, &manned) {
+                // Understaffed. Stalls in place like a starved room
+                // rather than resetting, so the work already done
+                // survives somebody being called away.
                 continue;
             }
 

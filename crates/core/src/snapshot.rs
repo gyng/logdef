@@ -47,6 +47,16 @@ pub struct ViewSnapshot {
     /// Summed across every storeroom shelf — what construction spends,
     /// and how much shelf it is spread over.
     pub stock: Vec<StoreView>,
+    /// Room indices the tower may build **right now**, in catalog
+    /// order.
+    ///
+    /// The opening ladder (`SYSTEMS.md` §6.11) as the UI needs it: the
+    /// catalog says what each room is gated behind, and this says which
+    /// gates are currently open. Sent rather than derived in the
+    /// frontend so the menu and `engine::commands` can never disagree
+    /// about what is buildable — a card that offers something the
+    /// command layer refuses is worse than no card.
+    pub unlocked: Vec<u16>,
     pub stats: RunStats,
 }
 
@@ -516,6 +526,16 @@ pub struct RoomInfo {
     /// Lowest floor it may be placed on. The mirror of `max_floor`.
     pub min_floor: Option<u8>,
     pub unique: bool,
+    /// Index of the room that has to be standing before this one may be
+    /// built, if any. The opening ladder — see `SYSTEMS.md` §6.11.
+    ///
+    /// A fact about the *pack*, so it lives in the catalog. Whether the
+    /// gate is currently satisfied is a fact about the tower, and that
+    /// is `ViewSnapshot::unlocked`.
+    pub unlocked_by: Option<u16>,
+    /// Crew who must be posted here for the room to work at all. Zero
+    /// for everything except the farm.
+    pub crew_required: u8,
     pub craft_ticks: u32,
     pub inputs: Vec<CostInfo>,
     pub outputs: Vec<CostInfo>,
@@ -635,6 +655,7 @@ pub fn build_view(state: &GameState, content: &Content, alpha: f32) -> ViewSnaps
         journey: build_journey(state, content),
         crew: build_crew(state, content),
         stock: build_stock(state),
+        unlocked: build_unlocked(state, content),
         stats: state.stats.clone(),
     }
 }
@@ -1149,6 +1170,18 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
         .collect()
 }
 
+/// Which rooms the tower's own contents currently open.
+fn build_unlocked(state: &GameState, content: &Content) -> Vec<u16> {
+    (0..content.rooms.len())
+        .filter(|at| {
+            content.room_runtime[*at]
+                .unlocked_by
+                .is_none_or(|needs| state.tower.count_of(needs) > 0)
+        })
+        .map(|at| at as u16)
+        .collect()
+}
+
 fn build_stock(state: &GameState) -> Vec<StoreView> {
     let mut totals: Vec<StoreView> = Vec::new();
     for shelf in state
@@ -1228,6 +1261,8 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                     max_floor: room.max_floor,
                     min_floor: room.min_floor,
                     unique: room.unique,
+                    unlocked_by: rt.unlocked_by.map(|idx| idx.0),
+                    crew_required: rt.crew_required,
                     craft_ticks: rt.craft_ticks,
                     inputs: io(&rt.recipe_inputs),
                     outputs: io(&rt.recipe_outputs),

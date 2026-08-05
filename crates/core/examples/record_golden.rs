@@ -32,28 +32,74 @@ const SEED: u64 = 0x0000_5EED_0000_0001;
 fn main() {
     let mut engine = GameEngine::new(SEED);
 
-    // Let the opening chain run long enough for the cutter arm to fill,
-    // the crew to make several round trips, and the mill to craft. Also
-    // long enough to cross from predawn into real daylight, so the sun
+    // Long enough to cross from predawn into real daylight, so the sun
     // curve and the lamp threshold are both exercised.
     engine.set_speed(SimSpeed::X1);
-    step_walking(&mut engine, 1800);
+    step_walking(&mut engine, 900);
 
-    // A second storeroom, bought out of the starting poles and bought
-    // first. The tower ships with one, four shelves wide, and a shelf
-    // holds a single kind — so once bamboo has claimed all four there
-    // is nowhere to put a pole, the mill's outbox fills, and the whole
-    // chain stops with the shelves apparently only three-quarters full.
-    // Faster intake reaches that inside five minutes, and once it does
-    // the tower cannot afford its way out, because affording anything
-    // needs the poles that are stuck in the mill. This is the shelf
-    // bottleneck working exactly as designed; the script answers it the
-    // way a player has to, and early.
+    // ---------------------------------------------------------------
+    // **The opening ladder** (`SYSTEMS.md` §6.11).
     //
-    // **On the roof, which is empty since M6 cut the sails** — floor 2
-    // is where the starting burner now lives, and the mill was already
-    // beside it.
-    place_when_affordable(&mut engine, "room.storeroom", 3, 5);
+    // M6 cut the starting tower to two floors, three crew, a Heartseed
+    // and a bed. There is no chain to let run any more: the fixture has
+    // to build one, in the order the gate allows — farm, cutter arm,
+    // burner — and only then does the rest of the menu exist. That is
+    // worth recording rather than skipping, because it is now the first
+    // five minutes of every run.
+    // ---------------------------------------------------------------
+
+    // The farm, on the roof it starts with. It is the only card on turn
+    // one and the only room in the pack that refuses to work without
+    // people in it.
+    place_when_affordable(&mut engine, "room.garden", 1, 3);
+    // **Two of the three, posted.** `crew_required` is 2, so this is
+    // not a bonus, it is the difference between a farm and an
+    // ornament — and it puts `StationCrew`, `Errand::Station` and
+    // `CrewState::Manning` into the fixture on the first minute rather
+    // than nowhere at all.
+    staff(&mut engine, 1, 3, 2);
+    step_walking(&mut engine, 600);
+
+    // The cutter arm, which the farm unlocked. Ground floor, beside the
+    // Heartseed: `max_floor` is 1 because it reaches the ground, and
+    // floor 0's slots 4-6 are the only three contiguous the tower has.
+    place_when_affordable(&mut engine, "room.cutter_arm", 0, 4);
+    step_walking(&mut engine, 900);
+
+    // **Upward before the burner**, which is a placement argument
+    // rather than an economic one. Floor 1 has six usable slots, the
+    // bunk holds two of them and the farm two more; a burner in the
+    // last two would leave the fiber comb — two wide and `max_floor` 1,
+    // because fiber is stripped off the ground — with nowhere in the
+    // tower to stand. So the tower grows first and the burner goes on
+    // the new deck.
+    build_floor_when_affordable(&mut engine);
+
+    // The burner, which the cutter arm unlocked, and with it the rest
+    // of the menu.
+    place_when_affordable(&mut engine, "room.burner", 2, 1);
+    step_walking(&mut engine, 600);
+
+    // ---------------------------------------------------------------
+    // The menu is open. Everything below is the game rather than the
+    // opening.
+    // ---------------------------------------------------------------
+
+    // The mill: bamboo into poles, and the reason anything else is
+    // affordable.
+    place_when_affordable(&mut engine, "room.mill", 2, 3);
+    step_walking(&mut engine, 600);
+
+    // A second storeroom — the Heartseed carries two shelves and a
+    // shelf holds a single kind, so once bamboo and poles have claimed
+    // both there is nowhere to put a third material, the mill's outbox
+    // fills, and the whole chain stops. Faster intake reaches that
+    // inside five minutes, and once it does the tower cannot afford its
+    // way out, because affording anything needs the poles that are
+    // stuck in the mill. This is the shelf bottleneck working exactly
+    // as designed; the script answers it the way a player has to, and
+    // early.
+    place_when_affordable(&mut engine, "room.storeroom", 2, 5);
     step_walking(&mut engine, 600);
 
     // A canteen, bought early because it is cheap and because a fixture
@@ -62,18 +108,13 @@ fn main() {
     // has that is not the mill, so without one the whole meals chain —
     // the recipe, the errand, the `Eating` state, `MealServed` — is
     // absent from the recording.
+    build_floor_when_affordable(&mut engine);
     place_when_affordable(&mut engine, "room.canteen", 3, 1);
     step_walking(&mut engine, 600);
 
-    // Build upward. This exercises construction, stock spending and
-    // the stairs extending.
-    //
-    // **No re-roofing step any more.** Until M6 this had to place a
-    // fresh sail deck immediately afterwards, because growing taller
-    // shaded the old one and a tower this small then had no income at
-    // all — the legs stopped within the minute and never started
-    // again. Cutting the sails cut that whole dance: the burner is
-    // indoors on floor 2 and does not care what is built above it.
+    // Higher again, and a second burner with it: charge is no longer
+    // free, growing the tower adds lamps, and the fixture should record
+    // a tower that can pay for the height it just bought.
     //
     // **Waits for the money, like every room does.** This used to
     // assert a floor was affordable after a fixed minute of milling,
@@ -83,9 +124,6 @@ fn main() {
     // fixture that cannot be recorded, from a script that was making a
     // timing assumption it never said out loud.
     build_floor_when_affordable(&mut engine);
-    // A second burner, though, because charge is no longer free.
-    // Growing the tower adds lamps, and the fixture should record a
-    // tower that can pay for the height it just bought.
     place_when_affordable(&mut engine, "room.burner", 4, 1);
     // **Rope, because from M5 that is what an elevator is partly made
     // of** — and a chute, because fiber is about to become the fifth
@@ -96,8 +134,8 @@ fn main() {
     // build its way out, because by then there were no poles on any
     // shelf to pay with — they were stuck in a mill whose outbox had
     // nowhere to empty to. A chute prevents; it does not resurrect.
-    place_when_affordable(&mut engine, "room.fiber_comb", 1, 4);
-    place_when_affordable(&mut engine, "room.ropery", 2, 1);
+    place_when_affordable(&mut engine, "room.fiber_comb", 1, 5);
+    place_when_affordable(&mut engine, "room.ropery", 3, 3);
     // **And switched off again once there is rope for a shaft.**
     //
     // Rope's only consumer is a build cost, and a build cost is a
@@ -178,7 +216,7 @@ fn main() {
     // tower with everybody on the day shift is one short — deliberately,
     // so the fixture records both halves of sleep: somebody in a
     // hammock, and somebody on the deck at half the rest rate.
-    place_when_affordable(&mut engine, "room.bunk", 4, 4);
+    place_when_affordable(&mut engine, "room.bunk", 4, 3);
     // An elevator costs a lot of poles. Bank them before asking for
     // one, and before adding a second consumer of the same item — a
     // thornwright eats poles as fast as the mill can supply them, so
@@ -205,7 +243,7 @@ fn main() {
     // the order it buys in stopped being free. Cheap and load-bearing
     // first — the rule the shopping lists in `examples/` already follow,
     // arrived at here the hard way.
-    place_when_affordable(&mut engine, "room.dart_battery", 1, 6);
+    place_when_affordable(&mut engine, "room.dart_battery", 3, 5);
     step_walking(&mut engine, 1800);
 
     // Darts to put in it, from the same argument: a thornwright is 5
@@ -213,12 +251,12 @@ fn main() {
     // four poles and needed five. One short, with the whole journey
     // already walked. Both cheap rooms now come before the expensive
     // shaft, which is the only ordering a 40-minute run can pay for.
-    place_when_affordable(&mut engine, "room.thornwright", 4, 6);
+    place_when_affordable(&mut engine, "room.thornwright", 4, 5);
     step_walking(&mut engine, 1800);
 
     // And a demolition, so the stale-task path is covered too.
     engine
-        .try_send(GameCommand::RemoveRoom { floor: 4, slot: 6 })
+        .try_send(GameCommand::RemoveRoom { floor: 4, slot: 5 })
         .expect("the thornwright placed above should still be there");
     step_walking(&mut engine, 900);
 
@@ -543,6 +581,30 @@ fn build_floor_when_affordable(engine: &mut GameEngine) {
         state.world.distance >> 8,
         shelf_report(engine),
     );
+}
+
+/// Post `count` crew to the room at `floor`.`slot`.
+///
+/// The farm is the one room in the pack with `crew_required`, so
+/// building it is only half of building it.
+fn staff(engine: &mut GameEngine, floor: u8, slot: u8, count: usize) {
+    let Some(room) = engine
+        .state()
+        .tower
+        .find_room(floor, slot)
+        .map(|room| room.id)
+    else {
+        panic!("nothing at {floor}.{slot} to post anybody to");
+    };
+    let crew: Vec<_> = engine.state().crew.iter().map(|member| member.id).collect();
+    for who in crew.into_iter().take(count) {
+        engine
+            .try_send(GameCommand::StationCrew {
+                crew: who,
+                room: Some(room),
+            })
+            .expect("posting somebody to a room that exists is always legal");
+    }
 }
 
 fn place_when_affordable(engine: &mut GameEngine, room: &str, floor: u8, slot: u8) {

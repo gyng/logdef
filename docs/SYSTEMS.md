@@ -6324,15 +6324,109 @@ opening tower can afford or a floor under repair. Carried into §6.9 as an open 
   the tell, and it is the fourth entry in this project's list of instruments that measured
   themselves.
 
+### 6.11 The opening five minutes
+
+**A first turn used to open on twenty build cards and a factory somebody else had built.**
+The tower arrived with a cutter arm, a mill, a cell bank, a storeroom and a sail deck already
+running, four floors of mostly empty deck, and every room in the pack on the menu. Nothing on
+that screen said which of the twenty mattered, and the chain was already working, so the first
+thing a new player did was watch.
+
+The opening is now: **two floors, three crew, a Heartseed and a bed.**
+
+#### The ladder
+
+`RoomDef.unlocked_by` names the room that has to be standing before this one may be built.
+The chain is short and it is the whole tutorial:
+
+| Rung | Opens | Why that order |
+|---|---|---|
+| — | **farm** | The only card on turn one. Food before anything. |
+| farm | **cutter arm** | The tower fed itself; now it can cut. |
+| cutter arm | **storeroom** | Shelves mean nothing until there is a second material. |
+| cutter arm | **burner** | There is no fuel until something cuts it. |
+| burner | **everything else** | The opening is over. |
+
+**Validated at the command boundary, not filtered in a menu.** `engine::commands` returns
+`CommandError::Locked`, and `ViewSnapshot::unlocked` tells the UI which gates are currently
+open so the two cannot drift — a card that offers something the simulation refuses is worse
+than no card. It reads off `GameState`, so it is deterministic and a replay carries it.
+
+**This is not the journal.** §5.7's unlocks are player-level, never enter `GameState`, and can
+only ever filter a menu; a replay carries commands, so a veteran's saved run has to replay
+identically for a first-time player. The ladder is a fact about *this tower on this run*, which
+is why it is allowed near the command layer at all. Keep the two apart.
+
+#### The farm needs two people
+
+`RoomDef.crew_required` is a **requirement**, not M6's `manned_work_pct` bonus: a room with it
+does not work at all until that many crew are posted. The farm is the only room in the pack
+that carries it, and it is deliberately the first thing the game teaches — three crew, and two
+of them are now farmers. The other rooms merely go faster when somebody is standing in them.
+
+An unstaffed farm stalls in place rather than resetting, like a starved mill, so somebody being
+called away to eat does not throw away the crop.
+
+#### Two things the shape forced
+
+**The Heartseed carries three shelves.** A build cost is paid off a shelf, so something has to
+have shelves or the first buildable thing is unbuildable. A pre-placed storeroom would do it
+and would also eat the only three contiguous slots on the ground floor — which is exactly what
+a salvage rig needs (`max_floor` 1, three wide). Three rather than four, and 60 capacity against
+a storeroom's 80: enough that the opening cannot jam itself, nowhere near enough to save with.
+Two deadlocked, measured — bamboo and produce held both while the mill's poles had nowhere to
+land, and the storeroom that would have fixed it cost three of them.
+
+**`starting_stock` is 24 poles, and the number is arithmetic.** Until a mill exists the tower
+cannot make a single pole, so the founding stores have to cover the whole ladder and the first
+mill or the opening is a dead end that looks like a difficulty spike: farm 5, cutter arm 4,
+burner 5, the floor the mill stands on 6, mill 4 — **24 exactly**. At 16 the golden recorder
+finished the ladder with two poles and twenty produce and never afforded a floor in 63,000
+ticks.
+
+#### What it cost to build
+
+The starting tower was the fixture nearly every test and instrument rested on, so cutting it
+broke 90 of 299 tests and every harness in `examples/`. `tests::engine` now walks the ladder
+once and hands back the tower the old one used to return; `tests::opening` is the shipped
+one, and four new tests in `tests/commands.rs` are about the ladder itself.
+`harness::chain_tower` does the same job for the instruments, and `debug_grant` does it for the
+browser specs — which had been earning everything, because there was no other way, and were
+therefore all economy tests wearing UI tests' clothes.
+
+**Three real bugs fell out of it**, all of them latent and none of them findable from the old
+fixture:
+
+- **A car dwelling at the floor its callers are standing on never opened its doors.**
+  `depart` answers "someone is calling from this very floor" with
+  `Dwelling { ticks_left: 0 }` — the doors staying open — and the guard on `service_stop` only
+  fired on a transition *into* Dwelling, so it suppressed the one call it exists to make.
+  Measured: three crew on floor 0, waiting **18,857 ticks**, boarding a car parked on floor 0
+  with no riders. It needed a car to be dwelling *before* the callers appeared, which is what
+  cutting the stairs out from under them produces and very little else does.
+- **A dumbwaiter unloaded onto the first shelf it passed.** It chose a floor because a hungry
+  recipe was on it — an inbox scores 3 against a shelf's 2 — then walked the rooms once,
+  offering each its inbox *and* its shelves, so a storeroom at a lower slot swallowed the load
+  before the mill three slots along was asked. Invisible until a fixture put a storeroom and a
+  consumer on the same floor.
+- **`top_floor_only` was enforced only inside the sails** (§6.10), so cutting them cut the
+  rule and left the garden dimmed by the snapshot while it grew at full rate.
+
 ### 6.9 Open questions
 
-0. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
+   the golden recorder walks it every time it runs, farm at tick 900 and a mill by 3,000. Nobody
+   has shown it is *readable*: that a player who has never seen the game works out that the farm
+   wants two people in it, or that the menu growing is a reward rather than a bug. That is the
+   same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
+   load-bearing for the first five minutes rather than only for balance.
+1. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-1. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+2. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

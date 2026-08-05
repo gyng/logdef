@@ -34,6 +34,8 @@ pub mod command;
 pub mod content;
 pub mod engine;
 pub mod fx;
+/// Shared setup for the instruments in `examples/`. Not for shipped code.
+pub mod harness;
 pub mod ids;
 pub mod replay;
 pub mod rng;

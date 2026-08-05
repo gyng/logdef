@@ -18,6 +18,17 @@ RoomDef(
     id: "room.garden",
     name: "Garden",
     short: "GRD",
+    // **Two people, and it is the first thing the game teaches.**
+    //
+    // Every other room merely *benefits* from being staffed — M6's
+    // `manned_work_pct` is a 150% bonus for a posted crew member. A
+    // farm does not run at all without two, which makes the opening's
+    // first decision a decision about *people* rather than about
+    // floor space: three crew, and two of them are now farmers.
+    //
+    // It is also the honest shape of the fiction. A cutter arm is a
+    // machine bolted to the hull; a garden is somebody's work.
+    crew_required: 2,
     category: Intake,
     width: 2,
     build_cost: [CostEntryDef(item: "item.poles", amount: 5)],

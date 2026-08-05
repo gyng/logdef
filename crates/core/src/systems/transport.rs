@@ -111,10 +111,28 @@ fn run_elevator(
 
         // Doors just opened: let people off, then on. Only on the
         // transition, so a long dwell does not re-board every tick.
-        let opened = matches!(
-            state.tower.shafts[shaft_index].cars[car_index].state,
-            CarState::Dwelling { .. }
-        ) && !matches!(state_before, CarState::Dwelling { .. });
+        //
+        // **And on a re-opening, which is the half that was missing.**
+        // `depart` ends with "someone is calling from this very floor
+        // and could not board" and answers it by returning
+        // `Dwelling { ticks_left: 0 }` — the doors staying open. That
+        // is a Dwelling-to-Dwelling transition, so the guard above
+        // suppressed the one call it exists to make, and the car sat
+        // at the floor its callers were standing on for ever.
+        //
+        // Measured on `a_severed_shaft_forces_a_live_reroute` after M6
+        // grew the fixture tower: all three crew on floor 0, waiting
+        // **18,857 ticks**, boarding a car parked on floor 0 with no
+        // riders. It needed a car to be dwelling *before* the callers
+        // appeared, which is what cutting the stairs out from under
+        // them produces and very little else does.
+        //
+        // A zero-length dwell only ever comes from that branch of
+        // `depart`, so this cannot re-board on an ordinary stop.
+        let now = state.tower.shafts[shaft_index].cars[car_index].state;
+        let opened = matches!(now, CarState::Dwelling { .. })
+            && (!matches!(state_before, CarState::Dwelling { .. })
+                || matches!(state_before, CarState::Dwelling { ticks_left: 0 }));
         if opened {
             service_stop(
                 state,
@@ -663,17 +681,38 @@ fn unload_dumbwaiter(state: &mut GameState, shaft_index: usize, sounds: &mut Vec
     for load in freight {
         let mut remaining = load.count;
         if let Some(target) = state.tower.floor_mut(here) {
+            // **Every inbox on the floor first, then the shelves.**
+            //
+            // This used to walk the rooms once and offer each room its
+            // inbox *and* its shelves before moving on, so a storeroom
+            // at a lower slot number swallowed the whole load before
+            // the mill three slots along was ever asked. The car had
+            // chosen this floor precisely because a hungry recipe was
+            // on it — `best_dumbwaiter_destination` scores an inbox 3
+            // against a shelf's 2 — and then unloaded as though it had
+            // not.
+            //
+            // Invisible until M6, because no floor in any fixture held
+            // both a storeroom and a consumer; the moment one did, the
+            // mill sat at 0 while 45 stalks went past it onto shelves.
+            // Two passes cost nothing at this room count and make the
+            // unload agree with the choice.
             for room in &mut target.rooms {
                 for stack in &mut room.inputs {
                     if stack.item == load.item {
                         remaining -= stack.deposit(remaining);
                     }
                 }
-                if remaining > 0 {
-                    remaining -= room.shelve(load.item, remaining);
-                }
                 if remaining == 0 {
                     break;
+                }
+            }
+            if remaining > 0 {
+                for room in &mut target.rooms {
+                    remaining -= room.shelve(load.item, remaining);
+                    if remaining == 0 {
+                        break;
+                    }
                 }
             }
         }

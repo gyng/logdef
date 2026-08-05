@@ -304,39 +304,57 @@ fn a_dumbwaiter_moves_items_without_anybody_carrying_them() {
     let content = content();
     let bamboo = item(&content, "item.bamboo");
 
-    // Spanning the cutter arm on floor 0 and the storeroom on floor 1.
-    let mut game = with_shaft(811, "shaft.dumbwaiter", 0, 1, 7);
+    // **Floor 0 to floor 2**, spanning the cutter arm and the
+    // storeroom. It was 0 to 1 until M6 cut the opening tower down and
+    // moved the storeroom up a floor (`SYSTEMS.md` §6.11); a
+    // dumbwaiter's `max_span` is 3, so this still fits.
+    let mut game = with_shaft(811, "shaft.dumbwaiter", 0, 2, 7);
     // Take the crew out entirely, so anything that moves was moved by
     // the machine.
     game.state_mut_for_test().crew.clear();
 
-    let shelved_before: i64 = shelved(&game, bamboo);
+    // **Anywhere off floor 0, not specifically a shelf.** The mill is
+    // in this span and a hungry inbox outranks a shelf, so counting
+    // shelves alone measures which destination won rather than whether
+    // anything moved — which is the *next* test's question. This one
+    // only asks whether the machine works with nobody aboard.
+    let moved = |game: &crate::engine::GameEngine| -> i64 {
+        game.state()
+            .tower
+            .floors
+            .iter()
+            .filter(|floor| floor.index > 0)
+            .flat_map(|floor| floor.rooms.iter())
+            .flat_map(|room| {
+                room.shelves
+                    .iter()
+                    .filter(|shelf| shelf.item == Some(bamboo))
+                    .map(|shelf| shelf.count)
+                    .chain(
+                        room.inputs
+                            .iter()
+                            .filter(|stack| stack.item == bamboo)
+                            .map(|stack| stack.count),
+                    )
+            })
+            .sum()
+    };
+
+    let before = moved(&game);
     game.step(3000);
-    let shelved_after: i64 = shelved(&game, bamboo);
+    let after = moved(&game);
 
     assert!(
-        shelved_after > shelved_before,
-        "the dumbwaiter moved nothing with no crew aboard: {shelved_before} then {shelved_after}"
+        after > before,
+        "the dumbwaiter moved nothing with no crew aboard: {before} then {after}"
     );
-}
-
-fn shelved(game: &crate::engine::GameEngine, item: crate::ids::ItemIdx) -> i64 {
-    game.state()
-        .tower
-        .floors
-        .iter()
-        .flat_map(|floor| floor.rooms.iter())
-        .flat_map(|room| room.shelves.iter())
-        .filter(|shelf| shelf.item == Some(item))
-        .map(|shelf| shelf.count)
-        .sum()
 }
 
 #[test]
 fn a_dumbwaiter_never_loses_a_load() {
     let content = content();
     let bamboo = item(&content, "item.bamboo");
-    let mut game = with_shaft(812, "shaft.dumbwaiter", 0, 1, 7);
+    let mut game = with_shaft(812, "shaft.dumbwaiter", 0, 2, 7);
     game.state_mut_for_test().crew.clear();
 
     let mut last = total_including_cars(&game, bamboo);
@@ -708,7 +726,20 @@ fn a_dumbwaiter_feeds_a_hungry_recipe_in_preference_to_a_shelf() {
     game.state_mut_for_test().crew.clear();
 
     let crafts_before = game.state().stats.crafts_completed;
-    game.step(6000);
+    // **Charge topped up as it goes.** A dumbwaiter draws
+    // `charge_per_floor` every trip, and with the crew cleared nobody
+    // is carrying fuel to a burner — so left alone the tower runs the
+    // bank flat somewhere in the first thousand ticks and the shaft
+    // stops, which reads as "the dumbwaiter never fed the mill" and is
+    // a power measurement wearing a transport test's clothes.
+    //
+    // This test is about which destination a shaft prefers. The power
+    // economy has `examples/charge.rs`.
+    for _ in 0..20 {
+        game.step(300);
+        let power = &mut game.state_mut_for_test().power;
+        power.charge = power.capacity;
+    }
 
     let in_mill: i64 = game
         .state()
@@ -723,7 +754,8 @@ fn a_dumbwaiter_feeds_a_hungry_recipe_in_preference_to_a_shelf() {
 
     assert!(
         game.state().stats.crafts_completed > crafts_before,
-        "with no crew at all, the dumbwaiter never fed the mill"
+        "with no crew at all, the dumbwaiter never fed the mill:          {crafts_before} then {}, {in_mill} waiting in inboxes",
+        game.state().stats.crafts_completed,
     );
     assert!(
         in_mill > 0 || game.state().stats.crafts_completed > crafts_before,

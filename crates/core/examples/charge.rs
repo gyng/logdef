@@ -175,20 +175,24 @@ fn measure(extra_floors: u8, walking: bool, burners: u8) -> Day {
         .item_idx("item.bamboo")
         .expect("the pack defines bamboo");
 
-    for _ in 0..extra_floors {
-        // Floors are paid for from stock like everything else, so the
-        // tower is handed the poles rather than made to earn them: this
-        // is a measurement of a tall tower's *draw*, not of how long it
-        // takes to become one.
-        give(&mut game, poles, 40);
-        let grew = game.try_send(GameCommand::BuildFloor).is_ok();
-        assert!(grew, "a floor that was paid for did not go up");
-    }
+    // **The opening ladder, then the height** (`SYSTEMS.md` §6.11). M6
+    // cut the starting tower to a Heartseed and a bed, so the burner
+    // whose fuel bill this instrument exists to measure is now
+    // something the tower has to build. Four floors is the height the
+    // old starting tower arrived at, which is what every row below is
+    // written relative to.
+    //
+    // Floors and rooms are paid for from granted stock: this is a
+    // measurement of a tall tower's *draw*, not of how long it takes to
+    // become one.
+    understory_core::harness::chain_tower(&mut game, 4 + extra_floors);
+    let _ = poles;
 
     let burner_idx = game
         .content()
         .room_idx("room.burner")
         .expect("the pack defines a burner");
+    // The ladder above put exactly one up.
     if burners == 0 {
         let state = game.state_mut_for_test();
         for floor in &mut state.tower.floors {
@@ -203,19 +207,9 @@ fn measure(extra_floors: u8, walking: bool, burners: u8) -> Day {
         // about by name.
         let already = 1;
         for n in already..burners {
-            give(&mut game, poles, 40);
-            let floors = game.state().tower.floors.len() as u8;
-            let slots = game.content().balance.tower.floor_slots;
-            let up = (2..floors).any(|floor| {
-                (0..slots).any(|slot| {
-                    game.try_send(GameCommand::PlaceRoom {
-                        room: "room.burner".into(),
-                        floor,
-                        slot,
-                    })
-                    .is_ok()
-                })
-            });
+            give(&mut game, bamboo, 0);
+            understory_core::harness::give(&mut game, "item.poles", 20);
+            let up = understory_core::harness::place_anywhere(&mut game, "room.burner");
             assert!(up, "burner {n} did not go up; this row measures nothing");
         }
     }

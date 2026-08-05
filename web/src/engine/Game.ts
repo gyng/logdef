@@ -48,6 +48,7 @@ export interface UiState {
   yieldPct: number;
   floors: number;
   stock: StoreView[];
+  unlocked: number[];
   harvested: number;
   crafted: number;
   hauled: number;
@@ -649,6 +650,7 @@ export class Game {
       yieldPct: view?.world.yield_pct ?? 100,
       floors: view?.tower.floors.length ?? 0,
       stock: view?.stock ?? [],
+      unlocked: view?.unlocked ?? [],
       harvested: view?.stats.items_harvested ?? 0,
       crafted: view?.stats.crafts_completed ?? 0,
       hauled: view?.stats.hauls_completed ?? 0,

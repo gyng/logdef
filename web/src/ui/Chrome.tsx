@@ -1000,7 +1000,16 @@ function Sidebar({ game, ui }: Props) {
   const catalog = game.getCatalog();
   // The Heartseed is pre-placed and unique; offering it in the menu
   // would only ever produce a rejection.
-  const buildable = catalog.rooms.filter((room) => room.category !== "Heart");
+  //
+  // **And the menu opens out as the tower grows** (`SYSTEMS.md` §6.11).
+  // A first turn used to show twenty cards in a tower that already had
+  // a working chain in it, and nothing on that screen said which of the
+  // twenty mattered. `ui.unlocked` is the simulation's own answer to
+  // "what can be built right now", so the menu cannot drift from it.
+  const open = new Set(ui.unlocked);
+  const buildable = catalog.rooms.filter(
+    (room, index) => room.category !== "Heart" && open.has(index),
+  );
 
   return (
     <aside className="sidebar panel">

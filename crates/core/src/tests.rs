@@ -32,8 +32,98 @@ pub(crate) fn content() -> Arc<Content> {
     Arc::new(Content::load_embedded().expect("embedded pack must load"))
 }
 
-pub(crate) fn engine(seed: u64) -> GameEngine {
+/// **The shipped opening tower: two floors, three crew, a bed and a
+/// shelf.** What a new player actually starts with.
+///
+/// Almost nothing wants this. Use [`engine`].
+pub(crate) fn opening(seed: u64) -> GameEngine {
     GameEngine::with_content(seed, content())
+}
+
+/// A tower past the opening — the fixture nearly every test wants.
+///
+/// **M6 cut the starting tower down to a bed and a shelf** (§6.11), so
+/// what used to arrive pre-placed is now something the player builds
+/// through the farm → cutter → burner ladder. That is the right opening
+/// and the wrong fixture: a test about hauling, production, sieges or
+/// crew needs a tower that *works*, and rebuilding one in ninety test
+/// bodies would have said nothing about any of them.
+///
+/// So this walks the ladder once, through the real commands and the
+/// real gate, and hands back the tower the old `engine()` used to
+/// return: four floors, a chain, and power. Stock is granted rather
+/// than earned, because how long a tower takes to afford a mill is
+/// `examples/prices.rs`'s question.
+///
+/// Tests that are *about* the opening use [`opening`] instead.
+pub(crate) fn engine(seed: u64) -> GameEngine {
+    let mut game = GameEngine::with_content(seed, content());
+    // **Three more floors, not two.** Four was the old starting
+    // height and the obvious target, but the garden is `top_floor_only`
+    // and has to live on the roof, and a dozen tests place rooms on
+    // floor 3 by name. Growing one higher gives the fixture a roof of
+    // its own and hands floor 3 back to them.
+    for _ in 0..3 {
+        stock_item(&mut game, "item.poles", 12);
+        game.try_send(crate::command::GameCommand::BuildFloor)
+            .expect("a paid-for floor should go up");
+    }
+    // In ladder order, because the gate is real: the garden opens the
+    // cutter arm, the cutter arm opens the burner, and the burner opens
+    // everything else. A fixture that could skip that would not be
+    // exercising the rule the game ships.
+    // **Floor 1 is left entirely clear**, which is not tidiness: a
+    // salvage rig is three wide and `max_floor` 1, and floor 0 has the
+    // Heartseed across slots 1-3, so floor 1 is the only place in a
+    // four-floor tower one can stand. Seven tests place one there.
+    //
+    // Floor 3 is left clear for the same reason: it is where tests put
+    // storerooms, bunks and second gardens by name, and the fixture's
+    // own roof-only room lives a floor above it.
+    //
+    // **The burner is up there too, and that is not tidiness either.**
+    // A burner's inbox competes for bamboo with the mill's, and
+    // `find_destination` feeds the emptiest — so a burner inside a
+    // dumbwaiter's span quietly wins every load and the shaft test that
+    // was about *which destination a shaft prefers* is decided by a
+    // third room nobody mentioned. Switching it off is not the answer:
+    // a dumbwaiter draws `charge_per_floor`, so a tower with no burner
+    // runs the shaft flat instead.
+    //
+    // The storeroom cannot join the rig on floor 1: the shipped bunk
+    // holds slots 1-2 there, and a two-wide storeroom would then have
+    // to take 3-4 and break the rig's gap. It goes on floor 2, and the
+    // dumbwaiter tests span floor 0 to floor 2 to reach it.
+    for (room, floor, slot) in [
+        ("room.garden", 4u8, 1u8),
+        ("room.cutter_arm", 0, 4),
+        ("room.burner", 3, 5),
+        ("room.mill", 2, 3),
+        ("room.storeroom", 2, 1),
+        ("room.cell_bank", 4, 3),
+    ] {
+        // **Exactly this room's cost, not a pile of poles.** A shelf
+        // holds one kind and the opening tower has four of them, so
+        // stocking generously claims every shelf and the next build
+        // fails for want of a shelf rather than for want of money —
+        // which is how a cell bank came back `InsufficientStock` on
+        // charge cells with poles stacked to the ceiling.
+        stock_for(&mut game, room, 1);
+        let placed = game.try_send(crate::command::GameCommand::PlaceRoom {
+            room: room.into(),
+            floor,
+            slot,
+        });
+        assert!(placed.is_ok(), "{room} at {floor}.{slot}: {placed:?}");
+    }
+    // **Nobody is posted to the farm, so the farm does not run.** It
+    // is here because the gate needs it standing before a cutter arm
+    // can be built, not because this fixture wants produce — and
+    // posting two of three crew to it would quietly take two thirds of
+    // the tower's hands away from hauling, which is the thing most of
+    // these tests are actually measuring. A test that wants a working
+    // garden stations somebody itself.
+    game
 }
 
 pub(crate) fn item(content: &Content, id: &str) -> ItemIdx {
@@ -133,6 +223,36 @@ pub(crate) fn stock_poles(game: &mut GameEngine, amount: i64) {
     // only the elevator and the cell bank want them, and those two tests
     // ask for them by name.
     stock_item(game, "item.rope", 8);
+}
+
+/// Post `count` crew to the room at `floor`.`slot`.
+///
+/// The farm is the one room with `crew_required`, so a test that wants
+/// produce has to staff it — see `SYSTEMS.md` §6.11. Returns how many
+/// were actually posted.
+pub(crate) fn staff(game: &mut GameEngine, floor: u8, slot: u8, count: usize) -> usize {
+    let Some(room) = game
+        .state()
+        .tower
+        .find_room(floor, slot)
+        .map(|room| room.id)
+    else {
+        return 0;
+    };
+    let crew: Vec<crate::ids::CrewId> = game.state().crew.iter().map(|member| member.id).collect();
+    let mut posted = 0;
+    for who in crew.into_iter().take(count) {
+        if game
+            .try_send(crate::command::GameCommand::StationCrew {
+                crew: who,
+                room: Some(room),
+            })
+            .is_ok()
+        {
+            posted += 1;
+        }
+    }
+    posted
 }
 
 /// Put `amount` of any item on whatever shelves will take it.

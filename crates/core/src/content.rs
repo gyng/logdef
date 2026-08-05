@@ -248,6 +248,30 @@ pub struct RoomDef {
     pub recipe: Option<RecipeDef>,
     #[serde(default)]
     pub intake: Option<IntakeDef>,
+    /// The room that has to be standing before this one can be built.
+    ///
+    /// **The opening five minutes, and the only reason it exists.** A
+    /// first-turn build menu with twenty cards on it is the loudest
+    /// thing in the game and it says nothing; this makes the menu open
+    /// out as the player builds, so the first decision is one decision.
+    ///
+    /// It is a fact about the *tower*, not about the player — it reads
+    /// off `GameState`, so it is deterministic, replay-safe, and
+    /// validated at the command boundary like everything else. That is
+    /// the difference between this and the journal (§5.7), which is
+    /// player-level, never enters `GameState`, and can only ever filter
+    /// a menu.
+    #[serde(default)]
+    pub unlocked_by: Option<String>,
+    /// Crew who must be posted here for the room to work at all.
+    ///
+    /// Zero for everything that merely *benefits* from being staffed —
+    /// M6's `manned_work_pct` is the bonus, and this is a requirement.
+    /// The farm is the one room that has it, because the opening should
+    /// teach that rooms are run by people before it teaches anything
+    /// else.
+    #[serde(default)]
+    pub crew_required: u8,
     #[serde(default)]
     pub storage: Option<StorageDef>,
     #[serde(default)]
@@ -791,6 +815,15 @@ pub struct WorldBalance {
     pub stream_behind_paces: i64,
 }
 
+/// One pre-placed room in the opening tower.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StartingRoomDef {
+    pub room: String,
+    pub floor: u8,
+    pub slot: u8,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TowerBalance {
@@ -802,6 +835,13 @@ pub struct TowerBalance {
     /// Items placed on the starting storeroom's shelves so the first
     /// floor is buildable before the mill has ever run.
     pub starting_stock: Vec<CostEntryDef>,
+    /// The rooms the tower sets out with, and where they sit.
+    ///
+    /// **Data rather than a `const` in `state.rs`**, because M6 turned
+    /// the opening tower into a tuning question rather than a fixture:
+    /// how much a new player is handed is the first thing anybody will
+    /// want to move, and it should not need a rebuild.
+    pub starting_rooms: Vec<StartingRoomDef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -944,6 +984,11 @@ pub struct RoomRuntime {
     /// input stack, so the haul system feeds it with no special case.
     pub defence_ammo: Option<ItemIdx>,
     pub defence_buffer_max: i64,
+    /// Interned `RoomDef::unlocked_by` — the room that has to be
+    /// standing before this one can be built. `DECISIONS.md` §6: string
+    /// IDs in data, dense indices in the simulation.
+    pub unlocked_by: Option<RoomIdx>,
+    pub crew_required: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -1552,6 +1597,8 @@ impl Content {
                 defence_ammo,
                 sleepers: room.quarters.as_ref().map_or(0, |q| q.sleepers),
                 defence_buffer_max,
+                unlocked_by: room.unlocked_by.as_deref().and_then(|id| self.room_idx(id)),
+                crew_required: room.crew_required,
             });
         }
         self.room_runtime = room_runtime;

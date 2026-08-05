@@ -50,6 +50,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     // at full rate is a diegetic lie (`DECISIONS.md` §8): the flag the
     // cross-section dims is the flag that stops the crop.
     let top = state.tower.top_floor();
+    let manned = super::manned_rooms(state);
 
     // Both of these are one tick old, deliberately. Intake runs fourth
     // and stride runs eleventh, because tick order *is* charge priority
@@ -87,6 +88,13 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             };
             // A damaged arm strips less; a wrecked one strips nothing.
             if !room.is_working(content, tick) {
+                continue;
+            }
+            // And an unstaffed farm strips nothing at all: the garden
+            // is the one room in the pack with `crew_required`, and it
+            // is where the opening teaches that rooms are run by people
+            // (`SYSTEMS.md` §6.11).
+            if !super::staffed(content, room, &manned) {
                 continue;
             }
 

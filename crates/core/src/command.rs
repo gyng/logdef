@@ -192,6 +192,9 @@ impl CommandResult {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandError {
+    /// The room is not on the menu yet: something has to be standing
+    /// first. See `RoomDef::unlocked_by` and `SYSTEMS.md` §6.11.
+    Locked { room: String, needs: String },
     /// The content pack has no room with that ID.
     UnknownRoom { room: String },
     /// Floor index past the top of the tower.
@@ -267,6 +270,9 @@ impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CommandError::UnknownRoom { room } => write!(f, "no such room: {room}"),
+            CommandError::Locked { room, needs } => {
+                write!(f, "{room} is not on the menu until a {needs} is standing")
+            }
             CommandError::NoSuchFloor { floor } => write!(f, "no floor {floor}"),
             CommandError::SlotOutOfRange {
                 slot,

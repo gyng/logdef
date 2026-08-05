@@ -54,20 +54,36 @@ fn main() {
 
     let mut game = GameEngine::new(0x_4A17);
     game.set_speed(SimSpeed::X1);
-    for (room, floor, slot) in [("room.canteen", 1u8, 4u8), ("room.bunk", 3, 1)] {
-        for _ in 0..600 {
-            match game.try_send(GameCommand::PlaceRoom {
-                room: room.into(),
-                floor,
-                slot,
-            }) {
-                Ok(()) => break,
-                Err(understory_core::command::CommandError::InsufficientStock { .. }) => {
-                    step(&mut game, 300)
-                }
-                Err(other) => panic!("could not place {room}: {other}"),
-            }
+    // **The opening ladder first** (`SYSTEMS.md` §6.11). M6 cut the
+    // starting tower to a Heartseed and a bed, so a harness that places
+    // a canteen on turn one gets `CommandError::Locked` rather than a
+    // tower. `chain_tower` grows to four floors and walks farm → cutter
+    // arm → burner → mill, storeroom, cell bank, which is the tower
+    // every instrument here was written against.
+    understory_core::harness::chain_tower(&mut game, 4);
+    // **Wherever they fit, rather than at named slots.** These used to
+    // pin the canteen to floor 1 slot 4 and the bunk to floor 3 slot 1,
+    // which were free in the old pre-built starting tower and are not
+    // free in a tower this harness has just grown for itself. A slot
+    // number is not what any of these instruments is measuring.
+    for room in ["room.canteen", "room.bunk"] {
+        let cost: Vec<(String, i64)> = {
+            let content = game.content();
+            let idx = content.room_idx(room).expect("the pack defines it");
+            content
+                .room_rt(idx)
+                .build_cost
+                .iter()
+                .map(|(item, n)| (content.item(*item).id.clone(), *n))
+                .collect()
+        };
+        for (item, n) in cost {
+            understory_core::harness::give(&mut game, &item, n * 2);
         }
+        assert!(
+            understory_core::harness::place_anywhere(&mut game, room),
+            "could not place {room}: this harness is measuring a tower it failed to build"
+        );
     }
     step(&mut game, DAY);
 

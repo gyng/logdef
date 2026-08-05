@@ -11,4 +11,32 @@ RoomDef(
     // the room a hearth takes up.
     width: 3,
     unique: true,
+    // **Two shelves, because a seed carries its own stores.**
+    //
+    // M6 cut the opening tower to a bed and two floors (`SYSTEMS.md`
+    // §6.11), and `starting_stock` has to live somewhere: a build cost
+    // is paid off a shelf, so a tower with no shelves cannot build the
+    // first thing it is asked to build. A pre-placed storeroom would
+    // have done it, and would also have eaten the only three
+    // contiguous slots on the ground floor — which is where a salvage
+    // rig goes, and a rig is three wide and reaches the ground.
+    //
+    // **Three, and the number is the opening ladder's arithmetic.** A
+    // shelf takes whichever item lands on it first and holds only that
+    // kind, and by the time a storeroom is affordable the tower has
+    // made exactly three materials: the poles it set out with, the
+    // bamboo the cutter arm strips, and the produce the farm grows.
+    // Two shelves deadlocked on that — measured on the golden
+    // recorder, 20 bamboo and 3 produce holding both shelves while the
+    // mill's poles had nowhere to land and the storeroom that would
+    // have fixed it cost three of them.
+    //
+    // Three rather than four, and 60 against a storeroom's 80: enough
+    // that the opening cannot jam itself, nowhere near enough to save
+    // with. The storeroom is still the room you build when you want to
+    // keep things, which is what makes shelf space a decision.
+    storage: StorageDef(
+        shelves: 3,
+        per_shelf: 20,
+    ),
 )

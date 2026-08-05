@@ -297,15 +297,8 @@ impl GameState {
     /// edge is where one naturally goes — a starting tower that blocked
     /// it would make the first elevator a demolition job.
     fn place_starting_rooms(&mut self, content: &Content) {
-        const LAYOUT: [(&str, u8, u8); 6] = [
-            ("room.heartseed", 0, 1),
-            ("room.cutter_arm", 0, 5),
-            ("room.storeroom", 1, 2),
-            ("room.cell_bank", 1, 1),
-            ("room.mill", 2, 3),
-            ("room.burner", 2, 5),
-        ];
-        for (room_id, floor, slot) in LAYOUT {
+        for entry in &content.balance.tower.starting_rooms {
+            let (room_id, floor, slot) = (entry.room.as_str(), entry.floor, entry.slot);
             let Some(idx) = content.room_idx(room_id) else {
                 continue;
             };

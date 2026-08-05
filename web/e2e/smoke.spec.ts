@@ -43,6 +43,16 @@ interface TestHooks {
   stateHash(): string;
   /** Step, and hand back the sounds that tick would have made. */
   step(ticks: number): SoundEvent[];
+  /**
+   * Put items straight onto the shelves.
+   *
+   * **Every spec here used to earn everything**, because there was no
+   * other way — which quietly made each of them an economy test in a
+   * UI test's clothes. The roster spec, whose subject is two schedule
+   * widgets, spent 194,700 ticks building a rope chain and browned out
+   * at 2 charge without reaching the elevator it exists to schedule.
+   */
+  grant(item: string, amount: number): number;
   verifyGolden(): ReplayReport;
   exportReplay(): string;
   /** Centre of a slot in client coordinates, from the live layout. */
@@ -73,8 +83,107 @@ async function boot(page: Page, seed = SEED) {
   return errors;
 }
 
+/**
+ * Walk the opening ladder, so the tower has a chain in it.
+ *
+ * **M6 cut the starting tower to a Heartseed and a bed**
+ * (`SYSTEMS.md` §6.11): the farm opens the cutter arm, the cutter arm
+ * opens the burner, and the burner opens the rest of the menu. Specs
+ * about the loop being wired — hauling, drawing, building — want a
+ * tower that works, and would otherwise all be measuring an empty one.
+ *
+ * Everything is earned rather than granted, because there is no hook to
+ * put items on a shelf from here and there should not be one: the
+ * bridge's test surface is `view`, `catalog`, `send` and `step`, which
+ * is exactly what a player has.
+ */
+async function openLadder(page: Page): Promise<string[]> {
+  const built = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const catalog = hooks.catalog();
+    const built: string[] = [];
+
+    const give = (room: string): void => {
+      const def = catalog.rooms.find((entry) => entry.id === room);
+      for (const cost of def?.build_cost ?? []) {
+        hooks.grant(catalog.items[cost.item]?.id ?? "item.poles", cost.amount * 2);
+      }
+    };
+    const placeAnywhere = (room: string): boolean => {
+      const width = catalog.rooms.find((entry) => entry.id === room)?.width ?? 1;
+      // From the top down: the low floors are the scarce ones, because
+      // a cutter arm and a fiber comb both reach the ground and so
+      // carry `max_floor` 1. Filling upward spends that scarcity on
+      // rooms that could have gone anywhere.
+      for (const floor of [...hooks.view().tower.floors].reverse()) {
+        // Leave the outboard column alone: a shaft needs one free slot
+        // on every floor it spans, and a spec that fills it makes its
+        // own elevator unbuildable.
+        for (let slot = 0; slot + width <= floor.slots - 1; slot += 1) {
+          if (hooks.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") return true;
+        }
+      }
+      return false;
+    };
+
+    // Farm, cutter arm, **then a floor**, then the burner and the mill.
+    // Each waits for the money rather than assuming it.
+    //
+    // The floor comes before the burner for the same reason the golden
+    // recorder grows there: floor 1 has six usable slots, the bunk
+    // holds two and the farm two more, and a burner in the last two
+    // would leave the fiber comb — two wide and `max_floor` 1 — with
+    // nowhere in the tower to stand.
+    const plan = [
+      "room.garden",
+      "room.cutter_arm",
+      "floor",
+      "room.burner",
+      "room.mill",
+      // **And somewhere to put the poles.** The Heartseed carries three
+      // shelves and a shelf holds one kind, so bamboo, produce and
+      // poles fill them exactly — and the next material to arrive
+      // jams the chain. Every spec that builds past the mill needs
+      // this.
+      "room.storeroom",
+    ];
+    for (const step of plan) {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (step === "floor") {
+          hooks.grant("item.poles", 12);
+        } else {
+          give(step);
+        }
+        const ok = step === "floor" ? hooks.send("BuildFloor") === "Ok" : placeAnywhere(step);
+        if (ok) {
+          built.push(step);
+          break;
+        }
+        const fork = hooks.view().journey.fork;
+        if (fork && fork.answer === null) hooks.send({ TakeFork: { branch: 0 } });
+        hooks.step(300);
+      }
+    }
+    return built;
+  });
+  // **Asserted, because a harness that half-built its tower and carried
+  // on is this project's most-repeated bug** (`AGENTS.md` §II). A spec
+  // measuring an empty tower reports "the chain does not run", which is
+  // true and says nothing.
+  expect(built).toEqual([
+    "room.garden",
+    "room.cutter_arm",
+    "floor",
+    "room.burner",
+    "room.mill",
+    "room.storeroom",
+  ]);
+  return built;
+}
+
 test("boots, draws, and reports a live world", async ({ page }) => {
   const errors = await boot(page);
+  await openLadder(page);
 
   // WebGL2 actually produced a surface, rather than silently failing to
   // a blank canvas.
@@ -91,7 +200,7 @@ test("boots, draws, and reports a live world", async ({ page }) => {
   expect(drawing.hasContext).toBe(true);
 
   const snapshot = await page.evaluate(() => window.__understory!.view());
-  expect(snapshot.tower.floors.length).toBeGreaterThanOrEqual(4);
+  expect(snapshot.tower.floors.length).toBeGreaterThanOrEqual(3);
   expect(snapshot.tower.shafts.length).toBeGreaterThanOrEqual(1);
   expect(snapshot.crew.length).toBeGreaterThanOrEqual(1);
   expect(snapshot.world.bands.length).toBeGreaterThan(0);
@@ -110,6 +219,7 @@ test("boots, draws, and reports a live world", async ({ page }) => {
 
 test("the chain runs unattended and the tower walks", async ({ page }) => {
   await boot(page);
+  await openLadder(page);
 
   // Drive the simulation directly rather than waiting out real time:
   // the smoke test is about the loop being wired, not about pacing.
@@ -176,6 +286,12 @@ test("speed controls drive the clock", async ({ page }) => {
 
 test("building a floor and placing a room round-trips through the bridge", async ({ page }) => {
   await boot(page);
+  // **The ladder first, because the card has to exist to be clicked.**
+  // A storeroom is gated behind a cutter arm since M6 (`SYSTEMS.md`
+  // §6.11), so on the shipped opening tower this spec was clicking a
+  // button that was not on the screen and timing out after three
+  // minutes.
+  await openLadder(page);
 
   // Bank enough poles for a floor plus a room — by waiting for the
   // money rather than by stepping a fixed number of ticks. A fixed
@@ -274,7 +390,50 @@ test("the same seed produces the same run", async ({ page }) => {
  */
 test("the roster writes both of the player's schedules", async ({ page }) => {
   await boot(page);
+  await openLadder(page);
 
+  // The elevator's per-daypart program. These existed in the data
+  // model, the command layer and the replay format from M1 and had no
+  // UI for three milestones; this is the test that says they have one.
+  const outcome = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const catalog = hooks.catalog();
+    const idOf = (id: string): number => catalog.items.findIndex((item) => item.id === id);
+    const held = (item: number): number =>
+      hooks.view().stock.find((entry) => entry.item === item)?.count ?? 0;
+
+    // **Granted, not earned.** This spec's subject is two schedule
+    // widgets. Making it build a fiber comb and a ropery to afford the
+    // shaft it wants to schedule turned it into an economy test, and it
+    // failed as one: 194,700 ticks, a brown-out at 2 charge, and one
+    // pole on the shelves. The rope chain has `tests/transport.rs` and
+    // `examples/lift.rs`; this has the UI.
+    const shaftDef = catalog.shafts.find((entry) => entry.kind === "Elevator");
+    for (const cost of shaftDef?.build_cost ?? []) {
+      hooks.grant(catalog.items[cost.item]?.id ?? "item.poles", cost.amount * 2);
+    }
+
+    const top = hooks.view().tower.floors.length - 1;
+    const built = hooks.send({
+      BuildShaft: { shaft: "shaft.elevator", low: 0, high: top, slot: 7 },
+    });
+    return { built, poles: held(idOf("item.poles")) };
+  });
+
+  const shaft = await page.evaluate(
+    () => window.__understory!.view().tower.shafts.find((s) => s.kind === "Elevator")?.id ?? null,
+  );
+  expect(
+    shaft,
+    `the tower could not build an elevator to schedule: ${JSON.stringify(outcome)}`,
+  ).not.toBeNull();
+
+  // **The rota, after the tower exists.** This used to run first, and
+  // moving a third of a three-person crew onto nights before anything
+  // was built handicapped exactly the economy the elevator half of
+  // this spec has to pay for: measured, zero poles after 120,000
+  // ticks. Both halves are about UI writing a schedule, and neither
+  // cares which order they are checked in.
   // The rota. One click should move one named person onto the night
   // shift and leave everybody else alone.
   const crew = await page.evaluate(() => window.__understory!.view().crew.map((m) => m.id));
@@ -296,123 +455,6 @@ test("the roster writes both of the player's schedules", async ({ page }) => {
     who,
   );
   expect(others).toBe(true);
-
-  // The elevator's per-daypart program. These existed in the data
-  // model, the command layer and the replay format from M1 and had no
-  // UI for three milestones; this is the test that says they have one.
-  const outcome = await page.evaluate(() => {
-    const hooks = window.__understory!;
-    const catalog = hooks.catalog();
-    const idOf = (id: string): number => catalog.items.findIndex((item) => item.id === id);
-    const held = (item: number): number =>
-      hooks.view().stock.find((entry) => entry.item === item)?.count ?? 0;
-
-    // **The elevator is made of rope from M5**, and rope comes from a
-    // ropery fed by a fiber comb — so a test that wants an elevator has
-    // to build the chain that makes one, exactly as a player does. This
-    // used to bank poles and build; it silently stopped building
-    // anything the day the cost changed, and the schedule assertions
-    // below were then asserting against a shaft that was not there.
-    // Leaves the outermost column alone: that is where the elevator is
-    // going, and a room dropped in it makes the shaft unbuildable
-    // several hundred lines later, which reads as a balance failure and
-    // is a placement one.
-    const place = (room: string): void => {
-      for (let attempt = 0; attempt < 60; attempt += 1) {
-        for (const floor of hooks.view().tower.floors) {
-          for (let slot = 0; slot + 2 < floor.slots; slot += 1) {
-            if (hooks.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") return;
-          }
-        }
-        hooks.step(600);
-      }
-    };
-    // **A second storeroom first, or the rest of this is a shelf
-    // jam.** A shelf takes one kind, the tower ships with four, and
-    // this script is about to introduce fiber and rope as the fifth
-    // and sixth materials. Since M6 cut the sails there is a burner in
-    // the opening tower competing for bamboo too, so the pole buffer
-    // rebuilds more slowly and has less room to rebuild into: without
-    // this the tower reached 16 rope and **zero poles** and could not
-    // afford the shaft the rope was for.
-    //
-    // **Most-constrained first**, which `lift.rs` learnt the same way:
-    // `place` scans floors from the ground up, and a fiber comb is
-    // `max_floor` 1 and two slots wide, so on the M6 opening tower it
-    // has exactly one home — floor 1, slots 4-5. A storeroom placed
-    // first takes it and goes anywhere, and the run then reports 36
-    // poles and **zero rope**, which reads as a broken ropery and is a
-    // comb that was never built.
-    place("room.fiber_comb");
-    place("room.ropery");
-    place("room.storeroom");
-
-    const poles = idOf("item.poles");
-    const rope = idOf("item.rope");
-    // **And switch the ropery off once there is rope**, because rope's
-    // only consumer is a build cost and a ropery left running claims
-    // every shelf — measured here as 60 rope and *zero poles*, in a
-    // tower that then could not afford the shaft the rope was for. The
-    // same lesson the golden recorder learnt; see `SYSTEMS.md` §5.11.
-    let off = false;
-    for (let i = 0; i < 200; i += 1) {
-      // **Six, not twelve.** An elevator is 4 rope; the golden
-      // recorder switches its ropery off at 6 for the same reason. A
-      // shelf holds one kind and the tower has few, so every extra
-      // coil is a shelf the poles cannot land on — measured here at 18
-      // rope and **one pole**, which is the jam this switch exists to
-      // prevent arriving before the switch fires.
-      if (!off && held(rope) >= 6) {
-        off = true;
-        for (const floor of hooks.view().tower.floors) {
-          for (const room of floor.rooms) {
-            hooks.send({
-              SetRoomActive: { floor: floor.index, slot: room.slot, active: false },
-            });
-          }
-        }
-        // Everything except the chain that makes poles.
-        for (const floor of hooks.view().tower.floors) {
-          for (const room of floor.rooms) {
-            const id = catalog.rooms[room.def]?.id ?? "";
-            if (id === "room.mill" || id === "room.cutter_arm" || id === "room.burner") {
-              hooks.send({
-                SetRoomActive: { floor: floor.index, slot: room.slot, active: true },
-              });
-            }
-          }
-        }
-      }
-      // Twelve, not eighteen: an elevator is 12 poles and 4 rope
-      // since M6 dropped its price. Waiting for a number the shaft no
-      // longer costs is how a script spends a journey it does not have.
-      if (held(poles) >= 12 && held(rope) >= 4) break;
-      // **Answer the fork, or none of the above happens.** A tower
-      // standing at an unanswered fork does not walk, and a tower that
-      // does not walk harvests nothing — terrain intake is credited
-      // per pace. This loop never answered one, so it spent most of
-      // its 120,000 ticks parked. It got away with that while the
-      // sails made charge for free and the mill had the tower's bamboo
-      // to itself; since M6 the same script reported 12 rope and
-      // **one pole** and could not buy the shaft it exists to test.
-      const fork = hooks.view().journey.fork;
-      if (fork && fork.answer === null) hooks.send({ TakeFork: { branch: 0 } });
-      hooks.step(600);
-    }
-    const top = hooks.view().tower.floors.length - 1;
-    const built = hooks.send({
-      BuildShaft: { shaft: "shaft.elevator", low: 0, high: top, slot: 7 },
-    });
-    return { built, poles: held(poles), rope: held(rope) };
-  });
-
-  const shaft = await page.evaluate(
-    () => window.__understory!.view().tower.shafts.find((s) => s.kind === "Elevator")?.id ?? null,
-  );
-  expect(
-    shaft,
-    `the tower could not build an elevator to schedule: ${JSON.stringify(outcome)}`,
-  ).not.toBeNull();
 
   // Skip a floor this daypart, and check the program says so.
   await expect(page.getByTestId(`stop-${shaft}-1`)).toHaveAttribute("aria-pressed", "true");

@@ -5,6 +5,10 @@ RoomDef(
     id: "room.cutter_arm",
     name: "Cutter Arm",
     short: "CUT",
+    // **Gated behind `room.garden`** — fed the tower before the tower fed itself. The opening
+    // ladder is farm, cutter arm, burner, and then the whole
+    // menu (`SYSTEMS.md` §6.11).
+    unlocked_by: "room.garden",
     category: Intake,
     width: 2,
     max_floor: 1,

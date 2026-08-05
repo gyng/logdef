@@ -483,6 +483,17 @@ fn afford_run(pack: &Arc<Content>, seed: u64, shafts: &[&str]) -> ([u32; 3], u32
     // affordable on a tower that had simply never been able to put its
     // fiber comb anywhere. The same ordering mistake `measure` above
     // records making with the cutter arm.
+    // **The opening ladder, before the shopping list** (`SYSTEMS.md`
+    // §6.11). Every room in the list below is gated behind a farm, a
+    // cutter arm and a burner, and a list that cannot buy its first
+    // item measures nothing: this ran three seeds and reported
+    // "heartseed bunk bunk, 3 poles" on every one of them.
+    //
+    // Handed over rather than earned, because the question here is when
+    // a *shaft* becomes affordable and the ladder is a fixed cost every
+    // tower pays before that question starts.
+    understory_core::harness::open_the_ladder(&mut game, 4);
+
     let mut list = vec![
         "room.storeroom",
         "room.burner",
@@ -766,6 +777,13 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
     // two slots wide and capped by the pack at floor 1, so it has
     // exactly two floors to land on — kept losing its place to a
     // storeroom that could have gone anywhere.
+    // **The opening ladder first** (`SYSTEMS.md` §6.11): since M6 a
+    // fresh tower has a Heartseed and a bed and nothing else, and every
+    // room in the plan below is gated behind a farm, a cutter arm and a
+    // burner. This puts one of each up — wherever they fit — and the
+    // plan then builds the tower this instrument actually measures.
+    understory_core::harness::open_the_ladder(&mut game, height);
+
     let plan = [
         // Reaches the ground, so `max_floor` is 1. Nowhere else to go.
         ("room.cutter_arm", 1),
@@ -817,9 +835,34 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
     // which does not matter. What matters is that the tower can power
     // itself, harvest, craft, and has reason to move things between
     // distinct floors.
-    let has = |id: &str| got.iter().any(|(room, _)| *room == id);
-    let mut floors: Vec<u8> = got.iter().map(|(_, floor)| *floor).collect();
-    floors.dedup();
+    // **Read off the tower, not off the plan's log.** The ladder
+    // above already put a cutter arm and a burner somewhere, so a plan
+    // entry that failed to find a second slot is not the same thing as
+    // the tower lacking one — and what this assertion is about is
+    // whether the tower can power itself, harvest and craft.
+    let standing = |id: &str| {
+        game.content().room_idx(id).is_some_and(|idx| {
+            game.state()
+                .tower
+                .floors
+                .iter()
+                .flat_map(|floor| floor.rooms.iter())
+                .any(|room| room.def == idx)
+        })
+    };
+    let has = |id: &str| standing(id) || got.iter().any(|(room, _)| *room == id);
+    // **Read off the tower, for the same reason `has` is.** `got` only
+    // records what the plan placed; the ladder above put three rooms up
+    // before the plan ran, and counting only the plan's floors reported
+    // a five-floor tower as occupying three of them.
+    let mut floors: Vec<u8> = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .filter(|floor| !floor.rooms.is_empty())
+        .map(|floor| floor.index)
+        .collect();
     floors.sort_unstable();
     floors.dedup();
     assert!(

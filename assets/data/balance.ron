@@ -20,7 +20,14 @@ Balance(
         stream_behind_paces: 300,
     ),
     tower: TowerBalance(
-        starting_floors: 4,
+        // **Two, down from four.** The opening tower is a bed, a shelf
+        // and the Heartseed; four floors of empty deck read as three
+        // things the player had failed to do rather than as room to
+        // grow. Height is now the first thing you buy rather than the
+        // first thing you inherit — and `floor_cost` is 6 poles against
+        // a `starting_stock` of 16, so it is affordable on turn one and
+        // still a decision.
+        starting_floors: 2,
         // Cozy scale: the whole tower stays on one screen.
         max_floors: 14,
         floor_slots: 8,
@@ -48,7 +55,51 @@ Balance(
         // Six more poles is one mend, which is all it has to be: this
         // buys the opening the slack the sails used to provide, and
         // does not touch any rate.
-        starting_stock: [CostEntryDef(item: "item.poles", amount: 16)],
+        //
+        // **Twenty-four from M6's opening ladder, and the number is
+        // arithmetic rather than taste.** The tower now builds its own
+        // chain, and until a mill exists it cannot make a single pole —
+        // so the founding stores have to cover the whole ladder and the
+        // first mill, or the opening is a dead end that looks like a
+        // difficulty spike. Farm 5, cutter arm 4, burner 5, the floor
+        // the mill has to stand on 6, mill 4: **24 exactly**. Measured
+        // on the golden recorder at 16, which is the ladder alone: two
+        // poles left, twenty produce banked, and no floor ever
+        // affordable in 63,000 ticks.
+        //
+        // There is deliberately nothing spare in it. A player who
+        // spends this on something else has made a mistake they can
+        // walk out of — the cutter arm still cuts and the mill can wait
+        // — but they will feel it, which is the right amount of rope.
+        starting_stock: [CostEntryDef(item: "item.poles", amount: 24)],
+        // **The opening tower, and it is deliberately almost nothing.**
+        //
+        // Two floors, three people, a bed and a shelf. Everything else
+        // — the cutter arm, the mill, the burner, the cell bank — used
+        // to be pre-placed, which meant a new player's first turn
+        // opened on a working factory and twenty build cards and no
+        // idea which of them mattered.
+        //
+        // What is left is the Heartseed, which is the reason the tower
+        // walks and which carries the founding stores on two shelves of
+        // its own, and a bunk, because sleep is a need from M4 and a
+        // crew with nowhere to lie down is a puzzle rather than an
+        // opening.
+        //
+        // **No storeroom**, and that is a placement argument as much as
+        // a tutorial one. `starting_stock` has to sit on a shelf, so
+        // something must have shelves — but a storeroom on the ground
+        // floor eats the only three contiguous slots there, and three
+        // contiguous ground-floor slots are exactly what a salvage rig
+        // needs. Putting the shelves inside the Heartseed keeps both
+        // low floors open for the rooms that have to reach the ground.
+        //
+        // The rest arrives through `unlocked_by`: farm, then cutter
+        // arm, then burner, and then the menu opens out.
+        starting_rooms: [
+            StartingRoomDef(room: "room.heartseed", floor: 0, slot: 1),
+            StartingRoomDef(room: "room.bunk", floor: 1, slot: 1),
+        ],
     ),
     crew: CrewBalance(
         // Three, not two. Two crew on a one-body staircase queue, but

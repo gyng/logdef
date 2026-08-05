@@ -1544,6 +1544,21 @@ fn nobody_is_recruited_twice_and_nobody_for_free() {
     let mut game = engine(3003);
     berth_at_the_enclave(&mut game);
 
+    // **Emptied first.** M6 raised `starting_stock` to 24 poles so the
+    // opening ladder is affordable end to end (`SYSTEMS.md` §6.11), and
+    // a tower with money in it cannot demonstrate that recruiting costs
+    // any.
+    {
+        let state = game.state_mut_for_test();
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                for shelf in &mut room.shelves {
+                    shelf.count = 0;
+                    shelf.item = None;
+                }
+            }
+        }
+    }
     let broke = game
         .try_send(GameCommand::Recruit)
         .expect_err("recruiting is not free");

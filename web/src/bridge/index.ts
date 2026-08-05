@@ -33,6 +33,7 @@ interface WasmModule {
   verify_replay(json: string): string;
   verify_golden_replay(): string;
   debug_step(ticks: number): string;
+  debug_grant(item: string, amount: bigint): bigint;
 }
 
 export interface Bridge {
@@ -57,6 +58,14 @@ export interface Bridge {
    * the whole of what it needed.
    */
   debugStep(ticks: number): SoundEvent[];
+  /**
+   * Put items straight onto the shelves. **Tests only.**
+   *
+   * Bypasses the command pattern, so nothing it does is in a replay —
+   * see the Rust side for why it exists at all. Returns how many were
+   * actually shelved.
+   */
+  debugGrant(item: string, amount: number): number;
 }
 
 let bridge: Bridge | null = null;
@@ -87,6 +96,7 @@ export async function initBridge(seed: number): Promise<Bridge> {
     verifyReplay: (json) => JSON.parse(wasm.verify_replay(json)) as ReplayReport,
     verifyGoldenReplay: () => JSON.parse(wasm.verify_golden_replay()) as ReplayReport,
     debugStep: (ticks) => JSON.parse(wasm.debug_step(ticks)) as SoundEvent[],
+    debugGrant: (item, amount) => Number(wasm.debug_grant(item, BigInt(amount))),
   };
 
   wasmView = () => wasm.view();
@@ -115,6 +125,7 @@ function installTestHooks(active: Bridge): void {
     send: (cmd: GameCommand) => active.send(cmd),
     stateHash: () => active.stateHash(),
     step: (ticks: number) => active.debugStep(ticks),
+    grant: (item: string, amount: number) => active.debugGrant(item, amount),
     verifyGolden: () => active.verifyGoldenReplay(),
     exportReplay: () => active.exportReplay(),
   };

@@ -8,7 +8,13 @@ use crate::command::GameCommand;
 use crate::engine::{verify_golden_replay, verify_replay};
 use crate::replay::{CHECKPOINT_INTERVAL, Replay};
 use crate::state::SimSpeed;
-use crate::tests::{content, engine};
+// **`opening`, not `engine`.** The fixture tower is assembled partly
+// through `state_mut_for_test` — stock is granted rather than earned —
+// and a replay carries commands, not state edits. So a session recorded
+// on it diverges at the first tick that reads a shelf. These tests are
+// about the replay machinery and want the tower the game actually
+// ships.
+use crate::tests::{content, opening as engine};
 
 #[test]
 fn a_recorded_session_replays_exactly() {

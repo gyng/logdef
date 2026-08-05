@@ -279,3 +279,180 @@ fn placing_on_a_floor_that_does_not_exist_is_refused() {
         .expect_err("no such floor");
     assert!(matches!(error, CommandError::NoSuchFloor { .. }));
 }
+
+// ---------------------------------------------------------------------------
+// The opening five minutes (`SYSTEMS.md` §6.11)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_opening_tower_is_a_heartseed_and_a_bed() {
+    // The shipped opening, asserted as a shape rather than described in
+    // a comment. Two floors, three crew, and nothing that works.
+    let content = content();
+    let game = crate::tests::opening(1);
+    let state = game.state();
+
+    assert_eq!(
+        state.tower.floors.len(),
+        2,
+        "the opening tower is two floors"
+    );
+    assert_eq!(
+        state.crew.len(),
+        usize::from(content.balance.crew.starting_crew)
+    );
+
+    let rooms: Vec<&str> = state
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .map(|room| content.room(room.def).id.as_str())
+        .collect();
+    assert_eq!(rooms, vec!["room.heartseed", "room.bunk"]);
+
+    // And the stores are aboard, because a build cost is paid off a
+    // shelf and there is no storeroom to pay it from.
+    let poles = item(&content, "item.poles");
+    assert!(
+        state.stock_of(poles) >= 24,
+        "the founding stores have to survive having no storeroom to sit in"
+    );
+}
+
+#[test]
+fn the_first_turn_offers_one_card() {
+    // **The whole point of the gate.** Twenty of twenty-one rooms used
+    // to be buildable on turn one. Exactly one is now, and every other
+    // refusal has to be a `Locked` rather than a slot clash or a price
+    // — otherwise this is measuring the tower's shape, not the rule.
+    let content = content();
+    let mut game = crate::tests::opening(2);
+    // Money, so nothing is refused for being unaffordable.
+    crate::tests::stock_item(&mut game, "item.poles", 60);
+
+    let mut open = Vec::new();
+    for room in &content.rooms {
+        if room.unique {
+            continue;
+        }
+        let locked = content
+            .room_rt(content.room_idx(&room.id).expect("a room the pack defines"))
+            .unlocked_by
+            .is_some();
+        if !locked {
+            open.push(room.id.as_str());
+        }
+    }
+    assert_eq!(
+        open,
+        vec!["room.bunk", "room.garden"],
+        "turn one should offer the farm, and the bed the tower already has"
+    );
+
+    // And the rule bites at the command boundary, not just in a menu.
+    let refused = game
+        .try_send(GameCommand::PlaceRoom {
+            room: "room.mill".into(),
+            floor: 1,
+            slot: 3,
+        })
+        .expect_err("a mill is four rooms down the ladder");
+    assert!(
+        matches!(refused, CommandError::Locked { .. }),
+        "a locked room was refused for the wrong reason: {refused:?}"
+    );
+}
+
+#[test]
+fn the_ladder_opens_one_rung_at_a_time() {
+    // Farm, then cutter arm, then burner, and then everything.
+    let mut game = crate::tests::opening(3);
+    crate::tests::stock_item(&mut game, "item.poles", 60);
+
+    let blocked = |game: &mut crate::engine::GameEngine, room: &str, floor, slot| {
+        matches!(
+            game.try_send(GameCommand::PlaceRoom {
+                room: room.into(),
+                floor,
+                slot,
+            }),
+            Err(CommandError::Locked { .. })
+        )
+    };
+
+    assert!(blocked(&mut game, "room.cutter_arm", 0, 4));
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.garden".into(),
+        floor: 1,
+        slot: 3,
+    })
+    .expect("the farm is turn one's card");
+
+    assert!(blocked(&mut game, "room.burner", 1, 5));
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.cutter_arm".into(),
+        floor: 0,
+        slot: 4,
+    })
+    .expect("the farm opened the cutter arm");
+
+    assert!(blocked(&mut game, "room.mill", 1, 5));
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.burner".into(),
+        floor: 1,
+        slot: 5,
+    })
+    .expect("the cutter arm opened the burner");
+
+    // And now the menu is open.
+    crate::tests::stock_item(&mut game, "item.poles", 60);
+    game.try_send(GameCommand::BuildFloor).expect("affordable");
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.mill".into(),
+        floor: 2,
+        slot: 1,
+    })
+    .expect("the burner opened everything");
+}
+
+#[test]
+fn a_farm_with_nobody_in_it_grows_nothing() {
+    // `crew_required` is a requirement rather than M6's bonus, and the
+    // farm is the only room in the pack that carries it. Two towers,
+    // same seed, same hour: one with people posted and one without.
+    let content = content();
+    let produce = item(&content, "item.produce");
+    let noon = content.balance.clock.ticks_per_day / 2;
+
+    let grown = |game: &crate::engine::GameEngine| -> i64 {
+        game.state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter())
+            .flat_map(|room| room.outputs.iter())
+            .filter(|stack| stack.item == produce)
+            .map(|stack| stack.count)
+            .sum()
+    };
+
+    let run = |posted: usize| {
+        let mut game = crate::tests::opening(4);
+        crate::tests::stock_item(&mut game, "item.poles", 60);
+        game.try_send(GameCommand::PlaceRoom {
+            room: "room.garden".into(),
+            floor: 1,
+            slot: 3,
+        })
+        .expect("the farm is turn one's card");
+        assert_eq!(crate::tests::staff(&mut game, 1, 3, posted), posted);
+        game.state_mut_for_test().clock.tick_of_day = noon;
+        game.step(2400);
+        grown(&game)
+    };
+
+    assert_eq!(run(0), 0, "a farm nobody is standing in grew a crop");
+    assert_eq!(run(1), 0, "one person ran a farm that asks for two");
+    assert!(run(2) > 0, "two people posted to a farm grew nothing");
+}

@@ -233,6 +233,12 @@ impl Shape {
 fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64, i64, i64, i64) {
     let mut engine = GameEngine::new(seed);
     engine.set_speed(SimSpeed::X1);
+    // **The opening ladder first** (`SYSTEMS.md` §6.11). M6 cut the
+    // starting tower to a Heartseed and a bed, so every tower this
+    // harness compares has to build a chain before it can be compared
+    // — and a tower that cannot afford the next thing on its list is
+    // this file's oldest failure mode, reported 56 checks out of 60.
+    understory_core::harness::chain_tower(&mut engine, 4);
     let content = engine.content().clone();
 
     if shape == Shape::Answered {
@@ -423,6 +429,12 @@ impl Plan {
 fn run(plan: Plan) {
     let mut engine = GameEngine::new(SEED);
     engine.set_speed(SimSpeed::X1);
+    // **The opening ladder first** (`SYSTEMS.md` §6.11). M6 cut the
+    // starting tower to a Heartseed and a bed, so every tower this
+    // harness compares has to build a chain before it can be compared
+    // — and a tower that cannot afford the next thing on its list is
+    // this file's oldest failure mode, reported 56 checks out of 60.
+    understory_core::harness::chain_tower(&mut engine, 4);
 
     // A minute to get the chain turning before anyone builds anything.
     step_walking(&mut engine, 1800);

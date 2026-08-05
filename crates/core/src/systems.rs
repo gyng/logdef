@@ -135,6 +135,44 @@ pub enum SoundEvent {
 }
 
 /// Run exactly one simulation tick.
+/// Who is standing in which room, gathered once.
+///
+/// A `Vec` rather than a set, per `DECISIONS.md` §2 — at single-digit
+/// crew a linear scan is cheaper than a hash and, more to the point,
+/// ordered.
+#[must_use]
+pub fn manned_rooms(state: &GameState) -> Vec<crate::ids::RoomId> {
+    state
+        .crew
+        .iter()
+        .filter_map(|member| match member.state {
+            crate::state::CrewState::Manning { room } => Some(room),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Is this room staffed enough to run at all?
+///
+/// **`crew_required` is a requirement, not the M6 bonus.** A room with
+/// `manned_work_pct` merely goes faster when somebody is posted to it;
+/// a room with `crew_required` does not work at all until that many
+/// are. The farm is the only one, and it is the first thing the opening
+/// teaches (`SYSTEMS.md` §6.11): three crew, and two of them are
+/// farmers now.
+#[must_use]
+pub fn staffed(
+    content: &Content,
+    room: &crate::state::tower::Room,
+    manned: &[crate::ids::RoomId],
+) -> bool {
+    let need = content.room_rt(room.def).crew_required;
+    if need == 0 {
+        return true;
+    }
+    manned.iter().filter(|id| **id == room.id).count() >= need as usize
+}
+
 pub fn tick(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     state.clock.advance(content);
     power::income(state, content, sounds);

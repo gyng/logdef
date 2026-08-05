@@ -16,6 +16,13 @@ RoomDef(
     id: "room.seed_thrower",
     name: "Seed Thrower",
     short: "THR",
+    // **Opens once the burner is lit**, which is where the opening
+    // ends. `SYSTEMS.md` §6.11: a first-turn menu with twenty cards on
+    // it is the loudest thing in the game and says nothing, so the menu
+    // grows as the tower does. This is a fact about the tower, not the
+    // player — the journal (§5.7) is the other kind of unlock and can
+    // only filter a menu.
+    unlocked_by: "room.burner",
     category: Defence,
     width: 2,
     // Twice a dart battery's width and dearer in three materials, so it

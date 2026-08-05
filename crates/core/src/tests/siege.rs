@@ -1014,23 +1014,15 @@ fn a_leaper_moves_on_to_whatever_is_still_standing_on_the_roof() {
         .expect("the pack defines a canopy leaper");
 
     let mut game = engine(1053);
-    crate::tests::stock_poles(&mut game, 40);
-    // Something on the roof to bite. Since M6 cut the sails the
-    // opening tower's top deck is bare, and this test's whole subject
-    // is what a leaper does to the top deck.
-    for slot in [1, 4] {
-        game.try_send(GameCommand::PlaceRoom {
-            room: "room.storeroom".into(),
-            floor: 3,
-            slot,
-        })
-        .expect("affordable, and the roof has room");
-    }
     game.try_send(GameCommand::SetStriding { walking: false })
         .expect("always legal");
     hold_the_repairs_off(&mut game);
 
-    // The roof panel is already gone. The storerooms behind it are not.
+    // The roof panel is already gone. What is behind it is not.
+    //
+    // **Whatever the fixture put up there**, rather than rooms placed
+    // here: which slots are free on the roof is a property of
+    // `tests::engine` now, and this test is about targeting.
     let top = game.state().tower.top_floor();
     let slot = {
         let floor = game
@@ -1039,7 +1031,7 @@ fn a_leaper_moves_on_to_whatever_is_still_standing_on_the_roof() {
             .floor_mut(top)
             .expect("the top floor");
         floor.panel.hp = 0;
-        floor.rooms.first().expect("the roof room").slot
+        floor.rooms.first().expect("the roof has a room on it").slot
     };
     let whole = room_hp(&game, top, slot);
     place_creature(&mut game, leaper, 0);
@@ -1080,18 +1072,15 @@ fn a_creature_whose_target_is_torn_out_from_under_it_finds_another() {
     // used to place one storeroom and lean on the sails being the
     // other. Nothing on the roof means nothing to bite, and the test
     // failed inside `room_hp` rather than on its own assertion.
-    for slot in [1, 4] {
-        game.try_send(GameCommand::PlaceRoom {
-            room: "room.storeroom".into(),
-            floor: 3,
-            slot,
-        })
-        .expect("affordable, and the roof has room");
-    }
     game.try_send(GameCommand::SetStriding { walking: false })
         .expect("always legal");
     hold_the_repairs_off(&mut game);
 
+    // **The rooms already on the roof, rather than two placed here.**
+    // A leaper lands on the top deck, so the targets have to be up
+    // there — and which slots are free up there is now a property of
+    // the fixture rather than of this test. Reading them off the tower
+    // keeps the test about targeting.
     let top = game.state().tower.top_floor();
     game.state_mut_for_test()
         .tower
@@ -1099,32 +1088,46 @@ fn a_creature_whose_target_is_torn_out_from_under_it_finds_another() {
         .expect("the top floor")
         .panel
         .hp = 0;
-    let store_whole = room_hp(&game, top, 1);
-    let other_whole = room_hp(&game, top, 4);
+    let roof: Vec<u8> = game
+        .state()
+        .tower
+        .floor(top)
+        .expect("the top floor")
+        .rooms
+        .iter()
+        .map(|room| room.slot)
+        .collect();
+    assert!(
+        roof.len() >= 2,
+        "this test needs two rooms on the roof to move between; found {roof:?}"
+    );
+    let (first, second) = (roof[0], roof[1]);
+    let store_whole = room_hp(&game, top, first);
+    let other_whole = room_hp(&game, top, second);
     place_creature(&mut game, leaper, 0);
 
     // Wait until it has its teeth into the nearer of the two rooms.
     let mut chewing = false;
     for _ in 0..600 {
         game.step(1);
-        if room_hp(&game, top, 1) < store_whole {
+        if room_hp(&game, top, first) < store_whole {
             chewing = true;
             break;
         }
     }
-    assert!(chewing, "the leaper never started on the storeroom");
+    assert!(chewing, "the leaper never started on the first roof room");
 
     // Now pull it down around them.
     game.try_send(GameCommand::RemoveRoom {
         floor: top,
-        slot: 1,
+        slot: first,
     })
-    .expect("a storeroom is demolishable");
+    .expect("a roof room is demolishable");
 
     let mut moved_on = false;
     for _ in 0..600 {
         game.step(1);
-        if room_hp(&game, top, 4) < other_whole {
+        if room_hp(&game, top, second) < other_whole {
             moved_on = true;
             break;
         }
@@ -1205,7 +1208,15 @@ fn a_borer_moves_on_to_the_column_that_is_still_whole() {
 /// Written out rather than summed off the tower, because the test below
 /// exists to check the readout against arithmetic done somewhere other
 /// than the function that produces it.
-const OPENING_TOWER_HP: i64 = 6500;
+/// What the *fixture* tower is worth, whole.
+///
+/// **Not the opening tower any more.** M6 cut the shipped opening to
+/// two floors and a bed (`SYSTEMS.md` §6.11), and `tests::engine` walks
+/// the ladder back up to five floors with a chain on it — which is the
+/// tower this arithmetic has always been written against, it just used
+/// to arrive pre-built. Five panels, the Heartseed, seven ordinary
+/// rooms and the stairs.
+const OPENING_TOWER_HP: i64 = 7170;
 
 #[test]
 fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
@@ -1225,9 +1236,9 @@ fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
     let content = content();
     let siege = &content.balance.siege;
     assert_eq!(
-        4 * siege.panel_hp + siege.heartseed_hp + 5 * siege.room_hp + siege.shaft_hp,
+        5 * siege.panel_hp + siege.heartseed_hp + 7 * siege.room_hp + siege.shaft_hp,
         OPENING_TOWER_HP,
-        "the opening tower is not the one the arithmetic below is written against"
+        "the fixture tower is not the one the arithmetic below is written against"
     );
 
     let mut game = engine(1050);
@@ -1251,7 +1262,8 @@ fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
         "a breached panel did not move the standing figure by its own share of the tower"
     );
 
-    // Then the mill: 130 more off, two per cent, down to 970.
+    // Then the mill: 130 more off, 1.8 per cent of a 7,170-point
+    // tower, down to 972.
     {
         let mill = game
             .state_mut_for_test()
@@ -1266,11 +1278,11 @@ fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
     }
     assert_eq!(
         crate::systems::siege::tower_integrity_permille(game.state()),
-        970,
+        972,
         "a chewed-up room left the standing figure where it was"
     );
 
-    // Then the stairs: 260 more, four per cent, down to 930.
+    // Then the stairs: 260 more, 3.6 per cent of 7,170, down to 936.
     {
         let state = game.state_mut_for_test();
         let stairs = state.tower.shafts[0].id;
@@ -1278,7 +1290,7 @@ fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
     }
     assert_eq!(
         crate::systems::siege::tower_integrity_permille(game.state()),
-        930,
+        936,
         "a half-cut staircase left the standing figure where it was"
     );
 }
@@ -1803,10 +1815,14 @@ fn a_severed_shaft_forces_a_live_reroute() {
     // The elevator costs rope and mechanisms from M5, and this tower
     // has no forge — it is here to be cut through, not to be built.
     crate::tests::stock_for_shaft(&mut game, "shaft.elevator", 1);
+    // **The whole height.** The fixture tower grew a storey at M6, and
+    // a spare route that stops one floor short is not a spare route for
+    // the traffic that has to reach the top.
+    let top = game.state().tower.top_floor();
     game.try_send(GameCommand::BuildShaft {
         shaft: "shaft.elevator".into(),
         low: 0,
-        high: 3,
+        high: top,
         slot: 7,
     })
     .expect("affordable after 200 seconds");
@@ -1851,7 +1867,8 @@ fn a_severed_shaft_forces_a_live_reroute() {
     );
     assert!(
         game.state().stats.hauls_completed > hauls_before,
-        "the tower stopped hauling entirely when the stairs were cut — no reroute happened"
+        "the tower stopped hauling entirely when the stairs were cut — no reroute happened: {hauls_before} then {}",
+        game.state().stats.hauls_completed,
     );
 }
 

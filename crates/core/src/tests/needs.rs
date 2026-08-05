@@ -321,6 +321,11 @@ fn a_bunk_never_holds_more_sleepers_than_it_has_beds() {
     // Occupancy is derived by scanning the crew whose errand names the
     // room — there is no counter to get out of step with reality, and
     // this is what makes sure the scan is actually consulted.
+    //
+    // **Beds across the whole tower, not one bunk's worth.** M6 put a
+    // bunk in the opening tower (`SYSTEMS.md` §6.11), so this test's
+    // own bunk is the second one and three crew sleeping in two rooms
+    // is not an over-subscription — it read as one.
     let mut game = engine(10);
     crate::tests::stock_poles(&mut game, 10);
     game.try_send(GameCommand::PlaceRoom {
@@ -337,7 +342,14 @@ fn a_bunk_never_holds_more_sleepers_than_it_has_beds() {
             .and_then(|room| room.quarters.as_ref())
             .expect("a bunk has quarters")
             .sleepers,
-    );
+    ) * game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .filter(|room| game.content().room(room.def).quarters.is_some())
+        .count();
 
     for _ in 0..day(&game) * 2 {
         game.step(1);
@@ -358,14 +370,27 @@ fn a_bunk_never_holds_more_sleepers_than_it_has_beds() {
 fn with_no_bed_at_all_they_lie_down_where_they_stand() {
     // Survivable and visibly degrading, which is the right shape for a
     // cost the player can stop paying at any moment for three poles.
+    // **The bunk taken out by hand.** M6 put one in the opening tower
+    // (`SYSTEMS.md` §6.11) — a crew with nowhere to lie down is a
+    // puzzle rather than an opening — so "the starting tower has no
+    // bunk" stopped being true and this test stopped testing anything.
     let mut game = engine(11);
+    {
+        let content = content();
+        let state = game.state_mut_for_test();
+        for floor in &mut state.tower.floors {
+            floor
+                .rooms
+                .retain(|room| content.room(room.def).quarters.is_none());
+        }
+    }
     game.step(day(&game) * 3 / 4);
     let bunkless = game
         .state()
         .crew
         .iter()
         .find(|member| member.is_asleep())
-        .expect("the starting tower has no bunk, so they sleep on the deck");
+        .expect("a tower with no bunk should have somebody asleep on the deck");
     assert!(
         bunkless.errand.is_none(),
         "somebody found a bed in a tower with no quarters in it"

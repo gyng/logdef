@@ -24,7 +24,14 @@ RoomDef(
     // dumbwaiter cannot: a crew member walks up to sleep and down to
     // work, twice a day, every day. Freight has the chute and the
     // dumbwaiter; bodies have the stairs and the lift.
-    min_floor: 2,
+    //
+    // **One, not two, since M6 cut the opening tower to two floors.**
+    // The argument above is about *relative* height — quarters over the
+    // works, bodies on the stairs — and it survives at any scale: floor
+    // 1 is still above the ground floor, which is where the cutter arm
+    // and the Heartseed live. Two would have made the tower's own
+    // starting bunk unplaceable.
+    min_floor: 1,
     // Joint-cheapest in the pack with a storeroom, because the
     // alternative to a bed is a crew member who degrades a little more
     // every day, and a bed should never be a gate. The real price of

@@ -123,6 +123,15 @@ export interface ViewSnapshot {
   journey: JourneyView;
   crew: CrewView[];
   stock: StoreView[];
+  /**
+   * Room indices the tower may build right now, in catalog order.
+   *
+   * The opening ladder (`SYSTEMS.md` §6.11). Sent rather than derived
+   * here, so the menu and the command layer can never disagree about
+   * what is buildable — a card that offers something the simulation
+   * refuses is worse than no card.
+   */
+  unlocked: number[];
   stats: RunStats;
 }
 
@@ -534,6 +543,10 @@ export interface RoomInfo {
   /** Lowest floor it may go on. The mirror of `max_floor`. */
   min_floor: number | null;
   unique: boolean;
+  /** Catalog index of the room that must be standing first, if any. */
+  unlocked_by: number | null;
+  /** Crew who must be posted here for it to work at all. */
+  crew_required: number;
   craft_ticks: number;
   inputs: CostInfo[];
   outputs: CostInfo[];

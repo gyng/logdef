@@ -436,6 +436,21 @@ fn place_room(
             room: room_id.to_string(),
         });
     }
+    // **The opening ladder** (`SYSTEMS.md` §6.11). Validated here rather
+    // than filtered in the UI, because a menu that merely hides a card
+    // is a rule the player can only discover by not seeing something,
+    // and because this one is legitimately a fact about `GameState` —
+    // it reads the tower's own rooms, so it is deterministic and a
+    // replay carries it. The journal's unlocks are the other kind and
+    // deliberately never come near this function.
+    if let Some(needs) = content.room_rt(def_idx).unlocked_by
+        && state.tower.count_of(needs) == 0
+    {
+        return Err(CommandError::Locked {
+            room: room_id.to_string(),
+            needs: content.room(needs).id.clone(),
+        });
+    }
     if state.tower.slot_range_blocked(floor, slot, def.width) {
         return Err(CommandError::SlotOccupied { floor, slot });
     }

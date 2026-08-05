@@ -71,8 +71,17 @@ them, the chute, region 3 and the coast, the two creatures that complete the tax
 enclaves, the journal that carries unlocks between runs, and the run log. A run can be played
 from the first pace to an arrival at the Refugia.
 
-M6 ("The Watch") is shipped: the verbs a player has while a wave is landing, plus the
-sails being cut out of the game entirely (§6.10). Charge priority
+M6 ("The Watch") is shipped: the verbs a player has while a wave is landing, plus the sails
+being cut out of the game entirely (§6.10) and the opening rebuilt around a build ladder
+(§6.11).
+
+**The starting tower is two floors, three crew, a Heartseed and a bed.** Everything else —
+the cutter arm, the mill, the burner, the storeroom — is something the player builds, gated
+behind `RoomDef.unlocked_by`: farm, then cutter arm, then burner, and then the whole menu.
+That gate is validated in `engine::commands`, so **a harness that places a canteen on turn
+one now gets `CommandError::Locked` rather than a tower.** Use `tests::engine` (walks the
+ladder, returns a working tower), `tests::opening` (the shipped one), `harness::chain_tower`
+in `examples/`, or `debug_grant` in the browser specs. Charge priority
 handed over — it used to *be* the tick order — a creature the emplacements can be told to
 prefer, a person posted to a room, kit that belongs to somebody named, the berth given its own
 halt, and a thief answered by somebody standing in the room. **Read `SYSTEMS.md` §6 before

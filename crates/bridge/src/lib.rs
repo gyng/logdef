@@ -135,6 +135,45 @@ pub fn verify_golden_replay() -> String {
     serde_json::to_string(&report).unwrap_or_default()
 }
 
+/// Put items straight onto the tower's shelves. **Tests only.**
+///
+/// The browser harness has had `view`, `catalog`, `send` and `step`
+/// since M0 and no way to hand the tower anything, so every spec that
+/// wanted a room had to *earn* it — which quietly made each of them an
+/// economy test wearing a UI test's clothes. Measured at M6: the roster
+/// spec, whose subject is two schedule widgets, spent 194,700 ticks
+/// building a rope chain and browned out at 2 charge without ever
+/// reaching the elevator it exists to schedule.
+///
+/// The native side has had `GameEngine::state_mut_for_test` for exactly
+/// this reason (`DECISIONS.md` §4 explains why it is walled off), and
+/// the same rule applies here: nothing that ships to a player may call
+/// this. It bypasses the command pattern, so anything it touches is
+/// invisible to a replay.
+///
+/// Returns how many were actually shelved — a shelf holds one kind, so
+/// asking for more than there is room for is a real outcome and not an
+/// error.
+#[wasm_bindgen]
+pub fn debug_grant(item: &str, amount: i64) -> i64 {
+    with_engine_mut(|engine| {
+        let Some(idx) = engine.content().item_idx(item) else {
+            return 0;
+        };
+        let state = engine.state_mut_for_test();
+        let mut left = amount;
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                left -= room.shelve(idx, left);
+                if left <= 0 {
+                    return amount;
+                }
+            }
+        }
+        amount - left
+    })
+}
+
 /// Run exactly `ticks` ticks regardless of the speed setting. For tests
 /// that need to reach a state quickly without waiting in real time.
 #[wasm_bindgen]

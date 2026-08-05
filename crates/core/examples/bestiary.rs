@@ -84,6 +84,11 @@ fn fight(enemy: usize, armed: bool) -> Fight {
     game.set_speed(SimSpeed::X1);
     let content = game.content().clone();
 
+    // **The opening ladder first** (`SYSTEMS.md` §6.11), armed or not:
+    // both towers in this comparison have to be the same tower apart
+    // from the battery, and since M6 a fresh tower has no chain at all.
+    understory_core::harness::chain_tower(&mut game, 4);
+
     if armed {
         // Paid for, then insisted on — a "defended" tower that failed to
         // build its battery is how `siege_run.rs` spent a milestone
