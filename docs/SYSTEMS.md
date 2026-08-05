@@ -7342,11 +7342,25 @@ the signal, and this only says which silence it is.
 | unarmed | *nothing on the rack* |
 | shaded | *in the tower's own shadow* |
 
-#### What is not settled
+#### And the cross-section draws them differently
 
-Whether a player reads a hover. The stronger version draws the two silences differently on the
-cross-section — a backed-up room is *full*, and could look it — and that is a renderer change
-rather than a data one. Carried into §6.9.
+The hover is the precision layer, and the precision layer is the one players do not use. So the
+two silences are drawn apart as well:
+
+- **Starved** stays dim. The lights are off, nobody has brought anything, and the room going
+  quiet is the same signal it has always been.
+- **Backed up** is *not* dim. It is **packed** — the stock it cannot get rid of drawn as
+  stacked bands filling the room to the ceiling.
+
+**The first version of that was a single translucent wash of `outputFill`, and it was wrong**:
+it came out brighter than the working rooms around it, which inverts the whole point. A room
+that has stopped must never be the loudest thing on the screen. Bands read as stock piled up
+rather than as a highlight, and they use the vocabulary the rest of the cross-section already
+speaks — shelves are pips, buffers are wells, quantity is repeated marks.
+
+`e2e/capture.spec.ts::capture the two silences` builds the tower that produces both at once and
+photographs it. It asserts nothing. It is there to be looked at, which is how visual questions
+get answered here (`RENDERER.md`).
 
 ### 6.9 Open questions
 
@@ -7429,12 +7443,7 @@ rather than a data one. Carried into §6.9.
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-13. **Does a hover carry it?** §6.26 gives a quiet room a stated reason, and it arrives as
-   hover text on the room label. Hover is the precision layer by rule (`DECISIONS.md` §8) and it
-   is also the layer players do not use. The stronger version draws the two silences
-   differently — a backed-up room is *full*, and could look it — which is a renderer change
-   rather than a data one, and wants somebody looking at the screen to judge.
-14. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+13. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

@@ -2638,7 +2638,16 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
 
   // A stalled room is drawn dim rather than badged. The tower going
   // quiet is the warning; see DECISIONS.md §8.
-  const stalled = room.stalled ? mix(base, palette.roomStalled, 0.6) : base;
+  //
+  // **Except a backed-up one, which is drawn full instead** (`SYSTEMS.md`
+  // §6.26). Dim and full are opposite problems — one wants feeding and
+  // one wants spending — and drawing both of them dark made a tower
+  // stuffed with poles look exactly like a tower that had run out of
+  // everything. A room with nowhere to put what it makes is not dark.
+  // It is *packed*, and the honest picture is the stock crowding it to
+  // the ceiling.
+  const full = room.stall === "backedup";
+  const stalled = room.stalled && !full ? mix(base, palette.roomStalled, 0.6) : base;
   // Damage bruises on top of that: the colour goes out of it and the
   // panelling starts to split. Dim and hurt have to look different,
   // because one of them is a supply problem and the other needs poles.
@@ -2683,6 +2692,25 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
     colorBottom: body,
     radius: profile.radius,
   });
+  // The stock, crowding the room it has nowhere to leave.
+  //
+  // **Stacked bands rather than a wash**, and the first version was the
+  // wash: a single translucent block of `outputFill` came out brighter
+  // than the working rooms around it, which inverts the whole point —
+  // a room that has stopped must never be the loudest thing on the
+  // screen. Bands read as *stock piled to the ceiling* instead of as a
+  // highlight, and they use the same vocabulary as the shelf pips and
+  // the buffer wells: this game draws quantity as repeated marks.
+  if (full) {
+    const bands = 4;
+    const gap = Math.max(1, h * 0.04);
+    const bandH = Math.max(2, (h - 6 - gap * (bands - 1)) / bands);
+    for (let i = 0; i < bands; i += 1) {
+      const by = y + h - 3 - bandH - i * (bandH + gap);
+      if (by < y + 3) break;
+      batch.push(x + 4, by, w - 8, bandH, fade(palette.outputFill, 0.22), { radius: 1.5 });
+    }
+  }
   if (hurt > 0.05) {
     drawSplits(batch, room.id, x, y, w, h, 1 + Math.floor(hurt * 4), fade(palette.crack, 0.7));
   }

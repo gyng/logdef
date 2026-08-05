@@ -1229,3 +1229,61 @@ test("capture the home", async ({ page }) => {
       : "home-siege: NO WAVE — still is of a quiet tower",
   );
 });
+
+/**
+ * **The two silences, side by side** (`SYSTEMS.md` §6.26).
+ *
+ * A room quiet because nobody brought it anything and a room quiet
+ * because nobody wants what it makes were drawn identically — both dim
+ * — and they are answered by opposite actions. This builds the tower
+ * that produces both at once: cutter arms on every floor that will take
+ * one, out-harvesting a single mill, so the arms back up while the
+ * chain above them starves.
+ *
+ * Nothing here asserts. Look at the picture.
+ */
+test("capture the two silences", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/?seed=4444");
+  await page.waitForFunction(() => window.__understory !== undefined, null, { timeout: 20_000 });
+  await arm(page);
+
+  await page.evaluate(() => {
+    const hooks = window.__understory!;
+    hooks.grant("item.poles", 200);
+    // The opening ladder, then an arm on the leading edge of every
+    // floor that will take one.
+    for (const room of ["room.garden", "room.cutter_arm", "room.burner", "room.mill"]) {
+      for (let floor = 0; floor < 5; floor += 1) {
+        const slots = hooks.view().tower.floors[floor]?.slots ?? 0;
+        const info = hooks.catalog().rooms.find((r) => r.id === room);
+        if (!info) continue;
+        const slot = info.front_only ? slots - info.width : 3;
+        if (typeof hooks.send({ PlaceRoom: { room, floor, slot } }) === "string") break;
+      }
+    }
+    for (let floor = 1; floor < 5; floor += 1) {
+      const slots = hooks.view().tower.floors[floor]?.slots ?? 0;
+      const info = hooks.catalog().rooms.find((r) => r.id === "room.cutter_arm");
+      if (!info) continue;
+      hooks.send({
+        PlaceRoom: { room: "room.cutter_arm", floor, slot: slots - info.width },
+      });
+    }
+    window.__capture!.walk(30_000);
+  });
+  // Zoomed, because the question is whether two rooms *read*
+  // differently and a 40-pixel-wide room answers nothing.
+  for (let i = 0; i < 2; i += 1) await page.getByTestId("zoom-in").click();
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: "capture/two-silences.png" });
+
+  const tally = await page.evaluate(() =>
+    window
+      .__understory!.view()
+      .tower.floors.flatMap((f) => f.rooms)
+      .map((r) => r.stall)
+      .filter((s) => s !== null),
+  );
+  console.log("stalls in shot:", JSON.stringify(tally));
+});
