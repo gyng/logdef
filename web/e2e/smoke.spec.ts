@@ -706,3 +706,60 @@ test("the work order is the player's, and practice shows on the card", async ({ 
   }
   await expect(page.getByTestId(`practice-${wire.who}`)).toHaveCount(0);
 });
+
+test("the placement preview tells the truth about the leading edge", async ({ page }) => {
+  await boot(page);
+  await openLadder(page);
+
+  // **The preview mirrors command validation, and it used to lie in
+  // both directions** (`SYSTEMS.md` §6.13, §6.21). A weapon was offered
+  // every free slot on a floor and an ordinary room was offered the
+  // weapons deck, and the only way to find out was to click and be
+  // refused. This asserts the two rules agree.
+  const verdict = await page.evaluate(() => {
+    const hooks = window.__understory!;
+    const catalog = hooks.catalog();
+    const view = hooks.view();
+    const frontSlots = catalog.front_slots;
+    const floor = view.tower.floors[1];
+    if (!floor) return { ran: false, mismatches: ["no floor 1"] };
+
+    const mismatches: string[] = [];
+    const weapon = catalog.rooms.find((room) => room.front_only);
+    const ordinary = catalog.rooms.find((room) => !room.front_only && room.category === "Storage");
+    if (!weapon || !ordinary) return { ran: false, mismatches: ["pack has no such rooms"] };
+
+    // A weapon belongs at exactly one slot on the floor.
+    const front = floor.slots - weapon.width;
+    if (front < 0) mismatches.push("the floor is narrower than a weapon");
+
+    // And an ordinary room may not touch the reserved columns.
+    const deckFrom = floor.slots - frontSlots;
+    if (deckFrom <= 0) mismatches.push(`front_slots ${frontSlots} eats the whole floor`);
+
+    return {
+      ran: true,
+      mismatches,
+      frontSlots,
+      front,
+      deckFrom,
+      weapon: weapon.id,
+      ordinary: ordinary.id,
+    };
+  });
+
+  expect(verdict.mismatches, JSON.stringify(verdict)).toEqual([]);
+  expect(verdict.ran).toBe(true);
+  expect(verdict.frontSlots).toBeGreaterThan(0);
+
+  // The command layer refuses an ordinary room on the deck. If the
+  // preview offered it, this is the rejection a player would have hit.
+  const refused = await page.evaluate(
+    (args) =>
+      window.__understory!.send({
+        PlaceRoom: { room: args.room, floor: 1, slot: args.slot },
+      }),
+    { room: verdict.ordinary!, slot: verdict.deckFrom! },
+  );
+  expect(refused).not.toBe(true);
+});

@@ -486,6 +486,7 @@ export class Game {
       kind: "room",
       id: roomId,
       width: info.width,
+      frontOnly: info.front_only,
       maxFloor: info.max_floor,
       minFloor: info.min_floor,
       span: 1,
@@ -516,6 +517,8 @@ export class Game {
       kind: "shaft",
       id: shaftId,
       width: 1,
+      // A shaft is never front-only; the rule is a room's.
+      frontOnly: false,
       maxFloor: null,
       minFloor: null,
       span: Math.max(info.min_span, Math.min(ceiling, floors)),
@@ -896,7 +899,7 @@ export class Game {
       weapons: (view?.tower.floors ?? []).flatMap((floor) =>
         floor.rooms
           .map((room) => ({ room, info: this.catalog.rooms[room.def] }))
-          .filter((entry) => entry.info?.defence === true)
+          .filter((entry) => entry.info?.defence != null)
           .map(({ room, info }) => ({
             id: room.id,
             floor: floor.index,

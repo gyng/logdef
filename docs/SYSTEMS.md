@@ -6672,6 +6672,17 @@ at twelve, and it holds there — while its walking *falls*, 9,469 to 4,864. A d
 item-only: nothing rides it, so nobody walks to it. Width hurts the shaft you have to reach
 and helps the one that comes to you.
 
+#### The preview was lying, in both directions
+
+`scene.ts`'s `placementFits` carries the comment *"Mirrors the command validation, so the
+highlight never lies"*, and it had stopped doing so. It knew nothing about `front_only`
+(§6.13) or `front_slots` (§6.21), so the ghost offered a weapon **every** free slot on a floor
+and offered an ordinary room the **weapons deck** — and the only way to find out either was to
+click and be refused.
+
+Both rules are in it now, checked against a room's whole footprint rather than its left edge,
+and `the placement preview tells the truth about the leading edge` holds it.
+
 #### Why it is the whole hull and not one floor
 
 The obvious refinement — widen the floor that needs it and leave the rest — is not available,

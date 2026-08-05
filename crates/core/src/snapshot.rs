@@ -512,6 +512,9 @@ pub struct CatalogSnapshot {
     pub widen_cost: Vec<CostInfo>,
     pub widen_slots: u8,
     pub max_slots: u8,
+    /// Outermost columns of every floor that take nothing but weapons
+    /// (`SYSTEMS.md` §6.21).
+    pub front_slots: u8,
     pub max_floors: u8,
     pub floor_slots: u8,
     pub stress_ticks: u32,
@@ -525,6 +528,20 @@ pub struct CatalogSnapshot {
     /// How many ranks of practice there are to get. The frontend draws
     /// this many pip slots and no more.
     pub max_rank: u8,
+}
+
+/// What an emplacement does, as the build menu needs it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefenceInfo {
+    /// Index into `catalog.items`.
+    pub ammo: u16,
+    pub ammo_per_shot: i64,
+    pub damage: i64,
+    pub reload_ticks: u32,
+    pub range_paces: i64,
+    /// Which approaches it answers, in the pack's own words. Empty
+    /// means all of them.
+    pub targets: Vec<String>,
 }
 
 /// Something true about a person, as the roster needs it.
@@ -627,14 +644,25 @@ pub struct RoomInfo {
     pub shelves: u8,
     /// Only works on the roof. Growing taller shades it.
     pub top_floor_only: bool,
+    /// Stands on the tower's leading edge, and nowhere else
+    /// (`SYSTEMS.md` §6.13). The frontend needs it because the
+    /// placement preview mirrors command validation, and a preview that
+    /// offered every free slot to a weapon would be lying.
+    pub front_only: bool,
     /// Charge drawn per tick while working.
     pub power_draw: i64,
     /// Burns an item for charge, and can be switched off.
     pub burner: bool,
     /// Charge capacity this room adds.
     pub bank_capacity: i64,
-    /// Shoots back, and eats ammo off the same shelves as everything else.
-    pub defence: bool,
+    /// Shoots back, and eats ammo off the same shelves as everything
+    /// else. `None` for everything that does not.
+    ///
+    /// **Detail rather than a flag**, because §6.22 gave weapons an
+    /// approach they answer and a card reading only "shoots back"
+    /// cannot tell a lantern mast from a root ward — which is the whole
+    /// decision the variety exists to create.
+    pub defence: Option<DefenceInfo>,
     /// Beds. Zero for everything that is not quarters. The renderer
     /// draws one hammock apiece, which is what makes bunk occupancy
     /// diegetic — you can see who is asleep and whether a bed is spare,
@@ -1420,7 +1448,26 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                     burner: room.burner.is_some(),
                     bank_capacity: room.bank.as_ref().map_or(0, |bank| bank.capacity),
                     sleepers: room.quarters.as_ref().map_or(0, |q| q.sleepers),
-                    defence: room.defence.is_some(),
+                    front_only: room.front_only,
+                    defence: room.defence.as_ref().map(|d| DefenceInfo {
+                        ammo: content.item_idx(&d.ammo).map_or(0, |item| item.0),
+                        ammo_per_shot: d.ammo_per_shot,
+                        damage: d.damage,
+                        reload_ticks: d.reload_ticks,
+                        range_paces: d.range_paces,
+                        targets: d
+                            .targets
+                            .iter()
+                            .map(|approach| {
+                                match approach {
+                                    crate::content::Approach::Ground => "the ground",
+                                    crate::content::Approach::Canopy => "the canopy",
+                                    crate::content::Approach::Burrow => "the legs",
+                                }
+                                .to_string()
+                            })
+                            .collect(),
+                    }),
                 }
             })
             .collect(),
@@ -1537,6 +1584,7 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
             })
             .collect(),
         max_rank: content.balance.crew.max_rank,
+        front_slots: content.balance.tower.front_slots,
         max_floors: content.balance.tower.max_floors,
         floor_slots: content.balance.tower.floor_slots,
         stress_ticks: content.balance.crew.stress_ticks,

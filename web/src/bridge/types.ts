@@ -535,6 +535,8 @@ export interface CatalogSnapshot {
   widen_slots: number;
   /** How wide the hull may get. */
   max_slots: number;
+  /** Outermost columns of every floor that take nothing but weapons. */
+  front_slots: number;
   max_floors: number;
   floor_slots: number;
   stress_ticks: number;
@@ -548,6 +550,18 @@ export interface CatalogSnapshot {
   traits: TraitInfo[];
   /** How many ranks there are to get. This many pip slots, no more. */
   max_rank: number;
+}
+
+/** What an emplacement does, as the build menu needs it. */
+export interface DefenceInfo {
+  /** Index into `catalog.items`. */
+  ammo: number;
+  ammo_per_shot: number;
+  damage: number;
+  reload_ticks: number;
+  range_paces: number;
+  /** Which approaches it answers. Empty means all of them. */
+  targets: string[];
 }
 
 /** Something true about a person, as the roster needs it. */
@@ -632,6 +646,8 @@ export interface RoomInfo {
   shelves: number;
   /** Only works on the roof. Growing taller shades it. */
   top_floor_only: boolean;
+  /** Stands on the tower's leading edge, and nowhere else. */
+  front_only: boolean;
   /** Charge drawn per tick while working. */
   power_draw: number;
   /** Makes charge from sunlight. */
@@ -639,8 +655,13 @@ export interface RoomInfo {
   burner: boolean;
   /** Charge capacity this room adds. */
   bank_capacity: number;
-  /** Shoots back, and eats ammo off the same shelves as everything else. */
-  defence: boolean;
+  /**
+   * Shoots back, and what at. `null` for everything that does not.
+   *
+   * Detail rather than a flag: a card reading only "shoots back" cannot
+   * tell a lantern mast from a root ward, which is the whole decision.
+   */
+  defence: DefenceInfo | null;
   /**
    * Beds. Zero for everything that is not quarters. Drawn one hammock
    * apiece, which is what makes occupancy diegetic — you can see who is

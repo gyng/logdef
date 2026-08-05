@@ -45,6 +45,15 @@ export interface PlaceMode {
   minFloor: number | null;
   /** Floors a shaft will span upward from the clicked floor. */
   span: number;
+  /**
+   * Stands on the leading edge and nowhere else (`SYSTEMS.md` §6.13).
+   *
+   * The preview needs it because it mirrors command validation — and
+   * without it the ghost offered a weapon every free slot on the floor
+   * and offered an ordinary room the weapons deck, so it lied in both
+   * directions.
+   */
+  frontOnly: boolean;
   /** Slot the cursor is currently over, if it is over the tower. */
   hover: { floor: number; slot: number } | null;
 }
@@ -3486,7 +3495,7 @@ function drawPlaceMode(batch: QuadBatch, ctx: SceneContext): void {
     if (placeMode.maxFloor !== null && floor.index > placeMode.maxFloor) continue;
     if (placeMode.minFloor !== null && floor.index < placeMode.minFloor) continue;
     for (let slot = 0; slot + placeMode.width <= floor.slots; slot += 1) {
-      if (!placementFits(view, placeMode, floor.index, slot)) continue;
+      if (!placementFits(view, placeMode, floor.index, slot, ctx.catalog.front_slots)) continue;
       const { x, y, w, h } = ghostRect(layout, placeMode, floor.index, slot);
       batch.push(x, y, w, h, fade(palette.slotHint, 0.07), { radius: 4 });
     }
@@ -3494,7 +3503,7 @@ function drawPlaceMode(batch: QuadBatch, ctx: SceneContext): void {
 
   const hover = placeMode.hover;
   if (!hover) return;
-  const allowed = placementFits(view, placeMode, hover.floor, hover.slot);
+  const allowed = placementFits(view, placeMode, hover.floor, hover.slot, ctx.catalog.front_slots);
   const { x, y, w, h } = ghostRect(layout, placeMode, hover.floor, hover.slot);
   const color = allowed ? palette.ghostValid : palette.ghostBlocked;
   batch.push(x, y, w, h, fade(color, 0.4), { radius: 4, softness: 2 });
@@ -3523,10 +3532,22 @@ export function placementFits(
   placeMode: PlaceMode,
   floor: number,
   slot: number,
+  frontSlots = 0,
 ): boolean {
   if (placeMode.maxFloor !== null && floor > placeMode.maxFloor) return false;
   if (placeMode.minFloor !== null && floor < placeMode.minFloor) return false;
   if (placeMode.kind === "room") {
+    // **The leading edge, both ways round** (`SYSTEMS.md` §6.13, §6.21).
+    // A weapon goes at the front and nowhere else; everything else may
+    // not stand on the front at all. Checked against the whole
+    // footprint rather than the left edge, for the same reason
+    // `slotRangeFree` is.
+    const width = view.tower.floors[floor]?.slots ?? 0;
+    if (placeMode.frontOnly) {
+      if (slot !== width - placeMode.width) return false;
+    } else if (frontSlots > 0 && slot + placeMode.width > width - frontSlots) {
+      return false;
+    }
     return slotRangeFree(view, floor, slot, placeMode.width);
   }
   const top = floor + placeMode.span - 1;

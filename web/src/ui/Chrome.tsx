@@ -1548,14 +1548,23 @@ function costHint(room: RoomInfo): string {
       }
       if (room.bank_capacity > 0) return `holds ${room.bank_capacity}⚡`;
       return "";
-    case "Defence":
-      // The catalog exposes that a room shoots back but not its range
-      // or its rate, and it should stay that way: where you put it and
-      // whether the chain keeps it fed are the decisions, not the
-      // numbers on the card.
-      return room.power_draw > 0
-        ? `shoots back · ${room.power_draw}⚡ a tick`
-        : "shoots back · fed off the shelves";
+    case "Defence": {
+      // **Still no damage, rate or range on the card**, and the reason
+      // is unchanged: where you put it and whether the chain keeps it
+      // fed are the decisions, not the numbers.
+      //
+      // What *has* changed is that there is now a third decision and it
+      // is not a number. §6.22 gave each weapon an approach it answers —
+      // a lantern mast cannot see the ground, a root ward cannot see
+      // the trees — so "shoots back" stopped being enough to choose
+      // with. What it answers and what it eats are facts about what the
+      // thing is *for*; the numbers stay off.
+      const answers = room.defence?.targets.length
+        ? `answers ${room.defence.targets.join(" and ")}`
+        : "answers anything";
+      const power = room.power_draw > 0 ? ` · ${room.power_draw}⚡ a tick` : "";
+      return `${answers}${power}`;
+    }
     default:
       return "";
   }
@@ -1572,10 +1581,17 @@ function describeRoom(game: Game, info: RoomInfo): string {
     return `Holds ${info.bank_capacity} charge. Storage is something you build, not something you find.`;
   }
   if (info.defence) {
-    // No ammo named: the catalog does not carry which item an
-    // emplacement eats, and guessing would go stale the first time one
-    // ships that does not eat darts.
-    return "Answers whatever comes close, off an ordinary rack that ordinary crew have to keep filled. Run it dry and it goes quiet, for exactly the same reason a mill does.";
+    // **It names the ammo now**, and the comment that used to sit here
+    // said the catalog did not carry it — true when every emplacement
+    // ate darts, and stale since §6.22 gave each one a chain of its
+    // own. Naming it is the point: a tanglenet eating rope and a
+    // lantern mast eating charge cells are two different production
+    // lines, and that is the decision.
+    const eats = name(info.defence.ammo).toLowerCase();
+    const answers = info.defence.targets.length
+      ? `what comes out of ${info.defence.targets.join(" and ")}`
+      : "whatever comes close";
+    return `Answers ${answers}, off a rack of ${eats} that ordinary crew have to keep filled. Run it dry and it goes quiet, for exactly the same reason a mill does.`;
   }
   if (info.intake_item !== null) {
     return `Strips ${name(info.intake_item).toLowerCase()} from the terrain the tower is walking through.`;
