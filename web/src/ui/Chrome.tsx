@@ -1432,9 +1432,18 @@ function Sidebar({ game, ui }: Props) {
               <span className="build-name">
                 Widen the hull
                 <span className="build-hint">
+                  {/*
+                    **Says what width is for** (`SYSTEMS.md` §6.30). It
+                    read "2 more slots, at the back", which is true and
+                    silent about the only thing width really buys: the
+                    rooms that reach the ground carry `max_floor: 1` and
+                    have two floors for ever, however tall the tower
+                    gets. Width is their only relief, and it is what
+                    decides whether a run has a shaft in it.
+                  */}
                   {ui.slots >= catalog.max_slots
                     ? "as wide as it goes"
-                    : `${catalog.widen_slots} more slots, at the back`}
+                    : `${catalog.widen_slots} more slots on every floor — the only room the ground floors will ever get`}
                 </span>
               </span>
               <Cost game={game} costs={game.wideningCost()} />

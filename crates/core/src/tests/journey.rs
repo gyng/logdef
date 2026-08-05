@@ -2672,12 +2672,20 @@ fn a_tower_that_wants_a_shaft_can_have_one() {
     // it reaches the ground, so it carries `max_floor: 1`. Measured
     // with it last: five rooms of seven, then a tower buying floors
     // for ever that a `max_floor` room could never stand on.
+    // **The mill before anything optional**, and this ordering is the
+    // finding rather than a detail. A mill is the only source of poles
+    // in the game. Buying a fiber comb first spends the opening's last
+    // poles on a room whose output nothing can yet use — measured: 17
+    // bamboo, *40 fiber*, zero poles, and a tower that can never afford
+    // the 4-pole mill that would have started it earning. The comb and
+    // the mill unlock together and cost the same, so the trap is live
+    // for a player too.
     let want = [
         "room.garden",
         "room.cutter_arm",
         "room.burner",
-        "room.fiber_comb",
         "room.mill",
+        "room.fiber_comb",
         "room.storeroom",
         "room.ropery",
     ];
@@ -2689,6 +2697,15 @@ fn a_tower_that_wants_a_shaft_can_have_one() {
     // thing it measures is measuring a parked tower, and a slow probe
     // is one nobody runs.
     for _ in 0..900 {
+        // **Answer the fork, or measure a parked tower.** This file's
+        // own header says so in as many words, and the probe walked
+        // straight into it: full charge, `walking: true`, `strode:
+        // false`, forty-five minutes and 12,000 paces short of the edge.
+        if let Some(fork) = game.state().world.fork
+            && fork.answer.is_none()
+        {
+            let _ = game.try_send(GameCommand::TakeFork { branch: 0 });
+        }
         game.step(90);
         if game.state().arrived {
             break;
@@ -2706,10 +2723,24 @@ fn a_tower_that_wants_a_shaft_can_have_one() {
                 built.push(room);
                 continue;
             }
-            // Could not place it. If that is for want of *room* rather
-            // than money, buy a floor.
-            let affordable = crate::tests::can_afford(&game, room);
-            if affordable && floors < 5 && game.try_send(GameCommand::BuildFloor).is_ok() {
+            // Could not place it — buy *space*, and width before height.
+            //
+            // **A floor does not help a room that reaches the ground.**
+            // The comb and the rig carry `max_floor: 1`, so height is no
+            // use to them: measured, a tower with sixty poles and five
+            // floors still could not put a comb anywhere, because both
+            // ground floors were full once the Heartseed, a bed, a gun,
+            // the ladder, a mill and the shaft's reserved column were
+            // down. Width is the only thing that helps them, and this is
+            // the first thing in the project that has wanted it.
+            //
+            // Not gated on affording the *room*: with six poles left a
+            // tower affords a mill, so an earlier version bought a floor
+            // instead and then never earned another pole.
+            if game.try_send(GameCommand::WidenTower).is_ok() {
+                continue;
+            }
+            if floors < 5 && game.try_send(GameCommand::BuildFloor).is_ok() {
                 floors += 1;
             }
             continue;
@@ -2739,6 +2770,44 @@ fn a_tower_that_wants_a_shaft_can_have_one() {
     // somebody picked. What is asserted is only that this stays a
     // measurement: most of the chain has to go up, or the probe has
     // stopped measuring the thing it is named for.
+    if std::env::var("PROBE").is_ok() {
+        let state = game.state();
+        println!(
+            "  floors={} charge={}/{} walking={} strode={}",
+            state.tower.floors.len(),
+            state.power.charge,
+            state.power.capacity,
+            state.walking,
+            state.strode
+        );
+        for floor in &state.tower.floors {
+            let rooms: Vec<String> = floor
+                .rooms
+                .iter()
+                .map(|r| {
+                    format!(
+                        "{}@{}",
+                        game.content().room(r.def).id.replace("room.", ""),
+                        r.slot
+                    )
+                })
+                .collect();
+            println!(
+                "    F{} slots={} {}",
+                floor.index,
+                floor.slots,
+                rooms.join(" ")
+            );
+        }
+        let content = game.content();
+        let stock: Vec<String> = (0..content.items.len())
+            .filter_map(|i| {
+                let n = state.stock_of(crate::ids::ItemIdx(i as u16));
+                (n > 0).then(|| format!("{}:{n}", content.items[i].id.replace("item.", "")))
+            })
+            .collect();
+        println!("    stock {}", stock.join(" "));
+    }
     let minutes = |ticks: u64| ticks as f64 / 30.0 / 60.0;
     match lift_at {
         Some(at) => println!(
@@ -2755,23 +2824,29 @@ fn a_tower_that_wants_a_shaft_can_have_one() {
             game.state().arrived
         ),
     }
-    assert!(
-        built.len() >= 4,
-        "only {} of {} rooms went up; this has stopped measuring the shaft question",
+    assert_eq!(
         built.len(),
-        want.len()
+        want.len(),
+        "the chain did not go up: {built:?}"
     );
-    // **What it says today, and what it does not.** Four of seven and no
-    // lift: the tower puts up its ladder and a fiber comb and then
-    // stops, unable to place a mill. It also fails to arrive inside 45
-    // minutes, which means it is not walking — a stalled tower rather
-    // than a slow one.
+    let at = lift_at.expect("a chain-first tower should reach a shaft inside a run");
+    // A run is 31-36 minutes (§6.19). Thirty is the target and this is
+    // the evidence it is reachable.
+    assert!(
+        minutes(at) < 30.0,
+        "the lift arrived at {:.0} minutes, past the length of a run",
+        minutes(at)
+    );
+    // **Seven of seven, and a lift at 26 minutes** — and the way it gets
+    // there is the finding. The tower widens to fourteen slots rather
+    // than growing tall, and fits its whole chain on two floors.
     //
-    // So this narrows §6.9's shaft question without closing it: buying
-    // the chain first does *not* obviously buy a lift, but the tower
-    // measured here is stuck for a reason this probe cannot name.
-    // Whether that is the game or the policy — it has no storeroom
-    // before the comb, and `place_anywhere` is not a floor plan
-    // anybody would draw — is the next thing to find out.
+    // §6.16 measured width and concluded it "is not relief for the
+    // climb", which is true and was the wrong question. Width is
+    // relief for **space**, and for the rooms that reach the ground it
+    // is the only relief there is: `max_floor: 1` gives them two floors
+    // for ever, however tall the tower gets.
+    //
+    // **The limit of this measurement**: one seed, one buying order.
     let _ = content;
 }

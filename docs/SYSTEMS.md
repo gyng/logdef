@@ -6628,6 +6628,12 @@ player would expect to be able to build.
 
 #### What it is worth, measured
 
+> **And read §6.30 too: this section asked the wrong question.** "Width is not relief for the
+> climb" is true and beside the point — width is relief for *space*, and for the rooms that
+> carry `max_floor: 1` it is the only relief there is, since they have two floors however tall
+> the tower grows. It is what opens the rope chain, and therefore what decides whether a run
+> has a shaft in it.
+>
 > **Read §6.24 before trusting the numbers below.** This sweep held the harness's room plan
 > fixed while widening the hull, so the extra slots stayed *empty* — and the cutter arm was
 > capped at one per tower, so nothing could have filled them anyway. It measured an unfurnished
@@ -7498,6 +7504,50 @@ without anybody joining, and `next_crew_name` reads the name the next person wil
 than rolling one — names come from the pack by index and never from a stream (`DECISIONS.md`
 §2), so showing one costs no entropy at all.
 
+### 6.30 The shaft question, answered: width
+
+**§6.9 asked whether a thirty-minute run can contain a shaft. It can, and the answer is width
+rather than money.**
+
+§6.19 filed the question after measuring the golden recorder — a tower that buys a canteen, two
+burners and a bunk before any transport, and reaches the Refugia four poles short of a lift.
+That is one buying order. `a_tower_that_wants_a_shaft_can_have_one` asks the other: chain first,
+nothing merely nice, earning every pole.
+
+**Seven of seven rooms and a lift at tick 46,170 — 26 minutes**, inside a 31–36 minute run.
+
+#### What the probe had to be taught, and each lesson was already written down
+
+1. **Answer the fork.** `journey.rs`'s own header says every harness that steps the engine must,
+   or it measures a parked tower. The probe did not: full charge, `walking: true`, `strode:
+   false`, forty-five minutes and twelve thousand paces short of the edge.
+2. **The mill before anything optional.** It is the only source of poles in the game. Buying a
+   fiber comb first — same unlock, same price — spent the opening's last poles on a room whose
+   output nothing could yet use: 17 bamboo, **40 fiber**, zero poles, and no way ever to afford
+   the four-pole mill that would have started it earning. **That trap is live for a player.**
+3. **Width, not height.** With sixty poles and five floors the tower still could not place a
+   comb, because both ground floors were full once the Heartseed, a bed, a gun, the ladder, a
+   mill and the shaft's reserved column were down.
+
+#### Width is relief for space, and §6.16 asked the wrong question
+
+§6.16 swept hull width and concluded **"width is not relief for the climb"** — which is true,
+and is not what width is for. The rooms that reach the ground carry `max_floor: 1`: a comb, a
+rig, a cutter arm. **They have two floors for ever, however tall the tower gets.** Width is the
+only thing that gives them more room, and it is therefore the only thing that opens the rope
+chain, and the rope chain is the shaft.
+
+The chain-first tower widens to **fourteen slots and stays two floors tall**, and fits
+everything. That is a shape nothing in this project had predicted, and it makes widening the
+purchase that decides whether a run has a shaft in it — from a room that measured, on
+throughput alone, as buying four percent.
+
+#### What is not settled
+
+One seed, one buying order. And a player is given no reason to think width unlocks anything:
+the card says *"2 more slots, at the back"*, which is true and says nothing about the only
+thing it is really for. Carried into §6.9.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -7532,7 +7582,13 @@ than rolling one — names come from the pack by index and never from a stream (
    to show it — it holds the room count fixed while varying the crew — or the binding
    constraint moved and nothing noticed. Until this is answered, "add crew, add pressure" is a
    claim rather than a mechanism.
-5. **Can a thirty-minute run contain a shaft?** §6.19 hit thirty minutes and did not ship it:
+5. **Answered by §6.30: yes, and the answer is width.** A chain-first tower widens to fourteen
+   slots, stays two floors tall, fits its whole chain, and has a lift at 26 minutes. What is
+   left is that **nothing tells a player this**: the widen card reads "2 more slots, at the
+   back", which is true and silent about the only thing width is really for — the rooms that
+   reach the ground have two floors for ever, and width is their only relief. The original
+   question follows, because the tower §6.19 measured still cannot afford one.
+5b. **Can a thirty-minute run contain a shaft?** §6.19 hit thirty minutes and did not ship it:
    at that length a tower reaches the Refugia holding four poles of the ten a lift costs, and
    never gets the rest, because arriving ends its income. Four compensations were measured and
    all four were worse. The choices are a slightly longer run, a cheaper shaft, or mid-run
