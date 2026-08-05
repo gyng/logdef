@@ -400,6 +400,28 @@ fn route_pays() {
 fn whole_run(seed: u64) {
     let mut engine = GameEngine::new(seed);
     engine.set_speed(SimSpeed::X1);
+
+    // **The tower this instrument was written against, handed over.**
+    //
+    // M6 emptied the starting tower down to two floors, three crew, a
+    // Heartseed, a bed and one gun (§6.11). This harness was written
+    // when an arm, a mill and four floors came free with the run, its
+    // shopping list was never updated, and the result is the largest
+    // false reading it has ever produced: **bamboo 0, produce 0, meals 0
+    // on all twelve seeds and all four policies.** A tower with no
+    // cutter arm harvests nothing and a tower with no mill makes no
+    // poles, so every policy was the same tower — and "one policy wins
+    // everywhere; the berth is not yet a decision" was a fact about this
+    // setup rather than about the game.
+    //
+    // Granted rather than earned, and `harness::chain_tower` says why:
+    // how long a tower takes to *afford* the ladder is a question for
+    // `examples/prices.rs`, and this instrument is about routes. Four
+    // floors is exactly the height the tower used to set out with — a
+    // one-shot, not growth on demand, which is the thing the
+    // `BuildFloor` note below is careful to keep out.
+    understory_core::harness::chain_tower(&mut engine, 4);
+    assert_it_can_earn(seed, "whole run", &engine);
     let content = engine.content().clone();
     // **Every settlement, not "the enclave".** `enclave_at` answers "the
     // next one you have not passed", which was the same thing as "the
@@ -665,6 +687,34 @@ fn play(seed: u64, policy: Policy) -> Run {
     play_tower(seed, policy, Tower::Full, false)
 }
 
+/// Did the tower actually end up with the two rooms every row depends
+/// on?
+///
+/// **Assert your setup.** This instrument spent a session reporting that
+/// no route policy beat another, and the cause was that none of them had
+/// a cutter arm — three of the four numbers in the table were structural
+/// zeroes and nothing said so. A panic here is worth an hour of reading
+/// a table that cannot mean anything.
+fn assert_it_can_earn(seed: u64, label: &str, engine: &GameEngine) {
+    let content = engine.content().clone();
+    let has = |id: &str| {
+        engine
+            .state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter())
+            .any(|room| content.room(room.def).id == id)
+    };
+    assert!(
+        has("room.cutter_arm") && has("room.mill"),
+        "seed {seed} / {label}: arm={} mill={} — every column in this run is a \
+         structural zero, not a measurement",
+        has("room.cutter_arm"),
+        has("room.mill"),
+    );
+}
+
 /// `full` puts up M5's chain — a garden, a comb, a ropery and the chute
 /// that keeps them from strangling the mill. `false` leaves a bare
 /// tower with a kitchen, which is the tower M3 measured.
@@ -675,6 +725,27 @@ fn play(seed: u64, policy: Policy) -> Run {
 fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run {
     let mut engine = GameEngine::new(seed);
     engine.set_speed(SimSpeed::X1);
+
+    // **The tower this instrument was written against, handed over.**
+    //
+    // M6 emptied the starting tower down to two floors, three crew, a
+    // Heartseed, a bed and one gun (`SYSTEMS.md` §6.11). This harness
+    // was written when an arm, a mill and four floors came free with the
+    // run, its shopping list was never updated, and the result was the
+    // largest false reading it has produced: **bamboo 0, produce 0,
+    // meals 0 on all twelve seeds and every policy.** A tower with no
+    // cutter arm harvests nothing and a tower with no mill makes no
+    // poles, so every policy was the same tower — and "one policy wins
+    // everywhere; the berth is not yet a decision" was a fact about this
+    // setup rather than about the game.
+    //
+    // Granted rather than earned, and `harness::chain_tower` says why:
+    // how long a tower takes to *afford* the ladder is a question for
+    // `examples/prices.rs`, and this instrument is about routes. Four
+    // floors is exactly what the tower used to set out with — a
+    // one-shot, not growth on demand, which is what the `BuildFloor`
+    // note further down is careful to keep out.
+    understory_core::harness::chain_tower(&mut engine, 4);
     let content = engine.content().clone();
 
     let boundary = engine.state().world.journey[0].end;
@@ -1189,6 +1260,8 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
             mix[band.kind.get()] += 1;
         }
     }
+
+    assert_it_can_earn(seed, policy.name(), &engine);
 
     let state = engine.state();
     let walked = mix.iter().sum::<i64>().max(1);

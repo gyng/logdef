@@ -281,6 +281,13 @@ out to be dead or lying:**
 - The same harness's whole "battery + darts" tower **built nothing at all** — a dart battery
   costs rope the pressure tower has none of, and nothing checked the return value. It was
   byte-for-byte the bare tower, and M2's exit criterion rested on that comparison.
+- `journey.rs` built **no cutter arm and no mill**, from M6 emptying the starting tower until
+  it was found. Every one of the twelve seeds and all four policies reported bamboo 0,
+  produce 0 and meals 0, halted three quarters of the run because an incomeless tower cannot
+  afford to walk, and concluded that no berthing policy ever beat another — which was a fact
+  about the shopping list. Fixed with `harness::chain_tower` plus an assertion that the run
+  finished owning both rooms; region 1's walker floor moved from 57–76 minutes to 14–18.
+  **The tell was three zeroes in a table that otherwise looked fine.**
 
 Clippy's `--all-targets` compiles them, so a type error is caught; nothing runs them, so a
 runtime failure is invisible until somebody asks a question. `make instruments` runs the lot.

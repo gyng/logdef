@@ -282,6 +282,28 @@ What creatures attack, how far ahead they appear, how often waves come, the one 
 
 ## Journey
 
+> **Read this before trusting a figure in this section.** Every row here that cites
+> `examples/journey.rs` was measured while that harness was building **no cutter arm and no
+> mill**. M6 emptied the starting tower (`SYSTEMS.md` §6.11) and the harness's shopping list
+> was never updated, so from that milestone until it was fixed the instrument reported
+> **bamboo 0, produce 0, meals 0 on all twelve seeds and every policy** — every tower was
+> the same incomeless tower, halted three quarters of the run because it could not afford to
+> walk, and the berthing comparison correspondingly reported that no policy ever beat
+> another.
+>
+> It is fixed: `play_tower` and `whole_run` now take `harness::chain_tower(.., 4)`, and both
+> assert they finished with an arm and a mill, because **the failure was invisible in the
+> output** — three structural zeroes in a table that otherwise looked fine. With the tower
+> able to earn, region 1's walker floor reads **14–18 minutes at 1×** rather than 57–76, the
+> tower halts 0% of the run rather than 74%, and the berthing criterion prints its *yes*
+> branch again: reckless pays on 10 seeds of 12, careful on 10, with the same seeds
+> disagreeing violently (−90.6% and +211.4% both occur).
+>
+> The rows below have **not** been re-derived from the working harness. The scrap ranges and
+> the poles-equivalent comparisons in particular were read off the broken one and should be
+> re-measured before they are relied on. That is the difficulty pass's work, and it is a
+> person's.
+
 The handful of constants that belong to the run rather than to any one room or creature:
 where a fork is allowed to fall, how near an enclave counts as berthed, and what a ruin
 charges for what it holds. See `SYSTEMS.md` §3.3–§3.5.
