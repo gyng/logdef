@@ -114,6 +114,14 @@ value and its neighbours. That gap is the difficulty pass, and it is a person's 
 an agent's. The itch.io release cut works and has not been shown to a stranger. Role priorities
 are cut for good rather than deferred (`SYSTEMS.md` §5.10).
 
+**A tower could own exactly one cutter arm until the last change of M6** (`SYSTEMS.md` §6.24).
+`max_floor: 1` plus `front_only` allowed one arm per floor's leading edge across two floors,
+and the opening gun already held floor 0's. Every economy number measured before that uncap was
+taken against that ceiling — hauls plateaued near 225 whatever crew or cars a tower was given,
+which read for a whole milestone as "crew do not matter". They do: three to eight crew is now
++63% at three cars. **Anything in `BALANCE.md` measured through `lift.rs` or `chain.rs`
+predates this**, and §6.16's width sweep is explicitly invalidated by it.
+
 **Read `SYSTEMS.md` §6.10 before touching terrain, yields, charge or a chain — and §5.11
 open question 0 after it, for the method.** Question 0 was the largest open finding in the
 project: `yield_pct` and `sun_pct` were **one constant in two columns**, deliberately opposed,

@@ -23,8 +23,29 @@ RoomDef(
     unlocked_by: "room.garden",
     category: Intake,
     width: 2,
-    max_floor: 1,
-    // On the leading edge with the guns (`SYSTEMS.md` §6.13).
+    // **No floor cap, and removing it was the largest balance change in
+    // the project** (`SYSTEMS.md` §6.24).
+    //
+    // It read `max_floor: 1`, which with `front_only` below meant a
+    // tower could own **exactly one arm, ever**: a floor's leading edge
+    // holds one two-wide room, two floors were allowed, and the
+    // starting thorn gun already stands on floor 0's. Every economy
+    // measurement in the repo was taken against that ceiling —
+    // `examples/lift.rs` found a tower whose hauls plateaued near 225
+    // however many crew or cars it was given, and doubling this room's
+    // rate alone moved it to 408.
+    //
+    // A cap made sense while the fiction was "it reaches the ground".
+    // It is not: bamboo grows tall, and an arm on floor five cuts at
+    // floor five's height as the tower walks through. So intake scales
+    // with *height*, which is the property the whole factory pillar
+    // wants — build up, harvest more, haul more, need a shaft.
+    //
+    // On the leading edge with the guns (`SYSTEMS.md` §6.13), and that
+    // is now the trade rather than an afterthought: a floor's weapons
+    // deck is two slots and an arm is two wide, so **a floor that
+    // harvests is a floor that cannot shoot.** Every storey is a choice
+    // between feeding the tower and defending it.
     front_only: true,
     // Half a thorn gun's 8, every tick it is working — which sounds
     // small and is not: a battery fires once every 60 ticks, so an arm

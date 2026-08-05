@@ -6628,6 +6628,12 @@ player would expect to be able to build.
 
 #### What it is worth, measured
 
+> **Read §6.24 before trusting the numbers below.** This sweep held the harness's room plan
+> fixed while widening the hull, so the extra slots stayed *empty* — and the cutter arm was
+> capped at one per tower, so nothing could have filled them anyway. It measured an unfurnished
+> extension. The conclusion may still hold; it is no longer supported, and the sweep wants
+> re-running with a plan that builds into what it buys.
+
 **Width is not relief for the climb, and the price is per floor because of it.**
 
 `examples/lift.rs` sweeps hull width at eight floors, three seeds a row. A stairs-only tower
@@ -7094,6 +7100,84 @@ Whether a player *feels* the 28% before they can act on it. The number says a st
 is failing; nothing in the game says so out loud except the crew tinting red at a queue, and
 §6.19 already carries the affordability half of this. Carried into §6.9 with them.
 
+### 6.24 A tower could own exactly one cutter arm
+
+**This is the largest balance finding in the project, and it is one line of content.**
+
+`cutter_arm.ron` read `max_floor: 1`. The arm is also `front_only`, and a floor's leading edge
+holds one two-wide room. So: one arm per floor, two floors allowed, and the opening tower's
+thorn gun already standing on floor 0's edge — **a tower could own exactly one cutter arm, for
+the whole run, and nothing said so.**
+
+Every economy measurement in this repo was taken against that ceiling.
+
+#### How it was found
+
+§6.20's car sweep went looking for the pressure that makes a second car necessary and found the
+opposite: three crew to eight bought **+4% hauls**, and hauls plateaued near 225 whatever was
+thrown at the transport. That went into §6.9 as *what actually binds a tower, if not crew?*
+
+Doubling the cutter arm's rate through `UNDERSTORY_PACK` — one edit, forty seconds — moved the
+plateau from 225 to 408. So it was intake.
+
+Then three more arms were added to `lift.rs`'s plan and **none of them landed**, twice, with
+the numbers coming out unchanged and nothing to read. Printing the first rejection rather than
+the last said it in one line: *a weapon goes on the front of the tower: slot 10, not 0*.
+
+**The last error was useless and the first was the whole answer.** `place` reported the final
+slot it tried, which is always "slots run past the floor width" — the search reaching the end
+rather than the reason it got there. It reports the first now.
+
+#### The change, and what it costs
+
+The cap is gone. The fiction it rested on — *the arm reaches the ground* — was never quite
+right: bamboo grows tall, and an arm on floor five cuts at floor five's height as the tower
+walks through. **Intake now scales with height**, which is what the factory pillar wanted all
+along: build up, harvest more, haul more, need a shaft.
+
+`front_only` stays, and it stops being an afterthought: an arm is two slots and a floor's
+weapons deck is two slots (§6.21), so **a floor that harvests cannot shoot.** Every storey is a
+choice between feeding the tower and defending it, which is the loadout tension the deck was
+reserved for.
+
+#### What it measured
+
+`examples/lift.rs`, eight floors, three seeds, with the plan grown to four arms and three
+mills — because a chain that does not scale with its intake simply jams, which the first
+uncapped run showed by *halving* hauls at one car.
+
+| crew | 1 car | 2 cars | 3 cars |
+| ---: | ---: | ---: | ---: |
+| 3 | 92 hauls | 134 +46% | 275 **+199%** |
+| 5 | 94 | 245 +161% | 372 **+296%** |
+| 8 | 81 | 230 +184% | **447 +452%** |
+
+Against the same sweep before the uncap — 202/225/229 at three crew, 210/225/227 at eight —
+three things changed and all three are the design working:
+
+1. **Crew matter.** Three to eight crew was +4%; at three cars it is now **+63%**.
+2. **Transport is the binding constraint**, which every design argument in the project assumes
+   and none of them could previously demonstrate. One car holds a tower to 81–94 hauls
+   *whatever* its crew; three cars take the same tower to 447.
+3. **A tower that grows without transport chokes.** One car is now *worse* than before the
+   uncap. That is `DESIGN.md` pillar 2 exactly — a factory with no belts — and it is the
+   pressure a shaft is relief from.
+
+#### What this invalidates
+
+**§6.16's width sweep.** It concluded "width is not relief — six extra slots buy four percent",
+and the harness plan was fixed, so the extra slots stayed *empty*. It measured an unfurnished
+extension. The conclusion may still be right and it is no longer supported; the sweep wants
+re-running with a plan that fills what it builds.
+
+Everything in `BALANCE.md` measured through `lift.rs` or `chain.rs` predates the uncap.
+
+#### What is not settled
+
+The chain now has to be scaled by hand to match the intake, and nothing in the game teaches
+that. A player who builds four arms and one mill gets the jam this section found by accident.
+Carried into §6.9.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -7102,13 +7186,18 @@ is failing; nothing in the game says so out loud except the crew tinting red at 
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **Is the weapon set a loadout or a checklist?** §6.22 gave weapons an approach they answer
+1. **Does anything teach a player to scale the chain with the intake?** §6.24 uncapped the
+   cutter arm, so a tower can now harvest from every floor — and a tower that does, with one
+   mill, jams: bamboo claims every shelf and poles have nowhere to land. The instrument found
+   this by halving its own hauls. The game says nothing, and the failure looks like the tower
+   breaking rather than like a chain that needs a second mill.
+2. **Is the weapon set a loadout or a checklist?** §6.22 gave weapons an approach they answer
    and three specialists to go with the generalists. The filter is measured — a mast leaves a
    skitter alone, a ward leaves a leaper alone. What is not measured is whether *choosing*
    between them is interesting: two front slots a floor against three kinds of trouble should
    be a real squeeze, and it might instead be a checklist a tall tower simply completes. That
    needs a person and a wave, not an instrument.
-2. **What actually binds a tower, if not crew?** §6.20's sweep went looking for the pressure
+3. **What actually binds a tower, if not crew?** *Answered by 6.24*: one cutter arm, because max_floor and front_only together allowed exactly one. Kept because the method is the lesson - the plateau was visible for a milestone and read as crew not mattering. §6.20's sweep went looking for the pressure
    that would make a second car necessary and found the opposite: three crew to eight buys
    **+4% hauls**, and hauls plateau near 225 however much transport is thrown at them. Every
    design argument in this project rests on transport contention being the constraint
@@ -7116,19 +7205,19 @@ is failing; nothing in the game says so out loud except the crew tinting red at 
    to show it — it holds the room count fixed while varying the crew — or the binding
    constraint moved and nothing noticed. Until this is answered, "add crew, add pressure" is a
    claim rather than a mechanism.
-3. **Can a thirty-minute run contain a shaft?** §6.19 hit thirty minutes and did not ship it:
+4. **Can a thirty-minute run contain a shaft?** §6.19 hit thirty minutes and did not ship it:
    at that length a tower reaches the Refugia holding four poles of the ten a lift costs, and
    never gets the rest, because arriving ends its income. Four compensations were measured and
    all four were worse. The choices are a slightly longer run, a cheaper shaft, or mid-run
    income that rises without jamming the shelves — and the third is the one nothing has found
    yet. This is the largest open balance question in the project.
-4. **Is ten percent a rank the right ten percent?** §6.17's practice was measured as a
+5. **Is ten percent a rank the right ten percent?** §6.17's practice was measured as a
    maximum against a zero: two towers, one seed, one of them starting at the ceiling, and
    the veterans get more done. That answers *does it reach the tower* and not *is this the
    number*. Nobody has played a run at 20% or at 5%, and the failure mode to watch for is
    the one the modesty is guarding against — a run won by parking one person on one job
    from the first pace, which would mean the bonus is large enough to be a build order.
-5. **Where should a shaft go, and is there a decision left at all?** §6.16's width sweep
+6. **Where should a shaft go, and is there a decision left at all?** §6.16's width sweep
    turned `lift.rs`'s oldest hypothesis into a measurement — the elevator's value fell from
    +91% to +48% as the hull widened, entirely through crew walking further to reach it. §6.18
    then folded the dumbwaiter in, and the merged shaft holds +251% to +271% across the same
@@ -7136,33 +7225,33 @@ is failing; nothing in the game says so out loud except the crew tinting red at 
    there is now one built shaft that goes up, so "which shaft" is not a choice any more.
    Whether, where and how tall are what is left, and the game still teaches none of them and
    offers no way to move a shaft once built.
-6. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
+7. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
    instrument cannot tell them apart — the numbers are sized against the kill-shot table and
    nobody has met one. The tell is whether a player who fells one goes looking for the next,
    because that is the jungle becoming a gallery, which `DECISIONS.md` §8 rules out.
-7. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
+8. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
    screensaver" by putting something in front of the player roughly once a minute, and the
    failure mode of that fix is the opposite complaint: a prompt often enough to become
    wallpaper. The tell is whether anybody reads the second one. Note also that the streaming
    window (900 ahead, 300 behind) is *narrower* than the interval, so beats can appear without
    being seen coming — deliberate for now, and the first thing to change if they read as
    pop-ups.
-8. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
+9. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
    edge from the shaft column, which is a placement fix — but every layout puzzle now has two
    more answers, and `floor_slots`' own row is explicit that its value was chosen for scarcity.
    Nobody has played a ten-wide tower against an eight-wide one. It is on the difficulty pass's
    list and it is the change on that list most likely to have made the game softer by accident.
-9. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
+10. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
    of what a posting does and cleans up after itself. If nobody ever uses the permanent form
    once they have the temporary one, that is not two verbs, it is one verb and a trap — and
    the tell is whether anybody posts somebody *for the run* rather than *for the minute*.
-10. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+11. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-11. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+12. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

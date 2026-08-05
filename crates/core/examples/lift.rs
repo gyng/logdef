@@ -1129,9 +1129,13 @@ fn measure_with(
     let plan = [
         // Reaches the ground, so `max_floor` is 1. Nowhere else to go.
         ("room.cutter_arm", 1),
+        ("room.cutter_arm", 0),
+        ("room.cutter_arm", 1),
         // `min_floor` 2, and without them the tower browns out.
         ("room.burner", 2),
         ("room.mill", height / 2),
+        ("room.mill", height / 2 + 1),
+        ("room.mill", height - 3),
         ("room.burner", height / 2),
         ("room.burner", height - 2),
         ("room.canteen", height - 2),
@@ -1169,6 +1173,17 @@ fn measure_with(
                 break;
             }
         }
+    }
+    if std::env::var("UNDERSTORY_COLUMNS").is_ok() {
+        let arms = game
+            .state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter())
+            .filter(|room| game.content().room(room.def).id == "room.cutter_arm")
+            .count();
+        println!("  {height} floors: {arms} cutter arm(s); plan landed {got:?}");
     }
     // **Named checks, not a count.** A threshold on "how many of the
     // plan landed" says nothing about *which* — the first version of
@@ -1467,16 +1482,37 @@ fn place(game: &mut GameEngine, room: &str, floor: u8, slots: u8, reserved: &[u8
     // slot 7 and take the shaft's column with it — which showed up as
     // "could not raise shaft.dumbwaiter: floor 1 slot 7 is already
     // occupied", two setup layers away from the cause.
-    (0..slots)
+    let mut last_error = None;
+    let landed = (0..slots)
         .filter(|slot| !reserved.iter().any(|r| (*slot..slot + width).contains(r)))
         .any(|slot| {
-            game.try_send(GameCommand::PlaceRoom {
+            match game.try_send(GameCommand::PlaceRoom {
                 room: room.into(),
                 floor,
                 slot,
-            })
-            .is_ok()
-        })
+            }) {
+                Ok(()) => true,
+                Err(err) => {
+                    // The *first*, not the last: the last is always
+                    // "slots run past the floor width", which is the
+                    // search reaching the end rather than the reason.
+                    last_error.get_or_insert(err);
+                    false
+                }
+            }
+        });
+    // **Says why it failed, when asked.** A plan entry that never lands
+    // is silent, and the harness then measures a tower it did not
+    // build: three cutter arms were added to the plan and none of them
+    // appeared, twice, with the numbers coming out unchanged and
+    // nothing to read.
+    if !landed
+        && std::env::var("UNDERSTORY_COLUMNS").is_ok()
+        && let Some(err) = last_error
+    {
+        println!("    {room} floor {floor}: {err}");
+    }
+    landed
 }
 
 /// Hand the tower a shaft's whole price, so the two samples differ by

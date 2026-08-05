@@ -204,16 +204,96 @@ fn a_room_cannot_hang_off_the_edge() {
 }
 
 #[test]
-fn intake_stays_near_the_ground() {
+fn intake_that_reaches_the_ground_stays_near_it() {
+    // `max_floor` still means what it meant. The **cutter arm** no
+    // longer carries it (`SYSTEMS.md` §6.24) — bamboo grows tall, and an
+    // arm on floor five cuts at floor five's height — but a salvage rig
+    // genuinely reaches down into a ruin and cannot do that from the
+    // roof.
     let mut game = engine(9);
     let error = game
         .try_send(GameCommand::PlaceRoom {
-            room: "room.cutter_arm".into(),
+            room: "room.salvage_rig".into(),
             floor: 3,
             slot: 3,
         })
-        .expect_err("cutter arms reach the ground, not the roof");
+        .expect_err("a rig reaches the ground, not the roof");
     assert!(matches!(error, CommandError::FloorTooHigh { .. }));
+}
+
+#[test]
+fn a_floor_that_harvests_cannot_also_shoot() {
+    // **The trade the uncap creates** (§6.24). A cutter arm is
+    // `front_only` and two slots wide; a floor's weapons deck is two
+    // slots. So an arm fills it, and every storey is a choice between
+    // feeding the tower and defending it.
+    let mut game = crate::tests::engine(10);
+    crate::tests::stock_poles(&mut game, 60);
+    let slots = game.state().tower.floors[3].slots;
+    let arm_width = game
+        .content()
+        .room_idx("room.cutter_arm")
+        .map(|idx| game.content().room(idx).width)
+        .expect("the pack defines a cutter arm");
+
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.cutter_arm".into(),
+        floor: 3,
+        slot: slots - arm_width,
+    })
+    .expect("an arm goes on any floor's leading edge now");
+
+    let gun_width = game
+        .content()
+        .room_idx("room.thorn_gun")
+        .map(|idx| game.content().room(idx).width)
+        .expect("the pack defines a thorn gun");
+    let err = game
+        .try_send(GameCommand::PlaceRoom {
+            room: "room.thorn_gun".into(),
+            floor: 3,
+            slot: slots - gun_width,
+        })
+        .expect_err("the arm is standing where the gun would");
+    assert!(
+        matches!(err, CommandError::SlotOccupied { .. }),
+        "expected the deck to be full, got {err:?}"
+    );
+}
+
+#[test]
+fn a_tower_can_harvest_from_more_than_one_floor() {
+    // **The uncap itself, and it was the ceiling on the whole economy.**
+    // With `max_floor: 1` and `front_only`, a tower could own exactly
+    // one arm: one per floor's leading edge, two floors allowed, and
+    // the starting thorn gun already on floor 0's. `examples/lift.rs`
+    // measured a tower whose hauls plateaued near 225 whatever crew or
+    // cars it was given — because there was only ever one intake.
+    let mut game = crate::tests::engine(11);
+    let mut placed = 0;
+    for floor in 1..5u8 {
+        crate::tests::stock_poles(&mut game, 20);
+        let slots = game.state().tower.floors[floor as usize].slots;
+        let width = game
+            .content()
+            .room_idx("room.cutter_arm")
+            .map(|idx| game.content().room(idx).width)
+            .expect("the pack defines a cutter arm");
+        if game
+            .try_send(GameCommand::PlaceRoom {
+                room: "room.cutter_arm".into(),
+                floor,
+                slot: slots - width,
+            })
+            .is_ok()
+        {
+            placed += 1;
+        }
+    }
+    assert!(
+        placed >= 2,
+        "a tower could only place {placed} arm(s); intake is still capped at one"
+    );
 }
 
 #[test]
