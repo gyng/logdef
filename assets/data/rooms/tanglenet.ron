@@ -19,7 +19,12 @@ RoomDef(
     name: "Tanglenet",
     short: "TNG",
     category: Defence,
-    unlocked_by: "room.burner",
+    // **Unlocked by the room that feeds it** (`SYSTEMS.md` §6.27). A
+    // weapon you cannot supply is a weapon that never fires, and this
+    // one costs 4 poles and 2 rope — cheap enough to buy by accident. The menu
+    // offers it once the tower can make rope, which is a fact about
+    // the tower rather than about the player.
+    unlocked_by: "room.ropery",
     front_only: true,
     // One slot, like the thorn gun and the dart battery.
     width: 1,

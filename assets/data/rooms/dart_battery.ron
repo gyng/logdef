@@ -16,7 +16,12 @@ RoomDef(
     // grows as the tower does. This is a fact about the tower, not the
     // player — the journal (§5.7) is the other kind of unlock and can
     // only filter a menu.
-    unlocked_by: "room.burner",
+    // **Unlocked by the room that feeds it** (`SYSTEMS.md` §6.27). A
+    // weapon you cannot supply is a weapon that never fires, and this
+    // one costs 6 poles and 2 rope — cheap enough to buy by accident. The menu
+    // offers it once the tower can make darts, which is a fact about
+    // the tower rather than about the player.
+    unlocked_by: "room.thornwright",
     // On the leading edge with the rest of the weapons
     // (`SYSTEMS.md` §6.13): a thing that shoots outward lives on the
     // outside.

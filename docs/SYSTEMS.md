@@ -7362,6 +7362,65 @@ speaks — shelves are pips, buffers are wells, quantity is repeated marks.
 photographs it. It asserts nothing. It is there to be looked at, which is how visual questions
 get answered here (`RENDERER.md`).
 
+### 6.27 A weapon is unlocked by the room that feeds it
+
+**An economy review, and it found the problem in what M6 had just shipped.**
+
+Mapping every material to its consumers turned up one anomaly and one outright error.
+
+#### Ammo chains, not build costs
+
+The build tree is *shallow* — of twenty-four rooms, exactly one was tier two. What is deep is
+what a weapon **eats**:
+
+| weapon | costs | eats | chain to feed it |
+| --- | --- | --- | --- |
+| thorn gun | 3 poles | bamboo | intake — always |
+| dart battery | 6p + 2r | darts | thornwright |
+| tanglenet | 4p + 2r | rope | ropery |
+| seed thrower | 6p + 3r + 2 mech | seed bombs | bombary |
+| **lantern mast** | 5p + 2r | charge cells | rig → *berth* → forge → cellwright |
+| **root ward** | 5p + 1 alloy | alloy | rig → *berth* → forge |
+
+The mast and the ward — both added in §6.22 — are **cheap to build and need the deepest chain in
+the game to feed**. A player spends five poles and gets a weapon that never fires. That is the
+exact failure the pack already records against M1's thornwright, shipped again.
+
+So: **every emplacement is now unlocked by the room that supplies it.** The menu offers a
+tanglenet once you own a ropery, a mast once you own a cellwright. It is a fact about the tower
+rather than about the player, which is the same rule the opening ladder runs on (§6.11), and it
+makes the weapon menu self-explaining — *you unlock a gun by building the thing that feeds it.*
+
+The thorn gun has no gate, and that is why it is the starter: it eats raw bamboo, so it is the
+one weapon a tower can always feed.
+
+#### The garden was making a dead material
+
+`produce` had exactly one consumer — the bombary — whose output needs a seed thrower, which
+cost **two mechanisms**, which need a salvage rig, a berth, a sun-forge and a fitter.
+
+The garden is **rung one of the opening ladder**. It is the first thing the game makes a player
+build, it demands `crew_required: 2` of a three-person crew, and what it grew had no consumer
+within reach of a run. The repo's own fixture says as much: *"nobody is posted to the farm, so
+the farm does not run… posting two of three crew to it would quietly take two thirds of the
+tower's hands away from hauling."* The garden was a tollgate.
+
+The mechanisms are gone from the seed thrower. That row read *"the mechanisms are what make it
+tier two"*, which was right when a run was two to four hours; a run is **31–36 minutes** (§6.19),
+so "tier two" had quietly become "not in the game". Produce → bombary → seed bombs → thrower is
+now entirely tier one, and the sun axis buys something a run can reach.
+
+#### What the review did not change
+
+- **Bamboo carries four consumers** — mill, canteen, burner, thorn gun — and that contention is
+  the design (§6.10), not a fault.
+- **The canteen keeps eating bamboo**, tempting as it was to feed it produce. `BALANCE.md`
+  measures that demand as the thing which makes terrain yields *felt* at all, and moving food
+  onto the sun axis would put a deep-canopy tower one bad route from starving.
+- **Poles look like a dead end and are not.** A tower that out-produces its own building fills
+  every shelf with poles and stops — measured in §6.26 — but that is a rich tower, and the
+  escape is to spend.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —

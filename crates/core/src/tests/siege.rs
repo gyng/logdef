@@ -227,6 +227,8 @@ fn a_battery_shoots_the_nearest_thing_first() {
         .expect("the pack defines an emplacement");
 
     let mut game = engine(1042);
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
@@ -429,6 +431,8 @@ fn a_battery_shoots_what_is_in_reach_and_nothing_further() {
         .expect("the pack defines an emplacement");
 
     let mut game = engine(1032);
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
@@ -508,6 +512,8 @@ fn a_battery_with_nothing_to_shoot_at_still_reloads() {
         .expect("the pack defines an emplacement");
 
     let mut game = engine(1033);
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
@@ -609,6 +615,8 @@ fn a_battery_fires_no_faster_than_it_reloads() {
         .expect("the pack defines an emplacement");
 
     let mut game = engine(1031);
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
@@ -1667,6 +1675,8 @@ fn a_fed_battery_sees_creatures_off() {
     // The tower's own gun and its cutter arm out, or this measures
     // them rather than its subject (`SYSTEMS.md` §6.13).
     crate::tests::disarm(&mut game);
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
@@ -1714,6 +1724,8 @@ fn a_dry_battery_is_as_quiet_as_a_starved_mill() {
     // The tower's own gun and its cutter arm out, or this measures
     // them rather than its subject (`SYSTEMS.md` §6.13).
     crate::tests::disarm(&mut game);
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
@@ -2166,6 +2178,7 @@ fn an_emplacement_prefers_the_creature_the_player_named() {
     use crate::state::siege::{Enemy, EnemyState};
     let mut game = engine(9001);
     crate::tests::stock_poles(&mut game, 40);
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
     crate::tests::stock_for(&mut game, "room.dart_battery", 2);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
@@ -2513,6 +2526,8 @@ fn what_a_resident_was_carrying_lands_on_the_shelves() {
     // `(enemy.at - tower_at).abs()` against `range_paces`, and which
     // deck it stands on decides nothing about what it can hit. Floor 3
     // is the one the fixture leaves clear.
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
@@ -2593,6 +2608,7 @@ fn arm(game: &mut crate::engine::GameEngine, room: &str, floor: u8) {
             defence.buffer_max,
         )
     };
+    crate::harness::open_the_armoury(game, room);
     let cost: Vec<(String, i64)> = {
         let content = game.content();
         let idx = content.room_idx(room).expect("checked above");

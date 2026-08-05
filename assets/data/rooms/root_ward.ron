@@ -22,7 +22,12 @@ RoomDef(
     name: "Root Ward",
     short: "RWD",
     category: Defence,
-    unlocked_by: "room.burner",
+    // **Unlocked by the room that feeds it** (`SYSTEMS.md` §6.27). A
+    // weapon you cannot supply is a weapon that never fires, and this
+    // one costs 5 poles and an alloy — cheap enough to buy by accident. The menu
+    // offers it once the tower can make alloy, which is a fact about
+    // the tower rather than about the player.
+    unlocked_by: "room.sun_forge",
     front_only: true,
     width: 1,
     build_cost: [

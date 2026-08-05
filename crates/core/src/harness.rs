@@ -73,6 +73,57 @@ pub fn open_the_ladder(game: &mut GameEngine, floors: u8) {
     }
 }
 
+/// Stand up whatever feeds this weapon, so it can be built.
+///
+/// **Every emplacement is unlocked by the room that supplies it**
+/// (`SYSTEMS.md` §6.27) — a weapon you cannot feed is a weapon that
+/// never fires, so the menu offers it once the tower can make its
+/// ammunition. A fixture that places a battery therefore has to place a
+/// thornwright, which is the same sentence a player reads.
+///
+/// Does nothing for a weapon with no gate, which is the thorn gun: it
+/// eats raw bamboo and is the one a tower can always feed.
+pub fn open_the_armoury(game: &mut GameEngine, weapon: &str) {
+    let needs = {
+        let content = game.content();
+        content
+            .room_idx(weapon)
+            .and_then(|idx| content.room_rt(idx).unlocked_by)
+            .map(|idx| game.content().room(idx).id.clone())
+    };
+    let Some(needs) = needs else { return };
+    if game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .any(|room| game.content().room(room.def).id == needs)
+    {
+        return;
+    }
+    open_the_armoury(game, &needs);
+    let cost: Vec<(String, i64)> = {
+        let content = game.content();
+        let idx = content
+            .room_idx(&needs)
+            .unwrap_or_else(|| panic!("the pack should define {needs}"));
+        content
+            .room_rt(idx)
+            .build_cost
+            .iter()
+            .map(|(item, n)| (content.item(*item).id.clone(), *n))
+            .collect()
+    };
+    for (item, n) in cost {
+        give(game, &item, n * 2);
+    }
+    assert!(
+        place_anywhere(game, &needs),
+        "could not place {needs}, which is what feeds {weapon}"
+    );
+}
+
 /// The ladder, plus the chain the old starting tower used to arrive
 /// with: a mill, a storeroom and a cell bank.
 ///

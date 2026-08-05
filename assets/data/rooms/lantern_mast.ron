@@ -22,7 +22,12 @@ RoomDef(
     category: Defence,
     // Behind the burner like the rest of the menu, and behind the
     // cellwright in practice, since nothing else makes a charge cell.
-    unlocked_by: "room.burner",
+    // **Unlocked by the room that feeds it** (`SYSTEMS.md` §6.27). A
+    // weapon you cannot supply is a weapon that never fires, and this
+    // one costs 5 poles and 2 rope — cheap enough to buy by accident. The menu
+    // offers it once the tower can make charge cells, which is a fact about
+    // the tower rather than about the player.
+    unlocked_by: "room.cellwright",
     // On the leading edge with every weapon (`SYSTEMS.md` §6.13), and
     // the deck reserved for them (§6.21).
     front_only: true,
