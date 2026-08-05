@@ -7455,6 +7455,25 @@ each one is on screen.
   every shelf with poles and stops — measured in §6.26 — but that is a rich tower, and the
   escape is to spend.
 
+### 6.28 A mark over their head
+
+**What somebody is doing, on the person rather than in a panel.**
+
+The roster has said it in words since M4 — *"seeing something out"*, *"held up at the stairs"* —
+but the roster is a panel on the right and the crew are in the cross-section in the middle. So
+watching the tower meant guessing, and reading what anybody was up to meant looking away from
+them.
+
+One glyph over the name: asleep, eating, mending, at a post, seeing something out, waiting for
+a way up, climbing, carrying. Nothing new crosses the bridge — `CrewStateTag` has been on
+`view.crew` since M0.
+
+**Walking and idle wear nothing, and the blank is the design.** They are the two commonest
+states in the game: walking is already legible from the movement, and a badge over every idle
+person during a quiet minute is a screen full of punctuation. A mark on everybody at all times
+is wallpaper, and wallpaper is not a signal. What earns a glyph is a state you would otherwise
+have opened a panel to learn.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —

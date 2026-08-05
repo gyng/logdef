@@ -268,6 +268,28 @@ const WHY_QUIET: Record<StallTag, string> = {
   backedup: "nowhere to put what it makes",
 };
 
+/**
+ * What somebody is up to, in one glyph.
+ *
+ * **Blank is a decision, not a gap.** `walk` and `idle` are the two most
+ * common states in the game and neither wants a mark: walking is already
+ * legible from the movement, and a badge over every idle person during a
+ * quiet minute is a screen full of punctuation. What earns a glyph is a
+ * state you would otherwise have to open a panel to learn.
+ */
+const CREW_BADGE: Partial<Record<CrewView["state"], string>> = {
+  sleep: "\u{1F4A4}",
+  eat: "\u{1F374}",
+  mend: "\u{1F528}",
+  man: "\u{2699}\u{FE0F}",
+  shoo: "\u{1F441}\u{FE0F}",
+  board: "\u{23F3}",
+  climb: "\u{2B06}\u{FE0F}",
+  ride: "\u{2B06}\u{FE0F}",
+  load: "\u{1F4E6}",
+  unload: "\u{1F4E6}",
+};
+
 function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
   const labels: Label[] = [];
 
@@ -331,13 +353,36 @@ function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layou
   }
 
   for (const member of view.crew) {
+    const x = layout.originX + (member.slot + 0.5) * layout.slotW;
+    const y = layout.groundY - member.floor * layout.floorH - layout.floorH * 0.42;
     labels.push({
       key: `crew-${member.id}`,
       text: member.name,
-      x: layout.originX + (member.slot + 0.5) * layout.slotW,
-      y: layout.groundY - member.floor * layout.floorH - layout.floorH * 0.42,
+      x,
+      y,
       variant: member.stressed ? "label-crew label-stressed" : "label-crew",
     });
+    // **What they are doing, over their head.**
+    //
+    // The roster has said this in words since M4, but the roster is a
+    // panel and the crew are in the cross-section — so watching the
+    // tower meant guessing, and reading what anybody was up to meant
+    // looking away from them. A glyph is the smallest thing that can
+    // sit on a person without becoming a label.
+    //
+    // Nothing new crosses the bridge: `CrewStateTag` has been on
+    // `view.crew` since M0.
+    const badge = CREW_BADGE[member.state];
+    if (badge) {
+      labels.push({
+        key: `crew-doing-${member.id}`,
+        text: badge,
+        x,
+        y: y - 11,
+        variant: "label-crew-doing",
+        title: member.name,
+      });
+    }
   }
 
   // Creatures get their glyph and nothing else. The silhouette says

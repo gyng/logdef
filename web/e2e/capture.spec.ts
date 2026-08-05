@@ -1455,3 +1455,52 @@ test("capture the chain panel", async ({ page }) => {
   await page.waitForTimeout(400);
   await page.screenshot({ path: "capture/chain-panel.png" });
 });
+
+/** Crew badges (`SYSTEMS.md` §6.28). Look at them. */
+test("capture crew badges", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 760 });
+  await page.goto("/?seed=4242");
+  await page.waitForFunction(() => window.__understory !== undefined, null, { timeout: 20_000 });
+  await arm(page);
+  await page.evaluate(() => {
+    const hooks = window.__understory!;
+    hooks.grant("item.poles", 120);
+    const catalog = hooks.catalog();
+    for (const room of ["room.garden", "room.cutter_arm", "room.burner", "room.mill"]) {
+      const info = catalog.rooms.find((r) => r.id === room);
+      if (!info) continue;
+      for (const floor of hooks.view().tower.floors) {
+        const slot = info.front_only ? floor.slots - info.width : 3;
+        if (hooks.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") break;
+      }
+    }
+    // Walk until somebody is doing something a badge is for. An idle
+    // crew deliberately wears none (see `CREW_BADGE`), so a still of a
+    // quiet tower proves nothing either way.
+    const badged = [
+      "sleep",
+      "eat",
+      "mend",
+      "man",
+      "shoo",
+      "board",
+      "climb",
+      "ride",
+      "load",
+      "unload",
+    ];
+    for (let i = 0; i < 200; i += 1) {
+      if (hooks.view().crew.some((c) => badged.includes(c.state))) break;
+      window.__capture!.walk(300);
+    }
+  });
+  for (let i = 0; i < 3; i += 1) await page.getByTestId("zoom-in").click();
+  await page.waitForTimeout(400);
+  console.log(
+    "STATES " +
+      JSON.stringify(
+        await page.evaluate(() => window.__understory!.view().crew.map((c) => c.state)),
+      ),
+  );
+  await page.screenshot({ path: "capture/crew-badges.png" });
+});
