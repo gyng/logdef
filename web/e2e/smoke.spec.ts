@@ -763,3 +763,58 @@ test("the placement preview tells the truth about the leading edge", async ({ pa
   );
   expect(refused).not.toBe(true);
 });
+
+test("the chain panel shows every material the pack moves", async ({ page }) => {
+  await boot(page);
+
+  // **A graph that hides part of itself is worse than a list.** The
+  // lanes were a flex child with `overflow-x: auto`, which makes them
+  // shrinkable below their content — the room list underneath squeezed
+  // them to three rows and silently clipped scrap, rope and seed bombs.
+  // Nothing said so; the panel just looked tidy.
+  await page.getByTestId("chain-toggle").click();
+  await expect(page.getByTestId("economy")).toBeVisible();
+
+  const expected = await page.evaluate(() => {
+    const c = window.__understory!.catalog();
+    const live = new Set<string>();
+    for (const room of c.rooms) {
+      for (const i of room.inputs) live.add(c.items[i.item]!.id);
+      for (const o of room.outputs) live.add(c.items[o.item]!.id);
+      if (room.intake_item !== null) live.add(c.items[room.intake_item]!.id);
+      if (room.burner_fuel !== null) live.add(c.items[room.burner_fuel]!.id);
+      if (room.defence) live.add(c.items[room.defence.ammo]!.id);
+    }
+    // Sorted for a stable failure message. `toSorted` is not in this
+    // tsconfig's lib, and mutating a local copy is what it is for.
+    const out = [...live];
+    out.sort();
+    return out;
+  });
+  expect(expected.length).toBeGreaterThan(8);
+
+  for (const id of expected) {
+    await expect(
+      page.getByTestId(`economy-item-${id}`),
+      `${id} is moved by the pack but missing from the chain panel`,
+    ).toBeVisible();
+  }
+
+  // And every room that transforms anything has a row.
+  const rooms = await page.evaluate(() =>
+    window
+      .__understory!.catalog()
+      .rooms.filter(
+        (r) =>
+          r.inputs.length > 0 ||
+          r.outputs.length > 0 ||
+          r.intake_item !== null ||
+          r.burner_fuel !== null ||
+          r.defence !== null,
+      )
+      .map((r) => r.id),
+  );
+  for (const id of rooms) {
+    await expect(page.getByTestId(`economy-flow-${id}`)).toBeAttached();
+  }
+});

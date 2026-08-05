@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from "react";
 
+import { Economy } from "./Economy";
 import type { Game, UiState } from "../engine/Game";
 import type {
   CatalogSnapshot,
@@ -40,12 +41,27 @@ interface Props {
 
 export function Chrome({ game, ui }: Props) {
   useKeyboardShortcuts(game, ui);
+  // **Closed by default**, like every panel that is not the game. The
+  // chain graph answers "where does this go?", which is a question a
+  // player asks between decisions rather than during one.
+  const [chain, setChain] = useState(false);
 
   return (
     <div className="chrome">
       <TopBar game={game} ui={ui} />
       <Sidebar game={game} ui={ui} />
       <Roster game={game} ui={ui} />
+      <button
+        type="button"
+        className={`chain-toggle${chain ? " on" : ""}`}
+        data-testid="chain-toggle"
+        aria-pressed={chain}
+        title="Where every material comes from and what takes it"
+        onClick={() => setChain((was) => !was)}
+      >
+        the chain
+      </button>
+      {chain && <Economy game={game} ui={ui} />}
       {ui.fork && <ForkCard game={game} ui={ui} />}
       {ui.waypoint && <WaypointCard game={game} ui={ui} />}
       {ui.atEnclave && <EnclaveBoard game={game} ui={ui} />}

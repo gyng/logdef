@@ -50,6 +50,12 @@ export interface UiState {
   yieldPct: number;
   floors: number;
   stock: StoreView[];
+  /**
+   * The tower itself, for the panels that read rooms rather than
+   * summaries. The renderer has its own copy of the snapshot; this is
+   * the same object, not a second model.
+   */
+  tower: ViewSnapshot["tower"] | null;
   unlocked: number[];
   harvested: number;
   crafted: number;
@@ -878,6 +884,7 @@ export class Game {
       yieldPct: view?.world.yield_pct ?? 100,
       floors: view?.tower.floors.length ?? 0,
       stock: view?.stock ?? [],
+      tower: view?.tower ?? null,
       unlocked: view?.unlocked ?? [],
       harvested: view?.stats.items_harvested ?? 0,
       crafted: view?.stats.crafts_completed ?? 0,

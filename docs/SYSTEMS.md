@@ -7410,6 +7410,40 @@ tier two"*, which was right when a run was two to four hours; a run is **31–36
 so "tier two" had quietly become "not in the game". Produce → bombary → seed bombs → thrower is
 now entirely tier one, and the sun axis buys something a run can reach.
 
+#### And a panel to see it from inside the game
+
+Both findings above were **invisible from inside the game**. You learned that produce had no
+consumer by building a garden and watching nothing happen to it; you learned a lantern mast
+could not be fed by building one and watching it never fire. The economy was legible only by
+reading the content pack.
+
+`the chain` (a toggle above the sidebar) draws it. Materials are the nodes, laid out left to
+right so that each column is made from the one before it; rooms are the **edges**, listed
+underneath with what they take and what they give. Live, from the same snapshot the simulation
+runs on — there is no second model of the economy to drift out of step with the first, which
+matters more than it sounds, because a diagram that lies is worse than no diagram.
+
+What it marks:
+
+- **A material nothing consumes** is dashed and dimmed. That is the §6.27 finding made visible
+  rather than needing a review to notice.
+- **A material a room you own is taking** is outlined. Everything else is a chain you have not
+  built yet.
+- **A room's row** is bright if it is running, warns if it is stalled, and carries the stall
+  reason from §6.26 — so *nowhere to put what it makes* appears beside the room that cannot
+  place it.
+
+Four kinds of consumer had to be gathered for the graph to be honest — a recipe, a burner's
+fuel, an emplacement's ammunition, and the crew's dinner. Missing any one makes a material look
+like a dead end when it is not, so `burner_fuel` and `meal_item` are on the wire now; the first
+version had bamboo looking terminal.
+
+**The lanes were clipped and nothing said so.** `overflow-x: auto` makes a flex child
+shrinkable below its content, so the long room list underneath squeezed the graph to three rows
+and quietly dropped scrap, rope and seed bombs — a graph hiding a third of itself while looking
+tidy. It is `flex: none` now, and a smoke spec walks every material the pack moves and asserts
+each one is on screen.
+
 #### What the review did not change
 
 - **Bamboo carries four consumers** — mill, canteen, burner, thorn gun — and that contention is

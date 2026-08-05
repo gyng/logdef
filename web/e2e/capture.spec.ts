@@ -1287,3 +1287,30 @@ test("capture the two silences", async ({ page }) => {
   );
   console.log("stalls in shot:", JSON.stringify(tally));
 });
+
+/** The chain panel (`SYSTEMS.md` §6.27). Look at it. */
+test("capture the chain panel", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/?seed=4242");
+  await page.waitForFunction(() => window.__understory !== undefined, null, { timeout: 20_000 });
+  await arm(page);
+  await page.evaluate(() => {
+    const hooks = window.__understory!;
+    hooks.grant("item.poles", 120);
+    hooks.grant("item.bamboo", 12);
+    hooks.grant("item.fiber", 8);
+    for (const room of ["room.garden", "room.cutter_arm", "room.burner", "room.mill"]) {
+      for (let floor = 0; floor < 5; floor += 1) {
+        const info = hooks.catalog().rooms.find((r) => r.id === room);
+        const slots = hooks.view().tower.floors[floor]?.slots ?? 0;
+        if (!info) continue;
+        const slot = info.front_only ? slots - info.width : 3;
+        if (typeof hooks.send({ PlaceRoom: { room, floor, slot } }) === "string") break;
+      }
+    }
+    window.__capture!.walk(4000);
+  });
+  await page.getByTestId("chain-toggle").click();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: "capture/chain-panel.png" });
+});

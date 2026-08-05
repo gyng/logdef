@@ -564,6 +564,9 @@ pub struct CatalogSnapshot {
     /// How many ranks of practice there are to get. The frontend draws
     /// this many pip slots and no more.
     pub max_rank: u8,
+    /// The item crew eat. The one sink that is not a room, so the flow
+    /// graph would otherwise show meals going nowhere.
+    pub meal_item: Option<u16>,
 }
 
 /// What an emplacement does, as the build menu needs it.
@@ -689,6 +692,11 @@ pub struct RoomInfo {
     pub power_draw: i64,
     /// Burns an item for charge, and can be switched off.
     pub burner: bool,
+    /// What a burner eats. `None` for everything that is not one.
+    ///
+    /// The economy panel needs it: a burner is one of bamboo's four
+    /// consumers and the flow graph would have shown it as a dead end.
+    pub burner_fuel: Option<u16>,
     /// Charge capacity this room adds.
     pub bank_capacity: i64,
     /// Shoots back, and eats ammo off the same shelves as everything
@@ -1500,6 +1508,11 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                     top_floor_only: room.top_floor_only,
                     power_draw: room.power_draw,
                     burner: room.burner.is_some(),
+                    burner_fuel: room
+                        .burner
+                        .as_ref()
+                        .and_then(|burner| content.item_idx(&burner.fuel))
+                        .map(|item| item.0),
                     bank_capacity: room.bank.as_ref().map_or(0, |bank| bank.capacity),
                     sleepers: room.quarters.as_ref().map_or(0, |q| q.sleepers),
                     front_only: room.front_only,
@@ -1638,6 +1651,7 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
             })
             .collect(),
         max_rank: content.balance.crew.max_rank,
+        meal_item: content.item_idx("item.meals").map(|item| item.0),
         front_slots: content.balance.tower.front_slots,
         max_floors: content.balance.tower.max_floors,
         floor_slots: content.balance.tower.floor_slots,

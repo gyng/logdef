@@ -557,6 +557,8 @@ export interface CatalogSnapshot {
   traits: TraitInfo[];
   /** How many ranks there are to get. This many pip slots, no more. */
   max_rank: number;
+  /** The item crew eat — the one sink that is not a room. */
+  meal_item: number | null;
 }
 
 /** What an emplacement does, as the build menu needs it. */
@@ -670,6 +672,8 @@ export interface RoomInfo {
   /** Makes charge from sunlight. */
   /** Burns an item for charge, and can be switched off. */
   burner: boolean;
+  /** What a burner eats. `null` for everything that is not one. */
+  burner_fuel: number | null;
   /** Charge capacity this room adds. */
   bank_capacity: number;
   /**
