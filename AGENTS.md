@@ -162,7 +162,13 @@ Three things worth knowing before you touch balance or an instrument, all of the
    a finite shopping list stops consuming, every buffer fills, and harvest stops dead at the
    tower's total buffer capacity — which is a property of the tower and identical whatever the
    ground underfoot was. Both `siege_run.rs` and `journey.rs` have been wrong this way.
-3. **`BALANCE.md`'s Siege section has been re-measured and says so.** Read the block at the top
+3. **`BALANCE.md`'s Journey section has been re-derived and says which rows were not.**
+   Region 1 is 12,754–16,303 paces and 12–15 minutes at 1×, `halted 0`; a walking tower earns
+   115–142 bamboo across it; berthing beats never stopping on 7 seeds of 12 recklessly and 3
+   carefully, spread −97.5% to +186.1%. The two scrap rows are marked *not re-derived*, because
+   their figures predate the harness repair and cannot be compared across it. Read the block at
+   the top of the section before trusting a number in it.
+4. **`BALANCE.md`'s Siege section has been re-measured and says so.** Read the block at the top
    of it before trusting a `PLAYTESTED` grade there. The plating comparison produced the same
    false finding **four** times before the cause was found, and it is worth knowing what the
    cause was, because the shape recurs: **never compare two towers on a quantity whose maximum
