@@ -492,6 +492,20 @@ function TopBar({ game, ui }: Props) {
         ))}
       </div>
       {/*
+        **The weapon bar, FTL-shaped.** Everything the tower can point
+        at something, with what is on its rack — because a weapon that
+        is dry is the single most important thing on the screen during a
+        wave and it was previously visible only by finding the room in
+        the cross-section and reading its inbox.
+
+        It is a *readout of rooms*, not a second place to build them:
+        the placement is still the decision (`SYSTEMS.md` §6.13), and
+        this says what that decision bought. Empty until the tower has a
+        weapon, which on turn one it does — the thorn gun it sets out
+        with.
+      */}
+      <Weapons game={game} ui={ui} />
+      {/*
         Zoom. Discoverable rather than only on the wheel: a control
         nobody knows about is a control nobody has, and the tower now
         starts at two floors where the fitted view leaves it very small
@@ -1329,6 +1343,34 @@ function describeRoom(game: Game, info: RoomInfo): string {
  * Space to pause, 1/2/4 for speed, Escape to drop out of placement.
  * Bound on window so they work wherever the pointer is.
  */
+/**
+ * The tower's weapons, and whether they can fire.
+ *
+ * Ammo counts rather than a green light: "3 darts" is a number a player
+ * can plan with and "ready" is not. The bar goes quiet — dimmed, not
+ * red — when a rack is empty, which is the same language a starved mill
+ * speaks (`DECISIONS.md` §8).
+ */
+function Weapons({ ui }: Props) {
+  if (ui.weapons.length === 0) return null;
+
+  return (
+    <div className="weapons" role="group" aria-label="Weapons" data-testid="weapons">
+      {ui.weapons.map((weapon) => (
+        <span
+          key={weapon.id}
+          className={weapon.ammo === 0 ? "weapon dry" : "weapon"}
+          data-testid={`weapon-${weapon.id}`}
+          title={`${weapon.name} — floor ${weapon.floor}`}
+        >
+          <span className="weapon-name">{weapon.short}</span>
+          <span className="weapon-ammo">{weapon.ammo}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function useKeyboardShortcuts(game: Game, ui: UiState): void {
   const speed = ui.speed;
   const placing = ui.placing;

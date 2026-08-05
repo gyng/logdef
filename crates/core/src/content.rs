@@ -261,6 +261,34 @@ pub struct RoomDef {
     /// the difference between this and the journal (§5.7), which is
     /// player-level, never enters `GameState`, and can only ever filter
     /// a menu.
+    /// Must be built on the tower's leading edge.
+    ///
+    /// **What makes a weapon a weapon.** A cutter arm and an
+    /// emplacement both reach *out* of the tower, and a thing that
+    /// reaches out has to be on the outside — which on a cross-section
+    /// means the front, because that is the edge the tower is walking
+    /// into and the edge everything arrives from.
+    ///
+    /// It is also the constraint that makes the weapon bar honest: the
+    /// FTL-shaped readout in the UI lists what the tower can point at
+    /// something, and a list is only a list if the things on it are
+    /// somewhere specific.
+    #[serde(default)]
+    pub front_only: bool,
+    /// Damage this room deals to anything clinging within its reach,
+    /// per tick of work.
+    ///
+    /// **The cutter arm's other half.** It is a blade on a boom that
+    /// strips bamboo off the ground; a creature that climbs into that
+    /// arc has climbed into a blade on a boom. Dual use costs no new
+    /// verb and no new room — the player who built an arm to harvest
+    /// has already built the thing that answers a skitter, and finding
+    /// that out is a better moment than being sold a weapon.
+    ///
+    /// Not an emplacement: there is no ammo, no reload and no range
+    /// beyond the tower's own skin. It hits what is *on* the tower.
+    #[serde(default)]
+    pub melee_damage: i64,
     #[serde(default)]
     pub unlocked_by: Option<String>,
     /// Crew who must be posted here for the room to work at all.
@@ -989,6 +1017,8 @@ pub struct RoomRuntime {
     /// IDs in data, dense indices in the simulation.
     pub unlocked_by: Option<RoomIdx>,
     pub crew_required: u8,
+    pub front_only: bool,
+    pub melee_damage: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -1599,6 +1629,8 @@ impl Content {
                 defence_buffer_max,
                 unlocked_by: room.unlocked_by.as_deref().and_then(|id| self.room_idx(id)),
                 crew_required: room.crew_required,
+                front_only: room.front_only,
+                melee_damage: room.melee_damage,
             });
         }
         self.room_runtime = room_runtime;

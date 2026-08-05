@@ -6448,6 +6448,55 @@ Drawn on the people rather than in a panel (`DECISIONS.md` §8): a soft ring und
 picked, a brighter one for pushed. Two marks, because a job and a shove read identically on a
 cross-section and are not the same thing.
 
+### 6.13 Weapons, and where they go
+
+**Three rules, and the first one is the one everything else hangs off.**
+
+**A weapon goes on the leading edge.** `RoomDef::front_only` is validated in
+`engine::commands` as `CommandError::NotAtTheFront`, and the front is `floor_slots - width`, so
+a wide weapon sits flush with the edge rather than being banned from it. A thing that reaches
+*out* of the tower has to be on the outside, and on a cross-section that is the edge the tower
+is walking into and the edge everything arrives from. It is also what makes the weapon bar
+honest: a list is only a list if the things on it are somewhere specific.
+
+The floor widened from eight slots to ten to pay for it. The frontmost column a two-wide room
+could occupy was 6-7, which is the column the first elevator goes in — **54 of 306 tests failed
+on that collision**, every one a shaft that could no longer find a clear full-height column.
+Columns 8 and 9 are the weapons'; 7 is still the shaft's.
+
+**The cutter arm is dual use, and the second use is free.** `RoomDef::melee_damage` is dealt to
+anything clinging to the arm's own floor, every tick it works. No ammo, no reload, no range: an
+emplacement is a supply question (`systems/defence.rs` opens on exactly that), and this is not
+that. It is a blade on a boom already doing its job, and a creature that climbs into the arc has
+climbed into a blade on a boom. The player who built an arm to harvest has already built the
+thing that answers a skitter, and finding that out is a better moment than being sold a weapon.
+
+It reaches only its own floor and only what is *attached*, which is what keeps it from being a
+free emplacement: a wave on the roof of a tall tower is not answered by a boom on the ground.
+`a_cutter_arm_cuts_what_climbs_into_it` is the test, and it needed a ground-approach creature to
+write — a leaper lands on the roof, which is exactly the limit.
+
+**The tower sets out with one gun.** `room.thorn_gun` fires sharpened bamboo: 2 stalks a shot, 8
+damage against a dart's 15, a 90-tick reload, and 5 paces of reach. Every other emplacement eats
+something the chain has to *make*, which is the design working — but a tower whose only answer
+to the first creature is to walk away has one verb, and §11 means walking to be the *free*
+answer rather than the only one. So this one burns the raw material: weak, wasteful (a stalk
+burnt is a pole the mill did not make), and always affordable. The player upgrades away from it
+by building something that eats a crafted round.
+
+**The weapon bar is a readout, not a second place to build.** `UiState.weapons` lists what the
+tower can point at something and how many rounds are on each rack, dimmed when dry — the same
+language a starved mill speaks (`DECISIONS.md` §8). Ammo counts rather than a green light,
+because "3 darts" is a number a player can plan with and "ready" is not. The placement is still
+the decision; this says what that decision bought.
+
+#### The tone gate
+
+Weapon *loadouts* were cut at M6 (§6) and are still cut. What is here is not that: a harvest
+room that also cuts, and one gun that burns what the tower harvests. The tower defends itself
+with the tools it works with rather than growing a separate set for fighting, which is the whole
+of `DECISIONS.md` §8 — defenders rather than soldiers.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -6456,17 +6505,22 @@ cross-section and are not the same thing.
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
+1. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
+   edge from the shaft column, which is a placement fix — but every layout puzzle now has two
+   more answers, and `floor_slots`' own row is explicit that its value was chosen for scarcity.
+   Nobody has played a ten-wide tower against an eight-wide one. It is on the difficulty pass's
+   list and it is the change on that list most likely to have made the game softer by accident.
+2. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
    of what a posting does and cleans up after itself. If nobody ever uses the permanent form
    once they have the temporary one, that is not two verbs, it is one verb and a trap — and
    the tell is whether anybody posts somebody *for the run* rather than *for the minute*.
-2. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+3. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-3. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+4. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

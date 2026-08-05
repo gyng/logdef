@@ -1,5 +1,17 @@
 // Strips bamboo from the terrain as the tower walks past it. Reaches
-// the ground, so it only mounts on the lowest floors.
+// the ground, so it only mounts on the lowest floors — and reaches
+// *out*, so it mounts on the front.
+//
+// **Dual use, and the second use is free.** It is a blade on a boom.
+// Anything that climbs onto the floor it is bolted to has climbed into
+// the arc of a working blade, so it cuts that too. No ammo, no reload,
+// no aiming: the player who built an arm to harvest has already built
+// the thing that answers a skitter, and finding that out is a better
+// moment than being sold a weapon.
+//
+// It is also the tone gate doing its work (`DECISIONS.md` §8): the
+// tower defends itself with the tools it works with, rather than
+// growing a separate set for fighting.
 #![enable(implicit_some)]
 RoomDef(
     id: "room.cutter_arm",
@@ -12,6 +24,15 @@ RoomDef(
     category: Intake,
     width: 2,
     max_floor: 1,
+    // On the leading edge with the guns (`SYSTEMS.md` §6.13).
+    front_only: true,
+    // Half a thorn gun's 8, every tick it is working — which sounds
+    // small and is not: a battery fires once every 60 ticks, so an arm
+    // that keeps cutting for a second does about as much as one dart.
+    // The limit is that it only reaches its own floor, and only what is
+    // already attached: a wave on the roof of a tall tower is not
+    // answered by a boom on the ground.
+    melee_damage: 4,
     build_cost: [CostEntryDef(item: "item.poles", amount: 4)],
     intake: IntakeDef(
         item: "item.bamboo",

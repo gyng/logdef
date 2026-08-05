@@ -23,6 +23,7 @@ RoomDef(
     // player — the journal (§5.7) is the other kind of unlock and can
     // only filter a menu.
     unlocked_by: "room.burner",
+    front_only: true,
     category: Defence,
     width: 2,
     // Twice a dart battery's width and dearer in three materials, so it

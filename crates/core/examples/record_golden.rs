@@ -60,10 +60,12 @@ fn main() {
     staff(&mut engine, 1, 3, 2);
     step_walking(&mut engine, 600);
 
-    // The cutter arm, which the farm unlocked. Ground floor, beside the
-    // Heartseed: `max_floor` is 1 because it reaches the ground, and
-    // floor 0's slots 4-6 are the only three contiguous the tower has.
-    place_when_affordable(&mut engine, "room.cutter_arm", 0, 4);
+    // The cutter arm, which the farm unlocked. **On floor 1's leading
+    // edge**, because it is `front_only` since M6 (`SYSTEMS.md` §6.13)
+    // — a blade on a boom lives on the outside — and floor 0's front is
+    // where the tower's own thorn gun stands. `max_floor` 1 leaves
+    // exactly one place for it.
+    place_when_affordable(&mut engine, "room.cutter_arm", 1, 8);
     step_walking(&mut engine, 900);
 
     // **Upward before the burner**, which is a placement argument
@@ -243,7 +245,8 @@ fn main() {
     // the order it buys in stopped being free. Cheap and load-bearing
     // first — the rule the shopping lists in `examples/` already follow,
     // arrived at here the hard way.
-    place_when_affordable(&mut engine, "room.dart_battery", 3, 5);
+    // The front, like every weapon since M6.
+    place_when_affordable(&mut engine, "room.dart_battery", 3, 9);
     step_walking(&mut engine, 1800);
 
     // Darts to put in it, from the same argument: a thornwright is 5

@@ -1,0 +1,51 @@
+// The tower sets out with one of these, and it fires sharpened bamboo.
+//
+// **A weapon a tower can always feed.** Every other emplacement eats
+// something the chain has to make — darts from a thornwright, seed
+// bombs from a bombary — which is the design working: an emplacement is
+// a supply question (`systems/defence.rs`). But a tower that starts with
+// *nothing* that answers a creature has a first ten minutes in which the
+// only verb is walking away, and walking away is meant to be the free
+// answer rather than the only one (`DECISIONS.md` §11).
+//
+// So this one burns the raw material. It is weak, it is wasteful — a
+// stalk of bamboo is a pole the mill did not make — and it is always
+// affordable, which is exactly the shape a starting weapon should have.
+// The player upgrades away from it by building something that eats a
+// crafted round.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.thorn_gun",
+    name: "Thorn Gun",
+    short: "THN",
+    category: Defence,
+    // One slot, like the dart battery: defence competes for floor with
+    // the chain that pays for it, and cheap in space is the trade that
+    // makes an emplacement a decision rather than a luxury.
+    width: 1,
+    // **On the leading edge**, like every weapon (`SYSTEMS.md` §6.13).
+    // A thing that shoots outward lives on the outside.
+    front_only: true,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 3)],
+    defence: DefenceDef(
+        ammo: "item.bamboo",
+        // Two stalks a shot, so it is visibly the wasteful option: the
+        // mill turns one stalk into one pole, and this turns two into
+        // one shot at a skitter.
+        ammo_per_shot: 2,
+        // Six stalks on the rack — three shots. Enough to answer what
+        // wanders in and nowhere near enough to hold a wave.
+        buffer_max: 6,
+        // Half a dart's 15. Three shots to see off a skitter (30 hp)
+        // where a battery takes two, and eleven to a canopy leaper
+        // where a battery takes six. It works and it is never the
+        // efficient answer.
+        damage: 8,
+        // Slower than the battery's reload as well, so the upgrade path
+        // is a real one rather than a cosmetic one.
+        reload_ticks: 90,
+        // Short. It answers what has come to the tower rather than
+        // reaching out to meet it.
+        range_paces: 5,
+    ),
+)

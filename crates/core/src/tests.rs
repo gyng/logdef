@@ -96,7 +96,7 @@ pub(crate) fn engine(seed: u64) -> GameEngine {
     // dumbwaiter tests span floor 0 to floor 2 to reach it.
     for (room, floor, slot) in [
         ("room.garden", 4u8, 1u8),
-        ("room.cutter_arm", 0, 4),
+        ("room.cutter_arm", 1, 8),
         ("room.burner", 3, 5),
         ("room.mill", 2, 3),
         ("room.storeroom", 2, 1),
@@ -223,6 +223,28 @@ pub(crate) fn stock_poles(game: &mut GameEngine, amount: i64) {
     // only the elevator and the cell bank want them, and those two tests
     // ask for them by name.
     stock_item(game, "item.rope", 8);
+}
+
+/// Take every weapon out of the tower.
+///
+/// **M6 gave the tower a thorn gun to set out with** (`SYSTEMS.md`
+/// §6.13), which is right for a player and wrong for a test that is
+/// measuring what happens to an *undefended* tower — a creature that is
+/// shot before it can chew is a creature that proves nothing about
+/// chewing. Four tests started measuring the gun instead of their own
+/// subject the moment it existed.
+///
+/// Also takes the melee out of the cutter arm, which is the same
+/// argument: an arm is a blade, and a tower with one is not undefended.
+pub(crate) fn disarm(game: &mut GameEngine) {
+    let content = content();
+    let state = game.state_mut_for_test();
+    for floor in &mut state.tower.floors {
+        floor.rooms.retain(|room| {
+            let def = content.room(room.def);
+            def.defence.is_none() && content.room_rt(room.def).melee_damage == 0
+        });
+    }
 }
 
 /// Post `count` crew to the room at `floor`.`slot`.

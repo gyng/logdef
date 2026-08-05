@@ -132,7 +132,17 @@ pub fn place_anywhere(game: &mut GameEngine, room: &str) -> bool {
             .map_or(1, |idx| content.room(idx).width);
         (content.balance.tower.floor_slots, width)
     };
-    let last = slots.saturating_sub(width).saturating_sub(1);
+    // **Column 7 is the shaft's, and the edge is the weapons'.**
+    //
+    // This used to reserve the *last* column, which was the same thing
+    // while a floor was eight wide. M6 widened it to ten and made
+    // weapons `front_only` (`SYSTEMS.md` §6.13), so the two are now
+    // different columns: 8 and 9 are where a weapon has to go, and a
+    // harness that refuses to use them cannot build a cutter arm at
+    // all. Reserving one named column instead keeps shafts buildable
+    // and lets weapons reach their edge.
+    const SHAFT_COLUMN: u8 = 7;
+    let last = slots.saturating_sub(width);
     let floors = game.state().tower.floors.len() as u8;
     // **From the top down.** The scarce floors are the low ones: a
     // cutter arm, a fiber comb and a salvage rig all carry `max_floor`
@@ -142,6 +152,9 @@ pub fn place_anywhere(game: &mut GameEngine, room: &str) -> bool {
     // the next ground-reaching room then has nowhere to stand.
     for floor in (0..floors).rev() {
         for slot in 0..=last {
+            if slot <= SHAFT_COLUMN && slot + width > SHAFT_COLUMN {
+                continue;
+            }
             match game.try_send(GameCommand::PlaceRoom {
                 room: room.into(),
                 floor,

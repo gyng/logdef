@@ -195,8 +195,22 @@ impl Lift {
     /// and a three-wide room placed at slot 5 spilled across it — which
     /// surfaced two layers later as "could not raise the dumbwaiter:
     /// slot 7 is already occupied".
+    /// The outermost free column a *shaft* may have.
+    ///
+    /// **Not simply the last one.** M6 widened the floor to ten and
+    /// made weapons `front_only` (`SYSTEMS.md` §6.13), so the last
+    /// columns are where a cutter arm and a gun have to stand — and
+    /// this harness's own ladder puts an arm on one of them. Taking the
+    /// last free column then meant asking for a slot the harness had
+    /// just filled: "could not raise shaft.dumbwaiter 0-2: floor 1 slot
+    /// 8 is already occupied".
     fn slot(free: &[u8]) -> u8 {
-        *free.last().expect("no free column for a shaft")
+        const WEAPON_EDGE: u8 = 8;
+        *free
+            .iter()
+            .rfind(|slot| **slot < WEAPON_EDGE)
+            .or_else(|| free.last())
+            .expect("no free column for a shaft")
     }
 }
 

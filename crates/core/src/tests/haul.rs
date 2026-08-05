@@ -425,14 +425,19 @@ fn nothing_carries_a_thing_from_one_shelf_to_another() {
         for floor in &mut state.tower.floors {
             floor.rooms.retain(|room| {
                 let rt = content.room_rt(room.def);
-                // **And no burner.** A burner's fuel is not a recipe
-                // input — it hangs off `burner_fuel` — so this filter
-                // kept the one room in the M6 starting tower that
-                // still wanted bamboo, and the crew dutifully hauled
-                // it there.
+                // **And no burner, and no ammo rack.** Neither is a
+                // recipe input — a burner's fuel hangs off
+                // `burner_fuel` and an emplacement's off
+                // `defence_ammo` — so this filter twice kept the one
+                // room in the M6 starting tower that still wanted
+                // bamboo, and the crew dutifully hauled it there. The
+                // thorn gun eats raw stalks, which is what makes it
+                // the weapon a tower can always feed and what makes
+                // it a haul destination.
                 rt.intake_source.is_none()
                     && rt.recipe_inputs.is_empty()
                     && rt.burner_fuel.is_none()
+                    && rt.defence_ammo.is_none()
             });
         }
         for floor in &mut state.tower.floors {

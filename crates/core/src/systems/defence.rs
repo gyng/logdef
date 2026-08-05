@@ -18,7 +18,76 @@ use crate::state::siege::EnemyState;
 
 use super::SoundEvent;
 
+/// The cutter arm's other half: anything clinging to the tower within
+/// the arm's own floor is in the arc of a working blade.
+///
+/// **No ammo, no reload, no range.** An emplacement is a supply
+/// question — `defence.rs`'s whole opening paragraph is about a battery
+/// competing with the mill for the same crew and the same shafts. This
+/// is not that: it is a machine already doing its job, and a creature
+/// that climbs into it. The player who built an arm to harvest has
+/// already built the thing that answers a skitter, and finding that out
+/// is a better moment than being sold a weapon.
+///
+/// It only reaches what is *attached*, and only on its own floor, which
+/// is what keeps it from being a free emplacement: a wave that goes for
+/// the roof of a tall tower is not answered by a boom on the ground.
+///
+/// The tone gate (`DECISIONS.md` §8) is the reason this is a *harvest*
+/// room that happens to cut rather than a weapon that happens to
+/// harvest. The tower defends itself with the tools it works with.
+fn cut_what_climbs_in(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
+    let tick = state.tick;
+    let mut struck: Vec<(EnemyId, i64)> = Vec::new();
+
+    for floor in &state.tower.floors {
+        for room in &floor.rooms {
+            let damage = content.room_rt(room.def).melee_damage;
+            if damage <= 0 || !room.is_working(content, tick) {
+                continue;
+            }
+            for enemy in &state.siege.enemies {
+                let EnemyState::Attacking { target } = enemy.state else {
+                    continue;
+                };
+                let at = match target {
+                    crate::state::siege::DamageTarget::Panel { floor } => Some(floor),
+                    crate::state::siege::DamageTarget::Room { floor, .. } => Some(floor),
+                    // A borer inside a shaft column and anything at the
+                    // Heartseed are past the skin, and an arm swinging
+                    // outboard cannot reach either.
+                    _ => None,
+                };
+                if at == Some(floor.index) {
+                    struck.push((enemy.id, damage));
+                }
+            }
+        }
+    }
+
+    if struck.is_empty() {
+        return;
+    }
+    for (id, damage) in struck {
+        let Some(enemy) = state.siege.enemies.iter_mut().find(|enemy| enemy.id == id) else {
+            continue;
+        };
+        if enemy.state.is_going() {
+            continue;
+        }
+        enemy.hp -= damage;
+        if enemy.hp <= 0 {
+            enemy.state = EnemyState::Dying;
+            enemy.fade_left = content.balance.siege.enemy_fade_ticks;
+            sounds.push(SoundEvent::EnemyDown);
+        } else {
+            sounds.push(SoundEvent::Shot);
+        }
+    }
+}
+
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
+    cut_what_climbs_in(state, content, sounds);
     if state.siege.enemies.is_empty() {
         // Still tick reload timers down, so a battery that has been
         // waiting is ready the moment something arrives.

@@ -218,6 +218,8 @@ pub enum CommandError {
     FloorTooHigh { floor: FloorIdx, max_floor: u8 },
     /// This room may only be placed on higher floors.
     FloorTooLow { floor: FloorIdx, min_floor: u8 },
+    /// A weapon, and not on the tower's leading edge.
+    NotAtTheFront { slot: SlotIdx, front: SlotIdx },
     /// Only one of these may exist in a tower.
     AlreadyPlaced { room: String },
     /// A charge ranking that was not all four uses, each exactly once.
@@ -277,6 +279,10 @@ impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CommandError::UnknownRoom { room } => write!(f, "no such room: {room}"),
+            CommandError::NotAtTheFront { slot, front } => write!(
+                f,
+                "a weapon goes on the front of the tower: slot {front}, not {slot}"
+            ),
             CommandError::Locked { room, needs } => {
                 write!(f, "{room} is not on the menu until a {needs} is standing")
             }

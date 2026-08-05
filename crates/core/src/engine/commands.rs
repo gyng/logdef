@@ -458,6 +458,18 @@ fn place_room(
     if state.tower.slot_range_blocked(floor, slot, def.width) {
         return Err(CommandError::SlotOccupied { floor, slot });
     }
+    // **A weapon goes on the leading edge.** See `RoomDef::front_only`:
+    // a thing that reaches out of the tower has to be on the outside of
+    // it, and the front is the edge everything arrives from.
+    //
+    // The frontmost slot a room of this width can occupy, so a wide
+    // weapon is flush with the edge rather than banned from it.
+    if def.front_only {
+        let front = target.slots.saturating_sub(def.width);
+        if slot != front {
+            return Err(CommandError::NotAtTheFront { slot, front });
+        }
+    }
 
     let cost = content.room_rt(def_idx).build_cost.clone();
     check_stock(state, content, &cost)?;

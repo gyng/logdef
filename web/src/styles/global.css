@@ -95,6 +95,38 @@ button {
 
 /* Text overlay above the canvas. Pointer-transparent so clicks reach
    the game view underneath. */
+/* The weapon bar. FTL-shaped: what the tower can point at something,
+   and what is on its rack. Dimmed rather than reddened when dry — the
+   same language a starved mill speaks. */
+.weapons {
+  display: flex;
+  gap: var(--space-1, 4px);
+  align-items: center;
+}
+
+.weapon {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+  padding: 2px 6px;
+  border: 1px solid var(--line, #3a4a3f);
+  border-radius: 3px;
+  font-size: var(--text-xs);
+}
+
+.weapon.dry {
+  opacity: 0.45;
+}
+
+.weapon-name {
+  letter-spacing: 0.04em;
+}
+
+.weapon-ammo {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
 /* The lasso. Drawn in DOM rather than in the batch because it is a
    tool, not part of the world: it should sit over the labels and it
    should not be in a screenshot of the tower. */

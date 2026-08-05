@@ -309,7 +309,10 @@ fn the_opening_tower_is_a_heartseed_and_a_bed() {
         .flat_map(|floor| floor.rooms.iter())
         .map(|room| content.room(room.def).id.as_str())
         .collect();
-    assert_eq!(rooms, vec!["room.heartseed", "room.bunk"]);
+    // The Heartseed, a bed, and one gun that eats raw bamboo — see
+    // `SYSTEMS.md` §6.13. The gun is on the ground floor's
+    // leading edge, so it sorts after the Heartseed.
+    assert_eq!(rooms, vec!["room.heartseed", "room.thorn_gun", "room.bunk"]);
 
     // And the stores are aboard, because a build cost is paid off a
     // shelf and there is no storeroom to pay it from.
@@ -346,8 +349,8 @@ fn the_first_turn_offers_one_card() {
     }
     assert_eq!(
         open,
-        vec!["room.bunk", "room.garden"],
-        "turn one should offer the farm, and the bed the tower already has"
+        vec!["room.bunk", "room.garden", "room.thorn_gun"],
+        "turn one should offer the farm, the bed and the gun the tower already has"
     );
 
     // And the rule bites at the command boundary, not just in a menu.
@@ -381,7 +384,10 @@ fn the_ladder_opens_one_rung_at_a_time() {
         )
     };
 
-    assert!(blocked(&mut game, "room.cutter_arm", 0, 4));
+    // Slot 8 on floor 1: a cutter arm is `front_only` and two wide, so
+    // the front is `floor_slots - width` (`SYSTEMS.md` §6.13), and
+    // floor 0's front is where the tower's own gun stands.
+    assert!(blocked(&mut game, "room.cutter_arm", 1, 8));
     game.try_send(GameCommand::PlaceRoom {
         room: "room.garden".into(),
         floor: 1,
@@ -392,8 +398,8 @@ fn the_ladder_opens_one_rung_at_a_time() {
     assert!(blocked(&mut game, "room.burner", 1, 5));
     game.try_send(GameCommand::PlaceRoom {
         room: "room.cutter_arm".into(),
-        floor: 0,
-        slot: 4,
+        floor: 1,
+        slot: 8,
     })
     .expect("the farm opened the cutter arm");
 

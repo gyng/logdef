@@ -88,6 +88,9 @@ fn a_tower_that_has_stopped_shakes_nothing_off() {
     // The other half of the same rule, and the reason stopping to work
     // is a decision rather than a free action.
     let mut game = engine(1021);
+    // The tower's own gun and its cutter arm out, or this measures
+    // them rather than its subject (`SYSTEMS.md` §6.13).
+    crate::tests::disarm(&mut game);
     provoke_fully(&mut game);
     let (id, cling) = wait_for_contact(&mut game);
     game.try_send(GameCommand::SetStriding { walking: false })
@@ -106,6 +109,9 @@ fn walking_away_from_something_does_not_count_as_seeing_it_off() {
     // `repelled` is a readout the player trusts. A tower with no
     // emplacements at all must never be able to raise it.
     let mut game = engine(1022);
+    // The tower's own gun and its cutter arm out, or this measures
+    // them rather than its subject (`SYSTEMS.md` §6.13).
+    crate::tests::disarm(&mut game);
     provoke_fully(&mut game);
     game.step(20_000);
 
@@ -224,8 +230,12 @@ fn a_battery_shoots_the_nearest_thing_first() {
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
-        floor: 1,
-        slot: 5,
+        floor: 2,
+        // **The front.** A dart battery is `front_only` since M6
+        // (`SYSTEMS.md` §6.13): a thing that shoots outward
+        // lives on the outside. One slot wide, so the front is
+        // the last column.
+        slot: 9,
     })
     .expect("affordable");
     game.try_send(GameCommand::SetStriding { walking: false })
@@ -422,8 +432,12 @@ fn a_battery_shoots_what_is_in_reach_and_nothing_further() {
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
-        floor: 1,
-        slot: 5,
+        floor: 2,
+        // **The front.** A dart battery is `front_only` since M6
+        // (`SYSTEMS.md` §6.13): a thing that shoots outward
+        // lives on the outside. One slot wide, so the front is
+        // the last column.
+        slot: 9,
     })
     .expect("affordable");
     top_up(&mut game, darts);
@@ -497,8 +511,12 @@ fn a_battery_with_nothing_to_shoot_at_still_reloads() {
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
-        floor: 1,
-        slot: 5,
+        floor: 2,
+        // **The front.** A dart battery is `front_only` since M6
+        // (`SYSTEMS.md` §6.13): a thing that shoots outward
+        // lives on the outside. One slot wide, so the front is
+        // the last column.
+        slot: 9,
     })
     .expect("affordable");
     game.try_send(GameCommand::SetStriding { walking: false })
@@ -594,8 +612,12 @@ fn a_battery_fires_no_faster_than_it_reloads() {
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
-        floor: 1,
-        slot: 5,
+        floor: 2,
+        // **The front.** A dart battery is `front_only` since M6
+        // (`SYSTEMS.md` §6.13): a thing that shoots outward
+        // lives on the outside. One slot wide, so the front is
+        // the last column.
+        slot: 9,
     })
     .expect("affordable");
     provoke_fully(&mut game);
@@ -745,13 +767,19 @@ fn harvesting_hard_draws_attention_and_walking_quietly_sheds_it() {
     // provocation_per_100_harvested). It is the *second* arm that
     // provokes, so that is what this test builds.
     let mut game = engine(1001);
+    // The tower's own gun and its cutter arm out, or this measures
+    // them rather than its subject (`SYSTEMS.md` §6.13).
+    crate::tests::disarm(&mut game);
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.cutter_arm".into(),
         floor: 1,
-        slot: 6,
+        // The leading edge, because an arm is `front_only` since M6 —
+        // and `disarm` above has just taken the fixture's own arm out
+        // of that slot.
+        slot: 8,
     })
-    .expect("floor 1 has room for a second arm, and arms reach from there too");
+    .expect("floor 1's leading edge is where a second arm goes");
 
     crate::tests::step_walking(&mut game, 12_000);
     let provoked = game.state().siege.provocation;
@@ -760,11 +788,11 @@ fn harvesting_hard_draws_attention_and_walking_quietly_sheds_it() {
         "stripping the terrain with two arms drew no attention at all"
     );
 
-    // Tear both arms out and the attention should bleed off.
-    for (floor, slot) in [(0, 5), (1, 6)] {
-        game.try_send(GameCommand::RemoveRoom { floor, slot })
-            .expect("a cutter arm is removable");
-    }
+    // Tear the arm out and the attention should bleed off. **One, not
+    // two**: `disarm` above took the fixture's own arm with it, so this
+    // test placed exactly one and there is exactly one to pull.
+    game.try_send(GameCommand::RemoveRoom { floor: 1, slot: 8 })
+        .expect("a cutter arm is removable");
     crate::tests::step_walking(&mut game, 12_000);
     assert!(
         game.state().siege.provocation < provoked,
@@ -1214,9 +1242,10 @@ fn a_borer_moves_on_to_the_column_that_is_still_whole() {
 /// two floors and a bed (`SYSTEMS.md` §6.11), and `tests::engine` walks
 /// the ladder back up to five floors with a chain on it — which is the
 /// tower this arithmetic has always been written against, it just used
-/// to arrive pre-built. Five panels, the Heartseed, seven ordinary
-/// rooms and the stairs.
-const OPENING_TOWER_HP: i64 = 7170;
+/// to arrive pre-built. Five panels, the Heartseed, six ordinary rooms
+/// and the stairs — six because this test disarms, and M6's fixture
+/// ships a thorn gun and a cutter arm that both count as weapons.
+const OPENING_TOWER_HP: i64 = 6910;
 
 #[test]
 fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
@@ -1236,12 +1265,15 @@ fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
     let content = content();
     let siege = &content.balance.siege;
     assert_eq!(
-        5 * siege.panel_hp + siege.heartseed_hp + 7 * siege.room_hp + siege.shaft_hp,
+        5 * siege.panel_hp + siege.heartseed_hp + 6 * siege.room_hp + siege.shaft_hp,
         OPENING_TOWER_HP,
         "the fixture tower is not the one the arithmetic below is written against"
     );
 
     let mut game = engine(1050);
+    // The tower's own gun and its cutter arm out, or this measures
+    // them rather than its subject (`SYSTEMS.md` §6.13).
+    crate::tests::disarm(&mut game);
     assert_eq!(
         crate::systems::siege::tower_integrity_permille(game.state()),
         1000,
@@ -1262,8 +1294,8 @@ fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
         "a breached panel did not move the standing figure by its own share of the tower"
     );
 
-    // Then the mill: 130 more off, 1.8 per cent of a 7,170-point
-    // tower, down to 972.
+    // Then the mill: 130 more off, 1.9 per cent of a 6,910-point
+    // tower, down to 971.
     {
         let mill = game
             .state_mut_for_test()
@@ -1278,11 +1310,11 @@ fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
     }
     assert_eq!(
         crate::systems::siege::tower_integrity_permille(game.state()),
-        972,
+        971,
         "a chewed-up room left the standing figure where it was"
     );
 
-    // Then the stairs: 260 more, 3.6 per cent of 7,170, down to 936.
+    // Then the stairs: 260 more, 3.8 per cent of 6,910, down to 934.
     {
         let state = game.state_mut_for_test();
         let stairs = state.tower.shafts[0].id;
@@ -1290,7 +1322,7 @@ fn the_standing_figure_weighs_panels_rooms_and_shafts_together() {
     }
     assert_eq!(
         crate::systems::siege::tower_integrity_permille(game.state()),
-        936,
+        934,
         "a half-cut staircase left the standing figure where it was"
     );
 }
@@ -1557,9 +1589,32 @@ fn the_heartseed_ends_the_run() {
         if let Some(heart) = heart {
             heart.health.hp = 1;
         }
+        // And everything else out of the way — the skin and every other
+        // room. This test is about what happens *when* the Heartseed
+        // goes, not about how long a creature takes to eat its way to
+        // it, and the answer to the second question moved the moment
+        // M6 changed how many rooms a tower has.
+        let heart_hp = content().balance.siege.heartseed_hp;
+        for floor in &mut state.tower.floors {
+            floor.panel.hp = 0;
+            floor.rooms.retain(|room| room.health.max == heart_hp);
+        }
     }
     provoke_fully(&mut game);
-    game.step(30_000);
+    // **Stopped, so nothing is shaken off.** §11 makes walking the free
+    // answer to a wave: a striding tower sheds what is clinging to it,
+    // so a test that wants something to finish the Heartseed has to let
+    // it. This passed while the tower had less to chew through; a wider
+    // hull and a longer wait only made the race closer.
+    game.try_send(GameCommand::SetStriding { walking: false })
+        .expect("always legal");
+    for _ in 0..200 {
+        provoke_fully(&mut game);
+        game.step(300);
+        if game.state().siege.lost {
+            break;
+        }
+    }
 
     assert!(
         game.state().siege.lost,
@@ -1576,11 +1631,18 @@ fn a_fed_battery_sees_creatures_off() {
     let content = content();
     let darts = item(&content, "item.darts");
     let mut game = engine(1009);
+    // The tower's own gun and its cutter arm out, or this measures
+    // them rather than its subject (`SYSTEMS.md` §6.13).
+    crate::tests::disarm(&mut game);
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
-        floor: 1,
-        slot: 5,
+        floor: 2,
+        // **The front.** A dart battery is `front_only` since M6
+        // (`SYSTEMS.md` §6.13): a thing that shoots outward
+        // lives on the outside. One slot wide, so the front is
+        // the last column.
+        slot: 9,
     })
     .expect("affordable after 200 seconds");
 
@@ -1616,11 +1678,18 @@ fn a_dry_battery_is_as_quiet_as_a_starved_mill() {
     // ammo fails exactly the way a room out of inputs fails, through
     // the same stack and the same haul system.
     let mut game = engine(1010);
+    // The tower's own gun and its cutter arm out, or this measures
+    // them rather than its subject (`SYSTEMS.md` §6.13).
+    crate::tests::disarm(&mut game);
     crate::tests::stock_poles(&mut game, 20);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
-        floor: 1,
-        slot: 5,
+        floor: 2,
+        // **The front.** A dart battery is `front_only` since M6
+        // (`SYSTEMS.md` §6.13): a thing that shoots outward
+        // lives on the outside. One slot wide, so the front is
+        // the last column.
+        slot: 9,
     })
     .expect("affordable");
     provoke_fully(&mut game);
@@ -1644,7 +1713,7 @@ fn a_dry_battery_is_as_quiet_as_a_starved_mill() {
         .floors
         .iter()
         .flat_map(|floor| floor.rooms.iter())
-        .find(|room| room.slot == 5 && room.def == battery_def(&game))
+        .find(|room| room.slot == 9 && room.def == battery_def(&game))
         .expect("the battery is still standing");
     assert!(
         battery.stalled,
@@ -2067,8 +2136,12 @@ fn an_emplacement_prefers_the_creature_the_player_named() {
     crate::tests::stock_for(&mut game, "room.dart_battery", 2);
     game.try_send(GameCommand::PlaceRoom {
         room: "room.dart_battery".into(),
-        floor: 1,
-        slot: 6,
+        floor: 2,
+        // **The front.** A dart battery is `front_only` since M6
+        // (`SYSTEMS.md` §6.13): a thing that shoots outward
+        // lives on the outside. One slot wide, so the front is
+        // the last column.
+        slot: 9,
     })
     .expect("a battery is affordable with the shelves stocked");
 
@@ -2252,5 +2325,116 @@ fn somebody_in_the_room_sends_a_thief_away_without_a_fight() {
         game.state().siege.repelled,
         repelled_before,
         "being asked to leave was counted as being seen off"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Weapons (`SYSTEMS.md` §6.13)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_weapon_only_goes_on_the_leading_edge() {
+    // A thing that reaches out of the tower lives on the outside of it,
+    // and the front is the edge everything arrives from.
+    let content = content();
+    let mut game = crate::tests::opening(30);
+    crate::tests::stock_item(&mut game, "item.poles", 60);
+
+    let slots = content.balance.tower.floor_slots;
+    let refused = game
+        .try_send(GameCommand::PlaceRoom {
+            room: "room.thorn_gun".into(),
+            floor: 1,
+            slot: 3,
+        })
+        .expect_err("a gun in the middle of a floor is not a gun on the front");
+    assert!(
+        matches!(refused, crate::command::CommandError::NotAtTheFront { front, .. } if front == slots - 1),
+        "refused for the wrong reason: {refused:?}"
+    );
+
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.thorn_gun".into(),
+        floor: 1,
+        slot: slots - 1,
+    })
+    .expect("the leading edge is where it goes");
+
+    // And a wide weapon sits *flush* with the edge rather than being
+    // banned from it: the front is `slots - width`.
+    let mut game = crate::tests::opening(31);
+    crate::tests::stock_item(&mut game, "item.poles", 60);
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.garden".into(),
+        floor: 1,
+        slot: 3,
+    })
+    .expect("the farm opens the cutter arm");
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.cutter_arm".into(),
+        floor: 1,
+        slot: slots - 2,
+    })
+    .expect("two wide, so the front is two back from the edge");
+}
+
+#[test]
+fn a_cutter_arm_cuts_what_climbs_into_it() {
+    // **Dual use, and the second use is free.** An arm is a blade on a
+    // boom; a creature that climbs onto its floor has climbed into the
+    // arc of a working blade. Two identical towers, one with the arm
+    // and one without, and the same creature clinging to the same
+    // floor.
+    let content = content();
+    // **A ground-approach creature, not a leaper.** A leaper lands on
+    // the roof and an arm is `max_floor` 1 — a wave on the top of a
+    // tall tower is exactly what a boom on the ground cannot answer,
+    // which is the limit that keeps this from being a free
+    // emplacement.
+    let skitter = content
+        .enemy_idx("enemy.skitter")
+        .expect("the pack defines a skitter");
+
+    let hp_after = |with_arm: bool| -> i64 {
+        let mut game = engine(32);
+        crate::tests::disarm(&mut game);
+        hold_the_repairs_off(&mut game);
+        game.try_send(GameCommand::SetStriding { walking: false })
+            .expect("always legal");
+        if with_arm {
+            crate::tests::stock_poles(&mut game, 20);
+            let slots = content.balance.tower.floor_slots;
+            // **Floor 0**, which is where a ground-approach creature
+            // takes hold. An arm only reaches its own floor.
+            game.try_send(GameCommand::PlaceRoom {
+                room: "room.cutter_arm".into(),
+                floor: 0,
+                slot: slots - 2,
+            })
+            .expect("the leading edge of the ground floor is clear once disarmed");
+        }
+        // **Panels left alone.** A creature works the first *intact*
+        // one, so stripping the low ones sends it up the tower — this
+        // test had it chewing floor 2 while the arm swung on floor 0.
+        place_creature(&mut game, skitter, 0);
+        for _ in 0..900 {
+            game.step(1);
+        }
+        // A creature the arm finished is gone from the list, which is
+        // the strongest form of the result: `max` of nothing is 0.
+        game.state()
+            .siege
+            .enemies
+            .iter()
+            .map(|enemy| enemy.hp)
+            .max()
+            .unwrap_or(0)
+    };
+
+    let bare = hp_after(false);
+    let armed = hp_after(true);
+    assert!(
+        armed < bare,
+        "an arm on the floor a creature was clinging to did nothing: {armed} against {bare}"
     );
 }

@@ -17,6 +17,10 @@ RoomDef(
     // player — the journal (§5.7) is the other kind of unlock and can
     // only filter a menu.
     unlocked_by: "room.burner",
+    // On the leading edge with the rest of the weapons
+    // (`SYSTEMS.md` §6.13): a thing that shoots outward lives on the
+    // outside.
+    front_only: true,
     category: Defence,
     // One slot. Deliberately the smallest thing in the pack: defence
     // competes for floor with the chain that pays for it, and an

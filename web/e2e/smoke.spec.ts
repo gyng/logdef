@@ -126,10 +126,15 @@ async function openLadder(page: Page): Promise<string[]> {
       const floors = hooks.view().tower.floors;
       for (let at = floors.length - 1; at >= 0; at -= 1) {
         const floor = floors[at]!;
-        // Leave the outboard column alone: a shaft needs one free slot
-        // on every floor it spans, and a spec that fills it makes its
-        // own elevator unbuildable.
-        for (let slot = 0; slot + width <= floor.slots - 1; slot += 1) {
+        // **Column 7 is the shaft's, and the edge is the weapons'.**
+        // A shaft needs one free slot on every floor it spans, and a
+        // spec that fills it makes its own elevator unbuildable — but
+        // M6 widened the floor and put weapons on columns 8-9
+        // (`SYSTEMS.md` §6.13), so refusing the last column refuses
+        // the cutter arm its only home. Reserve the one that matters.
+        const shaftColumn = 7;
+        for (let slot = 0; slot + width <= floor.slots; slot += 1) {
+          if (slot <= shaftColumn && slot + width > shaftColumn) continue;
           if (hooks.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") return true;
         }
       }

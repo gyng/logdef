@@ -90,6 +90,15 @@ export interface UiState {
   zoom: number;
   /** Crew the player has picked out. Not simulation state. */
   picked: number[];
+  /**
+   * Everything the tower can point at something, with what is on its
+   * rack.
+   *
+   * Digested here rather than in the component because the cross-section
+   * is not in `UiState` and should not be: React gets a summary ten
+   * times a second, not the whole tower.
+   */
+  weapons: { id: number; floor: number; short: string; name: string; ammo: number }[];
   /** The marquee being dragged, in client coordinates. */
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   day: number;
@@ -825,6 +834,18 @@ export class Game {
       zoom: this.renderer.getZoom(),
       picked: this.picked,
       marquee: this.marquee,
+      weapons: (view?.tower.floors ?? []).flatMap((floor) =>
+        floor.rooms
+          .map((room) => ({ room, info: this.catalog.rooms[room.def] }))
+          .filter((entry) => entry.info?.defence === true)
+          .map(({ room, info }) => ({
+            id: room.id,
+            floor: floor.index,
+            short: info?.short ?? "?",
+            name: info?.name ?? "weapon",
+            ammo: room.inputs[0]?.count ?? 0,
+          })),
+      ),
       day: view?.clock.day ?? 0,
       daypart: view === null ? "—" : (this.catalog.dayparts[view.clock.daypart]?.name ?? "—"),
       daypartIndex: view?.clock.daypart ?? 0,

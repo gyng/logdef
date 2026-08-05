@@ -30,7 +30,20 @@ Balance(
         starting_floors: 2,
         // Cozy scale: the whole tower stays on one screen.
         max_floors: 14,
-        floor_slots: 8,
+        // **Ten, widened from eight when weapons got their own edge.**
+        //
+        // A weapon is `front_only` (`SYSTEMS.md` §6.13) — a thing that
+        // reaches out of the tower lives on the outside of it — and the
+        // frontmost column a two-wide room can occupy was slot 6-7,
+        // which is the column the first elevator goes in. Measured: 54
+        // of 306 tests failed on that collision, every one of them a
+        // shaft that could no longer find a clear column.
+        //
+        // Two more slots gives the weapons columns 8 and 9 and leaves 7
+        // where it was. It also makes the hull wider, which is the
+        // direction the design is going anyway: more rooms, more
+        // people, more jobs.
+        floor_slots: 10,
         floor_cost: [CostEntryDef(item: "item.poles", amount: 6)],
         // One body on the stairs at a time. Two crew is already a
         // queue, which is the whole thesis in miniature.
@@ -99,6 +112,13 @@ Balance(
         starting_rooms: [
             StartingRoomDef(room: "room.heartseed", floor: 0, slot: 1),
             StartingRoomDef(room: "room.bunk", floor: 1, slot: 1),
+            // **And one gun**, on the leading edge of the ground floor.
+            // A tower whose only answer to the first creature is to
+            // walk away has one verb; §11 means walking to be the
+            // *free* answer, not the only one. It eats raw bamboo, so
+            // it is the one weapon a tower can always feed and never
+            // the efficient one.
+            StartingRoomDef(room: "room.thorn_gun", floor: 0, slot: 9),
         ],
     ),
     crew: CrewBalance(
