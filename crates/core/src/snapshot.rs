@@ -546,6 +546,11 @@ pub struct ShaftInfo {
     pub ticks_per_floor: u32,
     pub charge_per_floor: i64,
     pub cars: u8,
+    /// Cars it may be grown to with `AddCar`. Equal to `cars` means it
+    /// cannot grow.
+    pub max_cars: u8,
+    /// What one more car costs, on top of the shaft.
+    pub car_cost: Vec<CostInfo>,
     /// Stock the shaft fetches per trip when nobody is riding it
     /// (`SYSTEMS.md` §6.18).
     pub batch: i64,
@@ -1416,6 +1421,8 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                 ticks_per_floor: shaft.ticks_per_floor,
                 charge_per_floor: shaft.charge_per_floor,
                 cars: shaft.cars,
+                max_cars: shaft.max_cars.max(shaft.cars),
+                car_cost: cost(&content.shaft_runtime[i].car_cost),
                 batch: shaft.batch,
             })
             .collect(),

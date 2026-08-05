@@ -91,6 +91,15 @@ pub enum GameCommand {
     /// Needs still outrank it. A posted person goes to eat when hungry
     /// and to bed when their shift ends, and comes back afterwards — a
     /// station is not a cage.
+    /// Put another car in a shaft that already exists.
+    ///
+    /// **The late-game answer to a queue, and cheaper in the thing that
+    /// is actually scarce.** A second shaft costs a slot column on every
+    /// floor it spans; a second car costs none. So a tower that has run
+    /// out of width can still buy its way out of a queue, and a tower
+    /// that has width to spare gets to choose.
+    AddCar { shaft: ShaftId },
+
     /// Set the order idle crew reach for work in.
     ///
     /// **The whole order at once, and it must be a permutation.** A
@@ -247,10 +256,14 @@ pub enum CommandError {
     FloorTooLow { floor: FloorIdx, min_floor: u8 },
     /// A weapon, and not on the tower's leading edge.
     NotAtTheFront { slot: SlotIdx, front: SlotIdx },
+    /// An ordinary room aimed at the weapons' deck.
+    OnTheWeaponsDeck { slot: SlotIdx, deck_from: SlotIdx },
     /// Nothing within reach to take.
     NothingInReach,
     /// A work order that is not a permutation of every job.
     NotAWorkOrder,
+    /// This shaft holds as many cars as it can.
+    FullOfCars { cars: u8 },
     /// The hull is already as wide as it goes.
     AlreadyWidest { slots: u8 },
     /// Only one of these may exist in a tower.
@@ -318,6 +331,13 @@ impl std::fmt::Display for CommandError {
             CommandError::NotAWorkOrder => {
                 write!(f, "a work order has to list every job exactly once")
             }
+            CommandError::FullOfCars { cars } => {
+                write!(f, "the shaft already runs {cars} car(s)")
+            }
+            CommandError::OnTheWeaponsDeck { slot, deck_from } => write!(
+                f,
+                "slot {slot} is on the weapons' deck, which starts at {deck_from}"
+            ),
             CommandError::NothingInReach => {
                 write!(f, "nothing the tower is passing is close enough to take")
             }

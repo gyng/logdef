@@ -372,9 +372,21 @@ pub struct ShaftDef {
     pub ticks_per_floor: u32,
     #[serde(default)]
     pub charge_per_floor: i64,
-    /// Cars in the shaft. Zero for stairs.
+    /// Cars the shaft is built with. Zero for stairs.
     #[serde(default)]
     pub cars: u8,
+    /// Cars it may be grown to, with `AddCar`.
+    ///
+    /// **A shaft is a column and a column is scarce**, so the interesting
+    /// late question is not "another shaft" but "another car in the one
+    /// I have" — one costs a slot on every floor it passes and the other
+    /// does not. Zero, or anything not above `cars`, means the shaft
+    /// cannot grow.
+    #[serde(default)]
+    pub max_cars: u8,
+    /// What one more car costs, on top of the shaft.
+    #[serde(default)]
+    pub car_cost: Vec<CostEntryDef>,
     /// Items a dumbwaiter moves per trip.
     #[serde(default)]
     pub batch: i64,
@@ -966,6 +978,13 @@ pub struct TowerBalance {
     /// How wide the hull may get.
     #[serde(default)]
     pub max_slots: u8,
+    /// Outermost columns reserved for `front_only` rooms.
+    ///
+    /// The inverse of `RoomDef::front_only`: that says a weapon must be
+    /// at the front, and this says the front is *for* weapons. Zero
+    /// leaves the edge open to anything.
+    #[serde(default)]
+    pub front_slots: u8,
     pub stairs_capacity: u8,
     /// Items placed on the starting storeroom's shelves so the first
     /// floor is buildable before the mill has ever run.
@@ -1189,6 +1208,8 @@ pub struct OfferRuntime {
 #[derive(Debug, Clone)]
 pub struct ShaftRuntime {
     pub build_cost: Vec<(ItemIdx, i64)>,
+    /// What one more car costs, resolved.
+    pub car_cost: Vec<(ItemIdx, i64)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1761,21 +1782,27 @@ impl Content {
 
         let mut shaft_runtime = Vec::with_capacity(self.shafts.len());
         for shaft in &self.shafts {
-            let build_cost = shaft
-                .build_cost
-                .iter()
-                .map(|cost| match self.item_idx(&cost.item) {
-                    Some(idx) => (idx, cost.amount),
-                    None => {
-                        errors.push(LoadError {
-                            path: shaft.id.clone(),
-                            message: format!("build_cost references unknown item {}", cost.item),
-                        });
-                        (ItemIdx(0), cost.amount)
-                    }
-                })
-                .collect();
-            shaft_runtime.push(ShaftRuntime { build_cost });
+            let mut resolve = |costs: &[CostEntryDef], what: &str| -> Vec<(ItemIdx, i64)> {
+                costs
+                    .iter()
+                    .map(|cost| match self.item_idx(&cost.item) {
+                        Some(idx) => (idx, cost.amount),
+                        None => {
+                            errors.push(LoadError {
+                                path: shaft.id.clone(),
+                                message: format!("{what} references unknown item {}", cost.item),
+                            });
+                            (ItemIdx(0), cost.amount)
+                        }
+                    })
+                    .collect()
+            };
+            let build_cost = resolve(&shaft.build_cost, "build_cost");
+            let car_cost = resolve(&shaft.car_cost, "car_cost");
+            shaft_runtime.push(ShaftRuntime {
+                build_cost,
+                car_cost,
+            });
         }
         self.shaft_runtime = shaft_runtime;
 

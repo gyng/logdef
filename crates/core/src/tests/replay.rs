@@ -260,6 +260,9 @@ fn every_command_survives_the_replay_format() {
         },
         C::TakeWaypoint,
         C::WidenTower,
+        C::AddCar {
+            shaft: crate::ids::ShaftId(1),
+        },
         C::SetWorkOrder {
             order: crate::state::Job::ALL.to_vec(),
         },
@@ -279,6 +282,7 @@ fn every_command_survives_the_replay_format() {
             | C::SetShaftProgram { .. }
             | C::TakeWaypoint
             | C::WidenTower
+            | C::AddCar { .. }
             | C::SetWorkOrder { .. }
             | C::SetStriding { .. }
             | C::TakeFork { .. }

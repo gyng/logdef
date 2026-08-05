@@ -86,6 +86,26 @@ ShaftDef(
     // stops the merge quietly doubling the tower's lift bill.
     charge_per_floor: 4,
     cars: 1,
+    // **Three, and the third is for a tower nobody has built yet.**
+    //
+    // A shaft is a *column*, and a column is the scarcest thing a tower
+    // owns — it costs a slot on every floor it passes through, for
+    // ever. So the late answer to a queue should not have to be another
+    // column: `AddCar` puts a second and a third car in the shaft that
+    // is already there, and costs no width at all.
+    //
+    // Capacity is per car (`service_stop` boards up to `capacity` for
+    // each), so a second car is a second carload rather than a faster
+    // one — which is the right shape for the problem it solves. A queue
+    // is people waiting for a *turn*, not for speed.
+    max_cars: 3,
+    // Two thirds of the shaft itself, in the same two materials. Dear
+    // enough to be a decision and cheap enough to beat digging a second
+    // column, which is the comparison it exists to win.
+    car_cost: [
+        CostEntryDef(item: "item.poles", amount: 6),
+        CostEntryDef(item: "item.rope", amount: 2),
+    ],
     // Items moved per autonomous trip, inherited from the dumbwaiter
     // unchanged: a little more than one crew member's `carry_capacity`
     // of 3, so the lift beats a hauler on volume without making the

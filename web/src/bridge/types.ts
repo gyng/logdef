@@ -566,6 +566,10 @@ export interface ShaftInfo {
   capacity: number;
   ticks_per_floor: number;
   charge_per_floor: number;
+  /** Cars it may be grown to. Equal to `cars` means it cannot grow. */
+  max_cars: number;
+  /** What one more car costs, on top of the shaft. */
+  car_cost: CostInfo[];
   /** Stock the shaft fetches per trip when nobody is riding it. */
   batch: number;
   cars: number;
@@ -767,6 +771,8 @@ export type GameCommand =
   | { SetPowerPriority: { order: PowerUse[] } }
   /** Every job exactly once, best first. Anything else is refused. */
   | { SetWorkOrder: { order: string[] } }
+  /** Put another car in a shaft that already exists. */
+  | { AddCar: { shaft: number } }
   /** Ask every emplacement to prefer one creature. `null` clears it. */
   | { FocusEnemy: { enemy: number | null } }
   /**

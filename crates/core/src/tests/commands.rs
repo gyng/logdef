@@ -590,3 +590,101 @@ fn the_hull_stops_widening_somewhere() {
         "the hull went past its own ceiling"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The weapons' deck (`SYSTEMS.md` §6.21)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn an_ordinary_room_cannot_stand_on_the_weapons_deck() {
+    // `front_only` said a gun must be at the front. It did not say the
+    // front was *for* guns, so a storeroom could take the edge and the
+    // floor became unarmable with nothing saying why.
+    let content = content();
+    let mut game = crate::tests::engine(1800);
+    crate::tests::stock_poles(&mut game, 60);
+
+    let slots = game.state().tower.floors[1].slots;
+    let deck_from = slots - content.balance.tower.front_slots;
+    let err = game
+        .try_send(GameCommand::PlaceRoom {
+            room: "room.storeroom".into(),
+            floor: 3,
+            slot: deck_from,
+        })
+        .expect_err("that column belongs to the weapons");
+    assert!(
+        matches!(err, CommandError::OnTheWeaponsDeck { .. }),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn a_wide_room_cannot_lean_onto_the_deck_either() {
+    // Checked against the whole footprint, not the left edge — the same
+    // reason `slot_range_blocked` is. A two-wide room one slot short of
+    // the deck still covers the first column of it.
+    let content = content();
+    let mut game = crate::tests::engine(1801);
+    crate::tests::stock_poles(&mut game, 60);
+
+    let slots = game.state().tower.floors[1].slots;
+    let deck_from = slots - content.balance.tower.front_slots;
+    let width = content
+        .room_idx("room.storeroom")
+        .map(|idx| content.room(idx).width)
+        .expect("the pack defines a storeroom");
+    assert!(width > 1, "this test needs a room wider than one slot");
+
+    let err = game
+        .try_send(GameCommand::PlaceRoom {
+            room: "room.storeroom".into(),
+            floor: 3,
+            slot: deck_from + 1 - width,
+        })
+        .expect_err("its far edge is on the deck");
+    assert!(
+        matches!(err, CommandError::OnTheWeaponsDeck { .. }),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn a_weapon_still_reaches_the_edge_it_is_reserved() {
+    // The point of reserving it. A gun goes exactly where `front_only`
+    // puts it, and the deck is what keeps that column free.
+    let mut game = crate::tests::engine(1802);
+    crate::tests::stock_poles(&mut game, 60);
+    let slots = game.state().tower.floors[1].slots;
+    let width = game
+        .content()
+        .room_idx("room.thorn_gun")
+        .map(|idx| game.content().room(idx).width)
+        .expect("the pack defines a thorn gun");
+
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.thorn_gun".into(),
+        floor: 3,
+        slot: slots - width,
+    })
+    .expect("the leading edge is exactly where a weapon goes");
+}
+
+#[test]
+fn the_deck_is_wide_enough_for_the_widest_weapon() {
+    // A deck that could not hold the widest weapon in the pack would be
+    // a deck with a footnote.
+    let content = content();
+    let widest = content
+        .rooms
+        .iter()
+        .filter(|room| room.front_only)
+        .map(|room| room.width)
+        .max()
+        .expect("the pack has weapons");
+    assert!(
+        content.balance.tower.front_slots >= widest,
+        "front_slots {} is narrower than the widest weapon ({widest})",
+        content.balance.tower.front_slots
+    );
+}

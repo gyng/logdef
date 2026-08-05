@@ -75,6 +75,26 @@ Balance(
         // which is the same constraint `max_floors` answers vertically
         // and the whole art direction rests on.
         max_slots: 16,
+        // **The weapons' deck.** The outermost columns of every floor
+        // take nothing but `front_only` rooms — a mill cannot stand
+        // where a gun has to.
+        //
+        // `front_only` already said a weapon must be at the front
+        // (SYSTEMS.md §6.13). It did not say the front was *for*
+        // weapons, so an ordinary room could take the edge and the
+        // tower then had nowhere to arm from: measured on the harness
+        // towers, a storeroom on the leading edge of floor 1 makes a
+        // cutter arm unplaceable on that floor entirely, which reads as
+        // a bug because nothing on the card said the column was
+        // special.
+        //
+        // Two, because two is the widest weapon in the pack and a deck
+        // that could not hold the widest one would be a deck with a
+        // footnote. Out of ten slots that is a fifth of every floor
+        // reserved, which is the cost of being a tower that can shoot
+        // back — and it is paid on every floor, so a taller tower
+        // reserves more.
+        front_slots: 2,
         // One body on the stairs at a time. Two crew is already a
         // queue, which is the whole thesis in miniature.
         stairs_capacity: 1,

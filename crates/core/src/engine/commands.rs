@@ -62,6 +62,7 @@ pub fn apply(
         GameCommand::TakeWaypoint => take_waypoint(state, content),
         GameCommand::WidenTower => widen_tower(state, content),
         GameCommand::SetWorkOrder { order } => set_work_order(state, order),
+        GameCommand::AddCar { shaft } => add_car(state, content, *shaft),
         GameCommand::Reinforce => reinforce(state, content),
         GameCommand::SetShift { crew, shift } => set_shift(state, *crew, *shift),
     }
@@ -306,6 +307,35 @@ fn build_shaft(
     Ok(())
 }
 
+/// Put another car in a shaft.
+///
+/// **It starts where the shaft starts, not where the other car is.** A
+/// new car spawned beside the existing one would arrive with the same
+/// sweep in front of it and spend its first minutes shadowing it; at the
+/// bottom of the shaft it starts out of phase, which is the whole point
+/// of having two.
+fn add_car(state: &mut GameState, content: &Content, id: ShaftId) -> Result<(), CommandError> {
+    let Some(index) = state.tower.shafts.iter().position(|shaft| shaft.id == id) else {
+        return Err(CommandError::NoSuchShaft { id });
+    };
+    let def_idx = state.tower.shafts[index].def;
+    let def = content.shaft(def_idx);
+    let now = u8::try_from(state.tower.shafts[index].cars.len()).unwrap_or(u8::MAX);
+    if now >= def.max_cars.max(def.cars) {
+        return Err(CommandError::FullOfCars { cars: now });
+    }
+
+    let cost = content.shaft_rt(def_idx).car_cost.clone();
+    check_stock(state, content, &cost)?;
+    spend(state, &cost);
+
+    let low = state.tower.shafts[index].low;
+    let mut car = Car::new();
+    car.pos = crate::fx::Fx::from_int(i32::from(low));
+    state.tower.shafts[index].cars.push(car);
+    Ok(())
+}
+
 fn remove_shaft(state: &mut GameState, id: ShaftId) -> Result<(), CommandError> {
     let Some(position) = state.tower.shafts.iter().position(|shaft| shaft.id == id) else {
         return Err(CommandError::NoSuchShaft { id });
@@ -471,6 +501,24 @@ fn place_room(
         let front = target.slots.saturating_sub(def.width);
         if slot != front {
             return Err(CommandError::NotAtTheFront { slot, front });
+        }
+    } else {
+        // **And the front is *for* weapons**, which is the half that was
+        // missing (`SYSTEMS.md` §6.21). `front_only` said a gun must
+        // stand on the leading edge; nothing said an ordinary room could
+        // not stand there instead — so a storeroom on the edge of a
+        // floor made that floor unarmable, and nothing on the card said
+        // the column was special.
+        //
+        // Checked against the room's whole footprint rather than its
+        // left edge, for the same reason `slot_range_blocked` is: a
+        // three-wide room at slot 7 of ten covers 7, 8 and 9, and
+        // testing the 7 alone reserves nothing at all.
+        let deck_from = target
+            .slots
+            .saturating_sub(content.balance.tower.front_slots);
+        if content.balance.tower.front_slots > 0 && slot.saturating_add(def.width) > deck_from {
+            return Err(CommandError::OnTheWeaponsDeck { slot, deck_from });
         }
     }
 

@@ -374,6 +374,22 @@ export class Game {
    * dusk" is harder to read back than one that says what the schedule
    * *became*.
    */
+  /**
+   * Put another car in a shaft that already exists.
+   *
+   * The late answer to a queue, and cheaper in the thing that is
+   * actually scarce: a second shaft costs a slot column on every floor
+   * it spans, a second car costs none.
+   */
+  addCar(shaft: number): void {
+    this.send({ AddCar: { shaft } });
+  }
+
+  /** Can the shelves pay for another car in this shaft? */
+  canAffordCar(info: ShaftInfo): boolean {
+    return info.car_cost.every((cost) => this.stockOf(cost.item) >= cost.amount);
+  }
+
   setShaftProgram(id: number, daypart: number, served: boolean[], priority: ShaftPriority): void {
     this.send({ SetShaftProgram: { id, daypart, served, priority } });
   }

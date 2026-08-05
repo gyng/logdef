@@ -21,6 +21,7 @@ import type {
   RoomInfo,
   PowerUse,
   ShaftInfo,
+  ShaftView,
   SimSpeed,
   StoreView,
 } from "../bridge/types";
@@ -264,6 +265,42 @@ function WorkOrder({ game, ui }: Props) {
   );
 }
 
+/**
+ * Put another car in this shaft.
+ *
+ * Reads how many it has from the view and how many it may have from the
+ * catalog, so a pack that says a shaft cannot grow simply renders
+ * nothing rather than a disabled button nobody can act on.
+ */
+function AddCarButton({
+  game,
+  shaft,
+  info,
+}: {
+  game: Game;
+  shaft: ShaftView;
+  info: ShaftInfo | undefined;
+}) {
+  if (!info || info.max_cars <= shaft.cars.length) return null;
+  const affordable = game.canAffordCar(info);
+  return (
+    <button
+      type="button"
+      className="schedule-car"
+      disabled={!affordable}
+      data-testid={`add-car-${shaft.id}`}
+      title={
+        affordable
+          ? `Put another car in. ${shaft.cars.length} of ${info.max_cars} — a car is a turn, not speed, so this buys queue rather than pace.`
+          : "not enough on the shelves"
+      }
+      onClick={() => game.addCar(shaft.id)}
+    >
+      +car
+    </button>
+  );
+}
+
 function PowerOrder({ game, ui }: Props) {
   const move = (from: number, by: number) => {
     const next = [...ui.powerPriority];
@@ -437,6 +474,14 @@ function Schedules({ game, ui }: Props) {
           return (
             <li className="schedule-row" key={shaft.id} data-testid={`schedule-${shaft.id}`}>
               <span className="schedule-name">{info?.name ?? "shaft"}</span>
+              {/*
+                **Another car, not another column** (`SYSTEMS.md`
+                §6.20). A shaft costs a slot on every floor it passes
+                through, for ever; a car costs none. So the answer to a
+                queue late on lives here, on the shaft that already
+                exists, rather than in the build menu.
+              */}
+              <AddCarButton game={game} shaft={shaft} info={info} />
               <span className="schedule-floors">
                 {Array.from({ length: shaft.high - shaft.low + 1 }, (_, i) => {
                   const floor = shaft.low + i;

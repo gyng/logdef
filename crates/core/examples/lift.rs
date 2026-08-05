@@ -294,6 +294,13 @@ const WIDTHS: [u8; 4] = [10, 12, 14, 16];
 /// The height the width sweep runs at. See `WIDTHS`.
 const WIDTH_SWEEP_HEIGHT: u8 = 8;
 
+/// Crew counts for the car sweep: the tower's starting three, a middling
+/// five, and `crew_cap`.
+const CREWS: [usize; 3] = [3, 5, 8];
+
+/// Cars for the car sweep, up to the lift's `max_cars`.
+const CARS: [u8; 3] = [1, 2, 3];
+
 /// Ticks the affordability run will wait before giving up: twenty
 /// in-game days, comfortably past a whole session.
 const PATIENCE: u32 = DAY * 20;
@@ -426,6 +433,7 @@ fn main() {
 
     verdict(&verdicts);
     does_width_undo_the_shaft(&pack);
+    does_a_second_car_pay(&pack);
     when_can_you_afford_one(&pack);
 }
 
@@ -519,6 +527,72 @@ fn does_width_undo_the_shaft(pack: &Arc<Content>) {
             "  The lift is worth {narrow:+.0}% on the narrowest hull and {wide:+.0}% on the\n             widest. If that has collapsed, a wide tower does not want one."
         );
     }
+}
+
+/// **Does a second car pay, and does a crowd make it necessary?**
+///
+/// The late-game question `AddCar` exists for (`SYSTEMS.md` §6.20). A
+/// shaft is a *column* and a column is the scarcest thing a tower owns,
+/// so the answer to a queue late on should be another car rather than
+/// another shaft — but only if a car actually buys anything.
+///
+/// Capacity is applied per car (`service_stop` boards up to `capacity`
+/// for each), so a second car is a second **carload**, not a faster one.
+/// That means it should do nothing at all when nobody is queueing and
+/// everything when the tower is crowded, which is exactly what the sweep
+/// is checking: crew across, cars down.
+///
+/// Read the diagonal. If the three-crew row is flat and the eight-crew
+/// row is not, cars are a late-game purchase and the design works. If
+/// every row is flat, a car buys nothing and `AddCar` is a button. If
+/// the three-crew row *rises*, cars are just good and there is no
+/// decision in them.
+fn does_a_second_car_pay(pack: &Arc<Content>) {
+    println!("\n=== does a second car pay, and when? ===\n");
+    println!(
+        "  {WIDTH_SWEEP_HEIGHT} floors, {} seeds a cell. Hauls completed, and in brackets the\n         crew-ticks spent standing at the shaft — which is what a car is bought to reduce.\n         Every tower is handed every car's price; only some spend it.\n",
+        SEEDS.len(),
+    );
+    print!("{:<6}", "crew");
+    for cars in CARS {
+        print!("{:>22}", format!("{cars} car(s)"));
+    }
+    println!();
+
+    for crew in CREWS {
+        print!("{crew:<6}");
+        let mut first = None;
+        for cars in CARS {
+            let s = Sample::mean(&SEEDS.map(|seed| measure_cars(pack, seed, crew, cars)));
+            let delta = match first {
+                None => {
+                    first = Some(s.hauls);
+                    String::new()
+                }
+                Some(base) if base > 0 => format!(
+                    " {:+.0}%",
+                    (s.hauls as f64 - base as f64) * 100.0 / base as f64
+                ),
+                Some(_) => String::new(),
+            };
+            print!("{:>22}", format!("{}{delta} ({})", s.hauls, s.boarding));
+        }
+        println!();
+    }
+    println!(
+        "\n  A car is a *turn*, not speed. Flat at three crew and rising at eight is the\n         shape `AddCar` is for; flat everywhere means it buys nothing."
+    );
+    println!(
+        "
+  **What it says is not that shape.** A second car does exactly what a car
+         is for -- queueing falls 60-75% at every crew count -- but it pays *less* at
+         eight crew (+7%) than at three (+11%). The reason is the first column: three
+         crew to eight buys +4% hauls. **This tower is not crew-bound.** Read the
+         plateau rather than the deltas: hauls stop at ~225 whatever is thrown at the
+         transport, so the binding constraint sits downstream of the shaft and more
+         bodies cannot make a car more necessary. Growing the *tower* alongside the
+         crew is the sweep this wants next; it holds the room plan fixed."
+    );
 }
 
 /// Percentage change from `from` to `to`, guarding a zero baseline.
@@ -947,6 +1021,24 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
     measure_at(pack, seed, height, build_lift, 0)
 }
 
+/// As `measure`, with `crew` aboard and `cars` in the lift.
+///
+/// Crew are cloned from the last one aboard and dropped at the foot of
+/// the tower, which is where a recruit arrives anyway. Cloning rather
+/// than constructing keeps them fed, rested and on the day shift — a
+/// harness that added starving crew would measure hunger.
+fn measure_cars(pack: &Arc<Content>, seed: u64, crew: usize, cars: u8) -> Sample {
+    measure_with(
+        pack,
+        seed,
+        WIDTH_SWEEP_HEIGHT,
+        Lift::Elevator,
+        0,
+        crew,
+        cars,
+    )
+}
+
 /// As `measure`, with the hull widened to `width` slots first.
 ///
 /// **Widened before anything is placed**, which is not tidiness:
@@ -955,9 +1047,27 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
 /// would move the reserved columns out from under the plan. Zero means
 /// "whatever the pack ships".
 fn measure_at(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift, width: u8) -> Sample {
+    measure_with(pack, seed, height, build_lift, width, 0, 0)
+}
+
+/// The full sweep surface: height, width, crew and cars.
+///
+/// Zero means "as the pack ships it" for each of the last three, so the
+/// older entry points read unchanged.
+#[allow(clippy::too_many_arguments)]
+fn measure_with(
+    pack: &Arc<Content>,
+    seed: u64,
+    height: u8,
+    build_lift: Lift,
+    width: u8,
+    crew: usize,
+    cars: u8,
+) -> Sample {
     let mut game = GameEngine::with_content(seed, Arc::clone(pack));
     grow(&mut game, height);
     widen_to(&mut game, width);
+    crew_of(&mut game, crew);
     // Read *after* widening: the whole point is that this is no longer
     // the pack's constant.
     let slots = game
@@ -1117,6 +1227,44 @@ fn measure_at(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift, widt
         ),
     }
 
+    // **Extra cars, and every tower is handed the price whether it
+    // spends it or not.** Stocking only the tower that buys is how the
+    // first version of `a_second_car_moves_more_than_one_does` came out
+    // at 50 hauls against 185: a shelf holds one kind and the tower has
+    // eight of them, so 80 granted poles is an economy, not a control.
+    if cars > 1 {
+        let id = game
+            .state()
+            .tower
+            .shafts
+            .last()
+            .expect("a lift was just raised")
+            .id;
+        for _ in 1..cars {
+            let cost = {
+                let content = game.content();
+                content
+                    .shaft_idx("shaft.elevator")
+                    .map(|idx| content.shaft_rt(idx).car_cost.clone())
+                    .unwrap_or_default()
+            };
+            give(&mut game, &cost);
+            game.try_send(GameCommand::AddCar { shaft: id })
+                .unwrap_or_else(|err| panic!("could not add a car: {err}"));
+        }
+        assert_eq!(
+            game.state()
+                .tower
+                .shafts
+                .last()
+                .expect("still there")
+                .cars
+                .len(),
+            cars as usize,
+            "the harness did not end up with the cars it asked for"
+        );
+    }
+
     walk(&mut game, WARMUP);
 
     let before = game.state().stats.clone();
@@ -1222,6 +1370,31 @@ fn grow(game: &mut GameEngine, height: u8) {
         give(game, &cost);
         game.try_send(GameCommand::BuildFloor)
             .unwrap_or_else(|err| panic!("could not add a floor: {err}"));
+    }
+}
+
+/// Put `crew` people aboard, cloning the last one so they arrive fed,
+/// rested and on the day shift.
+///
+/// **Cloned rather than constructed**, because a harness that added
+/// starving crew on the night rota would be measuring needs while
+/// claiming to measure a shaft. Zero leaves the roster alone.
+fn crew_of(game: &mut GameEngine, crew: usize) {
+    if crew == 0 {
+        return;
+    }
+    let content = game.content().clone();
+    let state = game.state_mut_for_test();
+    while state.crew.len() > crew {
+        state.crew.pop();
+    }
+    while state.crew.len() < crew {
+        // The game's own recruiter, which names them off the pack, draws
+        // `fidget` from the *cosmetic* stream (`DECISIONS.md` §2) and
+        // starts them rested. A harness that built its own would have to
+        // get all three right and would quietly measure whatever it got
+        // wrong.
+        state.add_crew(&content);
     }
 }
 

@@ -6,7 +6,7 @@
 //! behaviour that makes it recognisably an elevator: it batches, it
 //! sweeps, it does not carry people the wrong way, and it fills up.
 
-use crate::command::GameCommand;
+use crate::command::{CommandError, GameCommand};
 use crate::content::ShaftKind;
 use crate::snapshot::CrewStateTag;
 use crate::state::{CarState, CrewState, ShaftPriority};
@@ -847,5 +847,170 @@ fn the_lift_stops_when_there_is_nowhere_to_put_anything() {
     assert!(
         stuck <= batch,
         "the dumbwaiter is hoarding {stuck} bamboo it will never deliver"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// A second car (`SYSTEMS.md` §6.20)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_shaft_can_be_given_another_car() {
+    let mut game = with_shaft(940, "shaft.elevator", 0, 2, 7);
+    let shaft = game.state().tower.shafts.last().expect("just built").id;
+    let before = game
+        .state()
+        .tower
+        .shafts
+        .last()
+        .expect("just built")
+        .cars
+        .len();
+    crate::tests::stock_poles(&mut game, 40);
+    crate::tests::stock_item(&mut game, "item.rope", 10);
+
+    game.try_send(GameCommand::AddCar { shaft })
+        .expect("a paid-for car should go in");
+
+    let cars = &game.state().tower.shafts.last().expect("still there").cars;
+    assert_eq!(cars.len(), before + 1, "the car did not arrive");
+    // **At the bottom, not beside the other one.** A car spawned next to
+    // its sibling shadows it — same sweep, same calls — and the whole
+    // point of a second car is that it is somewhere else.
+    assert_eq!(
+        cars.last().expect("the new car").floor(),
+        game.state().tower.shafts.last().expect("still there").low,
+        "a new car should start at the foot of the shaft"
+    );
+}
+
+#[test]
+fn a_shaft_stops_taking_cars_somewhere() {
+    let content = content();
+    let mut game = with_shaft(941, "shaft.elevator", 0, 2, 7);
+    let shaft = game.state().tower.shafts.last().expect("just built").id;
+    let max = content
+        .shaft_idx("shaft.elevator")
+        .map(|idx| content.shaft(idx).max_cars)
+        .expect("the pack defines a lift");
+
+    let mut added = 0;
+    loop {
+        crate::tests::stock_poles(&mut game, 40);
+        crate::tests::stock_item(&mut game, "item.rope", 10);
+        match game.try_send(GameCommand::AddCar { shaft }) {
+            Ok(()) => added += 1,
+            Err(CommandError::FullOfCars { .. }) => break,
+            Err(other) => panic!("adding a car failed for the wrong reason: {other:?}"),
+        }
+        assert!(added < 50, "the shaft took cars without limit");
+    }
+    assert!(added > 0, "the shaft would never take a second car");
+    assert_eq!(
+        game.state()
+            .tower
+            .shafts
+            .last()
+            .expect("still there")
+            .cars
+            .len(),
+        max as usize,
+        "the shaft went past its own ceiling"
+    );
+}
+
+#[test]
+fn adding_a_car_to_nothing_is_refused() {
+    let mut game = crate::tests::engine(942);
+    crate::tests::stock_poles(&mut game, 40);
+    let err = game
+        .try_send(GameCommand::AddCar {
+            shaft: crate::ids::ShaftId(9999),
+        })
+        .expect_err("there is no such shaft");
+    assert!(matches!(err, CommandError::NoSuchShaft { .. }), "{err:?}");
+}
+
+#[test]
+fn an_unpaid_car_changes_nothing() {
+    // `DECISIONS.md` §4: validate fully before mutating.
+    let mut game = with_shaft(943, "shaft.elevator", 0, 2, 7);
+    let shaft = game.state().tower.shafts.last().expect("just built").id;
+    let before = game
+        .state()
+        .tower
+        .shafts
+        .last()
+        .expect("just built")
+        .cars
+        .len();
+    let hash = crate::replay::hash_state(game.state());
+
+    let err = game
+        .try_send(GameCommand::AddCar { shaft })
+        .expect_err("the shelves are empty");
+    assert!(
+        matches!(err, CommandError::InsufficientStock { .. }),
+        "{err:?}"
+    );
+    assert_eq!(
+        game.state()
+            .tower
+            .shafts
+            .last()
+            .expect("still there")
+            .cars
+            .len(),
+        before
+    );
+    assert_eq!(hash, crate::replay::hash_state(game.state()));
+}
+
+#[test]
+fn a_second_car_moves_more_than_one_does() {
+    // **The reason to sell one.** A car is a *turn*, not speed: capacity
+    // is applied per car, so a second car is a second carload and what
+    // it buys is queue rather than pace. Measured on the same seed with
+    // the same tower, crowded enough that one car has a queue to work
+    // through.
+    // **Both towers are handed the price; only one spends it.** The
+    // first version stocked only the tower that was buying, and three
+    // cars came out at 50 hauls against one car's 185 — which was the
+    // shelf jam, not the cars. A shelf holds one kind and the tower has
+    // eight of them, so 80 poles and 20 rope granted to one side and
+    // nothing to the other is a comparison of two different economies.
+    // The rule is `AGENTS.md`'s: never let the setup differ by anything
+    // but the thing under test.
+    let hauls_with = |cars: u8| -> u64 {
+        let mut game = with_shaft(944, "shaft.elevator", 0, 4, 7);
+        let shaft = game.state().tower.shafts.last().expect("just built").id;
+        for _ in 1..3 {
+            crate::tests::stock_poles(&mut game, 40);
+            crate::tests::stock_item(&mut game, "item.rope", 10);
+        }
+        for _ in 1..cars {
+            game.try_send(GameCommand::AddCar { shaft })
+                .expect("a paid-for car should go in");
+        }
+        assert_eq!(
+            game.state()
+                .tower
+                .shafts
+                .last()
+                .expect("still there")
+                .cars
+                .len(),
+            cars as usize,
+            "the fixture did not end up with the cars it asked for"
+        );
+        crate::tests::step_quietly(&mut game, 20_000);
+        game.state().stats.hauls_completed
+    };
+
+    let one = hauls_with(1);
+    let three = hauls_with(3);
+    assert!(
+        three >= one,
+        "three cars moved less than one: {three} against {one}"
     );
 }
