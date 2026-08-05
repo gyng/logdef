@@ -45,17 +45,26 @@ Balance(
         // people, more jobs.
         floor_slots: 10,
         floor_cost: [CostEntryDef(item: "item.poles", amount: 6)],
-        // **Widening costs more than growing**, which is the shape the
-        // design asks for: a floor goes on top of what is already
-        // there, and a wider hull is new frame along the *whole*
-        // height. Ten poles against a floor's six, and unlike a floor
-        // it buys nothing until you put something in it.
+        // **Per floor of hull, and dear.** Both halves are measured
+        // rather than reasoned; the first version of this row was
+        // reasoned and was wrong in the direction that flatters the
+        // feature.
         //
-        // The gain is two slots, so it is 5 poles a slot against a
-        // floor's 6-for-eight — cheaper per slot and dearer per
-        // purchase, which is what makes it the considered option rather
-        // than the default one.
-        widen_cost: [CostEntryDef(item: "item.poles", amount: 10)],
+        // Per floor, because a widening is new frame along the whole
+        // height: a flat fee charged a fourteen-floor tower the same as
+        // a two-floor one for seven times the frame.
+        //
+        // Dear, because `examples/lift.rs` swept it: a stairs-only
+        // eight-floor tower hauls 56, 56, 56, 58 at ten, twelve,
+        // fourteen and sixteen slots, and crew-ticks spent climbing do
+        // not move at all. **Width is not relief for the climb.** What
+        // it buys is somewhere to put a room, so it competes with
+        // `BuildFloor` and never with a shaft — and against a floor's
+        // six poles for ten slots, three poles a floor for two slots is
+        // 1.5 poles a slot-floor against 0.6. Two and a half times
+        // dearer than growing up, which is what a thing that adds no
+        // throughput should cost.
+        widen_cost: [CostEntryDef(item: "item.poles", amount: 3)],
         // Two at a time. One slot is not a room — everything in the
         // pack except a cell bank and a thorn gun is two wide or more —
         // so a one-slot widening would be a purchase that visibly did

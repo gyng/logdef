@@ -22,6 +22,7 @@ import { commandFailed } from "../bridge";
 import { POWER_USES } from "../bridge/types";
 import type {
   CatalogSnapshot,
+  CostInfo,
   CrewView,
   EnclaveInfo,
   FeatureView,
@@ -688,9 +689,18 @@ export class Game {
     this.publish(true);
   }
 
+  /**
+   * What a widening costs *this* tower: the per-floor price times the
+   * height, because a wider hull is new frame all the way up.
+   */
+  wideningCost(): CostInfo[] {
+    const floors = Math.max(1, this.latest?.tower.floors.length ?? 1);
+    return this.catalog.widen_cost.map((cost) => ({ ...cost, amount: cost.amount * floors }));
+  }
+
   /** Can the shelves pay for a widening? */
   canAffordWidening(): boolean {
-    return this.catalog.widen_cost.every((cost) => this.stockOf(cost.item) >= cost.amount);
+    return this.wideningCost().every((cost) => this.stockOf(cost.item) >= cost.amount);
   }
 
   handleClick(clientX: number, clientY: number): void {

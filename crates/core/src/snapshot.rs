@@ -501,6 +501,11 @@ pub struct CatalogSnapshot {
     pub waypoints: Vec<WaypointInfo>,
     pub branches: Vec<BranchInfo>,
     pub floor_cost: Vec<CostInfo>,
+    /// What one widening costs **per floor of hull**. A tower pays this
+    /// times its height, so the figure to show a player is scaled by
+    /// `tower.floors.length` — a widening is new frame along the whole
+    /// height, and a flat fee charged a fourteen-floor tower the same
+    /// as a two-floor one for seven times the frame.
     pub widen_cost: Vec<CostInfo>,
     pub widen_slots: u8,
     pub max_slots: u8,

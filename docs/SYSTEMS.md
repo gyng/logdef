@@ -6626,12 +6626,58 @@ The visible consequence is that **the new deck appears behind the stairs**, whic
 with everything else. A widened tower has open frame at its tail, which is exactly where a
 player would expect to be able to build.
 
-#### What is not settled
+#### What it is worth, measured
 
-A wider hull is more floor per storey, and therefore *less* reason to build a shaft — which is
-the opposite of what M6 spent a milestone establishing with `climb_ticks_per_item` and
-`examples/lift.rs`. The price is reasoned against `floor_cost` rather than measured against a
-tower that wanted one, because no instrument widens yet. Carried into §6.9.
+**Width is not relief for the climb, and the price is per floor because of it.**
+
+`examples/lift.rs` sweeps hull width at eight floors, three seeds a row. A stairs-only tower
+hauls **56, 56, 56, 58** at ten, twelve, fourteen and sixteen slots, and crew-ticks spent
+climbing do not move at all — 18,550, 18,506, 18,401, 18,620. Six extra slots buy four
+percent.
+
+That is the answer to what was §6.9's second open question, and it is the reassuring one:
+**widening does not undo the shaft.** The chain still spans the tower whatever the floors are,
+so a wider floor shortens no climb and M6's argument has no side door in it. What width buys
+is *somewhere to put a room*, which makes it a competitor to `BuildFloor` and never to a
+shaft.
+
+So it is priced against a floor and it is dearer: three poles per floor of hull, for two
+slots. On an eight-floor tower that is 24 poles for 16 slot-floors — 1.5 poles a slot-floor
+against a floor's 0.6. Two and a half times dearer than growing up, which is what a purchase
+that adds no throughput should cost. **Per floor rather than flat**, because a widening is new
+frame along the whole height and a flat fee charged a fourteen-floor tower the same as a
+two-floor one for seven times the frame.
+
+#### The thing width actually costs: walking
+
+The same sweep found the more interesting half. **The elevator's value halves as the hull
+widens** — +91% hauls at ten slots, +77% at twelve, +57% at fourteen, +48% at sixteen — and
+not because climbing got cheaper. Crew-ticks climbing on the lift rows are flat at ~4,000
+throughout. What moves is **walking: 21,309 to 28,361**, a third more, because the shaft
+stands in one column and a wider floor is further to cross to reach it.
+
+That is the first measurement of the placement hypothesis `lift.rs` has carried in its header
+since M6 — *where you put a shaft is the decision, and the game teaches nothing about it*. It
+is no longer a hypothesis. A wide tower with one lift at one column is a tower whose crew walk
+to the lift.
+
+**The dumbwaiter goes the other way, and the reason is the design.** +93% at ten slots, +284%
+at twelve, and it holds there — while its walking *falls*, 9,469 to 4,864. A dumbwaiter is
+item-only: nothing rides it, so nobody walks to it. Width hurts the shaft you have to reach
+and helps the one that comes to you.
+
+#### Why it is the whole hull and not one floor
+
+The obvious refinement — widen the floor that needs it and leave the rest — is not available,
+and the reason is structural rather than a decision to revisit. Widening slides everything
+forward to keep the leading edge where it is, because weapons are `front_only`. A shaft
+occupies one slot *column* across every floor it spans. Widen floor 3 alone and floor 3's
+rooms shift two slots while floor 4's do not, and the shaft column now runs through whatever
+floor 3 slid into.
+
+Either the front is a fixed edge and per-floor width is free, or the front is the high end and
+width is a whole-hull property. The tower faces right and its weapons stand on the leading
+edge, so it is the second.
 
 ### 6.17 Practice, and the order the tower works in
 
@@ -6739,12 +6785,12 @@ any of it reach the tower* and does not answer *is ten percent right*. Carried i
    number*. Nobody has played a run at 20% or at 5%, and the failure mode to watch for is
    the one the modesty is guarding against — a run won by parking one person on one job
    from the first pace, which would mean the bonus is large enough to be a build order.
-2. **Does widening undo the shaft?** §6.16 lets the hull grow sideways, and a wider floor is
-   more room per storey — which is *less* reason to climb, and M6 spent a milestone establishing
-   that a shaft has to earn its column (`climb_ticks_per_item`, `examples/lift.rs`). Nothing has
-   measured a widened tower's haul distances. `lift.rs` is the natural home for the question and
-   the answer might be that widening should cost more, or cap lower, or that the two are simply
-   different tools — but "we did not check" is not one of the options.
+2. **Where should a shaft go?** §6.16's width sweep turned `lift.rs`'s oldest hypothesis into
+   a measurement: the elevator's value falls from +91% to +48% as the hull widens, entirely
+   through crew walking a third further to reach it. So placement is a real decision with a
+   real cost — and the game says nothing about it, offers no way to move a shaft once built,
+   and gives a player no reason to think the column matters. Either it should teach it or the
+   cost should not be there.
 3. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
    instrument cannot tell them apart — the numbers are sized against the kill-shot table and
    nobody has met one. The tell is whether a player who fells one goes looking for the next,

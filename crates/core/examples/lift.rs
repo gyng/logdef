@@ -114,6 +114,29 @@
 //! change rather than using alone: at six crew the lift is still -27% at
 //! five floors, because the trips are short whatever the traffic.
 //!
+//! ## Width: the placement decision, finally measured
+//!
+//! The width sweep (`does_width_undo_the_shaft`, eight floors, four
+//! widths) was added to answer whether growing sideways undoes the
+//! climb. **It does not** — a stairs-only tower hauls 56, 56, 56, 58 at
+//! ten, twelve, fourteen and sixteen slots, with crew-ticks climbing
+//! flat at ~18,500. The chain spans the tower whatever the floors are.
+//!
+//! What it found instead is the hypothesis two sections up, measured at
+//! last. **The elevator's value halves as the hull widens** — +91%,
+//! +77%, +57%, +48% — and climbing does not move (~4,000 crew-ticks
+//! throughout). What moves is *walking*: 21,309 to 28,361, a third
+//! more. The lift stands in one column and a wider floor is further to
+//! cross to reach it. So "where you put it is the decision" is not a
+//! guess any more, and the cost of getting it wrong scales with width.
+//!
+//! **The dumbwaiter behaves in the opposite direction, and the reason is
+//! structural.** +93% at ten slots, +284% at twelve, holding there —
+//! while its walking *falls*, 9,469 to 4,864. Nothing rides a
+//! dumbwaiter, so nobody walks to one. **Width hurts the shaft you have
+//! to reach and helps the shaft that comes to you**, which is worth
+//! knowing before anybody merges the two.
+//!
 //! ## The placement decision does not exist
 //!
 //! Worth knowing before anyone tunes `floor_slots`: on the shipped pack
@@ -204,12 +227,27 @@ impl Lift {
     /// last free column then meant asking for a slot the harness had
     /// just filled: "could not raise shaft.dumbwaiter 0-2: floor 1 slot
     /// 8 is already occupied".
-    fn slot(free: &[u8]) -> u8 {
-        const WEAPON_EDGE: u8 = 8;
-        *free
-            .iter()
-            .rfind(|slot| **slot < WEAPON_EDGE)
+    ///
+    /// **Derived from the tower's width, not from 8.** `WidenTower`
+    /// slides everything forward (§6.16), so the weapons' edge moves
+    /// with the hull and a hardcoded 8 points into the middle of a
+    /// fourteen-wide tower. Worse, it then disagrees with the column
+    /// `harness::place_anywhere` reserves — which is `slots - 3` — so
+    /// the ladder fills the column this harness was about to raise a
+    /// shaft in. That surfaced as "could not raise shaft.elevator 0-7:
+    /// floor 7 slot 3 is already occupied", three layers from the
+    /// mismatch that caused it.
+    ///
+    /// So: the same column the harness reserves, when it is free, and
+    /// the outermost free one behind the weapons otherwise.
+    fn slot(free: &[u8], slots: u8) -> u8 {
+        let reserved = slots.saturating_sub(3);
+        let weapon_edge = slots.saturating_sub(2);
+        free.iter()
+            .find(|slot| **slot == reserved)
+            .or_else(|| free.iter().rfind(|slot| **slot < weapon_edge))
             .or_else(|| free.last())
+            .copied()
             .expect("no free column for a shaft")
     }
 }
@@ -231,6 +269,21 @@ const SEEDS: [u64; 3] = [0x00C0_FFEE, 0x0BAD_F00D, 0x00DE_FACE];
 /// is past anything the capture stills have ever shown a tower reach,
 /// which is itself part of the finding.
 const HEIGHTS: [u8; 4] = [5, 8, 11, 14];
+
+/// The hull widths to try, in slots. Ten is what the tower sets out
+/// with; sixteen is `max_slots`, or three widenings.
+///
+/// **Held at one height on purpose.** Width and height are the same
+/// question asked twice — how far is it from where the thing is made to
+/// where it is wanted — and sweeping both at once produces a table
+/// nobody can read. Eight floors is where this instrument's own sweep
+/// says the stairs hurt and a shaft is clearly worth having, so it is
+/// the height at which "does width undo the shaft" can have an answer
+/// other than "there was nothing to undo".
+const WIDTHS: [u8; 4] = [10, 12, 14, 16];
+
+/// The height the width sweep runs at. See `WIDTHS`.
+const WIDTH_SWEEP_HEIGHT: u8 = 8;
 
 /// Ticks the affordability run will wait before giving up: twenty
 /// in-game days, comfortably past a whole session.
@@ -361,7 +414,137 @@ fn main() {
     }
 
     verdict(&verdicts);
+    does_width_undo_the_shaft(&pack);
     when_can_you_afford_one(&pack);
+}
+
+/// **Does a wider hull undo the shaft?** (`SYSTEMS.md` §6.9 question 2.)
+///
+/// M6 spent a milestone establishing that a shaft has to earn its column
+/// — `climb_ticks_per_floor` 30 → 45 is the change that made one worth
+/// building at all — and then M6 turned round and let the hull grow
+/// sideways. A wider floor is more room per storey, which is *less*
+/// reason to climb. If widening is cheaper relief than a lift, the
+/// milestone's whole argument has a side door in it.
+///
+/// One height, four widths, the same three seeds. What to read:
+///
+/// - **`hauls` across a row of stairs-only towers.** If a wider tower
+///   hauls more with no shaft at all, width is relief and the side door
+///   is open.
+/// - **the lift's delta at each width.** If it shrinks as the hull
+///   widens, a wide tower does not want a lift and the ladder the pack
+///   describes stops existing at the top end.
+/// - **`walking` against `climbing`.** This is the one that decides what
+///   the fix is. Width trades vertical distance for horizontal: the same
+///   chain on fewer floors, but every floor longer to cross. If walking
+///   rises as fast as climbing falls, widening is not relief at all —
+///   it is the same journey rotated, and the price is the only thing
+///   that needs to be right.
+fn does_width_undo_the_shaft(pack: &Arc<Content>) {
+    println!("\n=== does a wider hull undo the shaft? ===\n");
+    let shipped = pack.balance.tower.floor_slots;
+    println!(
+        "  {WIDTH_SWEEP_HEIGHT} floors throughout, {} seeds a row. Width {shipped} is what a\n         tower sets out with; {} is `max_slots`. `walk` and `climb` are crew-ticks — the\n         two halves width trades against each other.\n",
+        SEEDS.len(),
+        pack.balance.tower.max_slots,
+    );
+    println!(
+        "{:<7} {:>6} {:>16} {:>10} {:>10} {:>10}",
+        "slots", "shaft", "hauls", "walk", "climb", "boarding"
+    );
+
+    let mut narrow_gain = None;
+    let mut wide_gain = None;
+    let mut stairs_by_width = Vec::new();
+    for width in WIDTHS {
+        if width > pack.balance.tower.max_slots.max(shipped) {
+            println!("  ({width} is past this pack's max_slots; skipped)");
+            continue;
+        }
+        let stairs = Sample::mean(
+            &SEEDS.map(|seed| measure_at(pack, seed, WIDTH_SWEEP_HEIGHT, Lift::None, width)),
+        );
+        width_row(width, Lift::None, stairs, None);
+        stairs_by_width.push((width, stairs));
+        for kind in [Lift::Dumb, Lift::Elevator] {
+            let s = Sample::mean(
+                &SEEDS.map(|seed| measure_at(pack, seed, WIDTH_SWEEP_HEIGHT, kind, width)),
+            );
+            width_row(width, kind, s, Some(stairs));
+            if kind == Lift::Elevator && s.dead == 0 && stairs.hauls > 0 {
+                let gain = (s.hauls as f64 - stairs.hauls as f64) * 100.0 / stairs.hauls as f64;
+                if width == WIDTHS[0] {
+                    narrow_gain = Some(gain);
+                } else {
+                    wide_gain = Some(gain);
+                }
+            }
+        }
+        println!();
+    }
+
+    // The stairs-only column is the one that answers the question asked.
+    if let (Some(&(_, narrow)), Some(&(_, wide))) =
+        (stairs_by_width.first(), stairs_by_width.last())
+        && narrow.hauls > 0
+    {
+        let relief = (wide.hauls as f64 - narrow.hauls as f64) * 100.0 / narrow.hauls as f64;
+        println!(
+            "  With no shaft at all, the widest hull hauls {relief:+.0}% against the narrowest.\n             Crew-ticks walking {:+.0}%, climbing {:+.0}%.",
+            pct(narrow.walking, wide.walking),
+            pct(narrow.climbing, wide.climbing),
+        );
+        if relief > 15.0 {
+            println!(
+                "  **Width is relief.** A tower can buy its way out of the climb by growing\n                 sideways, which is the side door in M6's argument — reprice it, or make it\n                 buy less than a whole hull at a time."
+            );
+        } else {
+            println!(
+                "  **Width is not relief.** Growing sideways does not answer the climb, so a\n                 shaft still has to be bought for the reason M6 said it did."
+            );
+        }
+    }
+    if let (Some(narrow), Some(wide)) = (narrow_gain, wide_gain) {
+        println!(
+            "  The lift is worth {narrow:+.0}% on the narrowest hull and {wide:+.0}% on the\n             widest. If that has collapsed, a wide tower does not want one."
+        );
+    }
+}
+
+/// Percentage change from `from` to `to`, guarding a zero baseline.
+fn pct(from: u64, to: u64) -> f64 {
+    if from == 0 {
+        return 0.0;
+    }
+    (to as f64 - from as f64) * 100.0 / from as f64
+}
+
+/// A row of the width sweep. Shaped like `row` but printing the two
+/// crew-tick columns the question turns on rather than the totals.
+fn width_row(width: u8, kind: Lift, s: Sample, against: Option<Sample>) {
+    let delta = |now: u64, was: u64| -> String {
+        if was == 0 {
+            return String::new();
+        }
+        format!(" ({:+.0}%)", (now as f64 - was as f64) * 100.0 / was as f64)
+    };
+    let hauls = match against {
+        None => format!("{}", s.hauls),
+        Some(base) => format!("{}{}", s.hauls, delta(s.hauls, base.hauls)),
+    };
+    let dead = if s.dead > 0 {
+        format!("  <- built and never used on {} seed(s)", s.dead)
+    } else {
+        String::new()
+    };
+    println!(
+        "{width:<7} {:>6} {hauls:>16} {:>10} {:>10} {:>10}{dead}",
+        kind.label(),
+        s.walking,
+        s.climbing,
+        s.boarding,
+    );
 }
 
 /// Is the cure available before the pain?
@@ -752,9 +935,30 @@ fn verdict(rows: &[(u8, Sample, (Lift, Sample))]) {
 }
 
 fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Sample {
+    measure_at(pack, seed, height, build_lift, 0)
+}
+
+/// As `measure`, with the hull widened to `width` slots first.
+///
+/// **Widened before anything is placed**, which is not tidiness:
+/// `WidenTower` slides every room and shaft forward to keep the leading
+/// edge where it was (`SYSTEMS.md` §6.16), so widening a laid-out tower
+/// would move the reserved columns out from under the plan. Zero means
+/// "whatever the pack ships".
+fn measure_at(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift, width: u8) -> Sample {
     let mut game = GameEngine::with_content(seed, Arc::clone(pack));
-    let slots = game.content().balance.tower.floor_slots;
     grow(&mut game, height);
+    widen_to(&mut game, width);
+    // Read *after* widening: the whole point is that this is no longer
+    // the pack's constant.
+    let slots = game
+        .state()
+        .tower
+        .floors
+        .first()
+        .map_or(game.content().balance.tower.floor_slots, |floor| {
+            floor.slots
+        });
     // **Every row reserves every candidate column**, not just the one it
     // uses. Reserving only the column this row needs would let the rows
     // differ by which rooms fitted as well as by the shaft, and then the
@@ -763,7 +967,7 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
     if std::env::var("UNDERSTORY_COLUMNS").is_ok() {
         println!("  {height} floors, {slots} slots: free columns {free:?}");
     }
-    let reserved = [Lift::slot(&free)];
+    let reserved = [Lift::slot(&free, slots)];
 
     // A chain that crosses the whole tower, top to bottom, so a haul has
     // somewhere to go — an elevator in a tower whose chain sits on two
@@ -899,7 +1103,7 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
             "shaft.elevator",
             0,
             height - 1,
-            Lift::slot(&free),
+            Lift::slot(&free, slots),
             height,
         ),
         // **A dumbwaiter cannot span a tall tower** — `max_span` 3 — so
@@ -924,7 +1128,7 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
                 "shaft.dumbwaiter",
                 0,
                 high,
-                Lift::slot(&free),
+                Lift::slot(&free, slots),
                 height,
             );
         }
@@ -1035,6 +1239,47 @@ fn grow(game: &mut GameEngine, height: u8) {
         give(game, &cost);
         game.try_send(GameCommand::BuildFloor)
             .unwrap_or_else(|err| panic!("could not add a floor: {err}"));
+    }
+}
+
+/// Widen the hull until it is at least `width` slots across.
+///
+/// Paid for out of thin air like every other cost in this harness: what
+/// a widening *costs* is `journey.rs`'s question, and this one is about
+/// what it does once it is there.
+fn widen_to(game: &mut GameEngine, width: u8) {
+    if width == 0 {
+        return;
+    }
+    let cost: Vec<(understory_core::ids::ItemIdx, i64)> = game
+        .content()
+        .balance
+        .tower
+        .widen_cost
+        .iter()
+        .filter_map(|entry| {
+            game.content()
+                .item_idx(&entry.item)
+                .map(|item| (item, entry.amount))
+        })
+        .collect();
+    loop {
+        let now = game
+            .state()
+            .tower
+            .floors
+            .first()
+            .map_or(0, |floor| floor.slots);
+        if now >= width {
+            return;
+        }
+        give(game, &cost);
+        // A refusal here is `AlreadyWidest` and means the pack caps
+        // below what was asked for — the caller checks that, so this is
+        // the loop simply stopping rather than an error.
+        if game.try_send(GameCommand::WidenTower).is_err() {
+            return;
+        }
     }
 }
 
@@ -1184,9 +1429,15 @@ fn widest(
 }
 
 /// Columns free on every floor of the tower as it now stands, lowest
-/// first. Slot 0 is the built-in staircase and never appears.
+/// first.
+///
+/// **Starts at 0, and finds the staircase rather than assuming it.** It
+/// used to start at 1 on the grounds that slot 0 is the built-in
+/// staircase, which stopped being true the moment a hull could widen:
+/// widening slides every shaft forward too, so on a fourteen-wide tower
+/// the stairs are at column 4 and columns 0-3 are the new back deck.
 fn free_columns(game: &GameEngine, slots: u8) -> Vec<u8> {
-    (1..slots)
+    (0..slots)
         .filter(|slot| {
             let taken_by_shaft = game
                 .state()

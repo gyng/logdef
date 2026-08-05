@@ -1260,7 +1260,7 @@ function Sidebar({ game, ui }: Props) {
                     : `${catalog.widen_slots} more slots, at the back`}
                 </span>
               </span>
-              <Cost game={game} costs={catalog.widen_cost} />
+              <Cost game={game} costs={game.wideningCost()} />
             </button>
           </li>
           {buildable.map((room) => (

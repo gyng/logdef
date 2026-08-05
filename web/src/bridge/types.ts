@@ -521,7 +521,11 @@ export interface CatalogSnapshot {
   waypoints: WaypointInfo[];
   branches: BranchInfo[];
   floor_cost: CostInfo[];
-  /** What one widening costs. Dearer than a floor. */
+  /**
+   * What one widening costs **per floor of hull**. Multiply by the
+   * tower's height for what this tower actually pays — a widening is
+   * new frame along the whole height.
+   */
   widen_cost: CostInfo[];
   /** Slots one widening adds. */
   widen_slots: number;

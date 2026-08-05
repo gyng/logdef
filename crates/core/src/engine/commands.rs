@@ -672,13 +672,28 @@ fn widen_tower(state: &mut GameState, content: &Content) -> Result<(), CommandEr
         return Err(CommandError::AlreadyWidest { slots: current });
     }
 
-    // Validated and paid before anything moves (`DECISIONS.md` §4): a
-    // half-widened tower with the rooms shifted and the walls not is
-    // not a state this game has a name for.
+    // **Priced per floor of hull, not per purchase.** A widening is new
+    // frame along the *whole* height, and charging a flat fee for it
+    // made a fourteen-floor tower's widening cost the same as a
+    // two-floor tower's — for seven times the frame.
+    //
+    // It also has to be dear, and that is a measurement rather than a
+    // preference. `examples/lift.rs` sweeps hull width at eight floors:
+    // a stairs-only tower hauls **56, 56, 56, 58** at ten, twelve,
+    // fourteen and sixteen slots, with crew-ticks climbing flat at
+    // ~18,500 throughout. Six extra slots buy four percent. Width is not
+    // relief for the climb — the chain still spans the tower whatever
+    // the floors are — so widening competes with `BuildFloor` for
+    // *somewhere to put a room*, and never with a shaft.
+    let floors = i64::try_from(state.tower.floors.len().max(1)).unwrap_or(1);
     let cost = balance
         .widen_cost
         .iter()
-        .filter_map(|entry| content.item_idx(&entry.item).map(|idx| (idx, entry.amount)))
+        .filter_map(|entry| {
+            content
+                .item_idx(&entry.item)
+                .map(|idx| (idx, entry.amount.saturating_mul(floors)))
+        })
         .collect::<Vec<_>>();
     check_stock(state, content, &cost)?;
     spend(state, &cost);

@@ -125,13 +125,24 @@ pub fn place_anywhere(game: &mut GameEngine, room: &str) -> bool {
     // slot: a two-wide room put down at slot 6 of eight covers 6 *and*
     // 7, so skipping "slot 7" alone reserved nothing at all and the
     // elevator was still blocked.
-    let (slots, width) = {
+    let width = {
         let content = game.content();
-        let width = content
+        content
             .room_idx(room)
-            .map_or(1, |idx| content.room(idx).width);
-        (content.balance.tower.floor_slots, width)
+            .map_or(1, |idx| content.room(idx).width)
     };
+    // **The tower's width, not the pack's.** These were the same number
+    // until `WidenTower` (`SYSTEMS.md` §6.16), and reading the constant
+    // on a widened hull puts the whole front of the tower out of reach:
+    // the front is `slots - width`, so a `front_only` cutter arm on a
+    // twelve-wide tower wants column 10 and this helper never offered
+    // one past 8. It failed as "could not place room.cutter_arm: the
+    // opening ladder is stuck at it", which reads as a content problem
+    // and was an arithmetic one.
+    let slots = game.state().tower.floors.first().map_or_else(
+        || game.content().balance.tower.floor_slots,
+        |floor| floor.slots,
+    );
     // **Column 7 is the shaft's, and the edge is the weapons'.**
     //
     // This used to reserve the *last* column, which was the same thing
@@ -141,7 +152,12 @@ pub fn place_anywhere(game: &mut GameEngine, room: &str) -> bool {
     // harness that refuses to use them cannot build a cutter arm at
     // all. Reserving one named column instead keeps shafts buildable
     // and lets weapons reach their edge.
-    const SHAFT_COLUMN: u8 = 7;
+    //
+    // Derived rather than named, for the same reason: widening slides
+    // everything forward, so the third-from-the-front column *is* the
+    // convention and 7 was only ever what that came to on a ten-wide
+    // floor.
+    let shaft_column = slots.saturating_sub(3);
     let last = slots.saturating_sub(width);
     let floors = game.state().tower.floors.len() as u8;
     // **From the top down.** The scarce floors are the low ones: a
@@ -152,7 +168,7 @@ pub fn place_anywhere(game: &mut GameEngine, room: &str) -> bool {
     // the next ground-reaching room then has nowhere to stand.
     for floor in (0..floors).rev() {
         for slot in 0..=last {
-            if slot <= SHAFT_COLUMN && slot + width > SHAFT_COLUMN {
+            if slot <= shaft_column && slot + width > shaft_column {
                 continue;
             }
             match game.try_send(GameCommand::PlaceRoom {
