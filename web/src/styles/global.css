@@ -273,6 +273,21 @@ button {
   color: rgb(255 240 196 / 100%);
 }
 
+/* A beat on the route, named on the ground it sits on. Quieter than a
+   settlement and much quieter than a fork: ignoring a beat is free and
+   is the default (SYSTEMS.md 6.14), so the name is a caption on
+   something you are passing rather than a thing demanding an answer. */
+.label-beat {
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  color: rgb(232 228 214 / 62%);
+}
+
+.label-beat.label-beat-here {
+  color: rgb(232 228 214 / 92%);
+}
+
 /* What a ruin holds, for the ones near enough to be a live decision.
    The heap on the strip is the primary read; this is the precision
    layer on top of it (DECISIONS.md §8). */

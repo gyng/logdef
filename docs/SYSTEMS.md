@@ -7756,6 +7756,30 @@ region's, by name.
 this source" rather than mystifying the next person. It is the cheap version of a contract check
 and it would have caught this in one run.
 
+#### The beats had no picture either
+
+§6.14 exists because "between one fork and the next the tower walked through scenery and decided
+nothing" — and a waypoint had **no representation in the world at all**. The card describes a
+walking tower down on its side, or clean water under the roots, and none of it was anywhere: the
+beat arrived as text from nowhere and left the same way. A decision you cannot see is still
+scenery.
+
+Four silhouettes now, keyed off the content id rather than the index — an index is a fact about
+load order, and a pack with a fifth beat in the middle would silently repaint the other four. An
+unrecognised id draws a neutral marker rather than nothing, because a pack is allowed to add
+beats before the renderer knows about them. The carrier is a hull lying down with its legs
+snapped out under it; the seep pool is the only cool thing in the set, because it is the only
+beat that *sheds* attention; the thicket is taller than it is wide and in the way; the tangle is
+brass loops low in the roots. Drawn small and never competing with the tower, because ignoring a
+beat is free and is the default (§6.14) — this is not a warning a player needs, it is the route
+having things in it.
+
+**And `waypoint_ahead` was a distance with no identity**, which is exactly the shape that had
+just gone wrong with the enclave. Two parallel `Option`s that must agree is the bug; it is one
+`Option<WaypointAheadView>` carrying both now. Nothing read the old field, so there was nothing
+to break — which is its own finding: it had been on the snapshot since M6, documented as being
+there so "the renderer needs this to draw the place coming", and read by nobody.
+
 **What the berth showed is a balance finding and it is not a small one.** A tower that reaches
 Ropewalk on schedule arrives holding **`Rope 12` and nothing else**, and *every* item on the
 board is out of reach: 6 poles for rope, 4 poles for darts, 4 scrap for 3 poles, 18 poles for a

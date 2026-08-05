@@ -17,6 +17,7 @@ import {
   crewPosition,
   enemyPosition,
   featurePoint,
+  beatGeometry,
   enclaveGeometry,
   forkGeometry,
   towerShape,
@@ -296,6 +297,7 @@ function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layou
 
   labels.push(...forkLabels(view, catalog, layout, edgeScreenX(view, layout)));
   labels.push(...enclaveLabel(view, catalog, layout));
+  labels.push(...beatLabel(view, catalog, layout));
   labels.push(...salvageLabels(view, catalog, layout));
 
   for (const floor of view.tower.floors) {
@@ -439,6 +441,35 @@ function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layou
  * authored beside the geometry: a name that can drift out of step with
  * what it names is worse than no name.
  */
+/**
+ * The beat's name, once it is near enough to read.
+ *
+ * Later than the settlement's, because a beat is small and its name is
+ * bigger than it is until it is close. Brighter alongside: the card is
+ * open then, and the name is what ties the card to the thing.
+ */
+function beatLabel(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
+  const beat = beatGeometry(view, layout);
+  if (!beat || beat.near <= 0.35) return [];
+  const info = catalog.waypoints[beat.def];
+  if (!info) return [];
+  return [
+    {
+      key: "beat-name",
+      text: info.name,
+      // **Beside it on the ground, not above it.** A beat alongside the
+      // tower sits at the tower's own leading flank — that is what
+      // "alongside" means — so a caption two sizes up lands inside the
+      // cross-section, over the rooms. Under the object and out to the
+      // right is the only place that is clear at every distance.
+      x: beat.x + beat.size * 1.6,
+      y: beat.y + beat.size * 0.7,
+      variant: beat.here ? "label-beat label-beat-here" : "label-beat",
+      alpha: beat.here ? 1 : (beat.near - 0.35) / 0.65,
+    },
+  ];
+}
+
 function enclaveLabel(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
   const place = enclaveGeometry(view, layout);
   if (!place || place.near <= 0.15) return [];

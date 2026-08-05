@@ -197,10 +197,15 @@ pub struct JourneyView {
     /// and "already taken" alike, because from the player's seat those
     /// are the same thing — nothing to do.
     pub waypoint: Option<WaypointView>,
-    /// Paces to the next beat still ahead, once it is close enough to
-    /// be worth drawing. `None` when there is nothing coming inside the
-    /// streaming window.
-    pub waypoint_ahead: Option<f32>,
+    /// The next beat still ahead, and how far off it is.
+    ///
+    /// **One field rather than two, deliberately.** The enclave carried
+    /// its distance and its identity separately and three readers picked
+    /// the wrong identity (see `enclave_at`); a distance without the
+    /// thing it measures cannot be drawn, and two parallel `Option`s
+    /// that must agree is the shape that went wrong. `None` when there
+    /// is nothing coming inside the streaming window.
+    pub waypoint_ahead: Option<WaypointAheadView>,
     /// The branch the tower is walking through, if any. Indexes
     /// `catalog.branches`.
     pub branch: Option<u16>,
@@ -244,6 +249,14 @@ pub struct JourneyView {
 }
 
 /// The beat the tower is passing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WaypointAheadView {
+    /// Indexes `catalog.waypoints`.
+    pub def: u16,
+    /// Paces from the tower to it.
+    pub ahead: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WaypointView {
     /// Indexes `catalog.waypoints`.
@@ -1056,7 +1069,10 @@ fn build_journey(state: &GameState, content: &Content) -> JourneyView {
             .waypoints
             .iter()
             .find(|way| !way.taken && way.at > world.distance)
-            .map(|way| paces_to_f32(way.at - world.distance)),
+            .map(|way| WaypointAheadView {
+                def: way.def,
+                ahead: paces_to_f32(way.at - world.distance),
+            }),
         halt: {
             // Berthing outranks "stopped" and nothing else: a tower at a
             // fork, arrived, or browned out is not *choosing* to be

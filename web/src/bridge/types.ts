@@ -240,7 +240,7 @@ export interface JourneyView {
   /** The beat alongside right now, if any. */
   waypoint: WaypointView | null;
   /** Paces to the next one still ahead. */
-  waypoint_ahead: number | null;
+  waypoint_ahead: WaypointAheadView | null;
   /** The branch being walked through, if any. Indexes `catalog.branches`. */
   branch: number | null;
   /** Why the tower is standing still, if it is. */
@@ -272,6 +272,19 @@ export interface JourneyView {
   shell_bonus: number;
   /** The far edge of the last region, reached. The run is over. */
   arrived: boolean;
+}
+
+/**
+ * The next beat still ahead, and how far off it is.
+ *
+ * One field rather than two: the enclave carried its distance and its
+ * identity separately and three readers picked the wrong identity.
+ */
+export interface WaypointAheadView {
+  /** Indexes `catalog.waypoints`. */
+  def: number;
+  /** Paces from the tower to it. */
+  ahead: number;
 }
 
 export interface WaypointView {

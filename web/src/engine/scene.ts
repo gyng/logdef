@@ -110,6 +110,7 @@ export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
   drawTerrain(batch, ctx);
   drawJourneyEdge(batch, ctx);
   drawEnclave(batch, ctx);
+  drawBeat(batch, ctx);
   drawFork(batch, ctx);
   drawLegs(batch, ctx);
   drawWake(batch, ctx);
@@ -983,6 +984,170 @@ function drawEnclave(batch: QuadBatch, ctx: SceneContext): void {
       softness: lamp * 0.8,
     },
   );
+}
+
+/**
+ * Where the next beat lands on screen, and which one it is.
+ *
+ * **A waypoint had no picture at all.** The card describes a walking
+ * tower down on its side, or clean water under the roots, and none of
+ * it was anywhere in the world — the beat existed only as text, arriving
+ * from nowhere and leaving the same way. §6.14 exists because "between
+ * one fork and the next the tower walked through scenery and decided
+ * nothing", and a decision you cannot see coming is still scenery.
+ *
+ * Same compression as the fork and the settlement. Unlike the
+ * settlement, this is not a warning a player *needs* — ignoring a beat
+ * is free and is the default (§6.14) — so it is drawn small and never
+ * competes with the tower. It is there so the route has things in it.
+ */
+export interface BeatGeometry {
+  x: number;
+  y: number;
+  /** Size everything is drawn against. */
+  size: number;
+  /** 0 while it is a speck at the vanishing point, 1 alongside. */
+  near: number;
+  /** Indexes `catalog.waypoints`. */
+  def: number;
+  /** It is alongside now, and takeable. */
+  here: boolean;
+}
+
+export function beatGeometry(view: ViewSnapshot, layout: Layout): BeatGeometry | null {
+  const coming = view.journey.waypoint_ahead;
+  const here = view.journey.waypoint;
+  // Alongside outranks coming: `waypoint_ahead` skips to the *next* one
+  // the moment this one is level with the tower, and drawing the next
+  // one while the player is being asked about this one would put the
+  // picture and the card out of step.
+  const def = here ? here.def : (coming?.def ?? null);
+  if (def === null) return null;
+  const ahead = here ? 0 : (coming?.ahead ?? 0);
+  const { x, y, far } = aheadPoint(view, layout, ahead);
+  return {
+    x,
+    y,
+    size: layout.slotW * (0.3 + unit(1 - far) * 0.9),
+    near: unit(1 - far),
+    def,
+    here: here !== null,
+  };
+}
+
+/**
+ * The beat itself: four silhouettes, one per authored waypoint.
+ *
+ * Keyed off the content id rather than the index, because an index is a
+ * fact about load order and a pack with a fifth beat in the middle
+ * would silently repaint the other four. An unrecognised id draws the
+ * neutral marker rather than nothing — a pack is allowed to add beats
+ * before the renderer knows about them (`AGENTS.md`: degrade gracefully
+ * in presentation).
+ */
+function drawBeat(batch: QuadBatch, ctx: SceneContext): void {
+  const { layout, view, clock } = ctx;
+  const beat = beatGeometry(view, layout);
+  if (!beat || beat.near <= 0.04) return;
+  if (beat.x >= layout.viewport.width) return;
+
+  const dark = darkness(view);
+  const { x, y, size } = beat;
+  const id = ctx.catalog.waypoints[beat.def]?.id ?? "";
+  // Alongside, it lifts a little — the same "this is live now" the
+  // ghost highlights use, and the only difference between a beat you
+  // are being asked about and one you are watching approach.
+  const lift = beat.here ? 1 + Math.sin(clock * 2) * 0.06 : 1;
+
+  switch (id) {
+    case "waypoint.fallen_carrier": {
+      // A walking tower on its side: a long hull lying down, with its
+      // legs snapped out under it. The one beat that is unmistakably a
+      // *thing that happened to somebody else*.
+      const hullW = size * 2.6 * lift;
+      const hullH = size * 0.75;
+      batch.push(x - hullW * 0.5, y - hullH, hullW, hullH, atNight(palette.roomBody, dark * 0.9), {
+        colorBottom: atNight(palette.hurt, dark * 0.9),
+        radius: hullH * 0.18,
+      });
+      for (let i = 0; i < 3; i += 1) {
+        const footX = x - hullW * 0.3 + i * hullW * 0.3;
+        batch.pushLine(
+          footX,
+          y,
+          footX + size * (i % 2 === 0 ? 0.7 : -0.55),
+          y - size * 0.9,
+          Math.max(1.1, size * 0.13),
+          atNight(palette.leg, dark * 0.9),
+        );
+      }
+      break;
+    }
+    case "waypoint.seep_pool": {
+      // Clean water, low and wide and still. The only cool thing in the
+      // set, because it is the only beat that *sheds* attention.
+      const poolW = size * 2.2 * lift;
+      batch.push(
+        x - poolW * 0.5,
+        y - size * 0.16,
+        poolW,
+        size * 0.3,
+        fade(palette.verdigris, 0.7),
+        {
+          colorBottom: fade(palette.verdigrisDeep, 0.85),
+          radius: size * 0.15,
+        },
+      );
+      const shine = 0.3 + Math.sin(clock * 0.6 + x * 0.02) * 0.12;
+      batch.push(
+        x - poolW * 0.3,
+        y - size * 0.1,
+        poolW * 0.5,
+        size * 0.08,
+        fade(palette.moonlight, shine),
+        {
+          radius: size * 0.04,
+          softness: size * 0.2,
+        },
+      );
+      break;
+    }
+    case "waypoint.snare_thicket": {
+      // Thorn and wire grown together, and the only beat that *gains*
+      // ground: taller than it is wide, and in the way.
+      const stalks = 7;
+      for (let i = 0; i < stalks; i += 1) {
+        const t = i / (stalks - 1) - 0.5;
+        const footX = x + t * size * 2;
+        const h = size * (1.1 + Math.abs(Math.sin(i * 2.1)) * 0.9) * lift;
+        batch.pushLine(
+          footX,
+          y,
+          footX + t * size * 0.7,
+          y - h,
+          Math.max(1, size * 0.1),
+          atNight(i % 2 === 0 ? palette.roomIntake : palette.verdigrisDeep, dark * 0.9),
+        );
+      }
+      break;
+    }
+    case "waypoint.wire_tangle": {
+      // Cable coiled in the roots: brass loops, low to the ground.
+      for (let i = 0; i < 3; i += 1) {
+        const r = size * (0.45 + i * 0.28) * lift;
+        batch.push(x - r * 0.5, y - r * 0.75, r, r * 0.72, fade(palette.brass, 0.55 - i * 0.12), {
+          radius: r * 0.5,
+        });
+      }
+      break;
+    }
+    default: {
+      // A beat this renderer does not know. Something is there.
+      batch.push(x - size * 0.4, y - size, size * 0.8, size, atNight(palette.roomBody, dark), {
+        radius: size * 0.2,
+      });
+    }
+  }
 }
 
 /**
