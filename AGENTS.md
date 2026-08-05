@@ -412,6 +412,14 @@ This is covered in full, with the reasoning and the tests that enforce it, in
 - **Always run a smoke test before wrapping up.** If a change touches React, WASM, the
   bridge, or the frame loop, run the smoke path as part of verification, not just
   `cargo test`. A browser-only failure is a regression even when every Rust test passes.
+- **A snapshot field with no reader is a bug or a lie, and they are cheap to find.** Two were
+  found this way in one session — `enclave_ahead` and `waypoint_ahead`, both documented as
+  existing so the renderer could draw a thing coming, both read by nobody, and both hiding a
+  real gap. The sweep is one throwaway script: pull every field name out of
+  `web/src/bridge/types.ts` and grep the rest of `web/src` for it. Of 18 hits, 2 were bugs and
+  16 were deliberate — the Defence card omits damage, rate and range *on purpose* (§8), and
+  `crew_required` is `SYSTEMS.md` §6.9 question 0's own subject. **Read the comment before
+  "fixing" a field: this codebase writes down what it left out.**
 - **`npx playwright test` does not rebuild the WASM, and `make e2e` does.** A field added to
   `snapshot.rs` is simply `undefined` in the browser until somebody rebuilds, every reader of
   it silently takes its fallback branch, and **the whole suite passes green**. That happened:
