@@ -19,11 +19,17 @@ export interface Label {
   variant?: string;
   /** Opacity 0..1. Used to fade labels out rather than pop them. */
   alpha?: number;
+  /**
+   * Hover text. The precision layer (`DECISIONS.md` §8) — never the
+   * first thing a player sees, and never a number on the screen.
+   */
+  title?: string;
 }
 
 interface PooledLabel {
   element: HTMLDivElement;
   text: string;
+  title: string;
   x: number;
   y: number;
   variant: string;
@@ -54,10 +60,12 @@ export class LabelLayer {
         const element = document.createElement("div");
         element.className = variant ? `label ${variant}` : "label";
         element.textContent = label.text;
+        if (label.title) element.title = label.title;
         this.root.appendChild(element);
         pooled = {
           element,
           text: label.text,
+          title: label.title ?? "",
           x: Number.NaN,
           y: Number.NaN,
           variant,
@@ -76,6 +84,11 @@ export class LabelLayer {
       if (pooled.variant !== variant) {
         pooled.element.className = variant ? `label ${variant}` : "label";
         pooled.variant = variant;
+      }
+      const title = label.title ?? "";
+      if (pooled.title !== title) {
+        pooled.element.title = title;
+        pooled.title = title;
       }
       const x = Math.round(label.x);
       const y = Math.round(label.y);

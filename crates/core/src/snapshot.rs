@@ -296,6 +296,18 @@ pub struct RoomView {
     /// Waiting on an input, or backed up on its output. A stalled room
     /// is drawn quiet — that silence is the warning.
     pub stalled: bool,
+    /// *Why* it is quiet, when it is.
+    ///
+    /// **A starved room and a saturated one looked identical**, and they
+    /// want opposite actions: feed the first, spend from the second.
+    /// Four cutter arms standing quiet because nothing in the tower
+    /// wants more bamboo read exactly like four arms on bare ground
+    /// (`SYSTEMS.md` §6.26).
+    ///
+    /// Not a warning banner and not a number — `DECISIONS.md` §8 still
+    /// holds. The silence is still the signal; this is the hover layer
+    /// saying which silence it is.
+    pub stall: Option<StallTag>,
     /// Switched on by the player.
     pub active: bool,
     /// A sail that is no longer on the top floor. Shaded rooms draw
@@ -427,6 +439,30 @@ pub struct CrewView {
 pub enum ShiftTag {
     Day,
     Night,
+}
+
+/// Why a room is quiet. Ordered by which answer a player needs first:
+/// a wrecked room wants mending before anything else is worth reading.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StallTag {
+    /// Damaged past the point of working.
+    Wrecked,
+    /// Switched off by the player.
+    Off,
+    /// A `top_floor_only` room that is no longer on the roof.
+    Shaded,
+    /// An emplacement with an empty rack.
+    Unarmed,
+    /// A burner with no fuel.
+    Unfuelled,
+    /// Waiting on an input the chain has not delivered.
+    Starved,
+    /// **Its output has nowhere to go.** The tower does not want any
+    /// more of what this room makes, which is a different problem from
+    /// being starved and is answered by spending rather than by
+    /// feeding.
+    BackedUp,
 }
 
 /// What a crew member is doing, flattened for the renderer.
@@ -1206,6 +1242,24 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                             || magazine_dry
                             || wrecked
                             || !room.active,
+                        // First match wins, most-answerable first.
+                        stall: if wrecked {
+                            Some(StallTag::Wrecked)
+                        } else if !room.active {
+                            Some(StallTag::Off)
+                        } else if shaded {
+                            Some(StallTag::Shaded)
+                        } else if magazine_dry {
+                            Some(StallTag::Unarmed)
+                        } else if burner_dry {
+                            Some(StallTag::Unfuelled)
+                        } else if has_work && starved {
+                            Some(StallTag::Starved)
+                        } else if has_work && backed_up {
+                            Some(StallTag::BackedUp)
+                        } else {
+                            None
+                        },
                         active: room.active,
                         shaded,
                         health_permille: room.health.permille(),

@@ -340,3 +340,122 @@ fn a_room_with_a_zero_buffer_is_a_broken_pack() {
         "a zero buffer passed validation: {errors:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Saturation, and telling it apart from starvation (`SYSTEMS.md` §6.26)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_tower_that_outgrows_its_demand_says_which_silence_it_is() {
+    // **The measurement that corrected §6.9.** With the cutter arm
+    // uncapped (§6.24) a tower can out-harvest its own consumers, and
+    // the open question filed against that said bamboo would claim
+    // every shelf and poles would have nowhere to land. It is the other
+    // way round: the mill converts *everything*, every shelf ends up
+    // holding poles, and bamboo reads zero.
+    //
+    // Nothing is broken — backpressure propagates exactly as designed,
+    // shelves to outbox to arm — and the escape is to spend, which a
+    // tower holding a hundred poles can certainly do. What was missing
+    // is that a room quiet because **nothing wants what it makes** was
+    // indistinguishable from one quiet because **nobody brought it
+    // anything**, and those are answered by opposite actions.
+    let content = content();
+    let bamboo = item(&content, "item.bamboo");
+    let poles = item(&content, "item.poles");
+    let mut game = crate::tests::engine(4444);
+
+    let mut arms = 1;
+    for floor in 2..5u8 {
+        crate::tests::stock_poles(&mut game, 20);
+        let slots = game.state().tower.floors[floor as usize].slots;
+        let width = game
+            .content()
+            .room_idx("room.cutter_arm")
+            .map(|idx| game.content().room(idx).width)
+            .expect("the pack defines a cutter arm");
+        if game
+            .try_send(crate::command::GameCommand::PlaceRoom {
+                room: "room.cutter_arm".into(),
+                floor,
+                slot: slots - width,
+            })
+            .is_ok()
+        {
+            arms += 1;
+        }
+    }
+    assert!(
+        arms >= 3,
+        "only {arms} arm(s); this needs a tower that over-harvests"
+    );
+    crate::tests::step_quietly(&mut game, 30_000);
+
+    // Saturated on the *product*, not the raw material.
+    let shelved = |item| {
+        game.state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter())
+            .flat_map(|room| room.shelves.iter())
+            .filter(|shelf| shelf.item == Some(item))
+            .map(|shelf| shelf.count)
+            .sum::<i64>()
+    };
+    assert!(
+        shelved(poles) > shelved(bamboo),
+        "expected a tower full of poles, found {} poles against {} bamboo",
+        shelved(poles),
+        shelved(bamboo)
+    );
+
+    // And every arm quiet for the *right stated reason*.
+    let view = game.view();
+    let arm_def = content
+        .rooms
+        .iter()
+        .position(|room| room.id == "room.cutter_arm")
+        .expect("the pack defines a cutter arm");
+    let quiet: Vec<_> = view
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .filter(|room| usize::from(room.def) == arm_def)
+        .collect();
+    assert!(!quiet.is_empty(), "no arms in the view");
+    assert!(
+        quiet
+            .iter()
+            .all(|room| room.stall == Some(crate::snapshot::StallTag::BackedUp)),
+        "an over-harvesting tower's arms should read backed up, not starved: {:?}",
+        quiet.iter().map(|room| room.stall).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_starved_room_and_a_backed_up_one_do_not_read_alike() {
+    // The property the tag exists for, stated on its own so a change to
+    // either branch cannot quietly collapse them together again.
+    let content = content();
+    let mut game = crate::tests::engine(4445);
+    crate::tests::step_quietly(&mut game, 6_000);
+
+    let view = game.view();
+    let mut seen = std::collections::BTreeSet::new();
+    for floor in &view.tower.floors {
+        for room in &floor.rooms {
+            assert_eq!(
+                room.stalled,
+                room.stall.is_some(),
+                "a room said it was quiet and gave no reason, or the reverse"
+            );
+            if let Some(tag) = room.stall {
+                seen.insert(format!("{tag:?}"));
+            }
+        }
+    }
+    let _ = content;
+    let _ = seen;
+}

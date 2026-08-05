@@ -7291,6 +7291,63 @@ Nor is there race. It is nearly free in the simulation and expensive everywhere 
 has fourteen prompts unwritten and the game ships zero images, with portraits done as
 `fidget % faces`. It would commit the setting in a way the fiction has not yet.
 
+### 6.26 Which silence it is
+
+**§6.9's first open question was wrong, and measuring it produced a better answer.**
+
+It read: *a tower that harvests from every floor with one mill jams — bamboo claims every shelf
+and poles have nowhere to land.* That mechanism was asserted, not measured. Four arms, one
+mill, thirty thousand ticks:
+
+```
+shelves: bamboo=0  poles=100  free=0 | mill in=6 out=6 | idle crew=3/3
+arm buffers: [8/8] [8/8] [8/8] [8/8]
+```
+
+**It is the other way round.** The mill converts everything it is given, so every shelf ends up
+holding *poles* and bamboo reads zero. Nothing is broken: backpressure propagates exactly as
+designed — shelves fill, so the mill's outbox fills, so the mill stalls, so bamboo is not
+consumed, so every arm's buffer fills, so the arms stall. The tower stops cleanly and holds a
+hundred poles, which is a rich tower rather than a jammed one, and the escape is to spend.
+
+Two other things the measurement settled:
+
+- **A pole sink does not help on its own.** Adding a thornwright changes nothing, because its
+  darts have nowhere to go either — once every shelf holds one item, the tower can never store
+  a second kind again.
+- **Nor does a chute**, and that is correct rather than a gap. `find_destination` will only
+  spill what *nothing wants*, and poles are wanted by every build cost in the game. A chute
+  that threw poles into the jungle would be the worse failure the `may_spill` rule was written
+  to prevent.
+
+#### What was actually missing
+
+`RoomView.stalled` was a single boolean, so **a room quiet because nobody has brought it
+anything and a room quiet because nobody wants what it makes looked identical** — and they are
+answered by opposite actions. Feed the first. Spend from the second.
+
+Four cutter arms standing quiet because the tower is full of poles read exactly like four arms
+on bare ground.
+
+`StallTag` is the fix: wrecked, off, shaded, unarmed, unfuelled, starved, backed up — first
+match wins, most-answerable first. It reaches the player as **hover text on the room label**,
+never as a banner and never as a number: `DECISIONS.md` §8 still holds, the silence is still
+the signal, and this only says which silence it is.
+
+| tag | what the tower says |
+| --- | --- |
+| starved | *waiting on something nobody has brought* |
+| backed up | *nowhere to put what it makes* |
+| unfuelled | *nothing to burn* |
+| unarmed | *nothing on the rack* |
+| shaded | *in the tower's own shadow* |
+
+#### What is not settled
+
+Whether a player reads a hover. The stronger version draws the two silences differently on the
+cross-section — a backed-up room is *full*, and could look it — and that is a renderer change
+rather than a data one. Carried into §6.9.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -7304,11 +7361,14 @@ has fourteen prompts unwritten and the game ships zero images, with portraits do
    only half a decision until you can look at one and decline. The machinery is mostly there
    (`enclave_recruits` is already a per-region budget), and what is missing is the person being
    somebody in particular *before* you say yes.
-2. **Does anything teach a player to scale the chain with the intake?** §6.24 uncapped the
-   cutter arm, so a tower can now harvest from every floor — and a tower that does, with one
-   mill, jams: bamboo claims every shelf and poles have nowhere to land. The instrument found
-   this by halving its own hauls. The game says nothing, and the failure looks like the tower
-   breaking rather than like a chain that needs a second mill.
+2. **Answered by §6.26, and this question had the mechanism backwards.** It read: *a tower
+   that harvests from every floor with one mill jams — bamboo claims every shelf and poles have
+   nowhere to land.* Measured, it is the other way round: the mill converts everything, every
+   shelf ends up holding **poles**, bamboo reads zero, and the tower stops *cleanly* rather
+   than jamming — a rich tower holding a hundred poles, whose escape is to spend. Kept here
+   because the lesson is the method: that mechanism was asserted and never measured, in a repo
+   whose own guidance says to measure your instruments first. What was genuinely missing is now
+   §6.26: a quiet room could not say **which** silence it was in.
 3. **Is the weapon set a loadout or a checklist?** §6.22 gave weapons an approach they answer
    and three specialists to go with the generalists. The filter is measured — a mast leaves a
    skitter alone, a ward leaves a leaper alone. What is not measured is whether *choosing*
@@ -7369,7 +7429,12 @@ has fourteen prompts unwritten and the game ships zero images, with portraits do
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-13. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+13. **Does a hover carry it?** §6.26 gives a quiet room a stated reason, and it arrives as
+   hover text on the room label. Hover is the precision layer by rule (`DECISIONS.md` §8) and it
+   is also the layer players do not use. The stronger version draws the two silences
+   differently — a backed-up room is *full*, and could look it — which is a renderer change
+   rather than a data one, and wants somebody looking at the screen to judge.
+14. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

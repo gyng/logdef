@@ -336,6 +336,13 @@ export interface RoomView {
   shelves: ShelfView[];
   /** Starved, backed up, shaded, dry, or switched off. Drawn quiet. */
   stalled: boolean;
+  /**
+   * *Why* it is quiet, when it is.
+   *
+   * A starved room and a saturated one looked identical, and they want
+   * opposite actions: feed the first, spend from the second.
+   */
+  stall: StallTag | null;
   /** Switched on by the player. */
   active: boolean;
   /**
@@ -553,6 +560,16 @@ export interface CatalogSnapshot {
 }
 
 /** What an emplacement does, as the build menu needs it. */
+/** Why a room is quiet. */
+export type StallTag =
+  | "wrecked"
+  | "off"
+  | "shaded"
+  | "unarmed"
+  | "unfuelled"
+  | "starved"
+  | "backedup";
+
 export interface DefenceInfo {
   /** Index into `catalog.items`. */
   ammo: number;

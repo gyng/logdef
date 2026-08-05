@@ -21,7 +21,13 @@ import {
   towerShape,
   type PlaceMode,
 } from "./scene";
-import type { CatalogSnapshot, CrewView, FeatureView, ViewSnapshot } from "../bridge/types";
+import type {
+  CatalogSnapshot,
+  CrewView,
+  FeatureView,
+  StallTag,
+  ViewSnapshot,
+} from "../bridge/types";
 
 export interface RenderInput {
   view: ViewSnapshot;
@@ -243,6 +249,25 @@ export class Renderer {
  * state through fill levels and colour, and numbers are a precision
  * layer on top, not the primary read (`DECISIONS.md` §8).
  */
+/**
+ * Why a room is quiet, in the tower's own words.
+ *
+ * **Starved and backed up are the pair this exists for.** They looked
+ * identical from outside — a quiet room — and they are answered by
+ * opposite actions: feed the first, spend from the second. Four cutter
+ * arms standing quiet because nothing wants more bamboo read exactly
+ * like four arms on bare ground (`SYSTEMS.md` §6.26).
+ */
+const WHY_QUIET: Record<StallTag, string> = {
+  wrecked: "wrecked, and needs mending before it works again",
+  off: "switched off",
+  shaded: "in the tower's own shadow",
+  unarmed: "nothing on the rack",
+  unfuelled: "nothing to burn",
+  starved: "waiting on something nobody has brought",
+  backedup: "nowhere to put what it makes",
+};
+
 function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
   const labels: Label[] = [];
 
@@ -272,6 +297,12 @@ function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layou
         x: cx,
         y: y + layout.floorH * 0.52,
         variant: `label-room${wear}`,
+        // **Which silence this is** (`SYSTEMS.md` §6.26). The room still
+        // just goes quiet — that is the signal and it is unchanged. What
+        // the hover adds is the difference between "nobody has brought
+        // me anything" and "nobody wants what I make", which are
+        // answered by opposite actions and looked identical.
+        title: room.stall ? `${info.name} — ${WHY_QUIET[room.stall]}` : info.name,
       });
 
       // One number per room: whatever it is accumulating. More than
