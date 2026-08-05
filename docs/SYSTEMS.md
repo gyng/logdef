@@ -7657,11 +7657,46 @@ Nothing failed while they were missing, which is the point: **a tool surface fal
 game silently.** `dogfood.spec.ts` names the verbs that must exist, so the next milestone that
 adds one and forgets the tool fails a spec rather than being discovered a year later.
 
-The run this produced is worth reading on its own: a tower that builds all seven chain rooms by
-Day 1 afternoon **browns out at 16/800 charge** — one burner against a mill, a comb and a ropery,
-all wanting the bamboo the burner also eats. That is `charge_per_burn` and `provocation_per_burn`
-doing exactly what the note at the top of `AGENTS.md` says they do, and it is the first time it
-has been seen from a player's seat rather than from an instrument.
+#### And then a whole run, played to its ending, priced the rope chain
+
+With those in place a run went the distance through the tools alone: **arrived at the far edge on
+day 7, 38,969 paces, nine of eleven planned rooms, and no lift.** The ending state is the most
+useful thing this project has produced in a while, because it is the first time anyone has looked
+at a finished tower from a player's seat rather than through an instrument:
+
+```
+Shelves: Meals 24, Rope 89
+Burner (unfuelled) · Canteen (starved) · Mill (backedup) · Thorn Gun (unarmed)
+Can build: … every single entry marked "cannot pay"
+```
+
+**Eighty-nine rope, no poles, and nothing affordable.** An elevator wants two rope. The tower had
+forty-four times that and could not buy one, because a lift also costs poles and there were none.
+
+`examples/glut.rs` was written to find out why, and the answer is **competition at the source**:
+the fiber comb is a second mouth on bamboo, and **the rope chain costs the tower 56% of its
+poles** — 39 milled without it, 17 with it, over the same twenty minutes. `tanglenet.ron` and
+`BALANCE.md`'s ropery row have both carried "rope's only consumer is a one-off" as a known
+problem since M5; this is the first time it has had a number on it.
+
+**Two harness traps were walked into getting there, and both are ones this repo had already
+written down.** Widening looked like an unbounded pole sink and is not — the hull runs 10 to 16
+in steps of two, so it is three purchases and both towers reach the ceiling, which produced a
+confident "3 and 3, the rope chain is free" that was a reading of `max_slots`. And `RoomView.
+stalled` means *waiting on an input* **or** *backed up on an output*; reading it as the second
+when it was the first kept a shelf-jam theory alive for an hour. The shelves finish a third full
+and nothing is stuck in a buffer — explanation two is measurably wrong, and the columns that
+disprove it are kept in the instrument on purpose.
+
+**Both stalls are real, in different towers, and they want opposite fixes.** The played tower's
+mill was genuinely backed up: three crew, two floors, no lift, so poles were made and never
+carried — §6.6's binding constraint, seen from the inside. The probe's mill is starved of bamboo.
+`snapshot.rs` tells them apart correctly; a reader has to as well.
+
+The other thing that run showed: a tower that builds all seven chain rooms by Day 1 afternoon
+**browns out at 16/800 charge** — one burner against a mill, a comb and a ropery, all wanting the
+bamboo the burner also eats. That is `charge_per_burn` and `provocation_per_burn` doing exactly
+what the note at the top of `AGENTS.md` says they do.
 
 ### 6.9 Open questions
 

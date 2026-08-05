@@ -228,6 +228,10 @@ crates/
       lift.rs                     # M6's: does a shaft ever pay, swept over tower height.
                                   #   Reads its pack from UNDERSTORY_PACK when set, so a
                                   #   tuning pass costs seconds rather than a rebuild
+      glut.rs                     # does the rope chain pay for itself? (it costs 56% of
+                                  #   the tower's poles). Written from a played run's
+                                  #   ending, and it documents two harness traps it fell
+                                  #   into first
   bridge/                         # understory-bridge: wasm-bindgen entry points (cdylib)
     src/lib.rs
 assets/
@@ -322,7 +326,14 @@ Three rules the wreckage taught:
 3. **Check the run gave the mechanism something to do.** The plating comparison ran at a
    provocation where nothing ever reached a room on either tower — eight seeds, zero damage,
    and a confident conclusion drawn from it.
-4. **A harness measures its own policy as readily as the game's.** `lift.rs`'s affordability
+4. **A sink with a ceiling is not a sink.** `glut.rs` compared two towers on widenings
+   bought, which looked unbounded and is three purchases — the hull runs 10 to 16 in steps of
+   two. Both towers reached the cap and it reported "identical, the rope chain is free", which
+   was a reading of `max_slots`. **Before comparing on a quantity, check it can still go up.**
+5. **`RoomView.stalled` is two facts wearing one name** — waiting on an input, *or* backed up
+   on an output — and they want opposite fixes. Reading it as the second when it was the first
+   kept a wrong theory alive for an hour. `RoomView.stall` (the `StallTag`) says which; use it.
+6. **A harness measures its own policy as readily as the game's.** `lift.rs`'s affordability
    column gave three different answers to one question depending on whether its tower grew,
    whether it owned a chute, and what order it bought in — because a tower that spends every
    pole the moment it has one almost never *holds* a surplus, and the column asked what it

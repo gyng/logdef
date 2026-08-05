@@ -32,6 +32,7 @@ import type {
   PowerUse,
   RoomInfo,
   ShaftInfo,
+  ShiftTag,
   ViewSnapshot,
 } from "../bridge/types";
 import { placementFits } from "../engine/scene";
@@ -82,6 +83,7 @@ function report(result: string | { Error: unknown }, ok: string): ToolResult {
 function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
   const item = (i: number) => catalog.items[i]?.name ?? "?";
   const lines: string[] = [];
+  const enclave = catalog.regions[view.journey.region]?.enclave ?? null;
 
   lines.push(
     `Day ${String(view.clock.day + 1)}, ${catalog.dayparts[view.clock.daypart]?.name ?? "?"} · ` +
@@ -90,6 +92,11 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
   lines.push(
     `Charge ${String(view.power.charge)}/${String(view.power.capacity)}` +
       (view.power.brownout ? " — BROWN-OUT" : ""),
+  );
+  lines.push(
+    `In ${catalog.regions[view.journey.region]?.name ?? "?"}, ` +
+      `${String(Math.round(view.journey.region_permille / 10))}% through it · ` +
+      `${String(Math.round(view.journey.remaining))} paces still to walk`,
   );
 
   lines.push("");
@@ -183,6 +190,51 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
         (view.journey.waypoint.affordable ? "" : " (cannot pay for it)"),
     );
   }
+  // **The settlements were invisible.** A run passes three of them and
+  // they are where the shell work, the trades and the people are
+  // (`SYSTEMS.md` §5); `look` reported none of it, so an agent walked
+  // past every one. `enclave_ahead` counts down to it and goes null once
+  // it is behind — there is no going back down the axis.
+  const j = view.journey;
+  if (j.at_enclave || j.enclave_ahead !== null) {
+    const offers = j.offers
+      .map((left, at) => {
+        const offer = enclave?.offers[at];
+        if (!offer || left === 0) return null;
+        return (
+          `${String(at)}: ${String(offer.give.amount)} ${item(offer.give.item)} for ` +
+          `${String(offer.take.amount)} ${item(offer.take.item)} (${String(left)} left)`
+        );
+      })
+      .filter((line): line is string => line !== null);
+    lines.push("");
+    if (j.at_enclave) {
+      lines.push(
+        `BERTHED at ${enclave?.name ?? "a settlement"}. While the tower is standing here:`,
+      );
+      lines.push(`  trades: ${offers.join("; ") || "none left"}`);
+      lines.push(
+        `  ${String(j.recruits)} people would come aboard` +
+          (enclave && enclave.recruit_cost.length > 0
+            ? ` (${enclave.recruit_cost.map((c) => `${String(c.amount)} ${item(c.item)}`).join(" + ")} each)`
+            : ""),
+      );
+      lines.push(
+        `  shell work ${String(j.shell_work)} left` +
+          (enclave?.reinforce
+            ? ` (${enclave.reinforce.cost.map((c) => `${String(c.amount)} ${item(c.item)}`).join(" + ")}, ` +
+              `+${String(enclave.reinforce.panel_hp)} to every panel; ${String(j.shell_bonus)} added so far)`
+            : ""),
+      );
+      lines.push("  None of it is available once the tower walks on.");
+    } else {
+      lines.push(
+        `${enclave?.name ?? "A settlement"} is ${String(Math.round(j.enclave_ahead ?? 0))} paces ` +
+          "ahead — trades, people and shell work, and only while the tower is standing at it.",
+      );
+    }
+  }
+
   if (view.recruit) {
     const t = view.recruit.trait_at;
     lines.push(
@@ -587,10 +639,10 @@ ${look(game.viewForTool(), game.getCatalog())}`);
     {
       name: "understory_reinforce",
       description:
-        "Have the crew thicken the hull: every panel, present and future, gains hit points. " +
-        "Paid in stock and in the crew time it takes, so it competes with everything else " +
-        "they could be doing. Worth it before a stretch you expect to be chewed on, not " +
-        "in the middle of one.",
+        "Have the berthed settlement plate the hull: every panel, present and future, gains " +
+        "hit points. Only while the tower is standing at a settlement, only a few times per " +
+        "settlement for the whole run, and paid in stock. Worth it before a stretch you " +
+        "expect to be chewed on — it cannot be bought in the middle of one.",
       inputSchema: { type: "object", properties: {} },
       execute: () => report(send("Reinforce"), "the crew are thickening the hull"),
     },
@@ -638,6 +690,66 @@ ${look(game.viewForTool(), game.getCatalog())}`);
       },
       execute: (a) =>
         report(send({ AddCar: { shaft: Number(a.shaft) } }), "another car is running"),
+    },
+    {
+      name: "understory_trade",
+      description:
+        "Take one of the berthed settlement's posted swaps, by the number `look` gives it. " +
+        "Only while the tower is standing at the settlement, and each swap has a limited " +
+        "number of takes for the whole run — walking on ends the chance for good.",
+      inputSchema: {
+        type: "object",
+        properties: { offer: { type: "number", description: "Offer number from `look`" } },
+        required: ["offer"],
+      },
+      execute: (a) => report(send({ Trade: { offer: Number(a.offer) } }), "traded"),
+    },
+    {
+      name: "understory_set_room_active",
+      description:
+        "Switch a room off, or back on. A room that is off draws no charge and does no work — " +
+        "the cheapest answer to a brown-out that does not cost anything permanent, and the " +
+        "way to stop a chain filling a buffer you would rather keep for something else.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          floor: { type: "number" },
+          slot: { type: "number" },
+          active: { type: "boolean", description: "false switches it off" },
+        },
+        required: ["floor", "slot", "active"],
+      },
+      execute: (a) =>
+        report(
+          send({
+            SetRoomActive: {
+              floor: Number(a.floor),
+              slot: Number(a.slot),
+              active: Boolean(a.active),
+            },
+          }),
+          a.active ? "it is working again" : "it is off",
+        ),
+    },
+    {
+      name: "understory_set_shift",
+      description:
+        "Put somebody on the day or the night shift. Crew sleep through their off band, so a " +
+        "tower with everybody on days does nothing for a third of the clock — and one with " +
+        "everybody on nights harvests in the dark with the lamps on. Balance them.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          crew: { type: "number", description: "Crew id from `look`" },
+          shift: { type: "string", enum: ["Day", "Night"] },
+        },
+        required: ["crew", "shift"],
+      },
+      execute: (a) =>
+        report(
+          send({ SetShift: { crew: Number(a.crew), shift: String(a.shift) as ShiftTag } }),
+          `they are on the ${String(a.shift).toLowerCase()} shift now`,
+        ),
     },
     {
       name: "understory_set_speed",
