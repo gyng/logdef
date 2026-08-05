@@ -67,12 +67,36 @@ const HORIZON_FRACTION = 0.4;
 const TOWER_LEFT_FRACTION = 0.28;
 
 /**
+ * How far in and out the player may zoom.
+ *
+ * **The fit is still the fit.** `computeLayout` sizes the tower to the
+ * frame first and this multiplies the result, so the default view is
+ * unchanged and zoom is a lens over it rather than a second layout.
+ *
+ * Out to 0.55 because a fourteen-floor tower with a shaft on the far
+ * column is a lot of cross-section and being able to see all of it at
+ * once is the point of the cozy cap; in to 2.4 because at two floors —
+ * which is where every run now starts (`SYSTEMS.md` §6.11) — the
+ * default fit leaves a very small tower on a very large screen, and the
+ * first five minutes are the ones a player most needs to be able to
+ * read.
+ */
+export const MIN_ZOOM = 0.55;
+export const MAX_ZOOM = 2.4;
+
+/** Clamp a zoom factor to what the layout will honour. */
+export function clampZoom(zoom: number): number {
+  if (!Number.isFinite(zoom)) return 1;
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
+/**
  * Fit the tower to the viewport. Height is the binding constraint —
  * the whole point of the cozy 8–14 floor cap is that the tower always
  * fits on one screen, so the layout scales to keep that true rather
  * than letting the player scroll.
  */
-export function computeLayout(viewport: Viewport, shape: TowerShape): Layout {
+export function computeLayout(viewport: Viewport, shape: TowerShape, zoom = 1): Layout {
   const usableHeight = viewport.height * GROUND_FRACTION;
   // Always reserve room for a couple of floors beyond the current top,
   // so building upward doesn't make the whole tower jump in scale.
@@ -80,7 +104,13 @@ export function computeLayout(viewport: Viewport, shape: TowerShape): Layout {
 
   const byHeight = usableHeight / (plannedFloors * FLOOR_ASPECT);
   const byWidth = (viewport.width * 0.4) / Math.max(shape.slots, 1);
-  const slotW = Math.max(MIN_SLOT_W, Math.min(MAX_SLOT_W, Math.min(byHeight, byWidth)));
+  const fitted = Math.max(MIN_SLOT_W, Math.min(MAX_SLOT_W, Math.min(byHeight, byWidth)));
+  // **Applied after the clamp, not inside it.** `MIN_SLOT_W` and
+  // `MAX_SLOT_W` exist to keep the *fitted* tower legible on very small
+  // and very large screens; folding zoom in before them would make the
+  // control do nothing at either end of that range, which reads as a
+  // broken button rather than as a considered limit.
+  const slotW = fitted * clampZoom(zoom);
 
   return {
     slotW,

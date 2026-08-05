@@ -491,6 +491,38 @@ function TopBar({ game, ui }: Props) {
           </button>
         ))}
       </div>
+      {/*
+        Zoom. Discoverable rather than only on the wheel: a control
+        nobody knows about is a control nobody has, and the tower now
+        starts at two floors where the fitted view leaves it very small
+        (`SYSTEMS.md` §6.11).
+      */}
+      <div className="speeds" role="group" aria-label="Zoom">
+        <button
+          type="button"
+          title="Zoom out (-)"
+          data-testid="zoom-out"
+          onClick={() => game.zoomBy(1 / 1.15)}
+        >
+          −
+        </button>
+        <button
+          type="button"
+          title="Fit the tower to the frame (0)"
+          data-testid="zoom-reset"
+          onClick={() => game.resetZoom()}
+        >
+          {`${Math.round(ui.zoom * 100)}%`}
+        </button>
+        <button
+          type="button"
+          title="Zoom in (+)"
+          data-testid="zoom-in"
+          onClick={() => game.zoomBy(1.15)}
+        >
+          +
+        </button>
+      </div>
     </header>
   );
 }
@@ -1325,7 +1357,21 @@ function useKeyboardShortcuts(game: Game, ui: UiState): void {
           game.setStriding(!walking);
           break;
         case "Escape":
-          if (placing) game.beginPlacing(null);
+          if (placing) game.cancelPlacement();
+          break;
+        // Zoom. `=` as well as `+` because reaching plus means holding
+        // shift on most layouts, and a keyboard shortcut you have to
+        // use two hands for is a keyboard shortcut nobody uses.
+        case "+":
+        case "=":
+          game.zoomBy(1.15);
+          break;
+        case "-":
+        case "_":
+          game.zoomBy(1 / 1.15);
+          break;
+        case "0":
+          game.resetZoom();
           break;
         default:
           break;

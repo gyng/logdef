@@ -10,7 +10,7 @@
 import { LabelLayer, type Label } from "./LabelLayer";
 import { QuadBatch } from "./QuadBatch";
 import { createContext, resizeToDisplay } from "./gl";
-import { computeLayout, hitSlot, slotX, floorY, type Layout } from "./layout";
+import { clampZoom, computeLayout, hitSlot, slotX, floorY, type Layout } from "./layout";
 import {
   drawScene,
   edgeScreenX,
@@ -53,6 +53,25 @@ export class Renderer {
     this.labels = new LabelLayer(labelRoot);
   }
 
+  /**
+   * The player's lens over the fitted layout.
+   *
+   * Lives on the renderer rather than in `GameState`: what somebody is
+   * looking at is not a fact about the tower, it does not belong in a
+   * replay, and two people watching the same seed should be free to
+   * look at different parts of it.
+   */
+  private zoom = 1;
+
+  setZoom(zoom: number): number {
+    this.zoom = clampZoom(zoom);
+    return this.zoom;
+  }
+
+  getZoom(): number {
+    return this.zoom;
+  }
+
   render(input: RenderInput): void {
     const { view, catalog } = input;
     resizeToDisplay(this.canvas);
@@ -61,7 +80,7 @@ export class Renderer {
     if (viewport.width === 0 || viewport.height === 0) return;
 
     const shape = towerShape(view);
-    const layout = computeLayout(viewport, shape);
+    const layout = computeLayout(viewport, shape, this.zoom);
     this.layout = layout;
     this.shape = shape;
     this.view = view;

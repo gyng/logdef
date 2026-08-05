@@ -78,7 +78,25 @@ export const DEEDS: Deed[] = [
   {
     id: "fed_eight",
     said: "Fed eight people on a walking tower.",
-    opens: ["room.garden"],
+    // **Nothing, and the garden is why this note exists.**
+    //
+    // This used to open `room.garden`. M6 made the farm the *first*
+    // rung of the opening ladder (`SYSTEMS.md` §6.11) — the one card a
+    // new player sees on turn one — and a journal-gated first rung is a
+    // new player looking at a single button they cannot press, with the
+    // rest of the menu behind it. Caught in `e2e/smoke.spec.ts`, which
+    // clicked it and timed out.
+    //
+    // **The standing rule: nothing in the opening ladder may be
+    // journal-gated.** The two systems answer different questions — the
+    // ladder is "what has this tower built", the journal is "what has
+    // this player done" — and where they overlap the ladder wins,
+    // because a run that cannot start is not a run.
+    //
+    // Fed eight is still worth recording. §5.7 says as much about
+    // `walked`: a deed with no reward is a deed the journal keeps
+    // because it happened.
+    opens: [],
   },
   {
     id: "coast",

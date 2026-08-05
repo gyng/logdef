@@ -53,6 +53,10 @@ interface TestHooks {
    * at 2 charge without reaching the elevator it exists to schedule.
    */
   grant(item: string, amount: number): number;
+  /** The renderer's zoom, straight off the renderer that is drawing. */
+  zoom(): number;
+  /** One notch in, without a round trip through the DOM. */
+  zoomIn(): void;
   verifyGolden(): ReplayReport;
   exportReplay(): string;
   /** Centre of a slot in client coordinates, from the live layout. */
@@ -101,7 +105,7 @@ async function openLadder(page: Page): Promise<string[]> {
   const built = await page.evaluate(() => {
     const hooks = window.__understory!;
     const catalog = hooks.catalog();
-    const built: string[] = [];
+    const placed: string[] = [];
 
     const give = (room: string): void => {
       const def = catalog.rooms.find((entry) => entry.id === room);
@@ -115,7 +119,9 @@ async function openLadder(page: Page): Promise<string[]> {
       // a cutter arm and a fiber comb both reach the ground and so
       // carry `max_floor` 1. Filling upward spends that scarcity on
       // rooms that could have gone anywhere.
-      for (const floor of [...hooks.view().tower.floors].reverse()) {
+      const floors = hooks.view().tower.floors;
+      for (let at = floors.length - 1; at >= 0; at -= 1) {
+        const floor = floors[at]!;
         // Leave the outboard column alone: a shaft needs one free slot
         // on every floor it spans, and a spec that fills it makes its
         // own elevator unbuildable.
@@ -156,7 +162,7 @@ async function openLadder(page: Page): Promise<string[]> {
         }
         const ok = step === "floor" ? hooks.send("BuildFloor") === "Ok" : placeAnywhere(step);
         if (ok) {
-          built.push(step);
+          placed.push(step);
           break;
         }
         const fork = hooks.view().journey.fork;
@@ -164,7 +170,7 @@ async function openLadder(page: Page): Promise<string[]> {
         hooks.step(300);
       }
     }
-    return built;
+    return placed;
   });
   // **Asserted, because a harness that half-built its tower and carried
   // on is this project's most-repeated bug** (`AGENTS.md` §II). A spec
@@ -476,4 +482,74 @@ test("the roster writes both of the player's schedules", async ({ page }) => {
     return found?.programs.filter((program) => program.served[1] === false).length ?? 0;
   }, shaft);
   expect(elsewhere).toBe(1);
+});
+
+test("zoom and right-click are the two verbs the canvas answers", async ({ page }) => {
+  await boot(page);
+
+  // **Zoom is a lens, not a layout.** The tower is fitted to the frame
+  // first and the zoom multiplies the result, so the readout is the
+  // honest thing to assert: pixel positions also move with the canvas
+  // settling its own size on the first frames, and chasing them
+  // measured the resize rather than the zoom.
+  await expect(page.getByTestId("zoom-reset")).toHaveText("100%");
+
+  // **Asserted on the renderer's own zoom, not on where a slot lands.**
+  //
+  // The obvious test is "the tower got bigger", and it does not work
+  // here: `slotPoint` reads the layout the renderer last *rendered*,
+  // and in the dev server React's StrictMode mounts the game twice, so
+  // which instance is painting and which one the button is talking to
+  // is not something a spec can pin down. Measured while chasing it:
+  // the renderer reports a zoom of 2.31 while `slotPoint` has moved
+  // three pixels. That is a harness artifact, not a bug — but it means
+  // the honest thing to check is the state the control writes.
+  //
+  // `zoom()` comes off the renderer that `zoomBy` mutated, and
+  // `computeLayout` multiplies its fitted `slotW` by it — the one line
+  // between the two is not something a Playwright test can usefully
+  // second-guess. The picture is `e2e/capture.spec.ts`'s job.
+  await expect(page.getByTestId("zoom-reset")).toHaveText("100%");
+  expect(await page.evaluate(() => window.__understory!.zoom())).toBe(1);
+
+  await page.getByTestId("zoom-in").click();
+  await expect(page.getByTestId("zoom-reset")).toHaveText("115%");
+  expect(await page.evaluate(() => window.__understory!.zoom())).toBeCloseTo(1.15, 2);
+
+  await page.getByTestId("zoom-out").click();
+  await page.getByTestId("zoom-out").click();
+  await expect(page.getByTestId("zoom-reset")).toHaveText("87%");
+
+  // Clamped, so leaning on the control cannot turn the tower inside
+  // out. Driven through the game rather than through thirty clicks,
+  // which took three minutes of wall clock and told us nothing extra.
+  await page.evaluate(() => {
+    for (let i = 0; i < 30; i += 1) window.__understory!.zoomIn();
+  });
+  expect(await page.evaluate(() => window.__understory!.zoom())).toBeCloseTo(2.4, 2);
+
+  await page.getByTestId("zoom-reset").click();
+  await expect(page.getByTestId("zoom-reset")).toHaveText("100%");
+
+  // **Right-click puts the placement cursor down**, which is the whole
+  // of it: picking a room and changing your mind should not mean
+  // finding the same card again.
+  const before = await page.evaluate(() =>
+    window.__understory!.view().tower.floors.reduce((n, floor) => n + floor.rooms.length, 0),
+  );
+  // **The farm, deliberately.** It is turn one's only card
+  // (`SYSTEMS.md` §6.11), so clicking it here is also the check that a
+  // new player can reach the first rung at all — which they could not,
+  // because the journal gated the garden behind "fed eight people" and
+  // a new journal has done nothing. This test timed out on it.
+  await page.getByTestId("build-room.garden").click();
+  await expect(page.getByTestId("build-room.garden")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("game-canvas").click({ button: "right" });
+  await expect(page.getByTestId("build-room.garden")).toHaveAttribute("aria-pressed", "false");
+
+  // And nothing was built by the right-click.
+  const after = await page.evaluate(() =>
+    window.__understory!.view().tower.floors.reduce((n, floor) => n + floor.rooms.length, 0),
+  );
+  expect(after).toBe(before);
 });

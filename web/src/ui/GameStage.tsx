@@ -67,6 +67,18 @@ export function GameStage({ bridge }: Props) {
         onPointerMove={(event) => game?.handlePointerMove(event.clientX, event.clientY)}
         onPointerLeave={() => game?.handlePointerLeave()}
         onClick={(event) => game?.handleClick(event.clientX, event.clientY)}
+        // **Right-click puts the placement cursor down.** Picking a room
+        // and changing your mind used to mean finding the same card
+        // again and clicking it off — a lot of travel to undo a decision
+        // you have not made yet. The browser menu is suppressed only
+        // over the canvas, so text elsewhere still behaves.
+        onContextMenu={(event) => {
+          event.preventDefault();
+          game?.cancelPlacement();
+        }}
+        // A wheel notch is ~100 deltaY, so this is about 10% a notch and
+        // multiplicative — see `Game.zoomBy` for why it is not additive.
+        onWheel={(event) => game?.zoomBy(Math.exp(-event.deltaY * 0.001))}
         data-testid="game-canvas"
       />
       <div ref={labelsRef} className="stage-labels" />

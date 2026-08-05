@@ -86,6 +86,8 @@ export interface UiState {
   /** Whether the selected room is switched on. */
   selectedActive: boolean;
   placing: string | null;
+  /** The player's lens over the fitted layout. 1 is the fit. */
+  zoom: number;
   day: number;
   daypart: string;
   /** Which daypart, as an index into the catalog. */
@@ -211,6 +213,12 @@ export class Game {
     if (hooks && typeof hooks === "object") {
       (hooks as Record<string, unknown>).slotPoint = (floor: number, slot: number) =>
         this.renderer.slotCenter(floor, slot);
+      // The renderer's own lens, so a spec can tell "the zoom control
+      // did nothing" from "the zoom control moved a different
+      // renderer's layout" — which is exactly the confusion React's
+      // double-mount produces in development.
+      (hooks as Record<string, unknown>).zoom = () => this.renderer.getZoom();
+      (hooks as Record<string, unknown>).zoomIn = () => this.zoomBy(1.15);
       // The same thing for the terrain strip: the screenshot harness
       // has to be able to frame a ruin, and only the renderer knows
       // where a given parallax layer put it. The distance is passed in
@@ -512,6 +520,37 @@ export class Game {
     if (this.placeMode) this.placeMode.hover = null;
   }
 
+  /**
+   * Nudge the zoom by a multiplier, and publish the result.
+   *
+   * Multiplicative rather than additive, so a wheel notch feels the
+   * same at either end of the range — a fixed +0.1 is a third of the
+   * way out at 0.3× and a twentieth of the way in at 2×.
+   */
+  zoomBy(factor: number): void {
+    this.renderer.setZoom(this.renderer.getZoom() * factor);
+    this.publish(true);
+  }
+
+  /** Back to the fitted view. */
+  resetZoom(): void {
+    this.renderer.setZoom(1);
+    this.publish(true);
+  }
+
+  /**
+   * Put the placement cursor down without placing anything.
+   *
+   * **What right-click is for.** Picking a room and then changing your
+   * mind used to mean finding the same card again and clicking it off,
+   * which is a lot of travel to undo a decision you have not made yet.
+   */
+  cancelPlacement(): void {
+    if (!this.placeMode) return;
+    this.placeMode = null;
+    this.publish(true);
+  }
+
   handleClick(clientX: number, clientY: number): void {
     // **A creature first, and only while not placing.** Naming one is a
     // live order given during a wave, and it has to beat selecting the
@@ -663,6 +702,7 @@ export class Game {
       selected: this.selected,
       selectedActive: this.selectedRoomActive(),
       placing: this.placeMode?.id ?? null,
+      zoom: this.renderer.getZoom(),
       day: view?.clock.day ?? 0,
       daypart: view === null ? "—" : (this.catalog.dayparts[view.clock.daypart]?.name ?? "—"),
       daypartIndex: view?.clock.daypart ?? 0,
