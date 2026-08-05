@@ -2647,3 +2647,131 @@ fn a_settlement_offers_somebody_in_particular() {
         "the settlement is still offering somebody it has already sent"
     );
 }
+
+#[test]
+fn a_tower_that_wants_a_shaft_can_have_one() {
+    // **§6.9's largest open balance question, asked properly.**
+    //
+    // §6.19 found that a 30-minute run could not afford a lift, and
+    // filed it as a balance problem. But the tower it measured was the
+    // golden recorder's, which buys a canteen, two burners and a bunk
+    // first — comfort before transport. That is a reasonable thing for
+    // a fixture to do and it is not the only thing a player could do.
+    //
+    // This asks the other question: if a tower buys the *chain* and
+    // then the shaft, skipping every comfort room, can it have one
+    // inside a run? Nothing here is granted — it earns every pole.
+    let content = content();
+    let mut game = crate::tests::opening(2200);
+
+    // The ladder, then the rope chain, then the lift. Cheapest useful
+    // thing first, and nothing that is merely nice.
+    // **Unlock order first, then most-constrained.** The comb has to
+    // follow the burner that unlocks it, and precede the mill and
+    // storeroom that would otherwise take both ground floors from it —
+    // it reaches the ground, so it carries `max_floor: 1`. Measured
+    // with it last: five rooms of seven, then a tower buying floors
+    // for ever that a `max_floor` room could never stand on.
+    let want = [
+        "room.garden",
+        "room.cutter_arm",
+        "room.burner",
+        "room.fiber_comb",
+        "room.mill",
+        "room.storeroom",
+        "room.ropery",
+    ];
+    let mut built: Vec<&str> = Vec::new();
+    let mut floors = 2u8;
+    let mut lift_at: Option<u64> = None;
+
+    // One run's worth of ticks and no more. A probe that outlives the
+    // thing it measures is measuring a parked tower, and a slow probe
+    // is one nobody runs.
+    for _ in 0..900 {
+        game.step(90);
+        if game.state().arrived {
+            break;
+        }
+
+        // **The chain before the height, and that ordering is the
+        // whole point.** Growing first spends the opening's 24 poles on
+        // three floors, leaves nothing for a cutter arm, and a tower
+        // with no arm never earns another pole — measured: one room
+        // built in a thousand minutes. A floor is only bought when
+        // something has nowhere to stand.
+        let next = want.iter().find(|room| !built.contains(room));
+        if let Some(&room) = next {
+            if crate::harness::place_anywhere(&mut game, room) {
+                built.push(room);
+                continue;
+            }
+            // Could not place it. If that is for want of *room* rather
+            // than money, buy a floor.
+            let affordable = crate::tests::can_afford(&game, room);
+            if affordable && floors < 5 && game.try_send(GameCommand::BuildFloor).is_ok() {
+                floors += 1;
+            }
+            continue;
+        }
+
+        // And the shaft, the moment the chain has made rope for one.
+        if built.len() == want.len() && lift_at.is_none() {
+            let top = (game.state().tower.floors.len() as u8).saturating_sub(1);
+            if game
+                .try_send(GameCommand::BuildShaft {
+                    shaft: "shaft.elevator".into(),
+                    low: 0,
+                    high: top,
+                    slot: game.state().tower.floors[0].slots - 3,
+                })
+                .is_ok()
+            {
+                lift_at = Some(game.state().tick);
+                break;
+            }
+        }
+    }
+
+    // **Reports rather than asserts a threshold.** §6.9 asks whether a
+    // 30-minute run can contain a shaft, and the useful output is *how
+    // far a chain-first tower gets*, not a pass against a number
+    // somebody picked. What is asserted is only that this stays a
+    // measurement: most of the chain has to go up, or the probe has
+    // stopped measuring the thing it is named for.
+    let minutes = |ticks: u64| ticks as f64 / 30.0 / 60.0;
+    match lift_at {
+        Some(at) => println!(
+            "  chain-first: lift at tick {at} ({:.0} min), {} of {} rooms",
+            minutes(at),
+            built.len(),
+            want.len()
+        ),
+        None => println!(
+            "  chain-first: NO LIFT in {:.0} min — built {}/{} {built:?}, arrived {}",
+            minutes(game.state().tick),
+            built.len(),
+            want.len(),
+            game.state().arrived
+        ),
+    }
+    assert!(
+        built.len() >= 4,
+        "only {} of {} rooms went up; this has stopped measuring the shaft question",
+        built.len(),
+        want.len()
+    );
+    // **What it says today, and what it does not.** Four of seven and no
+    // lift: the tower puts up its ladder and a fiber comb and then
+    // stops, unable to place a mill. It also fails to arrive inside 45
+    // minutes, which means it is not walking — a stalled tower rather
+    // than a slow one.
+    //
+    // So this narrows §6.9's shaft question without closing it: buying
+    // the chain first does *not* obviously buy a lift, but the tower
+    // measured here is stuck for a reason this probe cannot name.
+    // Whether that is the game or the policy — it has no storeroom
+    // before the comb, and `place_anywhere` is not a floor plan
+    // anybody would draw — is the next thing to find out.
+    let _ = content;
+}
