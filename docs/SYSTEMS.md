@@ -7732,6 +7732,30 @@ shown the next region's. Three separate readers were naming it from `journey.reg
 different question: the board panel, the tools' `look`, and the new marker. `journey.enclave_at`
 carries the answer now.
 
+#### Two facts wearing one phrase, and a green suite lying
+
+The next pass found the dogfood reporting `0 waypoints` on every run it had ever done, and the
+cause was in the tool rather than the harness. `look` marked unaffordable rooms in the build
+menu with `— cannot pay` **and** marked an unaffordable waypoint `(cannot pay for it)`, so
+anything scanning the document for that phrase got the wrong answer about the wrong thing. The
+tower had walked past every free pole in the game — the Fallen Carrier gives five — while
+starving for poles. A waypoint states its own terms now, on its own line, in words nothing else
+uses: what it costs, what it gives, the ground, the attention, and whether walking on is the only
+thing available. **Seven waypoints a run instead of none, and the wave verbs went from five beats
+to fourteen**, because the branch that swallowed them was swallowing those too.
+
+**And the browser had been running a WASM that predated the source for the whole of the previous
+change.** `make e2e` rebuilds it; `npx playwright test` does not. `journey.enclave_at` was added
+to `snapshot.rs`, the whole suite passed green, and every reader of the field silently took its
+`undefined` branch — so the settlement panel reported "no trades left" for a settlement with
+three, and the tools named the wrong settlement, which is the exact bug `enclave_at` was added to
+fix. Rebuilt, the fix verifies: a tower past Ropewalk is told about **High Water**, the next
+region's, by name.
+
+`dogfood.spec.ts` names the view fields the tools depend on and fails with "the WASM predates
+this source" rather than mystifying the next person. It is the cheap version of a contract check
+and it would have caught this in one run.
+
 **What the berth showed is a balance finding and it is not a small one.** A tower that reaches
 Ropewalk on schedule arrives holding **`Rope 12` and nothing else**, and *every* item on the
 board is out of reach: 6 poles for rope, 4 poles for darts, 4 scrap for 3 poles, 18 poles for a

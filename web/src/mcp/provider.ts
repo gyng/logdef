@@ -185,10 +185,36 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
     }
   }
   if (view.journey.waypoint) {
+    // **Its own words, and its own terms.** This said the name and
+    // "(cannot pay for it)" — and the build menu above says "cannot
+    // pay" too, so a reader scanning the whole document for that phrase
+    // gets the wrong answer about the wrong thing. A dogfood agent
+    // never took a single waypoint for exactly that reason and walked
+    // past every free pole in the game (`SYSTEMS.md` §6.31). Two
+    // different facts must not wear the same words in one document.
     const way = catalog.waypoints[view.journey.waypoint.def];
+    const cost = (list: { item: number; amount: number }[]) =>
+      list.map((c) => `${String(c.amount)} ${item(c.item)}`).join(" + ");
+    const terms: string[] = [];
+    if (way && way.costs.length > 0) terms.push(`costs ${cost(way.costs)}`);
+    if (way && way.gives.length > 0) terms.push(`gives ${cost(way.gives)}`);
+    if (way && way.paces !== 0) {
+      terms.push(way.paces > 0 ? `+${String(way.paces)} paces` : `${String(way.paces)} paces`);
+    }
+    if (way && way.provocation !== 0) {
+      terms.push(
+        way.provocation > 0
+          ? `draws ${String(way.provocation)} attention`
+          : `sheds ${String(-way.provocation)} attention`,
+      );
+    }
+    lines.push("");
     lines.push(
-      `A waypoint is in reach: ${way?.name ?? "something"}` +
-        (view.journey.waypoint.affordable ? "" : " (cannot pay for it)"),
+      `WAYPOINT alongside: ${way?.name ?? "something"} — ${way?.said ?? ""} ` +
+        `[${terms.join(", ") || "free"}] — ` +
+        (view.journey.waypoint.affordable
+          ? "take it with understory_take_waypoint, or walk on (walking on is free and never wrong)"
+          : "the shelves cannot meet its terms, so only walking on is available"),
     );
   }
   // **The settlements were invisible.** A run passes three of them and

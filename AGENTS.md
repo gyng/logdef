@@ -412,6 +412,14 @@ This is covered in full, with the reasoning and the tests that enforce it, in
 - **Always run a smoke test before wrapping up.** If a change touches React, WASM, the
   bridge, or the frame loop, run the smoke path as part of verification, not just
   `cargo test`. A browser-only failure is a regression even when every Rust test passes.
+- **`npx playwright test` does not rebuild the WASM, and `make e2e` does.** A field added to
+  `snapshot.rs` is simply `undefined` in the browser until somebody rebuilds, every reader of
+  it silently takes its fallback branch, and **the whole suite passes green**. That happened:
+  `journey.enclave_at` was added and the settlement panel reported "no trades left" for a
+  settlement with three. `e2e/dogfood.spec.ts` names the fields the tools depend on and fails
+  with "the WASM predates this source" rather than mystifying you. If you touched Rust, run
+  `wasm-pack build crates/bridge --target web --out-dir ../../web/pkg --release` before
+  believing a browser result.
 - **Run the smoke test with `make e2e`, in the foreground.** `make e2e` stops any stale
   vite, rebuilds WASM, and lets Playwright own the dev server for the run. Do not run
   `npx playwright test` inside a background shell wrapper — if the wrapper dies (timeout,

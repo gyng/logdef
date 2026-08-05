@@ -69,6 +69,32 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
     expect(names, `the tools have fallen behind the game: no ${verb}`).toContain(verb);
   }
 
+  // **Is the WASM the one this source expects?** `make e2e` rebuilds it
+  // and `npx playwright test` does not, so a field added to `snapshot.rs`
+  // is `undefined` in the browser until somebody remembers — and every
+  // reader of it silently takes the fallback branch. `journey.enclave_at`
+  // was added, the whole suite passed green against the stale binary, and
+  // the settlement panel quietly reported "no trades left" for a
+  // settlement with three (`SYSTEMS.md` §6.31). Naming the fields the
+  // tools actually depend on is the cheap version of a contract check.
+  const shape = await page.evaluate(() => {
+    const v = window.__understory!.view();
+    return {
+      enclave_at: v.journey.enclave_at,
+      enclave_ahead: v.journey.enclave_ahead,
+      at_enclave: v.journey.at_enclave,
+      remaining: v.journey.remaining,
+      focus: v.siege.focus,
+      priority: v.power.priority,
+      work: v.work,
+    };
+  });
+  for (const [field, value] of Object.entries(shape)) {
+    expect(value, `the WASM predates this source: view has no ${field} — rebuild it`).not.toBe(
+      undefined,
+    );
+  }
+
   await call("understory_set_speed", { speed: "X4" });
 
   // Play it: the ladder, then the chain, widening rather than growing
@@ -90,7 +116,7 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
     // Anything asking for a decision, answered the way a player would.
     if (look.text.includes("UNANSWERED")) await call("understory_take_fork", { branch: 0 });
     if (look.text.includes("wants to come aboard")) await call("understory_recruit");
-    if (look.text.includes("waypoint is in reach") && !look.text.includes("cannot pay"))
+    if (look.text.includes("WAYPOINT alongside") && look.text.includes("take it with"))
       await call("understory_take_waypoint");
     if (look.text.includes("reached the Refugia") || look.text.includes("· arrived")) break;
 
@@ -209,8 +235,12 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
       if ((await call("understory_recruit")).ok) recruited += 1;
       continue;
     }
+    // **Only when it is a live decision.** A first pass acted on this
+    // whenever the line was present at all — which is most of a region —
+    // and `continue`d, so every branch below it was unreachable and the
+    // tower never took a single waypoint.
     const near = /^(.+) is (\d+) paces ahead — trades/m.exec(look.text);
-    if (near) {
+    if (near && Number(near[2]) < 400) {
       // **The window is 80 paces and stopping outside it does nothing.**
       // A first pass stopped at 136 and the tower stood there for the
       // rest of the run, berthed at nothing, with no sign anything was
@@ -253,7 +283,12 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
         })
       ).ok;
     }
-    if (look.text.includes("waypoint is in reach") && !look.text.includes("cannot pay")) {
+    // **Take the beats.** A first pass tested `!look.text.includes("cannot
+    // pay")` against the whole document — and the build menu marks every
+    // unaffordable room with that same phrase, so this never fired once
+    // and the tower walked past every free pole in the game while
+    // starving for poles. The tool says it in its own words now.
+    if (look.text.includes("WAYPOINT alongside") && look.text.includes("take it with")) {
       if ((await call("understory_take_waypoint")).ok) waypoints += 1;
       continue;
     }
