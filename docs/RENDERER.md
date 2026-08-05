@@ -69,6 +69,39 @@ problem, it is a units problem.** Foot reach, stride length and scroll rate are 
 and if any two are chosen independently the third is wrong. `STRIDE_SLOTS` in `scene.ts` now
 derives the cadence from the other two so it cannot drift again.
 
+### Four legs, and the joint that would not go where it was told
+
+The tower walked on two, which is a silhouette that reads as a *person* however it is drawn.
+It now walks on four in a wave gait — each a quarter cycle behind the one in front, so the
+ripple runs down the body and two feet are always planted.
+
+| | before | after |
+|---|---|---|
+| `LEGS` | 2, half a cycle apart | **4**, quarter-cycle wave |
+| `FOOT_DROP` | 0.62 of the foreground | **0.78** — a quarter longer |
+| `STRIDE_SLOTS` | 1.8 | **2.6** — same units equation, longer legs, fewer steps |
+| Splay | none; feet hung under their hips | **±2.2 slots**, outer pair widest |
+| Leg thickness | `slotW * 0.24` | **`slotW * 0.17`** — four thick legs are a pipe rack |
+
+**The inverted V took three tries, and the obstacle was the hull rather than the maths.**
+
+Exact two-bone IK cannot produce it. A 2D chain's elbow has exactly two solutions, both
+perpendicular to the hip-foot chord — and when a foot is more or less below its hip that chord
+is vertical, so both solutions are *sideways*. The joint came out below the hip every time,
+which is a knee, which is the one thing this must not look like.
+
+Placing the joint explicitly above the hip failed differently: the hip sat at the hull's
+underside, so "above" was *behind the hull*, and the leg rendered as two collinear sticks.
+
+**The fix was to drop the hip out of the hull**, exactly as the cadence fix was in `layout.ts`
+rather than in the legs. With the anchor in open air at `groundY + reach * 0.14` the joint has
+somewhere to be, and it rides at `hipY - span * 0.16` — scaled off the chord, so it climbs and
+falls with the leg it belongs to and the two bones stay in proportion through a stride. That
+proportionality is what the exact IK was protecting, and it is the only part of it worth
+keeping.
+
+It costs a visible gap between hull and leg, which the base beam covers.
+
 ### Smoke and water — done
 
 Both are in, both are quads in the existing batch, and neither needed a texture.

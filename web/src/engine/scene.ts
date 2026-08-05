@@ -1520,37 +1520,112 @@ function drawEyes(batch: QuadBatch, x: number, y: number, r: number, eye: Color)
  * only way a foot can stay planted is for the step length to decide the
  * rhythm. Pick how far a step should look and the tempo falls out.
  *
- * 1.8 slots is just inside what the leg can physically reach: at
- * `GROUND_FRACTION` 0.72 the leg spans about 181 px and a two-bone
+ * 1.8 slots was just inside what a *two-legged* tower could reach: at
+ * `GROUND_FRACTION` 0.72 the leg spanned about 181 px and a two-bone
  * joint of that length swings +/-83 px, which is +/-1.04 slots. Asking
- * for more locks both legs straight and the tower skis — that was tried
- * at 0.86, where the reach was half this, and it is why the ground line
- * moved.
+ * for more locked both legs straight and the tower skied — that was
+ * tried at 0.86, where the reach was half this, and it is why the ground
+ * line moved.
+ *
+ * **2.6 since the legs became a spider's.** `FOOT_DROP` lengthened them
+ * by a quarter, so the same geometry reaches further, and a longer step
+ * is the *point*: cadence falls out of step length, so a tower that
+ * covers more ground per step takes fewer of them. At 1.8 with four
+ * legs the thing scuttled — four sets of feet at the old tempo reads as
+ * something small and quick, which is the opposite of what is walking
+ * here.
  */
-const STRIDE_SLOTS = 1.8;
+const STRIDE_SLOTS = 2.6;
+
+/**
+ * How many legs the tower stands on.
+ *
+ * Four rather than two, in a wave gait — each a quarter cycle behind
+ * the one in front, so the ripple runs down the body and two feet are
+ * always planted. Two legs made the tower a *biped*, which is a
+ * silhouette that reads as a person however it is drawn, and this is
+ * not a person.
+ */
+const LEGS = 4;
+
+/**
+ * Where the feet sit below the ground line, as a fraction of the
+ * foreground.
+ *
+ * **0.78, lengthened from 0.62.** The ground line cannot move — the
+ * whole parallax stack is hung off it — so a longer leg has to reach
+ * further *down*, into the foreground, which also puts the feet nearer
+ * the viewer and reads as scale. Anything past about 0.85 walks the
+ * feet off the bottom of the frame at short viewport heights.
+ */
+const FOOT_DROP = 0.78;
+
+/**
+ * Where along the body each leg is anchored.
+ *
+ * Spread wider than the two hips were (0.26 and 0.74): a spider's legs
+ * come off the whole length of it, and clustering four in the middle
+ * reads as a stumble rather than a stance.
+ */
+const HIP_AT = [0.14, 0.38, 0.62, 0.86] as const;
 
 /**
  * Where the knee goes, so both bones keep their length.
  *
- * Two-bone IK, bending backwards. The knee used to be a lerp toward the
- * foot, which was fine while the foot never went far — with the foot
- * planted it travels a full stride and an unsolved joint would visibly
- * stretch. A leg that changes length is worse than one that slides.
+ * **Two-bone IK, bending *upward*** — the inverted V a spider stands
+ * in. The femur rises from the hip to a joint above the body line and
+ * the tibia drops from there to the foot, which is the single strongest
+ * cue that this is not a person: a knee below the hip is a leg, and a
+ * knee above it is a limb.
+ *
+ * It used to fold backwards, bird-fashion, and before that the knee was
+ * a lerp toward the foot — fine while the foot never went far, but with
+ * the foot planted it travels a full stride and an unsolved joint
+ * visibly stretches. A leg that changes length is worse than one that
+ * slides.
+ *
+ * The bone is 0.62 of the drop rather than 0.56 because the joint has
+ * further to travel to get above the hip, and a shorter bone locks the
+ * leg straight before it can rise.
  */
-function solveKnee(hipX: number, hipY: number, footX: number, footY: number): number {
+function solveKnee(
+  hipX: number,
+  hipY: number,
+  footX: number,
+  footY: number,
+): { x: number; y: number } {
   const dx = footX - hipX;
   const dy = footY - hipY;
   const span = Math.hypot(dx, dy) || 1;
-  // Each bone is a little over half the straight-down drop, so a
-  // standing tower has near-straight legs with a hint of bend.
-  const bone = Math.max(Math.abs(hipY - footY), 1) * 0.56;
-  // Past full extension, lock straight rather than snapping. A leg that
-  // pops inside out is worse than one that reaches.
-  if (span >= bone * 2) return hipX + dx * 0.5;
-  const out = Math.sqrt(Math.max(0, bone * bone - (span * 0.5) ** 2));
-  // Perpendicular to the hip-foot line, pushed backwards along travel so
-  // the joint folds the way a bird's does.
-  return hipX + dx * 0.5 - (-dy / span) * out;
+  // **Placed rather than solved, and that is a deliberate step back.**
+  //
+  // Exact two-bone IK was tried first and cannot do this: the elbow of
+  // a 2D chain has exactly two solutions, both perpendicular to the
+  // hip-foot chord, and when a foot is more or less below its hip that
+  // chord is vertical — so both solutions are *sideways*. The joint
+  // came out below the hip every time, which is a knee, which is the
+  // one thing this is not supposed to look like.
+  //
+  // So the joint is put where a spider's is — up and outboard — and the
+  // bones follow it. What the IK was protecting against was a leg that
+  // visibly *changes length* as the foot swings, and scaling the rise
+  // off `span` keeps that: the joint climbs and drops with the chord it
+  // belongs to, so the two bones stay in proportion through the stride
+  // rather than one of them stretching.
+  //
+  // **The joint rides above the hip, which is what makes it an
+  // inverted V rather than a knee** — and the hip had to come down out
+  // of the hull for that to be drawable at all. Three attempts before
+  // this one put the joint above a hip that was already at the hull's
+  // underside, so it landed *behind* the hull and the leg rendered as
+  // two collinear sticks.
+  //
+  // The rise scales with the chord, so the joint climbs and drops with
+  // the leg it belongs to and the two bones stay in proportion through
+  // a stride — which is what the exact IK this replaced was protecting
+  // against. Halfway out, so the femur and the tibia are about equal
+  // and the angle at the top is the sharp one.
+  return { x: hipX + dx * 0.5, y: hipY - span * 0.16 };
 }
 
 /**
@@ -1624,24 +1699,36 @@ function feet(view: ViewSnapshot, layout: Layout, clock: number): Foot[] {
   const gait = halt === "walking" ? 1 : 0;
   const stanceScale = halt === "arrived" ? 0.34 : halt === "stopped" ? 0.62 : 1;
   const settle = halt === "walking" ? 0 : halt === "arrived" ? reach * 0.06 : reach * 0.03;
-  const footY = layout.groundY + reach * 0.62;
+  const footY = layout.groundY + reach * FOOT_DROP;
   const strideX = STRIDE_SLOTS * layout.slotW;
   const stridePaces = strideX / layout.paceW;
   const out: Foot[] = [];
-  for (let i = 0; i < 2; i += 1) {
-    const hipX = layout.originX + spanX * (i === 0 ? 0.26 : 0.74);
-    const cycle = view.world.distance / (stridePaces * 2) + i * 0.5;
+  for (let i = 0; i < LEGS; i += 1) {
+    const hipX = layout.originX + spanX * HIP_AT[i]!;
+    // **A wave gait**: each leg a quarter cycle behind the one in
+    // front, so the ripple runs down the body and two feet are always
+    // planted. Two legs half a cycle apart was the old arrangement and
+    // it is what a biped does.
+    const cycle = view.world.distance / (stridePaces * 2) + i / LEGS;
     const t = cycle - Math.floor(cycle);
     const planted = t < 0.5;
     const swing = planted ? 0 : (t - 0.5) * 2;
     const ease = swing * swing * (3 - 2 * swing);
     const offset = planted ? 0.5 - t * 2 : ease - 0.5;
-    const step = gait ? offset * strideX : (i === 0 ? -0.5 : 0.5) * stanceScale * strideX * 0.5;
+    // **Splay, and it is what makes the silhouette.** A spider's body
+    // is narrow and its feet are wide; legs that drop straight down
+    // from their hips are furniture legs whatever the joint does. The
+    // outer pair stand a slot and a half outboard, the inner pair half
+    // that, and this is *added* to the gait rather than replacing it so
+    // a walking tower keeps its stance.
+    const rest = (HIP_AT[i]! - 0.5) * 2;
+    const splay = rest * layout.slotW * 2.2;
+    const step = gait ? offset * strideX : rest * stanceScale * strideX * 0.32;
     const strain =
-      halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 2.3)) ** 5 * reach * 0.08 : 0;
+      halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 1.7)) ** 5 * reach * 0.08 : 0;
     const lift = (gait && !planted ? Math.sin(swing * Math.PI) * reach * 0.16 : 0) + strain;
     out.push({
-      x: hipX + step,
+      x: hipX + splay + step,
       y: footY - lift + settle,
       planted: planted && gait === 1,
       age: planted ? t * 2 : 0,
@@ -1828,20 +1915,28 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
   // The hip rides the same dip the body does, or the legs detach from
   // the thing they are carrying.
   const shift = bodyOffset(view, layout, clock);
-  const hipY = layout.groundY - reach * 0.1 + settle + shift.dy;
-  const footY = layout.groundY + reach * 0.62;
-  const thickness = layout.slotW * 0.24;
+  // **Below the hull, not tucked into it.** A leg whose top joint is
+  // inside the hull cannot show the joint, and the joint is the whole
+  // shape — see `solveKnee`. Dropping the anchor into open air costs a
+  // visible gap between hull and leg, which the base beam covers, and
+  // buys the inverted V.
+  const hipY = layout.groundY + reach * 0.14 + settle + shift.dy;
+  const footY = layout.groundY + reach * FOOT_DROP;
+  // Thinner than a biped's, because there are twice as many of them and
+  // four thick legs read as a stack of pipes rather than a gait.
+  const thickness = layout.slotW * 0.17;
   const strideX = STRIDE_SLOTS * layout.slotW;
   // Paces of ground one step covers. Derived, so a planted foot lands
   // exactly where the ground is and the cadence can never drift out of
   // step with the scroll.
   const stridePaces = strideX / layout.paceW;
 
-  for (let i = 0; i < 2; i += 1) {
-    const hipX = layout.originX + shift.dx + spanX * (i === 0 ? 0.26 : 0.74);
-    // Two steps to a gait cycle, the legs half a cycle apart, so one
-    // foot is always down.
-    const cycle = view.world.distance / (stridePaces * 2) + i * 0.5;
+  for (let i = 0; i < LEGS; i += 1) {
+    const hipX = layout.originX + shift.dx + spanX * HIP_AT[i]!;
+    // Two steps to a gait cycle, each leg a quarter cycle behind the one
+    // in front, so two feet are always down and the ripple runs
+    // backwards along the body.
+    const cycle = view.world.distance / (stridePaces * 2) + i / LEGS;
     const t = cycle - Math.floor(cycle);
     const planted = t < 0.5;
     const swing = planted ? 0 : (t - 0.5) * 2;
@@ -1861,21 +1956,24 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
     // rendered.
     const ease = swing * swing * (3 - 2 * swing);
     const offset = planted ? 0.5 - t * 2 : ease - 0.5;
-    const step = gait ? offset * strideX : (i === 0 ? -0.5 : 0.5) * stanceScale * strideX * 0.5;
+    const rest = (HIP_AT[i]! - 0.5) * 2;
+    const splay = rest * layout.slotW * 2.2;
+    const step = gait ? offset * strideX : rest * stanceScale * strideX * 0.32;
     // A brown-out is the legs asking and not being answered: a small
     // stuttering lift that never becomes a step.
     const strain =
-      halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 2.3)) ** 5 * reach * 0.08 : 0;
+      halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 1.7)) ** 5 * reach * 0.08 : 0;
     const lift = (gait && !planted ? Math.sin(swing * Math.PI) * reach * 0.16 : 0) + strain;
-    const footX = hipX + step;
-    const kneeY = (hipY + footY) / 2 - lift * 0.35;
-    const kneeX = solveKnee(hipX, hipY, footX, footY - lift);
+    const footX = hipX + splay + step;
+    const knee = solveKnee(hipX, hipY, footX, footY - lift);
+    const kneeX = knee.x;
+    const kneeY = knee.y;
 
     // A shadow that tightens as the foot lands. Cheap, and it does most
     // of the work of making the tower feel heavy.
     batch.push(
       footX - layout.slotW * 0.5,
-      layout.groundY + reach * 0.6,
+      layout.groundY + reach * (FOOT_DROP - 0.02),
       layout.slotW,
       reach * 0.1,
       fade(palette.vignette, 0.35 - (lift / (reach * 0.22)) * 0.2),

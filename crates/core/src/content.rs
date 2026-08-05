@@ -2122,6 +2122,7 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
 
     validate_shafts(content, errors);
     validate_clock(content, errors);
+    validate_buffers(content, errors);
     validate_journey(content, errors);
 }
 
@@ -2131,6 +2132,65 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
 /// rather than code: `order` has to describe a real sequence, and a
 /// palette has to have enough in it for the generator's no-repeat rule
 /// to produce a horizon rather than a stripe.
+/// Every buffer a room has is big enough to hold something.
+///
+/// **The hauling economy is made of buffers** (`DESIGN.md` §2 insight
+/// 1): a room takes deliveries into an inbox, stalls when its outbox
+/// fills, and the crew route around both. A buffer of zero is a room
+/// that can never accept a delivery and never hold a result — it does
+/// not fail loudly, it simply never participates, and the tower reads
+/// as mysteriously slow.
+///
+/// The schema already makes `buffer_max` mandatory wherever it means
+/// anything, so this is the one remaining way to author a room that
+/// cannot take part: write the field and put a nought in it.
+#[cfg(test)]
+pub(crate) fn validate_buffers_for_test(content: &Content, errors: &mut Vec<LoadError>) {
+    validate_buffers(content, errors);
+}
+
+fn validate_buffers(content: &Content, errors: &mut Vec<LoadError>) {
+    for room in &content.rooms {
+        let mut complain = |what: &str, item: &str| {
+            errors.push(LoadError {
+                path: format!("rooms/{}", room.id),
+                message: format!("{what} buffer for {item} is zero, so nothing can ever go in it"),
+            });
+        };
+        if let Some(recipe) = room.recipe.as_ref() {
+            for entry in &recipe.inputs {
+                if entry.buffer_max <= 0 {
+                    complain("input", &entry.item);
+                }
+            }
+            for entry in &recipe.outputs {
+                if entry.buffer_max <= 0 {
+                    complain("output", &entry.item);
+                }
+            }
+        }
+        if let Some(intake) = room.intake.as_ref()
+            && intake.buffer_max <= 0
+        {
+            complain("intake", &intake.item);
+        }
+        if let Some(defence) = room.defence.as_ref()
+            && defence.buffer_max <= 0
+        {
+            complain("ammo", &defence.ammo);
+        }
+        // A burner's rack is derived rather than authored — six burns
+        // of runway — so the way to get a zero here is a zero
+        // `fuel_per_burn`, which would also mean a burner that eats
+        // nothing.
+        if let Some(burner) = room.burner.as_ref()
+            && burner.fuel_per_burn <= 0
+        {
+            complain("fuel", &burner.fuel);
+        }
+    }
+}
+
 fn validate_journey(content: &Content, errors: &mut Vec<LoadError>) {
     let journey = &content.balance.journey;
     if journey.enclave_berth_paces <= 0 {

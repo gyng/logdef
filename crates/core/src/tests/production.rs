@@ -265,3 +265,78 @@ fn every_authored_yield_is_a_different_harvest_rate() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Buffers (`DESIGN.md` §2 insight 1)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn every_room_that_moves_an_item_has_a_buffer_for_it() {
+    // **The hauling economy is made of buffers.** A room takes
+    // deliveries into an inbox, stalls when its outbox fills, and the
+    // crew route around both — that back-pressure *is* the game's
+    // central bet, that transport is shared rather than dedicated.
+    //
+    // The schema already makes `buffer_max` mandatory wherever it means
+    // anything, so this walks the shipped pack and says so out loud
+    // rather than trusting a field to stay required.
+    let content = content();
+    for room in &content.rooms {
+        if let Some(recipe) = room.recipe.as_ref() {
+            assert!(
+                !recipe.inputs.is_empty() || !recipe.outputs.is_empty(),
+                "{}: a recipe with neither inputs nor outputs",
+                room.id
+            );
+            for entry in recipe.inputs.iter().chain(recipe.outputs.iter()) {
+                assert!(
+                    entry.buffer_max > 0,
+                    "{}: {} has no buffer, so nothing can ever queue there",
+                    room.id,
+                    entry.item
+                );
+            }
+        }
+        if let Some(intake) = room.intake.as_ref() {
+            assert!(
+                intake.buffer_max > 0,
+                "{}: an intake with nowhere to put what it takes",
+                room.id
+            );
+        }
+        if let Some(defence) = room.defence.as_ref() {
+            assert!(
+                defence.buffer_max > 0,
+                "{}: an emplacement with no rack",
+                room.id
+            );
+        }
+    }
+}
+
+#[test]
+fn a_room_with_a_zero_buffer_is_a_broken_pack() {
+    // The rule has to *bite*, not merely hold today. A buffer of zero
+    // does not fail loudly — the room simply never participates and the
+    // tower reads as mysteriously slow — which is exactly the kind of
+    // thing `Content::load` is supposed to catch at build time
+    // (`AGENTS.md` §IV: a broken pack is a build error).
+    let mut room = content()
+        .rooms
+        .iter()
+        .find(|room| room.id == "room.mill")
+        .cloned()
+        .expect("the pack defines a mill");
+    if let Some(recipe) = room.recipe.as_mut() {
+        recipe.inputs[0].buffer_max = 0;
+    }
+
+    let mut errors = Vec::new();
+    let mut broken = content().as_ref().clone();
+    broken.rooms = vec![room];
+    crate::content::validate_buffers_for_test(&broken, &mut errors);
+    assert!(
+        errors.iter().any(|error| error.message.contains("buffer")),
+        "a zero buffer passed validation: {errors:?}"
+    );
+}
