@@ -298,21 +298,87 @@ test("capture stills", async ({ page }) => {
     const idOf = (id: string): number => catalog.items.findIndex((item) => item.id === id);
     const held = (item: number): number =>
       hooks.view().stock.find((entry) => entry.item === item)?.count ?? 0;
+    // **Loud when it fails.** This returned quietly after sixty
+    // attempts, and since M6 gated the menu (`SYSTEMS.md` §6.11) the
+    // fiber comb has been `Locked` behind a burner this harness never
+    // built — so it failed sixty times, said nothing, and the capture
+    // went on to click a disabled elevator button three minutes later.
+    // The error you got named the button, not the cause.
     const place = (room: string): void => {
+      let why = "never attempted";
+      // **Every slot the room could occupy, including the front.** This
+      // scanned `slot + 2 < floor.slots`, which is neither the room's
+      // width nor the whole floor — so a `front_only` room could never
+      // be offered the one column it is allowed (§6.13), and a cutter
+      // arm failed with `NotAtTheFront: slot 7, front 8` sixty times.
+      const width = catalog.rooms.find((r) => r.id === room)?.width ?? 1;
+      // **Leave the shaft its column.** A full-height shaft needs one
+      // slot free on every floor it spans, and on the shipped pack
+      // there is exactly one column it can have (`examples/lift.rs`
+      // says so at length). Filling the tower wherever things fitted
+      // took it, and the elevator's button then sat disabled for want
+      // of *space* while the harness waited for *money*.
+      const reserved = (hooks.view().tower.floors[0]?.slots ?? 10) - 3;
       for (let attempt = 0; attempt < 60; attempt += 1) {
         for (const floor of hooks.view().tower.floors) {
-          for (let slot = 0; slot + 2 < floor.slots; slot += 1) {
-            if (hooks.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") return;
+          for (let slot = 0; slot + width <= floor.slots; slot += 1) {
+            if (slot <= reserved && reserved < slot + width) continue;
+            const said = hooks.send({ PlaceRoom: { room, floor: floor.index, slot } });
+            if (said === "Ok") return;
+            // The *first* refusal, not the last. The last is always
+            // whatever the highest floor said — "FloorTooHigh" for a
+            // room that reaches the ground — which is the search
+            // running out rather than the reason it had to
+            // (`SYSTEMS.md` §6.24 paid for this lesson once already).
+            if (why === "never attempted") why = JSON.stringify(said);
           }
         }
         window.__capture!.walk(600);
       }
+      throw new Error(`capture could not place ${room}: ${why}`);
     };
-    place("room.fiber_comb");
+
+    // The opening ladder, because everything below is gated behind it:
+    // a farm opens the cutter arm, the arm opens the burner, the burner
+    // opens the rest of the menu.
+    // **Room to put it in.** A tower sets out two floors tall since M6,
+    // and the chain below does not fit — the fiber comb reaches the
+    // ground (`max_floor: 1`) and found both its floors already full.
+    for (let i = 0; i < 3; i += 1) {
+      hooks.grant("item.poles", 12);
+      hooks.send("BuildFloor");
+    }
+
+    // ...and the chain, which the tower used to arrive with. A mill is
+    // the only source of poles in the game and this harness had none —
+    // it reached the elevator holding 27 fiber, 16 rope and nothing to
+    // pay with.
+    //
+    // **The unlock ladder sets the order; within it, most-constrained
+    // first.** The comb has to come after the burner that unlocks it
+    // (§6.11) and before the mill and storeroom that would otherwise
+    // take both ground floors from it — it reaches the ground, so it
+    // carries `max_floor: 1`. `examples/lift.rs` learnt the second half
+    // of that the same way.
+    for (const room of [
+      "room.garden",
+      "room.cutter_arm",
+      "room.burner",
+      "room.fiber_comb",
+      "room.mill",
+      // No storeroom here: the plan below places two at named slots, and
+      // one put down wherever it fitted took the slot that plan wanted.
+    ]) {
+      const info = catalog.rooms.find((r) => r.id === room);
+      for (const cost of info?.build_cost ?? []) {
+        hooks.grant(catalog.items[cost.item]?.id ?? "item.poles", cost.amount * 3);
+      }
+      place(room);
+    }
+    hooks.grant("item.poles", 40);
     place("room.ropery");
 
     const rope = idOf("item.rope");
-    const poles = idOf("item.poles");
     let off = false;
     for (let i = 0; i < 200; i += 1) {
       if (!off && held(rope) >= 12) {
@@ -328,20 +394,53 @@ test("capture stills", async ({ page }) => {
           }
         }
       }
-      if (held(poles) >= 18 && held(rope) >= 6) break;
+      // **Read the price, do not remember it.** This said 18 poles and
+      // 6 rope, which was the elevator's price two changes ago; it is
+      // 10 and 2 now (`SYSTEMS.md` §6.18, §6.23). The harness waited
+      // for money the tower had no reason to bank, timed out, and then
+      // clicked a disabled button — three minutes to fail, and the
+      // failure looked like the game rather than the still.
+      const lift = catalog.shafts.find((s) => s.id === "shaft.elevator");
+      if ((lift?.build_cost ?? []).every((c) => held(c.item) >= c.amount)) break;
       window.__capture!.walk(600);
     }
   });
   await page.waitForTimeout(200);
 
-  await page.getByTestId("build-shaft.elevator").click();
-  await page.waitForTimeout(200);
-  const point = await page.evaluate(() => window.__capture!.freeSlot(0, 1));
-  if (point) {
-    await page.mouse.move(point.x, point.y);
+  console.log(
+    "LIFT " +
+      JSON.stringify(
+        await page.evaluate(() => {
+          const hooks = window.__understory!;
+          const c = hooks.catalog();
+          const lift = c.shafts.find((s) => s.id === "shaft.elevator");
+          return {
+            cost: lift?.build_cost.map((x) => `${c.items[x.item]!.id}:${x.amount}`),
+            held: hooks.view().stock.map((s) => `${c.items[s.item]!.id}:${s.count}`),
+            floors: hooks.view().tower.floors.length,
+          };
+        }),
+      ),
+  );
+  // **Skip rather than hang**, the same rule the room steps follow. A
+  // disabled button here used to block Playwright for three minutes and
+  // produce nothing — and the reason was as often *space* as money,
+  // because a full-height shaft needs a free column on every floor it
+  // spans. A capture is a tool for looking: take the stills you can and
+  // say what you missed.
+  const liftButton = page.getByTestId("build-shaft.elevator");
+  if (await liftButton.isDisabled()) {
+    console.log("capture: skipped the elevator — the tower could not build it");
+  } else {
+    await liftButton.click();
     await page.waitForTimeout(200);
-    await page.screenshot({ path: "capture/tower-placing.png" });
-    await page.mouse.click(point.x, point.y);
+    const point = await page.evaluate(() => window.__capture!.freeSlot(0, 1));
+    if (point) {
+      await page.mouse.move(point.x, point.y);
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: "capture/tower-placing.png" });
+      await page.mouse.click(point.x, point.y);
+    }
   }
 
   // Run on until the elevator has crew in it and the sun has moved.
@@ -370,8 +469,11 @@ test("capture stills", async ({ page }) => {
   //
   // Provoked the way a player provokes: a second cutter arm, and then
   // time. Nothing here reaches past the buttons the UI actually has.
+  // Guarded like the loop below: once the tower has arrived the elegy
+  // covers the screen and every click after it is intercepted.
+  const arrived = (await page.getByTestId("arrival").count()) > 0;
   const armButton = page.getByTestId("build-room.cutter_arm");
-  if (!(await armButton.isDisabled())) await armButton.click();
+  if (!arrived && !(await armButton.isDisabled())) await armButton.click();
   const armPoint = await page.evaluate(() => window.__capture!.freeSlot(0, 1));
   if (armPoint) {
     await page.mouse.click(armPoint.x, armPoint.y);
@@ -425,6 +527,16 @@ test("capture stills", async ({ page }) => {
     // which turns "the economy got tighter" into "the harness hung for
     // three minutes and produced nothing". A capture is a tool for
     // looking: it should take the stills it can and say what it missed.
+    // **The run can end underneath this.** A journey is 31-36 minutes
+    // now (`SYSTEMS.md` §6.19) and this script is longer than one — the
+    // tower reached the Refugia partway through, the arrival elegy
+    // covered the screen with `inset: 0`, and every remaining click was
+    // intercepted by it for three minutes. Same shape as the golden
+    // recorder's berth in §6.19: a script outliving the run it is in.
+    if ((await page.getByTestId("arrival").count()) > 0) {
+      console.log(`capture: stopped at ${room} — the tower has arrived and the run is over`);
+      break;
+    }
     const button = page.getByTestId(`build-${room}`);
     if (await button.isDisabled()) {
       console.log(`capture: skipped ${room} — the tower could not build it`);
@@ -450,7 +562,12 @@ test("capture stills", async ({ page }) => {
     // to afford a thornwright and the golden recorder standing at a fork
     // for half its run. Every one of them sent a command and did not
     // look at what came back. So: look.
-    const standing = await page.evaluate(
+    // **A named slot, or anywhere.** The plan asks for particular
+    // slots so the stills are composed rather than accidental, and a
+    // tower that has grown differently may already have something
+    // there. Falling back keeps the still — a capture is a tool for
+    // looking, and a missing room is worse than an untidy one.
+    let standing = await page.evaluate(
       ([f, s]) =>
         window
           .__understory!.view()
@@ -458,8 +575,23 @@ test("capture stills", async ({ page }) => {
       [floor, slot] as const,
     );
     if (!standing) {
+      standing = await page.evaluate((id) => {
+        const hooks = window.__understory!;
+        const width = hooks.catalog().rooms.find((r) => r.id === id)?.width ?? 1;
+        for (const deck of hooks.view().tower.floors) {
+          for (let at = 0; at + width <= deck.slots; at += 1) {
+            if (hooks.send({ PlaceRoom: { room: id, floor: deck.index, slot: at } }) === "Ok") {
+              return true;
+            }
+          }
+        }
+        return false;
+      }, room);
+      if (standing) console.log(`capture: ${room} went somewhere other than the plan's slot`);
+    }
+    if (!standing) {
       throw new Error(
-        `${room} was never built at floor ${String(floor)} slot ${String(slot)} — ` +
+        `${room} was never built anywhere (plan wanted floor ${String(floor)} slot ${String(slot)}) — ` +
           "the still would show a tower missing the thing it is about",
       );
     }
@@ -469,6 +601,15 @@ test("capture stills", async ({ page }) => {
   // was asked for: `step` ignores the speed setting, but the render
   // loop does not, and at 4x the couple of hundred milliseconds a
   // screenshot needs is another forty paces of closing.
+  // **Nothing below this can be clicked once the run has ended**, and
+  // the run is 31-36 minutes now (`SYSTEMS.md` §6.19) while this script
+  // is longer than one. The arrival elegy covers the screen with
+  // `inset: 0`, so every remaining click is intercepted and Playwright
+  // blocks on each for three minutes. Take the stills we have.
+  if ((await page.getByTestId("arrival").count()) > 0) {
+    console.log("capture: the tower arrived mid-script; the stills below were not taken");
+    return;
+  }
   await page.getByTestId("speed-Paused").click();
 
   // ── M3 ────────────────────────────────────────────────────────────

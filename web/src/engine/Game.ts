@@ -42,6 +42,10 @@ import type {
 } from "../bridge/types";
 
 /** What the React chrome needs. Deliberately small. */
+/** `?debug` in the URL, read once — it cannot change mid-session. */
+const DEBUG_UI =
+  typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug");
+
 export interface UiState {
   tick: number;
   speed: SimSpeed;
@@ -167,6 +171,12 @@ export interface UiState {
   arrived: boolean;
   fps: number;
   quads: number;
+  /**
+   * `?debug` in the URL. Gates the frame counter, which used to sit
+   * permanently over the charge panel — fine for a session spent
+   * building the game, wrong for the first thing a stranger sees.
+   */
+  debug: boolean;
   lastError: string | null;
 }
 
@@ -950,6 +960,7 @@ export class Game {
       arrived: view?.journey.arrived ?? false,
       fps: Math.round(this.fps),
       quads: this.renderer.quadCount,
+      debug: DEBUG_UI,
       lastError: this.lastError,
     };
   }

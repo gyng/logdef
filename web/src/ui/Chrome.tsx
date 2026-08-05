@@ -65,11 +65,20 @@ export function Chrome({ game, ui }: Props) {
       {ui.fork && <ForkCard game={game} ui={ui} />}
       {ui.waypoint && <WaypointCard game={game} ui={ui} />}
       {ui.atEnclave && <EnclaveBoard game={game} ui={ui} />}
-      <div className="diagnostics">
-        <span>tick {ui.tick}</span>
-        <span>{ui.fps} fps</span>
-        <span>{ui.quads} quads</span>
-      </div>
+      {/*
+        **Not on by default.** tick/fps/quads sat permanently over the
+        charge panel, which is fine for a session spent building the
+        thing and wrong for the itch build — the first thing a stranger
+        sees should not be a frame counter. `?debug` brings it back, and
+        the capture harness passes it when a still needs to show one.
+      */}
+      {ui.debug && (
+        <div className="diagnostics">
+          <span>tick {ui.tick}</span>
+          <span>{ui.fps} fps</span>
+          <span>{ui.quads} quads</span>
+        </div>
+      )}
       {ui.lastError && (
         <div className="toast" role="status" data-testid="command-error">
           {ui.lastError}
@@ -614,7 +623,17 @@ function doing(member: UiState["crew"][number]): string {
     case "walk":
       return member.carrying ? "carrying" : "on their way";
     default:
-      return "idle";
+      // **"idle" is the roster's most common word and its least useful**,
+      // and it hid the same distinction `StallTag` exists for
+      // (`SYSTEMS.md` §6.26): somebody with nothing to do and somebody
+      // holding a crate the tower has no room for read identically, and
+      // they are answered by opposite actions.
+      //
+      // A stranded carrier is the one worth naming. `haul.rs` computes
+      // exactly this state — hands full, no inbox, no shelf, no chute —
+      // and lets them sleep and eat *because* of it; until now the only
+      // outward sign was somebody standing still.
+      return member.carrying ? "holding something, nowhere to put it" : "nothing to do";
   }
 }
 
@@ -625,12 +644,32 @@ function TopBar({ game, ui }: Props) {
       <span className="brand">Understory</span>
       <Journey ui={ui} />
       <dl className="readouts">
-        <Readout label="Day" value={`${ui.day + 1} · ${ui.daypart}`} />
-        <Readout label="Terrain" value={ui.terrain} />
+        {/*
+          **Four readouts left, from nine.** `DECISIONS.md` §8 says to
+          look for the diegetic version before adding a number to the
+          screen, and the bar had stopped doing that:
+
+          - *Terrain* is the ground the tower is walking over.
+          - *Sun* is the sky, and the lamps coming on at dusk.
+          - *Floors* is countable — the tower is right there.
+          - *Queued* was the worst of them. §8 names the crew tinting
+            red as the bottleneck instrument and says in as many words
+            that it "does not get a second, numeric representation";
+            this was that second representation.
+
+          All four are on the Day readout's hover instead, which is
+          where §8 puts precision. What stays is the day (time is
+          invisible), the yield (the one fact the scene cannot show),
+          and under siege the things that need answering.
+        */}
+        <Readout
+          label="Day"
+          value={`${ui.day + 1} · ${ui.daypart}`}
+          hint={`${ui.terrain} · sun ${ui.exposurePct}% · ${ui.floors} of ${catalog.max_floors} floors${
+            ui.waiting > 0 ? ` · ${ui.waiting} queued at a shaft` : ""
+          }`}
+        />
         <Readout label="Yield" value={`${ui.yieldPct}%`} warn={ui.yieldPct < 100} />
-        <Readout label="Sun" value={`${ui.exposurePct}%`} warn={ui.exposurePct < 30} />
-        <Readout label="Floors" value={`${ui.floors} / ${catalog.max_floors}`} />
-        <Readout label="Queued" value={String(ui.waiting)} warn={ui.waiting > 0} />
         {/* All three of these are silent until there is something to
             say. A permanent "0 poles owed" would be a dashboard number
             for a state the tower is in for most of a run — and by that
@@ -1270,9 +1309,20 @@ function walkAgain(): void {
   window.location.replace(url.toString());
 }
 
-function Readout({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+function Readout({
+  label,
+  value,
+  warn,
+  hint,
+}: {
+  label: string;
+  value: string;
+  warn?: boolean;
+  /** The precision layer (`DECISIONS.md` §8): hover only, never a badge. */
+  hint?: string;
+}) {
   return (
-    <div className="readout">
+    <div className="readout" title={hint}>
       <dt>{label}</dt>
       <dd className={warn ? "warn" : undefined}>{value}</dd>
     </div>
@@ -1293,6 +1343,24 @@ function Sidebar({ game, ui }: Props) {
   const buildable = catalog.rooms.filter(
     (room, index) => room.category !== "Heart" && open.has(index),
   );
+
+  // **Unlocked first, locked last — and nothing finer than that.**
+  //
+  // §5.7 argues for showing rooms you have not unlocked: a newcomer
+  // sees the shape of what the game becomes. It does not argue for
+  // giving that the same weight as a room you could press right now,
+  // and late in a run the menu was mostly the former.
+  //
+  // **Sorting by affordability was tried and is wrong.** Stock moves
+  // every few ticks, so cards rose and fell continuously — the list
+  // reordered under the cursor and a button could not be clicked at
+  // all. (Playwright found it: "element is not stable", forever.) A
+  // menu that rearranges itself while you reach for it is worse than
+  // one with some greyed cards in it.
+  //
+  // `locked` changes a handful of times a run, so this is stable.
+  const sorted = [...buildable];
+  sorted.sort((a, b) => Number(ui.locked.includes(a.id)) - Number(ui.locked.includes(b.id)));
 
   return (
     <aside className="sidebar panel">
@@ -1352,7 +1420,7 @@ function Sidebar({ game, ui }: Props) {
               <Cost game={game} costs={game.wideningCost()} />
             </button>
           </li>
-          {buildable.map((room) => (
+          {sorted.map((room) => (
             <li key={room.id}>
               <RoomCard game={game} ui={ui} room={room} />
             </li>
