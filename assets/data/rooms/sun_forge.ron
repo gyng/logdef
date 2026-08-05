@@ -22,10 +22,10 @@ RoomDef(
     // buying both, and the pair is what a ruin-going tower commits to.
     build_cost: [CostEntryDef(item: "item.poles", amount: 8)],
     // Four times the thornwright's 1. Sustained, that is 57,600 charge
-    // across a full day — well over continuous striding's 2,880 and
-    // beyond what two sail rooms make in good sun, so a forge is
-    // something a tower runs in bursts and plans around rather than
-    // leaves on.
+    // across a full day — well over continuous striding's 2,880, and
+    // more than two burners can feed without eating the mill's bamboo,
+    // so a forge is something a tower runs in bursts and plans around
+    // rather than leaves on.
     power_draw: 4,
     recipe: RecipeDef(
         // Eight seconds a bar: visibly the slowest thing in the chain,

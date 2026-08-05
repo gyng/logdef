@@ -1,7 +1,13 @@
-// The dirty fallback. Turns the contested building material into
-// power — burn your poles or build with them. Available at night when
-// the sails give nothing; from M2 its smoke raises provocation, which
-// is what stops it being a free answer.
+// **The only charge in the game.** Turns the contested building
+// material into power — burn your bamboo or build with it — and its
+// smoke raises provocation, which is what stops it being free.
+//
+// It used to be the dirty fallback beside a sail deck, and the sails
+// were cut at M6 (`SYSTEMS.md` §5.11 open question 0): sun-versus-shade
+// asked the player to read a number off the sky, and the same fork now
+// chooses between danger, salvage and ground richness instead. What is
+// left is one lever with a visible cost, which is the readable version
+// of the choice the sails were reaching for.
 #![enable(implicit_some)]
 RoomDef(
     id: "room.burner",
@@ -20,20 +26,60 @@ RoomDef(
     // and never haul anything upward. A tower that never hauls up has no
     // use for a shaft, whatever the shaft costs.
     //
-    // Floor 2 rather than the roof: the sails and the garden are already
-    // fighting over the top floor, and a third claimant there would be a
-    // rule rather than a decision. Two is enough to put the burner above
-    // the bamboo that feeds it.
+    // Floor 2 rather than the roof: the garden already claims the top
+    // floor, and a second claimant there would be a rule rather than a
+    // decision. Two is enough to put the burner above the bamboo that
+    // feeds it.
     min_floor: 2,
     build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
     burner: BurnerDef(
         fuel: "item.bamboo",
-        // 100 charge per 100 ticks sustained — close to a sail room's
-        // full-day average in good sun, but paid for in bamboo at
-        // roughly 2.4x the mill's own appetite for the same stalks. A
-        // genuine option, not a trap and not a free win.
-        fuel_per_burn: 2,
-        charge_per_burn: 100,
+        // **800 charge a stalk, and the ratio is the whole balance.**
+        //
+        // It was 50 (2 bamboo for 100 charge) while the sails carried
+        // the tower and a burner was the switch you threw on a dark
+        // night. Three corrections since, each measured, each too
+        // small:
+        //
+        // - **50** as the only income priced power at 74% of
+        //   everything the tower could cut. The mill completed *zero*
+        //   crafts in 1,800 ticks; every stalk went up the chimney,
+        //   because `find_destination` feeds the emptiest inbox and a
+        //   burner that can never be filled is always the emptiest.
+        // - **200** still spent 45% (22 stalks of 49 by tick 7,200):
+        //   the opening tower's real draw is ~0.61 charge/tick once
+        //   striding and lamps are counted, not the 0.28 a bare
+        //   arithmetic gives.
+        // - **400** spent ~30%, which reads as a reasonable tax and is
+        //   not. Measured against the same script on the sail economy,
+        //   the mill lost **31% of its crafts** (65 against 94 over
+        //   24,000 ticks) at identical harvest and with both towers
+        //   striding the whole window; the golden recorder could no
+        //   longer finish its shopping list inside a journey, with the
+        //   comb and the ropery alone eating 60,000 of the tower's
+        //   ~74,000 walking ticks.
+        //
+        // At 800 the bill is 6 stalks of 101, and the mill recovers to
+        // 80 crafts against the sail tower's 94 — the rest of that gap
+        // is buffer occupancy rather than fuel.
+        //
+        // **The principle behind the size of it**: the sails made
+        // burning a *choice*, and a choice is allowed to be expensive.
+        // As the only source it is a tax, and a tax that takes a third
+        // of the economy is not a tax, it is the game. What stays
+        // expensive is running the tower *hard* — a burner idles on a
+        // full bank, so the fuel bill tracks striding, lamps and
+        // forges rather than the clock.
+        //
+        // `provocation_per_burn` moves with this, always. The two are
+        // one constant in two columns and tuning either alone quietly
+        // retunes the siege.
+        fuel_per_burn: 1,
+        charge_per_burn: 800,
+        // Unchanged, and now it matters more: a burner idles on a full
+        // bank (`systems/power.rs`), so the duty cycle is set by what
+        // the tower spends rather than by the clock. A base tower runs
+        // about one burn in fourteen.
         burn_ticks: 100,
     ),
 )

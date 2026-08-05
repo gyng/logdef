@@ -60,6 +60,11 @@ fn hauling_never_creates_or_destroys() {
     let mut harvested = game.state().stats.items_harvested as i64;
     let mut crafted = game.state().stats.crafts_completed as i64;
     let mut mending = game.state().stats.repair_poles_spent as i64;
+    // **Burning is a bamboo sink too, and since M6 it is one the
+    // opening tower has.** The sails used to make the charge; cutting
+    // them put a burner on the starting roof, so for the first time a
+    // tower nobody has built anything in destroys bamboo legitimately.
+    let mut burned = game.state().stats.fuel_burned as i64;
 
     for _ in 0..120 {
         game.step(30);
@@ -70,11 +75,13 @@ fn hauling_never_creates_or_destroys() {
         let harvested_now = state.stats.items_harvested as i64;
         let crafted_now = state.stats.crafts_completed as i64;
         let mending_now = state.stats.repair_poles_spent as i64;
+        let burned_now = state.stats.fuel_burned as i64;
 
-        // Bamboo in = harvested; bamboo out = consumed by crafts.
+        // Bamboo in = harvested; bamboo out = eaten by crafts and by
+        // the burner.
         assert_eq!(
             bamboo_now - last_bamboo,
-            (harvested_now - harvested) - (crafted_now - crafted),
+            (harvested_now - harvested) - (crafted_now - crafted) - (burned_now - burned),
             "bamboo appeared or vanished at tick {}",
             state.tick
         );
@@ -93,6 +100,7 @@ fn hauling_never_creates_or_destroys() {
         last_poles = poles_now;
         harvested = harvested_now;
         crafted = crafted_now;
+        burned = burned_now;
         mending = mending_now;
     }
 }
@@ -417,7 +425,14 @@ fn nothing_carries_a_thing_from_one_shelf_to_another() {
         for floor in &mut state.tower.floors {
             floor.rooms.retain(|room| {
                 let rt = content.room_rt(room.def);
-                rt.intake_source.is_none() && rt.recipe_inputs.is_empty()
+                // **And no burner.** A burner's fuel is not a recipe
+                // input — it hangs off `burner_fuel` — so this filter
+                // kept the one room in the M6 starting tower that
+                // still wanted bamboo, and the crew dutifully hauled
+                // it there.
+                rt.intake_source.is_none()
+                    && rt.recipe_inputs.is_empty()
+                    && rt.burner_fuel.is_none()
             });
         }
         for floor in &mut state.tower.floors {
@@ -755,7 +770,21 @@ fn more_salvage_than_anybody_will_buy_is_rubbish() {
             for room in &mut floor.rooms {
                 for shelf in &mut room.shelves {
                     if shelf.item.is_none() {
-                        shelf.max = 60;
+                        // **120 a shelf, not 60, because how many
+                        // shelves are free is not this test's to
+                        // assume.** A shelf takes whichever item lands
+                        // on it first, so the opening stock claims some
+                        // before this fixture ever runs — and when M6
+                        // raised `starting_stock` from 10 poles to 16
+                        // that became one shelf more, which left this
+                        // shelving 120 against a board capacity of 144
+                        // and failing its own setup guard.
+                        //
+                        // The guard did exactly its job. The fixture
+                        // just has to out-supply the boards by
+                        // construction rather than by arithmetic that
+                        // depends on a balance constant.
+                        shelf.max = 120;
                         shelf.item = Some(scrap);
                         shelf.count = shelf.max;
                     }

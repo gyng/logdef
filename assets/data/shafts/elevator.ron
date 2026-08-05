@@ -35,8 +35,8 @@ ShaftDef(
         // which building it made obvious: a tower needs a salvage rig, a
         // forge and a fitter before it can put in an elevator, which is
         // four more rooms and two more floors than a five-floor tower
-        // has, and a tower that grows to fit them shades its own sails
-        // and browns out permanently. Measured on the golden recorder:
+        // has, and every one of those floors is more lamps drawing on
+        // the same burner. Measured on the golden recorder:
         // every buffer in the tower empty, the cutter arm at 0/8, and a
         // fixture that could not be recorded at all.
         //

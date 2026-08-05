@@ -485,7 +485,7 @@ fn afford_run(pack: &Arc<Content>, seed: u64, shafts: &[&str]) -> ([u32; 3], u32
     // records making with the cutter arm.
     let mut list = vec![
         "room.storeroom",
-        "room.canopy_sails",
+        "room.burner",
         "room.canteen",
         "room.bunk",
         "room.mill",
@@ -541,7 +541,13 @@ fn afford_run(pack: &Arc<Content>, seed: u64, shafts: &[&str]) -> ([u32; 3], u32
                 // Which reported as "rope is never affordable", a fact
                 // about the harness wearing the clothes of a fact about
                 // the economy.
-                list.push("room.canopy_sails");
+                //
+                // A burner rather than the sail deck this used to
+                // re-buy: since M6 cut the sails, a new floor is a new
+                // floor to light rather than a roof to re-cover, and
+                // what a growing tower needs is more fuel-burning
+                // capacity.
+                list.push("room.burner");
             }
         }
 
@@ -739,14 +745,22 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
     // adjacent floors has nothing to do, and would measure as worthless
     // however it were tuned.
     //
-    // **Sails first, and on the roof, or the whole sweep measures a
-    // blackout.** `canopy_sails` is `top_floor_only`, so every floor
-    // this harness adds shades the ones the starting tower came with —
-    // and the first version of this grew towers to fourteen floors with
-    // no sail above them at all. Result: charge 0 of 2300, brown-out on
-    // every one of 28,800 ticks, and **zero hauls and zero crafts on
-    // both towers at every height**. A perfectly symmetrical comparison
-    // of two towers that were doing nothing.
+    // **Burners, or the whole sweep measures a blackout.** This used
+    // to be a note about sails: `canopy_sails` was `top_floor_only`,
+    // so every floor this harness added shaded the ones the starting
+    // tower came with, and the first version grew towers to fourteen
+    // floors with no sail above them. Result: charge 0 of 2300,
+    // brown-out on every one of 28,800 ticks, and **zero hauls and
+    // zero crafts on both towers at every height** — a perfectly
+    // symmetrical comparison of two towers that were doing nothing.
+    //
+    // M6 cut the sails, which removes the pinning problem and keeps
+    // the lesson: a fourteen-floor tower lights fourteen floors, and
+    // charge now comes only from burners somebody has to keep fuelled.
+    // Three of them, indoors, spread out — one is not enough for the
+    // tall end of the sweep, and a harness that browns out at fourteen
+    // floors and not at five is measuring the power budget while
+    // claiming to measure a shaft.
     // **Most-constrained first.** Reserving two candidate columns costs
     // a quarter of the tower's width, and in that order the cutter arm —
     // two slots wide and capped by the pack at floor 1, so it has
@@ -755,11 +769,11 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
     let plan = [
         // Reaches the ground, so `max_floor` is 1. Nowhere else to go.
         ("room.cutter_arm", 1),
-        // `top_floor_only`, and without it the tower browns out.
-        ("room.canopy_sails", height - 1),
+        // `min_floor` 2, and without them the tower browns out.
+        ("room.burner", 2),
         ("room.mill", height / 2),
-        ("room.canopy_sails", height - 1),
-        ("room.canopy_sails", height - 1),
+        ("room.burner", height / 2),
+        ("room.burner", height - 2),
         ("room.canteen", height - 2),
         ("room.bunk", height - 3),
         ("room.storeroom", 0),
@@ -773,12 +787,16 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
         // the floor it asked for. So the plan states a preference and
         // this settles for near it, the way a player would — searching
         // outward from `want` rather than giving up on the floor.
-        // **Except a sail, which has exactly one floor it works on.**
-        // `top_floor_only` rooms placed anywhere else are shaded and
-        // earn nothing, and letting the search settle one floor down
-        // put an eight-floor tower into brown-out for three quarters of
-        // the window — a measurement of the power budget wearing a
-        // transport instrument's clothes.
+        // **Except a room the pack pins to one floor**, which used to
+        // mean a sail: `top_floor_only` rooms placed anywhere else were
+        // shaded and earned nothing, and letting the search settle one
+        // floor down put an eight-floor tower into brown-out for three
+        // quarters of the window — a measurement of the power budget
+        // wearing a transport instrument's clothes.
+        //
+        // Nothing in the plan is pinned that way since M6. A burner's
+        // `min_floor` is a floor it cannot go *below*, which `place`
+        // rejects, so the outward search simply keeps going.
         let pinned = game
             .content()
             .room_idx(room)
@@ -805,10 +823,10 @@ fn measure(pack: &Arc<Content>, seed: u64, height: u8, build_lift: Lift) -> Samp
     floors.sort_unstable();
     floors.dedup();
     assert!(
-        has("room.canopy_sails") && has("room.cutter_arm") && has("room.mill") && floors.len() >= 4,
-        "a {height}-floor tower is not a fair test of a shaft: sails {}, cutter arm {}, \
+        has("room.burner") && has("room.cutter_arm") && has("room.mill") && floors.len() >= 4,
+        "a {height}-floor tower is not a fair test of a shaft: burner {}, cutter arm {}, \
          mill {}, occupied floors {floors:?}",
-        has("room.canopy_sails"),
+        has("room.burner"),
         has("room.cutter_arm"),
         has("room.mill"),
     );

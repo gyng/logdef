@@ -38,11 +38,18 @@ use super::SoundEvent;
 
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     let yield_pct = state.world.current_yield_pct(content);
-    // Sun after terrain — literally the figure the sails are paid on,
-    // read from the same function, so a garden and a sail can never
-    // disagree about how much light there is.
+    // Sun after terrain. Since M6 cut the sails this is the only thing
+    // in the game the sky still pays for, and it pays in food.
     let exposure = super::power::exposure_pct(state, content);
     let tick = state.tick;
+    // Which floor is the roof, read before the floors come out of the
+    // tower below. `top_floor_only` used to be enforced in exactly one
+    // place — `collect_solar`'s roof filter — so cutting the sails cut
+    // the rule with them, and the garden was left claiming a
+    // restriction nothing applied. A `shaded` room that keeps growing
+    // at full rate is a diegetic lie (`DECISIONS.md` §8): the flag the
+    // cross-section dims is the flag that stops the crop.
+    let top = state.tower.top_floor();
 
     // Both of these are one tick old, deliberately. Intake runs fourth
     // and stride runs eleventh, because tick order *is* charge priority
@@ -112,12 +119,21 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                     // One tick of work, thresholded by how much sun is
                     // reaching the tower. Exposure is sun *after*
                     // terrain, so a garden under dense canopy grows
-                    // almost nothing and the same figure the sails read
-                    // is the one the crops read.
+                    // almost nothing.
+                    //
+                    // Built over, it grows nothing at all — that is the
+                    // cost of height stated where the player can see
+                    // it, and it is the same `top_floor_only` the
+                    // snapshot dims the room for.
                     //
                     // No `berthed` check and no `paces` term: this is
                     // the source that does not care.
-                    let needed = sun_effort(ticks_per_item, exposure);
+                    let reaching = if content.room(room.def).top_floor_only && floor.index != top {
+                        0
+                    } else {
+                        exposure
+                    };
+                    let needed = sun_effort(ticks_per_item, reaching);
                     if needed >= Fx(i32::MAX) {
                         // Full shade. Nothing grows, and holding the
                         // accumulator means what was grown in the light

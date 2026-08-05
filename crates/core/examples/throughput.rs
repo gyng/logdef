@@ -195,7 +195,15 @@ fn make_it_a_home(game: &mut GameEngine) {
     // made was stuck in its own outbox because the shelves were full of
     // the bamboo waiting to become the next one. A tower that cannot
     // save cannot buy, however much it earns.
-    place_when_affordable(game, "room.storeroom", 2, 5);
+    //
+    // **On the roof since M6.** Floor 2 slot 5 is where the starting
+    // burner now stands — the sails used to hold the roof and the
+    // burner did not exist, and cutting the sails swapped the two, so
+    // the top deck is the free one now.
+    // This panicked on a slot clash rather than measuring anything,
+    // which is the fourth instrument in this project to be broken by a
+    // change nothing thought to run it against.
+    place_when_affordable(game, "room.storeroom", 3, 5);
 }
 
 /// Hand the tower a shaft's whole price, so the two samples differ by

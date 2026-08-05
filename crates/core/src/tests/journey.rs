@@ -1648,15 +1648,16 @@ fn the_snapshot_says_which_kind_of_standing_still_this_is() {
     game.try_send(GameCommand::SetStriding { walking: true })
         .expect("always legal");
     {
-        // Empty the banks and take the sails off the roof, so nothing
-        // refills them.
+        // Empty the banks and take the burners out, so nothing refills
+        // them. Since M6 cut the sails the burner is the only income,
+        // so this is the whole of it.
         let content = content();
         let state = game.state_mut_for_test();
         state.power.charge = 0;
         for floor in &mut state.tower.floors {
             floor
                 .rooms
-                .retain(|room| content.room(room.def).solar.is_none());
+                .retain(|room| content.room(room.def).burner.is_none());
         }
     }
     // Long enough for the prepaid stride block to run out: charge is

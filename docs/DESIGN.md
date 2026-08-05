@@ -10,7 +10,7 @@
 ## 1. The pitch
 
 Understory is a walking garden-tower striding through the jungle that swallowed the old
-world. It drinks sun through canopy sails, strips bamboo and vines as it walks, salvages
+world. It burns what it cuts to keep its lamps lit, strips bamboo and vines as it walks, salvages
 alloy from drowned ruins, and crafts its way upward — while the jungle's territorial fauna
 and the old world's feral machines test its walls. It is your factory, your fortress, and
 your home. Logistics don't run on belts; they run on **stairs, dumbwaiters, and
@@ -109,7 +109,7 @@ true in theory. Each one closes off a v1 failure mode by construction — see `v
 
 ## 4. Core loop (minute to minute)
 
-The tower strides through a sun-dappled clearing; canopy sails drink; the cutter arms
+The tower strides through a sun-dappled clearing; the burner smokes; the cutter arms
 strip bamboo and the mill hums. You place a thornwright on floor 4, add a dumbwaiter to
 feed it, reprogram the elevator to skip floor 2. Dusk falls. Leapers drop from the
 overstory onto the upper decks — batteries open up, dart racks drain, a shaft takes a hit,
@@ -143,10 +143,17 @@ material, or build with it — never both.
 
 ### 5.2 Charge — the keystone resource
 
-Charge is a stored flux in cell banks, not a crate that a crew member carries. Sources are
-canopy sails (sun × terrain exposure × time of day — nothing at night, weak under dense
-canopy, strong in clearings and ruin-fields) and the burner (eats bamboo, and its smoke
-raises provocation — the dirty fallback that announces you). Sinks are striding (a
+Charge is a stored flux in cell banks, not a crate that a crew member carries. The only
+source a tower builds is the burner: it eats bamboo — the same stalks the mill wants — and
+its smoke raises provocation, so a tower that works hard announces itself. Underneath it the
+Heartseed trickles a little for nothing, which is not an income but a floor: it means a tower
+that runs dry crawls out slowly rather than dying where it stands.
+
+There were canopy sails once, paying charge for sunlight scaled by terrain. They were cut
+(`SYSTEMS.md` §6.10): sun-versus-shade asked the player to net two opposed numbers off
+against each other in their head, and measurement showed they cancelled almost exactly — a
+decision that cost nothing to get wrong. The route fork asks about danger, salvage and ground
+richness now, which are things you can see out of the window. Sinks are striding (a
 player-set throttle), powered production, powered transport (elevators and dumbwaiters
 draw charge per trip; stairs, ladders, and chutes are free), and night lighting.
 
@@ -168,8 +175,8 @@ day one mattered. Scale is cozy on purpose: 8–14 floors, the whole tower on on
 always.
 
 Categories: intake (harvests the terrain underfoot), production (crafts on a timer),
-energy (canopy sails, burner, cell banks — sails specifically want roof slots, so growing
-taller displaces your own power deck, a real cost of height), logistics (storerooms,
+energy (burner, cell banks — the burner wants a floor above the works, so the chain has a
+direction and a tower has a reason to haul upward), logistics (storerooms,
 caches), defence (dart batteries, seed-bomb mortars, repair workshops), crew (bunks,
 canteen), and the Heart (the Heartseed, unique and pre-placed).
 

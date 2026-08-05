@@ -44,7 +44,7 @@ toolchain.
 ## 1. The pitch
 
 **Understory** is a walking garden-tower striding through the jungle that swallowed the old
-world. It drinks sun through canopy sails, strips bamboo and vines as it walks, salvages
+world. It burns what it cuts to keep its lamps lit, strips bamboo and vines as it walks, salvages
 alloy from drowned ruins, and crafts its way upward — while the jungle's territorial fauna
 and the old world's feral machines test its walls. It is your factory, your fortress, and
 your home. And instead of belts, your logistics run on **stairs, dumbwaiters, and
@@ -122,7 +122,7 @@ Full audit in §7. Headlines:
 
 ## 5. Core loop (minute to minute)
 
-The tower strides through a sun-dappled clearing; canopy sails drink; the cutter arms strip
+The tower strides through a sun-dappled clearing; the burner smokes; the cutter arms strip
 bamboo and the mill hums. You place a thornwright on floor 4, add a dumbwaiter to feed it,
 reprogram the elevator to skip floor 2. Dusk. Leapers drop from the overstory onto the
 upper decks — batteries open up, dart racks drain, a shaft takes a hit, the cells brown out
@@ -154,9 +154,12 @@ build with it.
 
 **Charge** is a stored flux (in cell banks), not a crate.
 
-- **Sources:** canopy sails (sun × terrain exposure × daypart — nothing at night, weak
-  under dense canopy, strong in clearings/ruin-fields) and the **burner** (eats bamboo;
-  smoke raises provocation — the dirty fallback announces you).
+- **Sources:** the **burner** (eats bamboo — the same stalks the mill wants; smoke raises
+  provocation, so a tower that works hard announces itself), and the Heartseed's trickle,
+  which is a floor rather than an income: it means a tower that runs dry crawls out slowly
+  instead of dying where it stands. **Canopy sails were the third and were cut at M6**
+  (`SYSTEMS.md` §6.10) — sun-versus-shade asked the player to net two opposed numbers off
+  in their head, and they cancelled almost exactly.
 - **Sinks:** **striding** (charge per stride — walking speed is a player-set throttle),
   **powered production** (sun-forge, T2 machines), **powered transport** (elevators and
   dumbwaiters draw charge per trip — stairs, ladders, chutes are free), night lighting for
@@ -179,8 +182,9 @@ in the data model from day one). Cozy scale: 8–14 floors, one screen.
 - **Intake:** cutter arms (bamboo/fiber/produce from passing terrain; low floors only),
   salvage rig (scrap; works when berthed at a ruin)
 - **Production:** mill, ropery, sun-forge, thornwright, kitchen, fitter, bombary, cellwright
-- **Energy:** canopy sails (top floor/roof slots — **growing taller displaces your power
-  deck**, a real cost of height), burner, cell banks
+- **Energy:** burner (**floor 2 and up**, so the chain has a direction and the tower has a
+  reason to haul upward), cell banks. Growing taller still costs — lamps, poles and haul
+  distance — but it is a slope rather than the cliff the sails made of it.
 - **Logistics:** storeroom, floor cache
 - **Defence:** dart battery (balcony), seed-bomb mortar (deck), repair workshop
 - **Crew:** bunks, canteen

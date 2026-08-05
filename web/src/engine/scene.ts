@@ -127,7 +127,7 @@ export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
  * cosmetic motion belongs. The dappling is keyed to the band underfoot,
  * so walking from dense canopy into a clearing visibly changes the
  * quality of the light on the tower's face and not just the numbers
- * behind it — the same fact the sails are reading, said in the register
+ * behind it — the same fact the garden is reading, said in the register
  * a player actually attends to.
  */
 function drawLight(batch: QuadBatch, ctx: SceneContext): void {
@@ -1782,7 +1782,7 @@ function drawDust(batch: QuadBatch, { view, layout, clock }: SceneContext): void
  * painting rather than as somewhere.
  *
  * Kept honest by being tied to the sun the tower is *actually* standing
- * in — `exposure_pct` is the same number the sails are paid in — so they
+ * in — `exposure_pct` is the same number the garden grows on — so they
  * thin under dense canopy and are gone at night. Twenty-four quads,
  * placed by hash rather than simulated, drifting on the tower's own
  * clock.
@@ -2070,7 +2070,7 @@ function drawTower(batch: QuadBatch, ctx: SceneContext): void {
     drawPanel(batch, ctx, floor, y, spanX, shellPad);
   }
 
-  // Roof garden. The sails mount here in M1; until then it is where
+  // Roof garden. Where the sails used to mount, and since M6 where
   // the tower keeps its own greenery.
   const roofY = topY - shellPad * 0.4;
   batch.push(
@@ -2095,7 +2095,7 @@ function drawTower(batch: QuadBatch, ctx: SceneContext): void {
     );
   }
 
-  // Roof lip — from M1 this is where the canopy sails mount, and
+  // Roof lip — where the canopy sails used to mount, and
   // growing taller starts costing you your power deck.
   batch.push(
     layout.originX - shellPad * 2,
@@ -2318,7 +2318,7 @@ function drawPlanter(
 function roomProfile(info: RoomInfo | undefined): {
   rise: number;
   radius: number;
-  crown: "dome" | "sail" | "cells" | "vent" | "boom" | "barrel" | "none";
+  crown: "dome" | "leaves" | "cells" | "vent" | "boom" | "barrel" | "none";
 } {
   if (!info) return { rise: 0.84, radius: 4, crown: "none" };
   switch (info.category) {
@@ -2326,17 +2326,26 @@ function roomProfile(info: RoomInfo | undefined): {
     case "Heart":
       return { rise: 0.9, radius: 14, crown: "dome" };
     case "Energy":
-      // A sail is mostly the sail, which lives above the deck it is
-      // bolted to. A cell bank is a short rack with its cells on top.
-      if (info.solar) return { rise: 0.44, radius: 3, crown: "sail" };
+      // A cell bank is a short rack with its cells on top; a burner is
+      // a chimney. There used to be a third here — a sail deck, which
+      // was mostly sail — and M6 cut it.
       if (info.bank_capacity > 0) return { rise: 0.5, radius: 3, crown: "cells" };
       return { rise: 0.72, radius: 3, crown: "vent" };
     // Machinery: full height, square, and venting.
     case "Production":
       return { rise: 0.84, radius: 2, crown: "vent" };
     // An arm is a boom with a housing at the back of it.
+    //
+    // **Except a garden, which wears the crown the sails used to.**
+    // That crown was two canted panels that filled and slackened with
+    // `exposure_pct`, and when M6 cut the sails the one room still
+    // paid by the sky was the garden. Same geometry, read as leaves
+    // rather than canvas: the roof still answers the route, and the
+    // room it answers for is the one the answer now matters to.
     case "Intake":
-      return { rise: 0.6, radius: 3, crown: "boom" };
+      return info.top_floor_only
+        ? { rise: 0.5, radius: 3, crown: "leaves" }
+        : { rise: 0.6, radius: 3, crown: "boom" };
     case "Defence":
       return { rise: 0.52, radius: 3, crown: "barrel" };
     // Shelving is shelving: low, wide, and flat on top.
@@ -2368,7 +2377,7 @@ function drawCrown(
   w: number,
   h: number,
   head: number,
-  /** Sun reaching the roof after terrain, 0-100. Sails read it. */
+  /** Sun reaching the roof after terrain, 0-100. The garden reads it. */
   exposure: number,
   /** Sweep phase off distance walked. The cutter arm reads it. */
   swing: number,
@@ -2386,19 +2395,20 @@ function drawCrown(
       batch.push(x + w * 0.28, y - head * 0.85, w * 0.44, head, lit, { radius: head });
       break;
     }
-    case "sail": {
+    case "leaves": {
       // Canted, and tall enough to be the thing you notice about the
-      // roof. Two panels at opposing angles read as fabric under
-      // tension rather than as a lid.
+      // roof. Two shapes at opposing angles read as growth reaching for
+      // the light rather than as a lid.
       //
-      // **They fill and slacken with `exposure_pct`**, which is the sun
-      // *after* terrain — the same number the sails are actually paid
-      // in. A sail room in dense canopy at 15% and one in open clearing
-      // at 100% used to draw identically, so the tower's entire charge
-      // income was invisible on the one part of it that earns the
-      // income. Now the roof answers the route: walk into shade and the
-      // canvas goes slack before the bank starts falling, which is the
-      // §8 order — see it in the world first, read it off a gauge second.
+      // **They open and close with `exposure_pct`**, which is the sun
+      // *after* terrain. This was the sails' crown until M6 cut them,
+      // and the argument carries over unchanged to the room that
+      // inherited it: a garden in dense canopy at 15% and one in open
+      // clearing at 100% would otherwise draw identically, so what the
+      // route buys would be invisible on the one part of the tower it
+      // buys it for. Walk into shade and the leaves close before the
+      // crop count moves, which is the §8 order — see it in the world
+      // first, read it off a gauge second.
       const fill = 0.35 + (exposure / 100) * 0.65;
       const panel = head * 1.5 * (0.72 + fill * 0.28);
       batch.push(x + w * 0.04, y - panel, w * 0.46, panel, palette.sunlight, {
@@ -2499,7 +2509,7 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
   const w = room.width * layout.slotW - inset * 2;
   // Rooms stand on the deck and reach as high as their kind does, so a
   // floor reads as a skyline. The headroom left over is where the crown
-  // goes — a sail above its housing, an arm out over the side.
+  // goes — leaves above their bed, an arm out over the side.
   const usable = layout.floorH - 3;
   const h = usable * profile.rise;
   const y = floorTop + layout.floorH - 3 - h;
@@ -2535,9 +2545,9 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
       : 0;
   const body = mix(mix(stalled, palette.hurt, hurt * 0.7), palette.lamplight, fresh * 0.28);
   if (profile.crown !== "none" && head > 4) {
-    // A shaded sail earns nothing and should not look like one that
-    // does; a stalled or halted arm has nothing to cut. Both read off
-    // the snapshot rather than off a timer.
+    // A garden with a floor built over it grows nothing and should
+    // not look like one that does; a stalled or halted arm has nothing
+    // to cut. Both read off the snapshot rather than off a timer.
     const working = room.active && !room.stalled && !room.shaded;
     drawCrown(
       batch,

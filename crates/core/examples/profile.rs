@@ -61,7 +61,6 @@ fn main() {
                 "room.dart_battery",
                 "room.salvage_rig",
                 "room.burner",
-                "room.canopy_sails",
                 "room.garden",
             ][..],
         ),

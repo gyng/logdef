@@ -71,7 +71,8 @@ them, the chute, region 3 and the coast, the two creatures that complete the tax
 enclaves, the journal that carries unlocks between runs, and the run log. A run can be played
 from the first pace to an arrival at the Refugia.
 
-M6 ("The Watch") is shipped: the verbs a player has while a wave is landing. Charge priority
+M6 ("The Watch") is shipped: the verbs a player has while a wave is landing, plus the
+sails being cut out of the game entirely (§6.10). Charge priority
 handed over — it used to *be* the tick order — a creature the emplacements can be told to
 prefer, a person posted to a room, kit that belongs to somebody named, the berth given its own
 halt, and a thief answered by somebody standing in the room. **Read `SYSTEMS.md` §6 before
@@ -90,14 +91,26 @@ value and its neighbours. That gap is the difficulty pass, and it is a person's 
 an agent's. The itch.io release cut works and has not been shown to a stranger. Role priorities
 are cut for good rather than deferred (`SYSTEMS.md` §5.10).
 
-**Read `SYSTEMS.md` §5.11 open question 0 before touching terrain, yields or a chain.** It
-was the largest open finding in the project and it is now answered, but the answer is not the
-obvious one and the wrong version of it is still repeated in older commits. `yield_pct` and
-`sun_pct` are **one constant in two columns**, deliberately opposed, and they cancel to within
-two percent on every tower shape measured — including a ceiling tower with bottomless buffers
-where nothing can jam. So a shade route genuinely does not out-harvest a sun route, and that
-is the design working rather than failing: shade buys richer ground and less power to cross
-it. **Never tune one without the other.**
+**Read `SYSTEMS.md` §6.10 before touching terrain, yields, charge or a chain — and §5.11
+open question 0 after it, for the method.** Question 0 was the largest open finding in the
+project: `yield_pct` and `sun_pct` were **one constant in two columns**, deliberately opposed,
+cancelling to within two percent on every tower shape measured. That analysis is correct and
+the system it analysed is **gone** — M6 cut the canopy sails, so `sun_pct` no longer pays a
+tower any charge at all. It now sets the garden's rate, decides when the lamps come on, and
+lights the scene. Read question 0 for how to measure your own instruments before believing
+them; it is still the best short lesson in this repo.
+
+**Charge now has exactly two sources and they are not symmetrical.** Burners, which a tower
+builds and which eat the same bamboo the mill wants; and the Heartseed's trickle, which is a
+*floor* rather than an income. The trickle exists because cutting the sails created a deadlock
+with no way out — every source of charge required already having charge, and a tower that ran
+dry parked for 160,000 measured ticks with no path back.
+`tests/power.rs::a_tower_that_runs_completely_dry_can_still_crawl_out` is that property, and
+**any change that makes an income depend on an output of that income needs it to still pass.**
+
+**`charge_per_burn` and `provocation_per_burn` are the new one-constant-in-two-columns.**
+Efficiency and smoke: raise one alone and you silently retune the siege. `provocation_per_burn`
+is what decided whether the M6 opening tower lived at all.
 
 Four confident wrong answers were filed against that question before the right one — chains
 terminating in buffers, crew scarcity, a shelf jam, a 9.7% route gap — and every single one
@@ -494,10 +507,13 @@ from M1, the same dumbwaiters and elevator shafts) everyone else is already usin
   `spend` in `engine/commands.rs` draw from shelves the chain actually filled. If you add a
   new buildable, its cost should draw from the same stock pool — there's no separate
   currency to introduce.
-- **Growing taller has a real cost beyond `floor_cost`.** From M1, a new top floor
-  displaces the canopy sail deck (`v2-plan.md` §6.3). When that lands, don't let floor
-  addition become a free action just because the ticks/materials are paid — the height
-  cost is structural, not just economic.
+- **Growing taller has a real cost beyond `floor_cost`.** It used to be that a new top
+  floor displaced the canopy sail deck (`v2-plan.md` §6.3) — a wall, measured at *zero*
+  income four floors up. M6 cut the sails (`SYSTEMS.md` §6.10) and that wall became a
+  slope: a fourteen-floor tower's lamps cost 2,268 charge a day against a four-floor
+  tower's 648, and one burner leaves it 488 short. The rule is unchanged — don't let floor
+  addition become a free action just because the ticks/materials are paid — but the cost is
+  now lamps, poles and haul distance rather than a cliff.
 
 ### Procedural world streaming
 

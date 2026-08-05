@@ -89,6 +89,19 @@ pub struct RunStats {
     /// which is the largest single unknown M4 introduces
     /// (`SYSTEMS.md` §4.10) and not something any existing counter sees.
     pub crew_ticks_asleep: u64,
+    /// Fuel put up the chimney.
+    ///
+    /// **A sink the conservation test could not see.** M6 cut the sails
+    /// and put a burner on the opening roof, which made bamboo vanish
+    /// legitimately for the first time in a tower nobody had built
+    /// anything in — `hauling_never_creates_or_destroys` read it as
+    /// items being destroyed, which is exactly what it is for.
+    /// Crafting was already accounted; burning was not, because until
+    /// M6 no starting tower burned.
+    ///
+    /// It is also the number that says what charge cost this run,
+    /// which no other counter reports: `charge` is a level, not a bill.
+    pub fuel_burned: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -242,8 +255,27 @@ impl GameState {
 
     /// The opening tower, laid out so the very first haul is a climb:
     /// the cutter arm is on the ground and the mill it feeds is two
-    /// floors up. Sails go on the roof, where they will keep needing to
-    /// be moved every time the tower grows.
+    /// floors up.
+    ///
+    /// **The burner sits beside the mill, and it is the only income
+    /// there is.** M6 cut the sails, so nothing arrives for free — the
+    /// same bamboo the mill wants is what keeps the lamps on, and the
+    /// two of them share a floor and an argument about every stalk the
+    /// arm cuts. The starting charge buys about 2,800 ticks of grace
+    /// before that haul has to be working.
+    ///
+    /// **Beside the mill and not on the roof**, which is where the
+    /// sails were and where the first version put it. The roof is the
+    /// most attackable deck there is — leapers land on it — and a
+    /// tower whose entire power supply sits up there loses all of it
+    /// to one creature. Measured on `examples/probe.rs`: wrecked at
+    /// hp 0/260 by tick 7,200, six burns for the whole run, and a
+    /// charge curve sliding to nothing. The burner's own `min_floor`
+    /// already said 2.
+    ///
+    /// It also leaves the roof empty, which it never was before. The
+    /// first thing a player decides about the top deck is now a
+    /// decision rather than a demolition.
     ///
     /// The slots are chosen to leave awkward gaps rather than tidy
     /// ones. Rooms are one, two or three wide, the stairs take slot 0
@@ -271,7 +303,7 @@ impl GameState {
             ("room.storeroom", 1, 2),
             ("room.cell_bank", 1, 1),
             ("room.mill", 2, 3),
-            ("room.canopy_sails", 3, 4),
+            ("room.burner", 2, 5),
         ];
         for (room_id, floor, slot) in LAYOUT {
             let Some(idx) = content.room_idx(room_id) else {

@@ -23,16 +23,18 @@ RoomDef(
     build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
     // **Roof only.** A garden under three floors of tower is a garden in
     // the dark, and making that a rule rather than a slow trickle keeps
-    // it honest — and puts it in direct competition with the canopy
-    // sails for the one deck that sees the sky. Growing taller costs you
-    // one or the other (`v2-plan.md` §6.3).
+    // it honest. It used to share the roof with the canopy sails; since
+    // those were cut it has the deck to itself, and the cost of growing
+    // taller is that the garden goes up with you rather than that you
+    // choose between the two (`v2-plan.md` §6.3).
     top_floor_only: true,
     intake: IntakeDef(
         item: "item.produce",
         // 260 ticks at full sun — about 8.7 seconds a crop — falling to
         // nearly nothing under dense canopy. Scaled by exposure, which
-        // is sun *after* terrain, so the same number that decides what
-        // the sails make decides what the garden grows.
+        // is sun *after* terrain: since the sails were cut this is the
+        // only thing in the game the sky still pays for, and it pays in
+        // food rather than charge.
         source: Sun(ticks_per_item: 260),
         buffer_max: 8,
     ),

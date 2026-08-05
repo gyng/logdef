@@ -503,17 +503,22 @@ fn run(plan: Plan) {
                 continue;
             }
             // Out of floor, not out of money: a tower with poles banked
-            // and no free slot is one a player would build upward. The
-            // sails go back on the new roof straight away, because
-            // growing taller shades the old ones and a tower that stops
-            // making charge stops walking, harvesting and everything
-            // else within the minute.
+            // and no free slot is one a player would build upward.
+            //
+            // **No re-roofing step since M6.** This used to put a
+            // fresh sail deck on the new roof immediately, because
+            // growing taller shaded the old one and a tower that
+            // stopped making charge stopped walking, harvesting and
+            // everything else within the minute. The sails are gone
+            // and the burner is indoors, so a new floor is now just a
+            // new floor — and another floor to light, which is what
+            // the second burner below pays for.
             if engine.try_send(GameCommand::BuildFloor).is_ok() {
                 let top = engine.state().tower.top_floor();
                 for slot in 0..engine.content().balance.tower.floor_slots {
                     if engine
                         .try_send(GameCommand::PlaceRoom {
-                            room: "room.canopy_sails".into(),
+                            room: "room.burner".into(),
                             floor: top,
                             slot,
                         })

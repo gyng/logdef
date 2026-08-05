@@ -851,13 +851,18 @@ test("capture stills", async ({ page }) => {
   await where(page, "after the fork stills");
 
   // Wanting to walk and not being able to afford it. Forced rather than
-  // waited for — shut the sails at dusk and keep the legs asking, which
-  // is the same corner a player backs into by building one bank too few
+  // waited for — shut the burners and keep the legs asking, which is
+  // the same corner a player backs into by letting the fuel run out
   // (`SYSTEMS.md` §3.6).
+  //
+  // **The burners, because since M6 there is nothing else to shut.**
+  // This used to switch off the sail deck; cutting the sails made the
+  // burner the only income a tower builds, so it is both the easier
+  // shot and the more honest picture of how a tower actually runs dry.
   const brownout = await page.evaluate(() => {
     const hooks = window.__understory!;
     const catalog = hooks.catalog();
-    const solar = catalog.rooms.findIndex((room) => room.solar);
+    const burner = catalog.rooms.findIndex((room) => room.burner);
     // In daylight, so the dimmed frame reads as the tower going out
     // rather than as the sun having gone down — those are two different
     // pictures and only one of them is a brown-out.
@@ -869,7 +874,7 @@ test("capture stills", async ({ page }) => {
     const view = hooks.view();
     for (const floor of view.tower.floors) {
       for (const room of floor.rooms) {
-        if (room.def === solar) {
+        if (room.def === burner) {
           hooks.send({
             SetRoomActive: { floor: floor.index, slot: room.slot, active: false },
           });
@@ -894,15 +899,15 @@ test("capture stills", async ({ page }) => {
   await page.waitForTimeout(300);
   await page.screenshot({ path: "capture/halt-brownout.png" });
 
-  // Sails back on, or the rest of the journey is spent in the dark.
+  // Burners back on, or the rest of the journey is spent in the dark.
   await page.evaluate(() => {
     const hooks = window.__understory!;
     const catalog = hooks.catalog();
-    const solar = catalog.rooms.findIndex((room) => room.solar);
+    const burner = catalog.rooms.findIndex((room) => room.burner);
     const view = hooks.view();
     for (const floor of view.tower.floors) {
       for (const room of floor.rooms) {
-        if (room.def === solar) {
+        if (room.def === burner) {
           hooks.send({ SetRoomActive: { floor: floor.index, slot: room.slot, active: true } });
         }
       }

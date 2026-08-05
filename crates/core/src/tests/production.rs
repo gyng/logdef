@@ -183,12 +183,24 @@ fn mill_progress(game: &crate::engine::GameEngine) -> u32 {
         .unwrap_or(0)
 }
 
+/// **The mill's inbox, and only the mill's.**
+///
+/// This summed the item across every room in the tower, which was the
+/// same number until M6 cut the sails and put a burner in the opening
+/// tower — a second room that eats bamboo. The stall assertion then
+/// read the burner's six stalks going up the chimney as "a backed-up
+/// mill still ate its inputs".
 fn mill_input_count(game: &crate::engine::GameEngine, item: crate::ids::ItemIdx) -> i64 {
+    let mill = game
+        .content()
+        .room_idx("room.mill")
+        .expect("the pack defines a mill");
     game.state()
         .tower
         .floors
         .iter()
         .flat_map(|floor| floor.rooms.iter())
+        .filter(|room| room.def == mill)
         .flat_map(|room| room.inputs.iter())
         .filter(|stack| stack.item == item)
         .map(|stack| stack.count)

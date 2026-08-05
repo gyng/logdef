@@ -70,7 +70,6 @@ test("frame budget", async () => {
         "room.thornwright",
         "room.dart_battery",
         "room.burner",
-        "room.canopy_sails",
       ],
     },
   ];

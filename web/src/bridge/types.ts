@@ -134,7 +134,13 @@ export interface ClockView {
   daypart: number;
   /** Sunlight before terrain. */
   sun_pct: number;
-  /** Sunlight after terrain — what the sails actually receive. */
+  /**
+   * Sunlight after terrain.
+   *
+   * Since M6 cut the sails nothing is paid in charge for it: it sets
+   * the garden's rate, decides whether the lamps come on, and lights
+   * the cross-section.
+   */
   exposure_pct: number;
 }
 
@@ -308,7 +314,10 @@ export interface RoomView {
   stalled: boolean;
   /** Switched on by the player. */
   active: boolean;
-  /** A sail no longer on the roof. The price of building higher. */
+  /**
+   * A `top_floor_only` room with a floor above it — since M6 that
+   * means a garden in the dark. The price of building higher.
+   */
   shaded: boolean;
   health_permille: number;
   /** Damaged past the point of working at all. */
@@ -535,7 +544,6 @@ export interface RoomInfo {
   /** Charge drawn per tick while working. */
   power_draw: number;
   /** Makes charge from sunlight. */
-  solar: boolean;
   /** Burns an item for charge, and can be switched off. */
   burner: boolean;
   /** Charge capacity this room adds. */

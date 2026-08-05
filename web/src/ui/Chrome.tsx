@@ -1234,7 +1234,6 @@ function costHint(room: RoomInfo): string {
     case "Quarters":
       return room.min_floor === null ? "beds" : `beds · floor ${room.min_floor} and up`;
     case "Energy":
-      if (room.solar) return "roof only · charge from sun";
       if (room.burner) {
         return room.min_floor === null
           ? "burns bamboo for charge"
@@ -1259,11 +1258,8 @@ function describeRoom(game: Game, info: RoomInfo): string {
   const catalog = game.getCatalog();
   const name = (index: number) => catalog.items[index]?.name ?? "something";
 
-  if (info.solar) {
-    return "Drinks sunlight, but only from the roof. Build a floor above it and it goes dark.";
-  }
   if (info.burner) {
-    return "Burns bamboo for charge. The dirty fallback — every stalk burned is a stalk not built with.";
+    return "Burns bamboo for charge, and nothing else in the tower makes any. Every stalk burned is a stalk not built with — but it only lights when the bank has room, so what it really costs you is walking far and working hard.";
   }
   if (info.bank_capacity > 0) {
     return `Holds ${info.bank_capacity} charge. Storage is something you build, not something you find.`;

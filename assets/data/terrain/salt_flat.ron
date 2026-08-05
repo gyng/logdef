@@ -20,7 +20,9 @@ TerrainDef(
     // A cutter arm here is very nearly ornamental.
     yield_pct: 35,
     // And richer than the ruin-field (130), which until now was the
-    // ceiling. Nothing stands between the sails and the sky.
+    // ceiling. Nothing stands between the roof and the sky — which
+    // since the sails were cut buys a fast garden and a bright deck
+    // rather than charge.
     sun_pct: 145,
     // Emptiest ground in the game. What is out here is what the sea
     // left, and there is not much of it.

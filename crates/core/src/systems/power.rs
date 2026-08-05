@@ -5,7 +5,7 @@
 //! spends, lighting has to come after transport and production so it
 //! yields to them, and striding pays last of all.
 
-use crate::content::Content;
+use crate::content::{Content, RoomCategory};
 use crate::fx::Fx;
 use crate::state::GameState;
 use crate::state::power::{Credit, PowerUse};
@@ -19,12 +19,7 @@ pub fn income(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEv
     state.power.capacity = bank_capacity(state, content);
     state.power.charge = state.power.charge.min(state.power.capacity);
 
-    // The *roof's* exposure, which is not the ground's: a taller tower
-    // reaches over more of the canopy. Harvest keeps reading the ground
-    // figure, because a cutter arm sweeping the forest floor does not
-    // care how many storeys are stacked above it.
-    let exposure = roof_exposure_pct(state, content);
-    collect_solar(state, content, exposure);
+    heartseed_trickle(state, content);
     run_burners(state, content, sounds);
     estimate_demand(state, content);
 }
@@ -94,34 +89,6 @@ pub fn exposure_pct(state: &GameState, content: &Content) -> i64 {
     sun * terrain / 100
 }
 
-/// Sunlight reaching the *roof*, which on a tall tower is more than
-/// reaches the ground.
-///
-/// Each floor above the starting height recovers
-/// `canopy_climb_pct_per_floor` points of the terrain's shade, capped at
-/// open sky — so this does nothing in a clearing, where there is no
-/// shade to recover, and a great deal under canopy.
-///
-/// **It is the counterweight to `top_floor_only`.** A new top floor
-/// shades the sail deck under it, which made growing taller pure loss
-/// for the tower's income and left the growth gradient pointing away
-/// from the one shape a shaft is worth building for.
-#[must_use]
-pub fn roof_exposure_pct(state: &GameState, content: &Content) -> i64 {
-    let sun = state.clock.sun_pct(content);
-    let terrain = state
-        .world
-        .band_at(state.world.distance)
-        .map_or(100, |band| content.terrain_runtime[band.kind.get()].sun_pct);
-    let grown = i64::from(
-        (state.tower.floors.len() as u8).saturating_sub(content.balance.tower.starting_floors),
-    );
-    // Recovery, not a bonus: a roof cannot see more than open sky, so
-    // this can never lift a clearing above what a clearing gives.
-    let lifted = (terrain + grown * content.balance.power.canopy_climb_pct_per_floor).min(100);
-    sun * terrain.max(lifted) / 100
-}
-
 fn bank_capacity(state: &GameState, content: &Content) -> i64 {
     let banks: i64 = state
         .tower
@@ -136,30 +103,48 @@ fn bank_capacity(state: &GameState, content: &Content) -> i64 {
     banks + content.balance.power.starting_charge
 }
 
-fn collect_solar(state: &mut GameState, content: &Content, exposure: i64) {
-    let top = state.tower.top_floor();
-    let rate: i64 = state
+/// What the Heartseed makes on its own — the floor that keeps a
+/// stalled tower recoverable.
+///
+/// Accrued in fixed point so a trickle this small still adds up
+/// instead of truncating to nothing every tick. See
+/// `PowerBalance::heartseed_charge_per_100_ticks` for why it exists;
+/// the short version is that after M6 cut the sails, every other
+/// source of charge required already having some.
+///
+/// Gated on the Heartseed being present and **intact**, so it is the
+/// tower's living core doing it rather than a rule about the number
+/// zero. A tower whose Heartseed is gone has lost anyway.
+///
+/// **Intact, not `is_working` — and the difference is a bricked run.**
+/// `is_working` also reads `active`, and `SetRoomActive` accepts the
+/// Heartseed like any other room. So a player who switched everything
+/// off turned off the floor under the economy and walked straight back
+/// into the deadlock this exists to prevent: caught by
+/// `e2e/smoke.spec.ts`, which does exactly that and then reported one
+/// pole after 120,000 ticks. The Heartseed is grown rather than built
+/// and cannot be removed; it is not a machine with a switch, and the
+/// trickle should not pretend otherwise.
+fn heartseed_trickle(state: &mut GameState, content: &Content) {
+    let per_100 = content.balance.power.heartseed_charge_per_100_ticks;
+    if per_100 <= 0 {
+        return;
+    }
+    let alive = state
         .tower
         .floors
         .iter()
-        .filter(|floor| floor.index == top)
         .flat_map(|floor| floor.rooms.iter())
-        .filter(|room| room.is_working(content, state.tick))
-        .filter_map(|room| content.room(room.def).solar.as_ref())
-        .map(|solar| solar.charge_per_100_ticks)
-        .sum();
-
-    if rate == 0 || exposure <= 0 {
+        .any(|room| {
+            content.room(room.def).category == RoomCategory::Heart && !room.is_wrecked(content)
+        });
+    if !alive {
         return;
     }
-
-    // Accumulate in fixed point so a trickle of sun still adds up
-    // instead of truncating to nothing every tick.
-    let per_tick = Fx::ratio(rate as i32, 100) * Fx::ratio(exposure as i32, 100);
-    state.power.solar_acc += per_tick;
-    let whole = state.power.solar_acc.floor_int();
+    state.power.trickle_acc += Fx::ratio(i32::try_from(per_100).unwrap_or(i32::MAX), 100);
+    let whole = state.power.trickle_acc.floor_int();
     if whole > 0 {
-        state.power.solar_acc -= Fx::from_int(whole);
+        state.power.trickle_acc -= Fx::from_int(whole);
         state.power.add(i64::from(whole));
     }
 }
@@ -168,10 +153,55 @@ fn collect_solar(state: &mut GameState, content: &Content, exposure: i64) {
 /// progress machinery as a recipe, and they eat from an inbox the crew
 /// have to keep full — so lighting the burner competes with the mill
 /// for exactly the same bamboo.
+///
+/// **A burner with nowhere to put the charge waits.** This was
+/// harmless while the sails carried the tower and a burner was the
+/// switch you threw on a dark night; when M6 cut the sails and made it
+/// the only income, an always-on burner became a permanent drain that
+/// outran the whole harvest. Measured on the opening tower: it wanted
+/// 2 bamboo per 100 ticks against a cutter arm cutting 0.0075 a tick,
+/// so it asked for **2.7x everything the tower could cut** — and
+/// because `find_destination` feeds the emptiest inbox first, an
+/// inbox that could never fill took every stalk and the mill completed
+/// zero crafts in 1,800 ticks.
+///
+/// Idling on a full bank fixes it at the root rather than by tuning
+/// the appetite down: consumption becomes what the tower actually
+/// spends, so the fuel bill scales with striding and lamps and
+/// thornwrights instead of with wall-clock time. The smoke scales with
+/// it too, which is the better story — a tower that spends hard smokes
+/// hard.
+///
+/// **Headroom, not fullness, and the difference cost a re-measure.**
+/// The first version held only at `charge == capacity`, so a 400-point
+/// burn into a bank with 50 points of room spent a whole stalk to add
+/// 50 — `power.add` clips the rest. Measured, that made the efficiency
+/// change do nothing at all: 22 stalks burned by tick 7,200 at 200 a
+/// burn, and 22 at 400. A burner will not light unless the bank can
+/// take the whole burn.
+///
+/// This requires a bank bigger than one burn, which
+/// `power.starting_charge` alone satisfies several times over. If a
+/// pack is ever authored where it does not, the burner silently never
+/// runs.
+///
+/// **The headroom is spent as it goes, not read once.** A shared
+/// figure lets every burner in the tower see the same room and all
+/// light at once, and `power.add` then clips the surplus — three
+/// burners paying three stalks to bank one burn's worth. Measured on
+/// `examples/charge.rs`, that made a fourteen-floor tower with three
+/// burners earn **less** than the same tower with one (543 against
+/// 1,839 over a day), which is the tell: more of a thing cannot
+/// produce less of what it makes.
+///
+/// Progress is *held*, not reset: the fuel has not been withdrawn yet,
+/// and stalling in place is the same rule intake and production keep.
 fn run_burners(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     let mut produced = 0i64;
     let mut burns = 0i64;
+    let mut burned = 0i64;
     let tick = state.tick;
+    let mut headroom = state.power.capacity - state.power.charge;
 
     for floor in &mut state.tower.floors {
         for room in &mut floor.rooms {
@@ -182,6 +212,9 @@ fn run_burners(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundE
                 if !room.active {
                     room.progress = 0;
                 }
+                continue;
+            }
+            if burner.charge_per_burn > headroom {
                 continue;
             }
             let Some(fuel) = room.inputs.first_mut() else {
@@ -197,12 +230,15 @@ fn run_burners(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundE
             }
             fuel.withdraw(burner.fuel_per_burn);
             room.progress = 0;
+            headroom -= burner.charge_per_burn;
             produced += burner.charge_per_burn;
+            burned += burner.fuel_per_burn;
             burns += 1;
         }
     }
 
     if produced > 0 {
+        state.stats.fuel_burned += burned as u64;
         state.power.add(produced);
         sounds.push(SoundEvent::Burn);
         // Smoke. The dirty fallback is not free — this is what stops

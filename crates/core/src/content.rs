@@ -185,15 +185,6 @@ pub struct StorageDef {
     pub per_shelf: i64,
 }
 
-/// Canopy sails: charge from sunlight, scaled by how much of it reaches
-/// this stretch of jungle.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SolarDef {
-    /// Charge per 100 ticks at 100% exposure.
-    pub charge_per_100_ticks: i64,
-}
-
 /// The burner: the dirty fallback. Turns the contested material into
 /// power, and from M2 its smoke raises provocation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,8 +250,6 @@ pub struct RoomDef {
     pub intake: Option<IntakeDef>,
     #[serde(default)]
     pub storage: Option<StorageDef>,
-    #[serde(default)]
-    pub solar: Option<SolarDef>,
     #[serde(default)]
     pub burner: Option<BurnerDef>,
     #[serde(default)]
@@ -739,26 +728,30 @@ pub struct ClockBalance {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PowerBalance {
-    /// Points of the terrain's `sun_pct` a sail deck recovers for every
-    /// floor the tower stands above its starting height.
+    /// What the Heartseed itself makes, per 100 ticks, for nothing.
     ///
-    /// **Growing taller used to be pure loss for the sails.** A new top
-    /// floor shades the deck below it (`top_floor_only`), so the tower
-    /// punished the one thing that makes a shaft necessary, and the
-    /// growth gradient pointed away from height the whole way up. This
-    /// is the counterweight: a roof that climbs out of the canopy sees
-    /// more sky.
+    /// **The floor under the whole charge economy, and the reason a
+    /// stalled tower is not a dead one.**
     ///
-    /// It only recovers *terrain* shade, so it does nothing in a
-    /// clearing and a great deal under dense canopy — which is
-    /// deliberate, and is the part to watch. `SYSTEMS.md` §5.11 open
-    /// question 0 says `yield_pct` and `sun_pct` are one constant in two
-    /// columns, deliberately opposed and cancelling to within two
-    /// percent; this hands a shade route a way to buy back some of what
-    /// shade costs. **Never tune it without re-running
-    /// `journey.rs`'s route comparison**, which is the instrument that
-    /// question is answered by.
-    pub canopy_climb_pct_per_floor: i64,
+    /// M6 cut the sails, which left the burner as the only income —
+    /// and a burner runs on bamboo, and bamboo is harvested from
+    /// *ground covered*. So a tower that runs out of charge stops
+    /// walking, and a tower that has stopped walking harvests nothing,
+    /// and nothing in the game could break the loop. Measured on
+    /// `journey.rs`'s seed 1: charge 4/2300, fuel 0, and the tower sat
+    /// at the same pace for 160,000 ticks.
+    ///
+    /// It is deliberately far below what anything costs. Striding is
+    /// 20 per 100 ticks against this 6, so a tower living on the
+    /// Heartseed alone walks in bursts of one block in four and runs
+    /// no rooms at all. That is a limp, not an income — the shape it
+    /// has to have is "you always crawl out, slowly", so that running
+    /// dry is a setback rather than a save file to abandon.
+    ///
+    /// The priority order does the rest for free: lamps outrank legs,
+    /// so a limping tower spends its trickle on light after dark and
+    /// on walking by day.
+    pub heartseed_charge_per_100_ticks: i64,
     pub starting_charge: i64,
     /// Charge the legs draw per 100 ticks of walking.
     pub stride_charge_per_100_ticks: i64,
@@ -1945,9 +1938,7 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
             RoomCategory::Intake => def.intake.is_some(),
             RoomCategory::Production => def.recipe.is_some(),
             RoomCategory::Storage => def.storage.is_some(),
-            RoomCategory::Energy => {
-                def.solar.is_some() || def.burner.is_some() || def.bank.is_some()
-            }
+            RoomCategory::Energy => def.burner.is_some() || def.bank.is_some(),
             RoomCategory::Defence => def.defence.is_some(),
             RoomCategory::Quarters => def.quarters.is_some(),
             RoomCategory::Heart => true,

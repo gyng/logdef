@@ -90,7 +90,7 @@ export interface UiState {
   /** Which daypart, as an index into the catalog. */
   daypartIndex: number;
   sunPct: number;
-  /** Sun after terrain — what the sails actually get. */
+  /** Sun after terrain. Lights the scene and feeds the garden. */
   exposurePct: number;
   charge: number;
   chargeCapacity: number;

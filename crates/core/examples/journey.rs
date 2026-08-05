@@ -263,20 +263,21 @@ enum Tower {
     /// `SYSTEMS.md` §5.11 open question 0 without needing to build the
     /// answer first.
     Uncapped,
-    /// A tower that keeps growing, and keeps re-roofing itself.
+    /// A tower that keeps growing.
     ///
     /// **The row the "deliberately no `BuildFloor`" note further down
     /// asked for.** That note records this harness bankrupting both
     /// route policies when it was allowed to build upward — permanent
     /// brown-out from about day 27, 97% of the run standing still —
-    /// because a new top floor shades the sail deck under it and adds a
-    /// floor's lighting cost for no income at all.
+    /// because a new top floor shaded the sail deck under it and added
+    /// a floor's lighting cost for no income at all.
     ///
-    /// `canopy_climb_pct_per_floor` is the counterweight to exactly
-    /// that, and a constant that only engages above the starting height
-    /// cannot be tested by any of the rows above, every one of which
-    /// stays four floors tall forever. This row grows and buys another
-    /// sail deck each time it does.
+    /// **M6 cut the sails, so that particular trap is gone**: the
+    /// burner is indoors and does not care what is built above it, and
+    /// growing taller now costs poles, lamps and haul distance rather
+    /// than the tower's whole income. This row keeps growing anyway,
+    /// because those three costs are real and nothing else in the
+    /// table ever leaves four floors.
     ///
     /// **It harvests 846 against `+chain, no chute`'s 4,998 at six
     /// floors, and that is not the height term failing.** Two things it
@@ -581,7 +582,9 @@ struct Run {
     /// a tower's income on every seed: the berth's entire income was
     /// being counted at a moment chosen to miss it.
     scrap_taken: u64,
-    /// Mean sunlight reaching the sails, in percent, over the run.
+    /// Mean sunlight reaching the tower, in percent, over the run.
+    /// Since M6 nothing is paid in charge for it; it decides the
+    /// garden's rate and whether the lamps come on.
     exposure: i64,
     /// Ticks the tower could not afford to walk.
     brownout: u32,
@@ -757,13 +760,18 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
     if tower == Tower::Full || tower == Tower::Burning {
         list.push("shaft.chute");
     }
-    // **Not `Tall`**: a garden is `top_floor_only` and so is a sail
-    // deck, so a growing tower that also wants a garden spends every new
-    // roof on the garden and never re-roofs. The first version of this
-    // row did exactly that, could not place its sails, never emptied its
-    // shopping list, never grew, and printed numbers byte-identical to
-    // `+chain, no chute` — which is `siege_run.rs`'s "battery tower that
-    // built nothing" wearing a different hat.
+    // **Still not `Tall`.** This used to be because a garden and a
+    // sail deck both wanted the roof, so a growing tower that bought a
+    // garden never re-roofed — the first version of the row could not
+    // place its sails, never emptied its shopping list, never grew,
+    // and printed numbers byte-identical to `+chain, no chute`, which
+    // is `siege_run.rs`'s "battery tower that built nothing" wearing a
+    // different hat.
+    //
+    // The sails are gone and the reason is now simpler: a garden is
+    // `top_floor_only` and `Tall` re-roofs itself every fifteen
+    // seconds, so its garden would spend the run in the dark. A row
+    // about height should not also be a row about a shaded crop.
     if !matches!(tower, Tower::Bare | Tower::Uncapped | Tower::Tall) {
         list.push("room.garden");
     }
@@ -774,7 +782,10 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
         // as "height is ruinous" when it means "height with no shaft is
         // ruinous" — which is the design working.
         list.push("shaft.elevator");
-        list.push("room.canopy_sails");
+        // **And a second burner.** Charge is no longer free, and every
+        // floor this row adds is another floor to light. A growing
+        // tower on one burner is measuring its own fuel supply.
+        list.push("room.burner");
     }
     list.push("room.canteen");
     list.push("room.bunk");
@@ -907,10 +918,14 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
             list.remove(at);
             // **Deliberately no `BuildFloor` here**, unlike
             // `siege_run.rs`, which does grow its towers when they run
-            // out of slots. A new top floor displaces the canopy sail
-            // deck (`v2-plan.md` §6.3): only the roof's sails see the
-            // sun, so growing taller adds a floor's worth of lighting
-            // cost and no income at all. Left to build upward whenever
+            // out of slots. A new top floor used to displace the
+            // canopy sail deck (`v2-plan.md` §6.3): only the roof's
+            // sails saw the sun, so growing taller added a floor's
+            // worth of lighting cost and no income at all. That is
+            // history since M6 cut the sails; what stands is that
+            // height costs lamps and haul distance either way, and
+            // this harness measures routes rather than heights. Left
+            // to build upward whenever
             // it ran out of space, this harness bankrupted both route
             // policies — measured, permanent brown-out from about day
             // 27, 97% of the run standing still, and both routes
@@ -919,20 +934,17 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
             // afford to walk it.
             //
             // **Except `Tower::Tall`, which is the row that tests
-            // whether that is still true.** It grows on purpose, and
-            // buys a sail deck every time it does, because
-            // `canopy_climb_pct_per_floor` only pays a roof that
-            // actually has sails on it.
+            // whether that is still true.** It grows on purpose. Since
+            // M6 cut the sails the growth trap is milder — the burner
+            // is indoors — but height still costs poles, lamps and
+            // haul distance, and this is the only row that pays them.
         }
-        // Floor first, *then* the sail that goes on the roof it just
-        // made. Gating this on an empty shopping list was what stopped
-        // it growing at all: an unplaceable sail sat in the list for
-        // ever and the list was never empty.
-        if tower == Tower::Tall
-            && ticks.is_multiple_of(900)
-            && engine.try_send(GameCommand::BuildFloor).is_ok()
-        {
-            list.push("room.canopy_sails");
+        // Gating this on an empty shopping list was what stopped it
+        // growing at all: an unplaceable sail sat in the list for ever
+        // and the list was never empty. The list no longer has that
+        // problem, and the ungated version is still the right shape.
+        if tower == Tower::Tall && ticks.is_multiple_of(900) {
+            let _ = engine.try_send(GameCommand::BuildFloor);
         }
 
         // Answer any fork, by policy.

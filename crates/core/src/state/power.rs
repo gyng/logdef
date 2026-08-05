@@ -15,9 +15,8 @@
 //! A failed draw never goes into debt. The consumer just does not act
 //! this tick.
 
-use serde::{Deserialize, Serialize};
-
 use crate::fx::Fx;
+use serde::{Deserialize, Serialize};
 
 /// Which prepaid meter a block purchase belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,8 +77,9 @@ pub struct Power {
     /// Summed from cell banks each tick. Zero banks means zero storage,
     /// and income that arrives with nowhere to go is lost.
     pub capacity: i64,
-    /// Sub-unit solar accumulation, so a trickle of sun still adds up.
-    pub solar_acc: Fx,
+    /// Sub-unit accumulation of the Heartseed's trickle, so six per
+    /// hundred ticks still adds up instead of truncating to nothing.
+    pub trickle_acc: Fx,
     /// Charge added last tick. Presentation only.
     pub income_last: i64,
     /// Charge drawn last tick. Presentation only.
@@ -116,7 +116,7 @@ impl Power {
         Self {
             charge: starting_charge,
             capacity: starting_charge,
-            solar_acc: Fx::ZERO,
+            trickle_acc: Fx::ZERO,
             income_last: 0,
             spent_last: 0,
             brownout: false,

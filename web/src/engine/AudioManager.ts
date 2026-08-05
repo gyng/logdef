@@ -241,7 +241,7 @@ export class AudioManager {
     //   0–200 Hz   the legs, and the electrical hum
     //   200–700    rooms working, and a car running
     //   700–2k     the jungle floor, and footsteps on the stairs
-    //   2k–4.5k    daytime insects, and the sails
+    //   2k–4.5k    daytime insects, and the canopy overhead
     //   4.5k+      night insects
     this.addNoiseLoop("jungle", ctx, master, noise, "bandpass", 1100, 0.9);
     this.addNoiseLoop("insects_day", ctx, master, noise, "bandpass", 3200, 4);
@@ -254,7 +254,11 @@ export class AudioManager {
     this.addNoiseLoop("legs", ctx, master, noise, "lowpass", 150, 1.2);
     this.addNoiseLoop("footsteps", ctx, master, noise, "bandpass", 1500, 3);
     this.addToneLoop("car", ctx, master, 220, "triangle", 620);
-    this.addNoiseLoop("sails", ctx, master, noise, "bandpass", 2600, 2.5);
+    // **The canopy, not the sails.** M6 cut the sail deck; the bed
+    // stays because what it was really voicing is bright open air,
+    // which `exposure_pct` still measures — it just no longer buys
+    // anybody any charge.
+    this.addNoiseLoop("canopy", ctx, master, noise, "bandpass", 2600, 2.5);
   }
 
   /**
@@ -266,7 +270,7 @@ export class AudioManager {
    * | the legs | `journey.halt`, **not** `power.walking` | stopped, halted at a fork, arrived, or browned out |
    * | a car running | `ShaftView` car state | idle |
    * | footsteps | crew on the stairs | nobody on them |
-   * | the sails | `clock.exposure_pct` | shaded, or after dark |
+   * | the canopy | `clock.exposure_pct` | shaded, or after dark |
    * | the electrical hum | `power.fill_permille` | thins as the bank drains, drops out on `brownout` |
    * | day/night beds | the sun curve | crossfaded, never stepped |
    * | the jungle | always | never |
@@ -352,9 +356,9 @@ export class AudioManager {
     );
     this.setTarget("car", cars ? 0.05 : 0);
 
-    // The sails, which is the same fact the charge readout is showing,
+    // The canopy overhead — bright air rather than income, since M6,
     // said in a register you can hear without looking.
-    this.setTarget("sails", clamp01(view.clock.exposure_pct / 100) * 0.09);
+    this.setTarget("canopy", clamp01(view.clock.exposure_pct / 100) * 0.09);
   }
 
   // -------------------------------------------------------------------

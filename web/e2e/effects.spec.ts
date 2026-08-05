@@ -127,7 +127,7 @@ test("bank", async ({ page }) => {
       .view()
       .tower.floors.flatMap((f) => f.rooms)
       .filter((r) => (cat.rooms[r.def]?.bank_capacity ?? 0) > 0).length;
-    const list = ["room.canopy_sails", "room.mill"];
+    const list = ["room.burner", "room.mill"];
     for (let i = 0; i < 400 && list.length > 0; i += 1) {
       const fork = h.view().journey.fork;
       if (fork && fork.answer === null) h.send({ TakeFork: { branch: 0 } });
@@ -219,7 +219,7 @@ test("stairs", async ({ page }) => {
     // Tall, fed, and with no shaft but the stairs — the shape the
     // instrument says is worst.
     const list = [
-      "room.canopy_sails",
+      "room.burner",
       "room.storeroom",
       "room.mill",
       "room.canteen",

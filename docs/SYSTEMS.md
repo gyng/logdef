@@ -136,7 +136,7 @@ which is a statement about the room:
 
 | Slots | Rooms | Why |
 |---|---|---|
-| 3 | Heartseed, canopy sails, salvage rig | The heart takes the room a hearth takes. Sails are the widest thing the tower carries and roof-only, which is the cost of the charge economy stated in floor space rather than in poles. A rig is a boom long enough to reach into a ruin from the deck. |
+| 3 | Heartseed, salvage rig | The heart takes the room a hearth takes. A rig is a boom long enough to reach into a ruin from the deck. The canopy sails were the third three-slot room and the widest thing the tower carried — roof-only, the cost of the charge economy stated in floor space rather than poles — and M6 cut them (§6.10). |
 | 2 | Cutter arm, mill, burner, storeroom | The working middle. |
 | 1 | Thornwright, cell bank, dart battery | A bench, a rack, and — deliberately the smallest thing in the pack — an emplacement. Defence competes for floor with the chain that pays for it, and at two slots it was a decision most towers declined. Cheap in space and expensive in ammo is the better trade. |
 
@@ -5858,7 +5858,16 @@ Not a task list — the places where existing code assumes something M5 stops be
 ### 5.11 Open questions
 
 0. **Does terrain yield change a decision, or is it decoration?**
-   *(Answered: neither — it is half of a balanced pair. See the end.)*
+   *(Answered twice: first "neither — it is half of a balanced pair",
+   then, at M6, by deleting the other half. See the end, then the
+   postscript after it.)*
+
+   > **Superseded by §6.10.** The analysis below is correct and is kept
+   > in full, but the system it analyses is gone: M6 cut the canopy
+   > sails, so `sun_pct` no longer pays a tower anything and the
+   > opposition it describes has one side left. Read this for the
+   > method — it is the best short lesson in this repo about measuring
+   > your own instruments — and §6.10 for what the ground means now.
 
    > **Answered — and the answer is that nothing is broken. Read the end
    > before acting on anything in the middle.** Terrain yield is not
@@ -6002,6 +6011,17 @@ Not a task list — the places where existing code assumes something M5 stops be
    number here becomes a design decision, change something that should
    not matter — the seed set, the build order, the storeroom count — and
    check the number survives it.
+
+   **Postscript, M6: the question was closed and then the system was
+   deleted.** See §6.10. The answer above was that `yield_pct` and
+   `sun_pct` are one constant in two columns, cancelling to within two
+   percent on every tower shape measured — which is the design working.
+   It was *also*, read a different way, a description of a choice that
+   costs the player nothing to get wrong, expressed as two numbers on a
+   screen that have to be mentally netted off against each other. The
+   sails were cut for that second reading rather than the first. Nothing
+   in the analysis above was found to be wrong; the thing it was
+   analysing was found not to be worth having.
 
 1. **Does gating the elevator behind the ruin belt make the shaded route a trap?** The argument
    in §5.3 is that it makes route choice reach into the transport layer. The risk is that it
@@ -6224,8 +6244,94 @@ Re-roof and the wall is gone.
 5. **A run is under an hour.** 12 of 12 seeds reach the Refugia in 37–44 minutes at 1×. *Met for
    pace; a walker is the floor and a player adds to it.*
 
+### 6.10 The sails, cut
+
+**The canopy sails are gone, and with them the whole solar economy.** `room.canopy_sails`,
+`SolarDef`, `collect_solar`, `roof_exposure_pct` and `canopy_climb_pct_per_floor` are deleted.
+Charge now has exactly two sources: burners, which a tower builds and feeds, and the Heartseed,
+which trickles.
+
+**Why.** §5.11 open question 0 spent a milestone establishing that `yield_pct` and `sun_pct` are
+one constant in two columns, deliberately opposed, cancelling to within two percent on every
+tower shape measured. That is the design working. It is also a description of a decision that
+costs nothing to get wrong, presented as two numbers a player has to net off against each other
+in their head. Sun-versus-shade asked the player to read a figure off the sky; the fork now asks
+about danger, salvage and ground richness instead, which are things you can see.
+
+Nothing in open question 0's analysis was found to be wrong. The thing it was analysing was
+found not to be worth having.
+
+#### What replaced it
+
+| Was | Is |
+|---|---|
+| Sails: free charge from the roof, scaled by terrain | Burners: 800 charge a stalk of bamboo |
+| Growing taller shades your income to zero | Growing taller costs lamps, poles and haul distance |
+| A parked tower still earns | A parked tower spends its bank |
+| Nothing | The Heartseed's 6 per 100 ticks, so running dry is recoverable |
+
+**The burner idles unless the bank can take the whole burn.** This is the load-bearing change,
+and it is what makes a single source survivable: fuel consumption becomes what the tower
+*spends* rather than what the clock says, so striding hard, lighting fourteen floors and running
+a forge all cost bamboo, and a parked tower with a full bank costs none. The old "the burner is
+the dirty option" pressure is replaced by "working the tower hard is the dirty option", which is
+a better sentence and a better mechanic.
+
+#### The three things that broke, which are the interesting part
+
+**1. A deadlock with no way out.** Every remaining source of charge required already having
+charge. A burner eats bamboo; bamboo is harvested from *ground covered*; a tower with no charge
+cannot walk. Measured on `journey.rs`'s seed 1: charge **4 of 2,300**, fuel 0, and the tower
+parked at one pace for **160,000 ticks** — unrecoverable at any skill. The Heartseed's trickle is
+the floor that fixes it, sized as a limp rather than an income (6 per 100 ticks against
+striding's 20), and `tests/power.rs::a_tower_that_runs_completely_dry_can_still_crawl_out` is
+the property stated directly. **Any future change that makes an income depend on an output of
+that income needs this test to still pass.**
+
+**2. `top_floor_only` was enforced in exactly one place, and it was inside the sails.**
+`collect_solar` filtered to the roof; nothing else did. Deleting it deleted the rule, and left
+the garden — the only room still carrying the flag — dimmed by the snapshot while it grew at
+full rate, which is a diegetic lie (`DECISIONS.md` §8). `intake.rs` enforces it now. **The
+general shape: a rule implemented inside one consumer disappears with that consumer**, and
+nothing in the type system says so.
+
+**3. The opening tower's economy is ~31% smaller, and every number downstream moved.** With the
+mill, the canteen and now the burner all eating bamboo, the mill lost 31% of its crafts (65
+against 94 over 24,000 ticks at identical harvest). Three constants absorbed it, all recorded in
+`BALANCE.md` with their measurements: the burner's rate (50 → 800 charge a stalk, over three
+too-small corrections), `provocation_per_burn` (18 → 12, and this one decided whether the tower
+*lived* — at 18 its only cutter arm was wrecked at tick 18,000 and never mended), and
+`starting_stock` (10 → 16 poles, which is one mend of slack).
+
+#### The failure mode worth naming
+
+**A tower with one cutter arm that loses it is dead in a way nothing else in the game is.**
+Repair wants poles, poles want the mill, the mill wants bamboo, and bamboo wants the arm that
+just died. The sails hid this by funding enough slack to always mend; without them it is one bad
+wave away on the opening tower. `starting_stock` buys one mend of margin and that is all it
+buys. **This is not solved and it is not the difficulty pass's problem either** — it is a
+structural single point of failure, and the honest fix is either a second intake room the
+opening tower can afford or a floor under repair. Carried into §6.9 as an open question.
+
+#### Two instrument bugs the change surfaced
+
+- **A burner that idled only at a *completely* full bank** spent a whole stalk to add 50 charge,
+  because `power.add` clips. That made the 200 → 400 efficiency change do nothing at all: 22
+  stalks burned either way. Headroom, not fullness.
+- **A shared headroom figure let every burner fire at once**, clipping each other, so a
+  fourteen-floor tower with three burners earned *less* than the same tower with one (543
+  against 1,839 a day). **More of a thing cannot make less of what it makes** — that shape is
+  the tell, and it is the fourth entry in this project's list of instruments that measured
+  themselves.
+
 ### 6.9 Open questions
 
+0. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+   spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
+   The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
+   one mend of margin. The candidate answers are a second intake room the opening tower can
+   afford, a repair path that does not cost the material the dead room makes, or accepting it as
+   a loss condition and *saying so* — which is the one thing the current version does not do.
 1. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.

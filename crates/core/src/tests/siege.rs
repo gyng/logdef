@@ -1014,11 +1014,23 @@ fn a_leaper_moves_on_to_whatever_is_still_standing_on_the_roof() {
         .expect("the pack defines a canopy leaper");
 
     let mut game = engine(1053);
+    crate::tests::stock_poles(&mut game, 40);
+    // Something on the roof to bite. Since M6 cut the sails the
+    // opening tower's top deck is bare, and this test's whole subject
+    // is what a leaper does to the top deck.
+    for slot in [1, 4] {
+        game.try_send(GameCommand::PlaceRoom {
+            room: "room.storeroom".into(),
+            floor: 3,
+            slot,
+        })
+        .expect("affordable, and the roof has room");
+    }
     game.try_send(GameCommand::SetStriding { walking: false })
         .expect("always legal");
     hold_the_repairs_off(&mut game);
 
-    // The roof panel is already gone. The sails behind it are not.
+    // The roof panel is already gone. The storerooms behind it are not.
     let top = game.state().tower.top_floor();
     let slot = {
         let floor = game
@@ -1027,7 +1039,7 @@ fn a_leaper_moves_on_to_whatever_is_still_standing_on_the_roof() {
             .floor_mut(top)
             .expect("the top floor");
         floor.panel.hp = 0;
-        floor.rooms.first().expect("the canopy sails").slot
+        floor.rooms.first().expect("the roof room").slot
     };
     let whole = room_hp(&game, top, slot);
     place_creature(&mut game, leaper, 0);
@@ -1062,15 +1074,20 @@ fn a_creature_whose_target_is_torn_out_from_under_it_finds_another() {
         .expect("the pack defines a canopy leaper");
 
     let mut game = engine(1058);
-    crate::tests::stock_poles(&mut game, 20);
-    // A second room on the roof, so there is somewhere for the leaper
-    // to go once the first one is pulled out from under it.
-    game.try_send(GameCommand::PlaceRoom {
-        room: "room.storeroom".into(),
-        floor: 3,
-        slot: 1,
-    })
-    .expect("affordable, and the roof has room");
+    crate::tests::stock_poles(&mut game, 40);
+    // **Two rooms on the roof, both placed.** M6 cut the sails, and
+    // the opening tower's top deck has been empty ever since — this
+    // used to place one storeroom and lean on the sails being the
+    // other. Nothing on the roof means nothing to bite, and the test
+    // failed inside `room_hp` rather than on its own assertion.
+    for slot in [1, 4] {
+        game.try_send(GameCommand::PlaceRoom {
+            room: "room.storeroom".into(),
+            floor: 3,
+            slot,
+        })
+        .expect("affordable, and the roof has room");
+    }
     game.try_send(GameCommand::SetStriding { walking: false })
         .expect("always legal");
     hold_the_repairs_off(&mut game);
@@ -1083,7 +1100,7 @@ fn a_creature_whose_target_is_torn_out_from_under_it_finds_another() {
         .panel
         .hp = 0;
     let store_whole = room_hp(&game, top, 1);
-    let sails_whole = room_hp(&game, top, 4);
+    let other_whole = room_hp(&game, top, 4);
     place_creature(&mut game, leaper, 0);
 
     // Wait until it has its teeth into the nearer of the two rooms.
@@ -1107,7 +1124,7 @@ fn a_creature_whose_target_is_torn_out_from_under_it_finds_another() {
     let mut moved_on = false;
     for _ in 0..600 {
         game.step(1);
-        if room_hp(&game, top, 4) < sails_whole {
+        if room_hp(&game, top, 4) < other_whole {
             moved_on = true;
             break;
         }
@@ -1652,12 +1669,31 @@ fn crew_mend_what_is_broken_and_it_costs_poles() {
     let poles_before = game.state().stock_of(poles);
     let hp_before = game.state().tower.floor(0).expect("ground floor").panel.hp;
 
-    crate::tests::step_walking(&mut game, 9000);
-    let hp_after = game.state().tower.floor(0).expect("ground floor").panel.hp;
+    // **Watch for the mend rather than reading the wreckage.**
+    //
+    // This used to step nine thousand ticks and compare the panel at
+    // the end, which asks an event question with a state answer. Nine
+    // thousand ticks is a night the whole crew sleeps through and
+    // room for a fresh wave afterwards, so a tower that mended the
+    // panel from 37 to 137 and then had it torn to 0 by a later
+    // creature reported "nobody mended the panel: 37 then 0".
+    //
+    // Measured on the failing seed: 406 hp repaired and 42 poles
+    // spent, all of it before the wave that produced the 0. The
+    // repair system was working the whole time the assertion said it
+    // was not.
+    let mut mended = false;
+    for _ in 0..300 {
+        crate::tests::step_walking(&mut game, 30);
+        if game.state().tower.floor(0).expect("ground floor").panel.hp > hp_before {
+            mended = true;
+            break;
+        }
+    }
 
     assert!(
-        hp_after > hp_before,
-        "nobody mended the panel: {hp_before} then {hp_after}"
+        mended,
+        "nobody mended the panel: it never rose above {hp_before}"
     );
     assert!(game.state().stats.hp_repaired > 0, "repair was not counted");
     // Poles were spent on it. The chain pays for the repairs as well as

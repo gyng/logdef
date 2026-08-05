@@ -28,7 +28,27 @@ Balance(
         // One body on the stairs at a time. Two crew is already a
         // queue, which is the whole thesis in miniature.
         stairs_capacity: 1,
-        starting_stock: [CostEntryDef(item: "item.poles", amount: 10)],
+        // **Sixteen, raised from ten when the sails were cut.**
+        //
+        // Ten was sized against a tower whose charge arrived free from
+        // the roof. M6 made the burner the only income, so the opening
+        // tower now has a third mouth for its bamboo and the mill
+        // rebuilds the pole buffer more slowly — and poles are what
+        // mends a room.
+        //
+        // The failure that set this number is worth keeping: measured
+        // on the golden recorder's seed, the tower's **only** cutter
+        // arm was wrecked at around tick 18,000 with one pole on the
+        // shelves, and that is terminal in a way nothing else in the
+        // game is. Repair wants poles, poles want the mill, the mill
+        // wants bamboo, and bamboo wants the arm that just died. The
+        // tower walked for another 40,000 ticks with every buffer
+        // empty.
+        //
+        // Six more poles is one mend, which is all it has to be: this
+        // buys the opening the slack the sails used to provide, and
+        // does not touch any rate.
+        starting_stock: [CostEntryDef(item: "item.poles", amount: 16)],
     ),
     crew: CrewBalance(
         // Three, not two. Two crew on a one-body staircase queue, but
@@ -150,35 +170,39 @@ Balance(
         night_light_threshold: 20,
     ),
     power: PowerBalance(
-        // Five points of the terrain's shade recovered per floor above
-        // the starting four. A fourteen-floor tower under dense canopy
-        // (sun_pct 35) sees 85 instead of 35 — most of a clearing —
-        // while in a clearing it changes nothing, because there is no
-        // shade left to recover.
+        // **The floor under the economy.** Six per 100 ticks against
+        // striding's 20 and a starting tower's ~22 of total draw: not
+        // an income, a limp. A tower living on this alone walks about
+        // one block in four and runs nothing.
         //
-        // **The counterweight to `top_floor_only`.** A new top floor
-        // shades the sail deck below it, so growing taller was pure loss
-        // for the tower's income, and the growth gradient pointed away
-        // from the one shape a shaft is worth building for.
+        // It exists because cutting the sails made every source of
+        // charge depend on already having charge — the burner eats
+        // bamboo, bamboo is harvested from ground covered, and a tower
+        // too poor to walk covers no ground. Measured on `journey.rs`
+        // seed 1 before this existed: charge 4/2300 and the tower
+        // parked at one pace for 160,000 ticks with no way back.
         //
-        // Watch `journey.rs`'s route comparison when touching this:
-        // `SYSTEMS.md` §5.11 open question 0 says `yield_pct` and
-        // `sun_pct` are one constant in two columns, and this hands a
-        // shade route a way to buy back some of what shade costs. It is
-        // meant to be a trade — floors cost poles, and a taller tower
-        // hauls further — not an escape.
-        canopy_climb_pct_per_floor: 5,
+        // Raising it towards 20 makes walking free and deletes the
+        // bank-or-burn decision; the useful range is well under half
+        // the stride cost.
+        heartseed_charge_per_100_ticks: 6,
         // Enough to outlast the dark stretch at the top of a fresh
         // run (tick 0 is predawn) — a starting tower's base draw
         // (stride + lighting four floors) is ~0.28 charge/tick, so
         // 800 covers the ~2,200 ticks until real daylight with room
         // to spare, but nowhere near enough to also run a thornwright
         // unattended.
+        //
+        // Since the sails were cut this is also the whole of the
+        // opening budget: a tower with no burner has 800 charge and no
+        // way to make more, so the first burner is a deadline rather
+        // than an upgrade.
         starting_charge: 800,
         // Continuous striding costs 2,880 charge across a full day —
-        // real money next to a two-sail day's ~20,000 income, but not
-        // so much that walking is unaffordable. Visible and ongoing,
-        // which is what makes stopping to bank a genuine choice.
+        // against one burner's 28,800, so a single burner walks the
+        // tower ten times over and the cost lands as fuel hauled
+        // rather than as a wall. Visible and ongoing, which is what
+        // makes stopping to bank a genuine choice.
         stride_charge_per_100_ticks: 20,
         // Small per floor, but multiplies with height: an 8-floor
         // tower lit through a full night spends ~760 charge, enough
@@ -349,14 +373,50 @@ Balance(
         // off 15. Re-measured with
         // `cargo run --release -p understory-core --example siege_run`.
         provocation_per_100_harvested: 300,
-        // The burner run through one full night stretch (~4,750 ticks
-        // below night_light_threshold, see the Clock section above, /
-        // 100 ticks per burn = ~47 burns) raises provocation by
-        // 47 x 18 = ~846 points that night alone — three times the
-        // 288 a day decay sheds. Burning through the night is the
-        // loudest thing a tower can do, and it should cost more than a
-        // day of walking quietly can pay back.
-        provocation_per_burn: 18,
+        // **12, down from 18 when the sails were cut, and the
+        // reasoning changed completely underneath it.**
+        //
+        // 18 priced the burner as the *dirty option*: a tower that ran
+        // one all night was choosing to be loud. Cutting the sails
+        // made the burner the only income, so every tower burns now
+        // and the premium landed on something nobody can avoid.
+        //
+        // **This is the constant that decided whether the opening
+        // tower lives.** Measured on the golden recorder's seed with
+        // everything else held: at 18 the tower's only cutter arm was
+        // wrecked by tick 18,000 and never mended, which is terminal
+        // in a way nothing else in the game is — repair wants poles,
+        // poles want the mill, the mill wants bamboo, and bamboo wants
+        // the arm that just died. At 10 it survived poor (6 poles at
+        // tick 57,000). At 6 it thrived (52 poles, 103 crafts, every
+        // room at full health). Setting it to 0 and changing nothing
+        // else was the run that proved smoke was the cause rather than
+        // fuel: 21 poles, 63 crafts, no damage anywhere.
+        //
+        // 12 is that 6 carried up alongside `charge_per_burn`'s move
+        // from 400 to 800 — half as many burns for the same charge, so
+        // the smoke per unit of power is exactly the 6-at-400 that
+        // measured healthy. **Those two are one constant in two
+        // columns; move them together or you silently retune the
+        // siege.** It is the same failure `SYSTEMS.md` §5.11 open
+        // question 0 records for `yield_pct` and `sun_pct`.
+        //
+        // `BALANCE.md` already flagged 18 as unargued-for: it was 6
+        // before M3 scaled it alongside `provocation_per_100_harvested`
+        // and was never re-derived. This is that row being cashed in.
+        //
+        // What replaces the old premium is better anyway: a burner
+        // idles on a full bank, so burns track what the tower
+        // *spends*. Striding hard, lighting ten floors and running a
+        // forge all smoke; a parked tower with a full bank does not.
+        // The pressure comes from working the tower hard rather than
+        // from a flag on one room.
+        //
+        // What changed underneath is better: the burn count now
+        // tracks what the tower *spends* rather than wall-clock time,
+        // so striding hard and running a forge smoke, and a parked
+        // tower with a full bank does not.
+        provocation_per_burn: 12,
         // A quarter louder per unit than cutting
         // (provocation_per_100_harvested, above, is 240). Taking a ruin
         // apart is noisier work than stripping a stand of bamboo, and a

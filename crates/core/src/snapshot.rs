@@ -525,8 +525,6 @@ pub struct RoomInfo {
     pub top_floor_only: bool,
     /// Charge drawn per tick while working.
     pub power_draw: i64,
-    /// Makes charge from sunlight.
-    pub solar: bool,
     /// Burns an item for charge, and can be switched off.
     pub burner: bool,
     /// Charge capacity this room adds.
@@ -679,7 +677,7 @@ fn build_clock(state: &GameState, content: &Content) -> ClockView {
         permille: state.clock.permille(content),
         daypart: state.clock.daypart(content).0,
         sun_pct: state.clock.sun_pct(content),
-        exposure_pct: crate::systems::power::roof_exposure_pct(state, content),
+        exposure_pct: crate::systems::power::exposure_pct(state, content),
     }
 }
 
@@ -1237,7 +1235,6 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                     shelves: rt.shelves,
                     top_floor_only: room.top_floor_only,
                     power_draw: room.power_draw,
-                    solar: room.solar.is_some(),
                     burner: room.burner.is_some(),
                     bank_capacity: room.bank.as_ref().map_or(0, |bank| bank.capacity),
                     sleepers: room.quarters.as_ref().map_or(0, |q| q.sleepers),

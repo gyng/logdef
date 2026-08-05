@@ -327,8 +327,25 @@ test("the roster writes both of the player's schedules", async ({ page }) => {
         hooks.step(600);
       }
     };
+    // **A second storeroom first, or the rest of this is a shelf
+    // jam.** A shelf takes one kind, the tower ships with four, and
+    // this script is about to introduce fiber and rope as the fifth
+    // and sixth materials. Since M6 cut the sails there is a burner in
+    // the opening tower competing for bamboo too, so the pole buffer
+    // rebuilds more slowly and has less room to rebuild into: without
+    // this the tower reached 16 rope and **zero poles** and could not
+    // afford the shaft the rope was for.
+    //
+    // **Most-constrained first**, which `lift.rs` learnt the same way:
+    // `place` scans floors from the ground up, and a fiber comb is
+    // `max_floor` 1 and two slots wide, so on the M6 opening tower it
+    // has exactly one home — floor 1, slots 4-5. A storeroom placed
+    // first takes it and goes anywhere, and the run then reports 36
+    // poles and **zero rope**, which reads as a broken ropery and is a
+    // comb that was never built.
     place("room.fiber_comb");
     place("room.ropery");
+    place("room.storeroom");
 
     const poles = idOf("item.poles");
     const rope = idOf("item.rope");
@@ -339,7 +356,13 @@ test("the roster writes both of the player's schedules", async ({ page }) => {
     // same lesson the golden recorder learnt; see `SYSTEMS.md` §5.11.
     let off = false;
     for (let i = 0; i < 200; i += 1) {
-      if (!off && held(rope) >= 12) {
+      // **Six, not twelve.** An elevator is 4 rope; the golden
+      // recorder switches its ropery off at 6 for the same reason. A
+      // shelf holds one kind and the tower has few, so every extra
+      // coil is a shelf the poles cannot land on — measured here at 18
+      // rope and **one pole**, which is the jam this switch exists to
+      // prevent arriving before the switch fires.
+      if (!off && held(rope) >= 6) {
         off = true;
         for (const floor of hooks.view().tower.floors) {
           for (const room of floor.rooms) {
@@ -352,7 +375,7 @@ test("the roster writes both of the player's schedules", async ({ page }) => {
         for (const floor of hooks.view().tower.floors) {
           for (const room of floor.rooms) {
             const id = catalog.rooms[room.def]?.id ?? "";
-            if (id === "room.mill" || id === "room.cutter_arm" || id === "room.canopy_sails") {
+            if (id === "room.mill" || id === "room.cutter_arm" || id === "room.burner") {
               hooks.send({
                 SetRoomActive: { floor: floor.index, slot: room.slot, active: true },
               });
@@ -360,7 +383,20 @@ test("the roster writes both of the player's schedules", async ({ page }) => {
           }
         }
       }
-      if (held(poles) >= 18 && held(rope) >= 6) break;
+      // Twelve, not eighteen: an elevator is 12 poles and 4 rope
+      // since M6 dropped its price. Waiting for a number the shaft no
+      // longer costs is how a script spends a journey it does not have.
+      if (held(poles) >= 12 && held(rope) >= 4) break;
+      // **Answer the fork, or none of the above happens.** A tower
+      // standing at an unanswered fork does not walk, and a tower that
+      // does not walk harvests nothing — terrain intake is credited
+      // per pace. This loop never answered one, so it spent most of
+      // its 120,000 ticks parked. It got away with that while the
+      // sails made charge for free and the mill had the tower's bamboo
+      // to itself; since M6 the same script reported 12 rope and
+      // **one pole** and could not buy the shaft it exists to test.
+      const fork = hooks.view().journey.fork;
+      if (fork && fork.answer === null) hooks.send({ TakeFork: { branch: 0 } });
       hooks.step(600);
     }
     const top = hooks.view().tower.floors.length - 1;

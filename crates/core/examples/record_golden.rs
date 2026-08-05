@@ -35,7 +35,7 @@ fn main() {
     // Let the opening chain run long enough for the cutter arm to fill,
     // the crew to make several round trips, and the mill to craft. Also
     // long enough to cross from predawn into real daylight, so the sun
-    // curve and the sails are both exercised.
+    // curve and the lamp threshold are both exercised.
     engine.set_speed(SimSpeed::X1);
     step_walking(&mut engine, 1800);
 
@@ -49,7 +49,11 @@ fn main() {
     // needs the poles that are stuck in the mill. This is the shelf
     // bottleneck working exactly as designed; the script answers it the
     // way a player has to, and early.
-    place_when_affordable(&mut engine, "room.storeroom", 2, 5);
+    //
+    // **On the roof, which is empty since M6 cut the sails** — floor 2
+    // is where the starting burner now lives, and the mill was already
+    // beside it.
+    place_when_affordable(&mut engine, "room.storeroom", 3, 5);
     step_walking(&mut engine, 600);
 
     // A canteen, bought early because it is cheap and because a fixture
@@ -61,18 +65,28 @@ fn main() {
     place_when_affordable(&mut engine, "room.canteen", 3, 1);
     step_walking(&mut engine, 600);
 
-    // Build upward. This exercises construction, stock spending, the
-    // stairs extending — and shades the sails, which were sitting on
-    // what used to be the roof.
-    engine
-        .try_send(GameCommand::BuildFloor)
-        .expect("a floor should be affordable after a minute of milling");
-    // Growing taller put the sails in the shade, which on a tower this
-    // small means no income at all — the legs stop within the minute
-    // and never start again. Re-roofing is not optional, and a script
-    // that skipped it recorded a tower standing still being eaten,
-    // which exercises far less of the simulation than one that walks.
-    place_when_affordable(&mut engine, "room.canopy_sails", 4, 1);
+    // Build upward. This exercises construction, stock spending and
+    // the stairs extending.
+    //
+    // **No re-roofing step any more.** Until M6 this had to place a
+    // fresh sail deck immediately afterwards, because growing taller
+    // shaded the old one and a tower this small then had no income at
+    // all — the legs stopped within the minute and never started
+    // again. Cutting the sails cut that whole dance: the burner is
+    // indoors on floor 2 and does not care what is built above it.
+    //
+    // **Waits for the money, like every room does.** This used to
+    // assert a floor was affordable after a fixed minute of milling,
+    // which held only while the mill had the tower's bamboo to itself.
+    // M6 gave the burner an appetite for the same stalks, the opening
+    // chain got slower, and the recorder died at 2 poles of 6 — a
+    // fixture that cannot be recorded, from a script that was making a
+    // timing assumption it never said out loud.
+    build_floor_when_affordable(&mut engine);
+    // A second burner, though, because charge is no longer free.
+    // Growing the tower adds lamps, and the fixture should record a
+    // tower that can pay for the height it just bought.
+    place_when_affordable(&mut engine, "room.burner", 4, 1);
     // **Rope, because from M5 that is what an elevator is partly made
     // of** — and a chute, because fiber is about to become the fifth
     // material wanting a shelf and the storeroom has four.
@@ -108,6 +122,30 @@ fn main() {
     // rope banked, bamboo with nowhere to land, the mill starved, and a
     // tower holding four poles of the twelve its elevator costs. Six is
     // an elevator (4) and a dart battery (2) and not one coil more.
+    // **The canteen off once the larder is full**, the same move the ropery
+    // and the comb get here, and for a reason that only started
+    // biting at M6.
+    //
+    // A canteen eats 6 bamboo a craft behind a 12-deep inbox, against
+    // the mill's 1 behind 6, and `find_destination` feeds the emptiest
+    // inbox first — so a running canteen outbids the mill for every
+    // stalk. That was survivable while the sails paid for the tower
+    // and the mill only had one rival. Cutting the sails added a
+    // third mouth for the same material, and the recorder then walked
+    // 27,671 paces over 63,000 ticks to finish with **one pole and
+    // nothing else on any shelf**: three shelves squatted by 29 meals
+    // nobody was going to eat, a stalled mill, and a fixture that
+    // could not be recorded at all.
+    //
+    // Twelve meals is four days of eating for three crew, which is
+    // what a player banks and then stops.
+    //
+    // **A second cutter arm is the obvious other answer and it is the
+    // wrong one.** Tried: harvest doubled, and so did provocation —
+    // `provocation_per_100_harvested` is 300 — and the tower was
+    // dismantled by the jungle at tick 20,100 with both arms wrecked
+    // and no poles to mend them. Cutting harder is not free.
+    off_when_stocked(&mut engine, "room.canteen", "item.meals", 12);
     off_when_stocked(&mut engine, "room.ropery", "item.rope", 6);
     // And the comb behind it, one material along and for exactly the
     // same reason: with the ropery off, fiber's consumer is gone too,
@@ -430,11 +468,30 @@ fn step_walking(engine: &mut GameEngine, ticks: u32) {
 /// The scripted version of a decision a player makes by looking: a chain
 /// whose consumer is a one-off build cost has to be stopped by hand, or
 /// it fills the shelves with something nothing eats.
+/// Let a room stock up, then switch it off.
+///
+/// **The waiting budget is small on purpose, and it used to be 400
+/// blocks.** This is a chore rather than a gate: switching the room off
+/// early is the *safe* outcome, because the whole reason it exists is
+/// to stop a room squatting shelves. Waiting is only worth anything if
+/// the stock actually arrives.
+///
+/// Three of these in a row at 400 blocks is 360,000 ticks of budget
+/// against a journey that is about 74,000 ticks long. While the tower's
+/// income comfortably beat the thresholds that never showed; when M6
+/// cut the sails and the mill lost 31% of its crafts to the burner,
+/// each call started spending its whole budget, the tower walked to the
+/// far edge mid-chore, and every purchase after it was made by a tower
+/// that had *arrived* and was earning nothing. The recorder died on a
+/// bunk at tick 374,700 with no poles, having walked all 43,972 paces.
+///
+/// A blocking wait in a fixed script spends a resource the rest of the
+/// script needs, and the resource here is the journey.
 fn off_when_stocked(engine: &mut GameEngine, room: &str, item: &str, enough: i64) {
     let Some(idx) = engine.content().item_idx(item) else {
         return;
     };
-    for _ in 0..400 {
+    for _ in 0..40 {
         if engine.state().stock_of(idx) >= enough {
             break;
         }
@@ -463,6 +520,31 @@ fn off_when_stocked(engine: &mut GameEngine, room: &str, item: &str, enough: i64
 /// every time the economy moves, and breaks by *panicking mid-script*,
 /// which at least is loud. Waiting for the money instead means the
 /// fixture keeps covering the same systems across a balance change.
+/// Grow, once the poles are there.
+///
+/// The floor equivalent of `place_when_affordable`, and it exists for
+/// the same reason: how long a tower takes to afford six poles is a
+/// property of the economy, and a recorder that hardcodes it breaks
+/// every time the economy moves.
+fn build_floor_when_affordable(engine: &mut GameEngine) {
+    for _ in 0..200 {
+        match engine.try_send(GameCommand::BuildFloor) {
+            Ok(()) => return,
+            Err(understory_core::command::CommandError::InsufficientStock { .. }) => {
+                step_walking(engine, 300);
+            }
+            Err(other) => panic!("could not grow the tower: {other}"),
+        }
+    }
+    let state = engine.state();
+    panic!(
+        "a floor never became affordable at tick {} — {} paces walked, shelves hold {}",
+        state.tick,
+        state.world.distance >> 8,
+        shelf_report(engine),
+    );
+}
+
 fn place_when_affordable(engine: &mut GameEngine, room: &str, floor: u8, slot: u8) {
     for _ in 0..200 {
         let result = engine.try_send(GameCommand::PlaceRoom {
@@ -471,7 +553,18 @@ fn place_when_affordable(engine: &mut GameEngine, room: &str, floor: u8, slot: u
             slot,
         });
         match result {
-            Ok(()) => return,
+            Ok(()) => {
+                // **A timeline, because every failure of this script so
+                // far has been "which step ate the journey".** The tower
+                // has about 74,000 ticks of walking before it arrives
+                // and stops earning; knowing where they went is the
+                // difference between a diagnosis and a bisection.
+                println!(
+                    "  {room:<20} placed at {floor}.{slot}, tick {}",
+                    engine.state().tick
+                );
+                return;
+            }
             // Only ever wait for money. A slot clash or a bad floor is
             // a mistake in the script and should still be loud.
             Err(understory_core::command::CommandError::InsufficientStock { .. }) => {
