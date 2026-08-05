@@ -1,0 +1,15 @@
+// **Has never lived anywhere that stood still.**
+//
+// Arrives at the practice ceiling for hauling and carries more. Nine hours of somebody else's work, on the first morning.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.born_aboard",
+    name: "Born aboard",
+    blurb: "has never lived anywhere that stood still",
+    weight: 10,
+    carry_bonus: 1,
+    practised_at: Haul,
+    practice_ranks: 3,
+)

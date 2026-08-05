@@ -1293,7 +1293,11 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
                 count,
             }),
             wait_ticks: member.wait_ticks,
-            stressed: member.wait_ticks >= stress,
+            // Scaled per person: `wait_ticks` is the game's whole
+            // bottleneck instrument, and somebody who shows it sooner
+            // is somebody whose queue you notice (`SYSTEMS.md` §6.25).
+            stressed: i64::from(member.wait_ticks)
+                >= i64::from(stress) * member.trait_pct(content, |t| t.stress_pct) / 100,
             fidget: member.fidget,
             hunger: member.hunger,
             rested: member.rested,

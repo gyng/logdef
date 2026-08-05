@@ -1,0 +1,13 @@
+// **Hates standing still.**
+//
+// Tints red early. Reads as a problem before it is one, which is either an early warning or a false alarm depending on the tower.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.anxious",
+    name: "Anxious",
+    blurb: "hates standing still",
+    weight: 100,
+    stress_pct: 60,
+)

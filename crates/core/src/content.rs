@@ -82,6 +82,14 @@ pub struct KitDef {
     pub lights_the_dark: bool,
 }
 
+const fn one() -> u8 {
+    1
+}
+
+const fn hundred_u32() -> u32 {
+    100
+}
+
 const fn hundred() -> i64 {
     100
 }
@@ -427,10 +435,84 @@ pub struct TraitDef {
     /// less is somebody you post to a room.
     #[serde(default)]
     pub carry_bonus: i64,
-    /// Comes aboard already practised at this job (`SYSTEMS.md` §6.17),
-    /// at one rank.
+    /// Scales `tired_ticks` — the point at which somebody starts
+    /// working slowly. Over 100 is somebody who flags early.
+    #[serde(default = "hundred")]
+    pub tired_pct: i64,
+    /// Scales `rested_max_ticks`: how much work a full night buys.
+    #[serde(default = "hundred")]
+    pub rested_max_pct: i64,
+    /// Scales `walk_ticks_per_slot`. Under 100 is quicker along a floor.
+    #[serde(default = "hundred")]
+    pub walk_pct: i64,
+    /// Scales `climb_ticks_per_floor`. Under 100 is quicker on stairs —
+    /// and therefore *less* in need of a shaft, which is a real thing
+    /// for a trait to be about.
+    #[serde(default = "hundred")]
+    pub climb_pct: i64,
+    /// Scales `stress_ticks`: how long they are blocked before the
+    /// cross-section tints them red. Presentation only in effect, but a
+    /// real one — `wait_ticks` is the game's whole bottleneck
+    /// instrument (`DECISIONS.md` §8), and somebody who shows it sooner
+    /// is somebody whose queue you notice.
+    #[serde(default = "hundred")]
+    pub stress_pct: i64,
+    /// Hit points put back per repair shift, in percent. The same field
+    /// a mender's kit carries, so a kit and a knack stack.
+    #[serde(default = "hundred")]
+    pub mend_pct: i64,
+    /// Works unlit without the `dark_work_pct` penalty, as though
+    /// carrying a lamp. A brown-out is somebody else's problem.
+    #[serde(default)]
+    pub sees_in_the_dark: bool,
+    /// Comes aboard on the night shift rather than the day.
+    ///
+    /// The player can move them at once — this is where they *start*,
+    /// not where they belong. A tower whose first recruit turns up
+    /// nocturnal has had a rota decision made for it and can unmake it.
+    #[serde(default)]
+    pub starts_on_nights: bool,
+    /// Comes aboard already practised at this job (`SYSTEMS.md` §6.17).
     #[serde(default)]
     pub practised_at: Option<crate::state::Job>,
+    /// How many ranks of that practice. One unless a trait says
+    /// otherwise; the rare ones arrive nearer the ceiling.
+    #[serde(default = "one")]
+    pub practice_ranks: u8,
+    /// How often this one comes up, against every other trait's weight.
+    ///
+    /// **Rarity is the whole reason there are forty of these.** A pack
+    /// where every trait is equally likely has no rare ones by
+    /// definition, and a crew member who is merely *unusual* is worth
+    /// more than one who is strong: the common traits are quirks you
+    /// plan around, and the rare ones are the reason you remember a
+    /// particular run's roster.
+    #[serde(default = "hundred_u32")]
+    pub weight: u32,
+}
+
+impl TraitDef {
+    /// Does this trait do anything at all?
+    ///
+    /// **A trait that changes nothing is a label**, and a pack full of
+    /// labels reads as variety while being none — the exact failure
+    /// §6.22 found in the weapon set. Validated at load.
+    #[must_use]
+    pub fn does_something(&self) -> bool {
+        self.hunger_pct != 100
+            || self.bunk_rest_pct != 100
+            || self.deck_rest_pct != 100
+            || self.tired_pct != 100
+            || self.rested_max_pct != 100
+            || self.walk_pct != 100
+            || self.climb_pct != 100
+            || self.stress_pct != 100
+            || self.mend_pct != 100
+            || self.carry_bonus != 0
+            || self.sees_in_the_dark
+            || self.starts_on_nights
+            || self.practised_at.is_some()
+    }
 }
 
 /// How a creature reaches the tower, and therefore what it threatens.
@@ -2287,6 +2369,24 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
                     "category {:?} but no matching behaviour block",
                     def.category
                 ),
+            });
+        }
+    }
+
+    // **A trait that changes nothing is a label**, and a pack full of
+    // labels reads as variety while being none — the failure §6.22
+    // found in the weapon set, caught at load this time.
+    for def in &content.traits {
+        if !def.does_something() {
+            errors.push(LoadError {
+                path: def.id.clone(),
+                message: "a trait must change something; this one is every default".into(),
+            });
+        }
+        if def.weight == 0 {
+            errors.push(LoadError {
+                path: def.id.clone(),
+                message: "a trait with weight 0 can never be drawn".into(),
             });
         }
     }

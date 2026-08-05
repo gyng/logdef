@@ -1,0 +1,13 @@
+// **Crosses a floor in a few strides.**
+//
+// Walking is the largest single share of a crew member's day, so a fifth off it is more than it sounds.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.long_legged",
+    name: "Long-legged",
+    blurb: "crosses a floor in a few strides",
+    weight: 100,
+    walk_pct: 80,
+)

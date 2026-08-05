@@ -1,0 +1,13 @@
+// **Flags well before the shift is out.**
+//
+// Hits the tired multiplier early, so they spend a real part of the day at 60%. The rota is the answer, not a bigger bunk.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.quick_to_tire",
+    name: "Quick to tire",
+    blurb: "flags well before the shift is out",
+    weight: 100,
+    tired_pct: 150,
+)

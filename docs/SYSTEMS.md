@@ -7186,19 +7186,44 @@ Three crew who are identical on day one and identical on day nine are three unit
 them does not fix it — that was §6.17's argument for practice, and this is its other half.
 Practice is what somebody *became*; a trait is what they arrived as.
 
-| trait | what it is |
-| --- | --- |
-| Nocturnal | rests on bare deck about as well as most people do in a bed |
-| Light sleeper | gets almost nothing out of sleeping rough |
-| Big appetite | hungry again before the plates are cleared |
-| Porter | knows stairs; carries one more, and arrives practised at hauling |
-| Mender | better with a wall than with a crate; carries one *less* |
+**Forty of them, in three rarity tiers**, so a run shows you a handful of many.
+
+| tier | weight | how many | what they are |
+| --- | ---: | ---: | --- |
+| common | 100 | 20 | one axis, modest — nocturnal, big appetite, long-legged, anxious |
+| uncommon | 40 | 13 | two axes or a real trade — glutton, pathfinder, field medic, nightborn |
+| rare | 10 | 7 | striking — sleepless, ox, featherfoot, lamplighter, born aboard |
+
+**Rarity is the reason there are forty rather than five.** A pack where every trait is equally
+likely has no rare ones by definition, and somebody merely *unusual* is worth more than
+somebody strong: the common traits are quirks you plan around, and the rare ones are why you
+remember a particular run's roster. Seven rare traits at a tenth of a common one's weight come
+up about three percent of the time, and `a_rare_trait_is_actually_rare` measures that through
+the draw rather than asserting it about the weights — a weighted table with a bug in it still
+has the right weights in it.
+
+The rare tier is deliberately **not priced**. An *Ox* carries double the base load for no cost,
+and *Sleepless* is a crew member the rota barely applies to. They are not balanced against the
+common ones and are not meant to be; they are balanced against how seldom they arrive.
 
 #### Shaped like a need, not like a bonus
 
 A trait that read "+10% to everything" would turn the crew back into a build order, which is
-what `DESIGN.md`'s fourth structural call spends its length refusing. So every one of these
-lands on the **rota** or the **canteen** — systems the game already has and barely uses.
+what `DESIGN.md`'s fourth structural call spends its length refusing. So the axes are all
+things the tower already has a system for, and most land on the **rota** or the **canteen** —
+systems the game has and barely uses.
+
+Thirteen axes, every one a percentage of the pack's own constant: hunger, rest in a bed, rest
+on the deck, the tired threshold, how much a night buys, walking, climbing, when stress shows,
+mending, what they carry, whether they see in the dark, which shift they start on, and what
+they already know how to do. A trait that is every default fails to load.
+
+Two are worth their own note. **Sure-footedness scales the per-floor climb and not the
+per-item one** — being good on stairs is about the stairs, and the tax on carrying freight up
+them is what a shaft exists to answer (§6.24); a trait that undercut it would be a person who
+does not need the game's central building. And **stress is presentation with real teeth**:
+`wait_ticks` is the whole bottleneck instrument (`DECISIONS.md` §8), so somebody who shows it
+late is somebody whose queue you notice last, which is a mixed blessing rather than a gift.
 
 `SetShift` has existed since M4 and most towers never touch it, because putting somebody on
 nights is a straight loss. Somebody who rests *better* off-shift is the first reason to open
@@ -7227,6 +7252,22 @@ gives the same crew, and ten seeds do not all give the same one.
 Every field is a percentage of the pack's own constant, so a trait always reads as *this
 person, against everybody else* rather than as an absolute nobody can check. They compose
 multiplicatively, so a pack that adds a sixth trait cannot drive a stat negative by accident.
+
+#### The three you set out with have none
+
+**And that is a decision about the opening, not an oversight.** §6.11 rebuilt the first ten
+minutes around a build ladder precisely so a new player is not handed a roll they cannot read,
+and a run is now half an hour (§6.19) with a tower already one purchase short of a shaft. Three
+crew drawn from a table containing *Heavy-footed*, *Quick to tire* and *Big appetite* is a
+large swing on the most fragile part of the game, decided before the first pace.
+
+Measured while building this: one unlucky opening draw moved the golden recorder's ropery from
+tick 46,129 to **65,886**, and its lift stopped being affordable at all. That is a 43% slower
+run from a roll nobody made.
+
+So variety arrives with the people you *choose* to bring aboard. The roll still happens for the
+starting three and is discarded, so the `sim` stream advances identically whether or not this
+rule changes again.
 
 #### What it does not do
 

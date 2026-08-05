@@ -1,0 +1,14 @@
+// **Small hands, quick feet.**
+//
+// Carries less, moves faster. Whether that is a loss depends entirely on how far your chain has to travel.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.slight",
+    name: "Slight",
+    blurb: "small hands, quick feet",
+    weight: 100,
+    carry_bonus: -1,
+    walk_pct: 85,
+)

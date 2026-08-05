@@ -1,0 +1,14 @@
+// **Will not leave a job half done.**
+//
+// Mends better and climbs a little better. Unspectacular and quietly useful.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.stubborn",
+    name: "Stubborn",
+    blurb: "will not leave a job half done",
+    weight: 40,
+    mend_pct: 130,
+    climb_pct: 90,
+)

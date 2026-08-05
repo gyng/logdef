@@ -1,0 +1,14 @@
+// **Eats like two people and works like two people.**
+//
+// Two more per trip against twice the appetite. A straight trade of canteen against stairs, and which side wins depends on your chain.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.glutton",
+    name: "Glutton",
+    blurb: "eats like two people and works like two people",
+    weight: 40,
+    hunger_pct: 40,
+    carry_bonus: 2,
+)

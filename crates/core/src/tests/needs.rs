@@ -1023,15 +1023,34 @@ fn no_work_order_lets_anybody_skip_dinner() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn everybody_aboard_is_somebody_in_particular() {
+fn everybody_who_joins_is_somebody_in_particular() {
+    // **The three you set out with have none, and everybody who joins
+    // has one** (`SYSTEMS.md` §6.25). §6.11 rebuilt the opening so a new
+    // player is not handed a roll they cannot read; variety arrives with
+    // the people you *choose* to bring aboard.
     let content = content();
     assert!(!content.traits.is_empty(), "the pack defines no traits");
-    let game = engine(1950);
-    for member in &game.state().crew {
+    let mut game = engine(1950);
+    let started = game.state().crew.len();
+    assert!(
+        game.state()
+            .crew
+            .iter()
+            .all(|member| member.traits.is_empty()),
+        "the opening crew were handed a roll"
+    );
+
+    {
+        let state = game.state_mut_for_test();
+        for _ in 0..6 {
+            state.add_crew(&content);
+        }
+    }
+    for member in game.state().crew.iter().skip(started) {
         assert_eq!(
             member.traits.len(),
             1,
-            "{} came aboard with {} trait(s)",
+            "{} joined with {} trait(s)",
             member.name,
             member.traits.len()
         );
@@ -1054,9 +1073,16 @@ fn a_trait_rolls_on_the_sim_stream_not_the_cosmetic_one() {
     // how much they carry, so it is *not* cosmetic — and the property
     // that proves it is on the right stream is that different seeds
     // give different traits while the same seed gives the same ones.
+    let content = content();
     let traits_for = |seed: u64| -> Vec<usize> {
-        engine(seed)
-            .state()
+        let mut game = engine(seed);
+        {
+            let state = game.state_mut_for_test();
+            for _ in 0..6 {
+                state.add_crew(&content);
+            }
+        }
+        game.state()
             .crew
             .iter()
             .flat_map(|member| member.traits.iter().map(|idx| idx.get()))
@@ -1130,7 +1156,13 @@ fn somebody_who_sleeps_rough_well_frees_a_bed() {
 fn a_trait_that_says_it_is_practised_arrives_practised() {
     use crate::state::Job;
     let content = content();
-    let game = engine(1954);
+    let mut game = engine(1954);
+    {
+        let state = game.state_mut_for_test();
+        for _ in 0..12 {
+            state.add_crew(&content);
+        }
+    }
     for member in &game.state().crew {
         for idx in &member.traits {
             let Some(job) = content.traits[idx.get()].practised_at else {
@@ -1156,4 +1188,126 @@ fn a_trait_that_says_it_is_practised_arrives_practised() {
             }
         }
     }
+}
+
+#[test]
+fn the_pack_has_a_lot_of_traits_and_a_rare_tail() {
+    // **Rarity is the whole reason there are forty.** A pack where
+    // every trait is equally likely has no rare ones by definition, and
+    // somebody merely *unusual* is worth more than somebody strong: the
+    // common ones are quirks you plan around and the rare ones are why
+    // you remember a particular run's roster.
+    let content = content();
+    assert!(
+        content.traits.len() >= 30,
+        "only {} traits; the point of them is that a run shows you a few of many",
+        content.traits.len()
+    );
+    let heaviest = content
+        .traits
+        .iter()
+        .map(|def| def.weight)
+        .max()
+        .unwrap_or(0);
+    let lightest = content
+        .traits
+        .iter()
+        .map(|def| def.weight)
+        .min()
+        .unwrap_or(0);
+    assert!(
+        heaviest >= lightest * 4,
+        "every trait is about as likely as every other ({lightest}..{heaviest}); nothing is rare"
+    );
+}
+
+#[test]
+fn every_trait_does_something_and_can_be_drawn() {
+    // Held at load too (`content::validate`), and here so a failure
+    // names the trait rather than a load error list.
+    let content = content();
+    for def in &content.traits {
+        assert!(def.does_something(), "{} changes nothing", def.id);
+        assert!(def.weight > 0, "{} can never be drawn", def.id);
+        assert!(
+            !def.blurb.is_empty(),
+            "{} has nothing to say for itself",
+            def.id
+        );
+    }
+}
+
+#[test]
+fn a_rare_trait_is_actually_rare() {
+    // Measured through the draw rather than asserted about the weights:
+    // a weighted table with a bug in it still has the right weights in
+    // it. Two hundred crew, and the rare tail should be a small share.
+    let content = content();
+    let rare: Vec<usize> = content
+        .traits
+        .iter()
+        .enumerate()
+        .filter(|(_, def)| def.weight <= 10)
+        .map(|(at, _)| at)
+        .collect();
+    assert!(!rare.is_empty(), "the pack has no rare traits");
+
+    let mut game = engine(1960);
+    let mut drawn = 0u32;
+    let mut rare_drawn = 0u32;
+    {
+        let state = game.state_mut_for_test();
+        for _ in 0..200 {
+            state.add_crew(&content);
+        }
+        for member in state.crew.iter().skip(3) {
+            for idx in &member.traits {
+                drawn += 1;
+                if rare.contains(&idx.get()) {
+                    rare_drawn += 1;
+                }
+            }
+        }
+    }
+    assert!(drawn > 100, "only {drawn} draws to judge by");
+    // Seven rare traits at weight 10 against a table summing to ~2,590
+    // is about 2.7%. Anything up to a fifth is still a tail; a third is
+    // not, and would mean the weights are being ignored.
+    assert!(
+        rare_drawn * 5 < drawn,
+        "rare traits came up {rare_drawn} times in {drawn}; the weights are not binding"
+    );
+}
+
+#[test]
+fn a_trait_can_answer_the_dark_the_way_a_lamp_does() {
+    let content = content();
+    let owl = content
+        .traits
+        .iter()
+        .position(|def| def.sees_in_the_dark)
+        .expect("the pack has somebody who works unlit");
+
+    let mut game = engine(1961);
+    {
+        let state = game.state_mut_for_test();
+        for member in &mut state.crew {
+            member.traits.clear();
+            member.kit = None;
+        }
+        state.crew[0]
+            .traits
+            .push(crate::ids::TraitIdx(u16::try_from(owl).expect("small")));
+    }
+    let crew = &game.state().crew;
+    assert_eq!(
+        crate::systems::needs::work_pct(&crew[0], &content, false),
+        crate::systems::needs::work_pct(&crew[0], &content, true),
+        "the dark still slowed down somebody who sees in it"
+    );
+    assert!(
+        crate::systems::needs::work_pct(&crew[1], &content, false)
+            < crate::systems::needs::work_pct(&crew[1], &content, true),
+        "the dark stopped costing everybody else anything"
+    );
 }

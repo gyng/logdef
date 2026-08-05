@@ -334,9 +334,30 @@ impl GameState {
         }
     }
 
+    /// The three the tower sets out with.
+    ///
+    /// **They have no traits, and that is a decision about the
+    /// opening** (`SYSTEMS.md` §6.25). §6.11 rebuilt the first ten
+    /// minutes around a build ladder precisely so a new player is not
+    /// handed a roll they cannot read, and a run is now half an hour
+    /// (§6.19) with a tower already one purchase short of a shaft.
+    /// Three crew drawn from a table containing *Heavy-footed* and
+    /// *Quick to tire* is a 40% swing on the most fragile part of the
+    /// game, decided before the first pace — measured: the golden
+    /// recorder's ropery slipped from tick 46,129 to 65,886 on one
+    /// unlucky draw, and its lift stopped being affordable at all.
+    ///
+    /// So variety arrives with the people you *choose* to bring aboard.
+    /// The roll still happens and is still discarded, so the `sim`
+    /// stream advances identically whether or not this rule changes
+    /// again.
     fn place_starting_crew(&mut self, content: &Content) {
         for _ in 0..content.balance.crew.starting_crew {
             self.add_crew(content);
+            if let Some(member) = self.crew.last_mut() {
+                member.traits.clear();
+                member.practice = [0; 4];
+            }
         }
     }
 
@@ -364,8 +385,27 @@ impl GameState {
         // `DECISIONS.md` §2 exists to keep the two apart. Recruiting
         // somebody perturbing the economy stream is correct — recruiting
         // *is* an economic act.
+        // **Weighted, so rare means rare.** A flat roll over forty
+        // traits has no rare ones by definition; the striking traits
+        // carry a tenth of a common one's weight, so a run's roster is
+        // mostly quirks with the occasional person you remember.
         if !content.traits.is_empty() {
-            let pick = self.rng.sim.next_u32() as usize % content.traits.len();
+            let total: u64 = content.traits.iter().map(|def| u64::from(def.weight)).sum();
+            let pick = if total == 0 {
+                self.rng.sim.next_u32() as usize % content.traits.len()
+            } else {
+                let mut roll = u64::from(self.rng.sim.next_u32()) % total;
+                let mut chosen = content.traits.len() - 1;
+                for (at, def) in content.traits.iter().enumerate() {
+                    let weight = u64::from(def.weight);
+                    if roll < weight {
+                        chosen = at;
+                        break;
+                    }
+                    roll -= weight;
+                }
+                chosen
+            };
             member
                 .traits
                 .push(crate::ids::TraitIdx(u16::try_from(pick).unwrap_or(0)));
@@ -375,12 +415,14 @@ impl GameState {
         // rather than a full ceiling: they have done this before, not
         // for years (`SYSTEMS.md` §6.17).
         for idx in &member.traits {
-            if let Some(job) = content
-                .traits
-                .get(idx.get())
-                .and_then(|def| def.practised_at)
+            if let Some(def) = content.traits.get(idx.get())
+                && let Some(job) = def.practised_at
             {
-                member.practice[job.index()] = content.balance.crew.practice_per_rank;
+                member.practice[job.index()] = content
+                    .balance
+                    .crew
+                    .practice_per_rank
+                    .saturating_mul(u32::from(def.practice_ranks));
             }
         }
 

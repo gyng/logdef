@@ -62,7 +62,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             // has given what they have", so a push lasts the rest of a
             // shift and no longer, and the tower goes back to hauling
             // without anybody having to remember.
-            if member.post_until_tired && member.rested <= balance.tired_ticks {
+            if member.post_until_tired && member.rested <= tired_ticks(member, content) {
                 member.stationed = None;
                 member.post_until_tired = false;
             }
@@ -92,10 +92,8 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                 }
                 _ => 0,
             };
-            member.rested = member
-                .rested
-                .saturating_add(gain)
-                .min(balance.rested_max_ticks);
+            let ceiling = rested_max(member, content);
+            member.rested = member.rested.saturating_add(gain).min(ceiling);
         }
     }
     state.stats.crew_ticks_asleep += asleep;
@@ -148,7 +146,7 @@ pub fn work_pct(crew: &Crew, content: &Content, lit: bool) -> u32 {
     if crew.hunger >= starving_ticks(crew, content) {
         pct = pct * balance.hungry_work_pct / 100;
     }
-    if crew.rested <= balance.tired_ticks {
+    if crew.rested <= tired_ticks(crew, content) {
         pct = pct * balance.tired_work_pct / 100;
     }
     if !lit {
@@ -158,10 +156,19 @@ pub fn work_pct(crew: &Crew, content: &Content, lit: bool) -> u32 {
         // still out and everybody else is still slow — it makes one
         // person able to work through it, which is the triage a siege
         // asks for.
+        // A lent lamp or a knack for the dark — the kit can be taken
+        // back and the knack came aboard with the person, and either
+        // answers `dark_work_pct` the same way (`SYSTEMS.md` §6.25).
         let has_light = crew
             .kit
             .and_then(|item| content.item(item).kit.as_ref())
-            .is_some_and(|kit| kit.lights_the_dark);
+            .is_some_and(|kit| kit.lights_the_dark)
+            || crew.traits.iter().any(|idx| {
+                content
+                    .traits
+                    .get(idx.get())
+                    .is_some_and(|def| def.sees_in_the_dark)
+            });
         if !has_light {
             pct = pct * balance.dark_work_pct / 100;
         }
@@ -180,6 +187,25 @@ pub fn hungry_ticks(crew: &Crew, content: &Content) -> u32 {
     scale(
         content.balance.crew.hungry_ticks,
         crew.trait_pct(content, |t| t.hunger_pct),
+    )
+}
+
+/// The point at which this person starts working slowly for want of
+/// rest. The pack's `tired_ticks` scaled by their traits.
+#[must_use]
+pub fn tired_ticks(crew: &Crew, content: &Content) -> u32 {
+    scale(
+        content.balance.crew.tired_ticks,
+        crew.trait_pct(content, |t| t.tired_pct),
+    )
+}
+
+/// How much work a full night buys this person.
+#[must_use]
+pub fn rested_max(crew: &Crew, content: &Content) -> u32 {
+    scale(
+        content.balance.crew.rested_max_ticks,
+        crew.trait_pct(content, |t| t.rested_max_pct),
     )
 }
 

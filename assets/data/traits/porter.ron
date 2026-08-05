@@ -1,19 +1,14 @@
-// **Came up on the stairs of somewhere else.**
+// **Knows stairs, and how much a person can carry.**
 //
-// Arrives already practised at hauling (`SYSTEMS.md` §6.17) and carries
-// one more per trip. The one trait that is straightforwardly good, and
-// it is bounded by the same argument practice is: a rank is ten
-// percent, the ceiling is three, and it cannot be spent or stacked.
+// One more per trip and a rank of hauling already in hand. What it buys is *time* — the veteran a tower would otherwise spend a day and a half making.
 //
-// What it actually buys is *time* — a tower that recruits one of these
-// gets the veteran it would otherwise have spent a day and a half
-// making, which matters most in a run that is only half an hour long
-// (§6.19).
+// Family argument and the full table: `SYSTEMS.md` §6.25.
 #![enable(implicit_some)]
 TraitDef(
     id: "trait.porter",
     name: "Porter",
     blurb: "knows stairs, and how much a person can carry",
+    weight: 100,
     carry_bonus: 1,
     practised_at: Haul,
 )

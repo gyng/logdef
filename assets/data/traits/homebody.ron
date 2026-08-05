@@ -1,0 +1,15 @@
+// **Sleeps well and goes nowhere fast.**
+//
+// Gets a great deal out of a bunk and is slow everywhere else. Station them.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.homebody",
+    name: "Homebody",
+    blurb: "sleeps well and goes nowhere fast",
+    weight: 40,
+    bunk_rest_pct: 160,
+    walk_pct: 130,
+    carry_bonus: -1,
+)

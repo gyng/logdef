@@ -1,0 +1,14 @@
+// **Has done this on three other towers.**
+//
+// Two ranks of hauling on the first morning — most of the ceiling, arriving free.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.old_hand",
+    name: "Old hand",
+    blurb: "has done this on three other towers",
+    weight: 40,
+    practised_at: Haul,
+    practice_ranks: 2,
+)

@@ -1,0 +1,13 @@
+// **Happiest standing in one room, growing something.**
+//
+// Practised at working a post. The farm is the one room with `crew_required`, so this is somebody the opening has a use for on the first morning.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.gardener",
+    name: "Gardener",
+    blurb: "happiest standing in one room, growing something",
+    weight: 100,
+    practised_at: Man,
+)

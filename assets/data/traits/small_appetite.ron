@@ -1,0 +1,13 @@
+// **Picks at a plate and calls it dinner.**
+//
+// The canteen's chain is the tightest in the opening, so eating less is worth more than it looks.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.small_appetite",
+    name: "Small appetite",
+    blurb: "picks at a plate and calls it dinner",
+    weight: 100,
+    hunger_pct: 160,
+)

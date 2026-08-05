@@ -1,0 +1,13 @@
+// **Takes stairs like they are level ground.**
+//
+// Scales the per-floor cost only. The tax on carrying freight up stairs is what a shaft answers (§6.24), and no trait should undercut that.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.sure_footed",
+    name: "Sure-footed",
+    blurb: "takes stairs like they are level ground",
+    weight: 100,
+    climb_pct: 80,
+)

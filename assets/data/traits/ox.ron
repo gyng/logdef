@@ -1,0 +1,13 @@
+// **Carries what two of anybody else would.**
+//
+// Double the base load, no cost at all. The single largest thing that can happen to an early tower's throughput.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.ox",
+    name: "Ox",
+    blurb: "carries what two of anybody else would",
+    weight: 10,
+    carry_bonus: 3,
+)

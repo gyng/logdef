@@ -1,0 +1,14 @@
+// **Sees in the dark and does not rattle.**
+//
+// The brown-out specialist: works unlit and shows stress late, so a tower running dry has one person still moving normally.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.bright_eyed",
+    name: "Bright-eyed",
+    blurb: "sees in the dark and does not rattle",
+    weight: 40,
+    sees_in_the_dark: true,
+    stress_pct: 130,
+)

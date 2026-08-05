@@ -1,0 +1,13 @@
+// **One night buys them a day and a half.**
+//
+// Half again as much work out of the same bed.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.tireless",
+    name: "Tireless",
+    blurb: "one night buys them a day and a half",
+    weight: 40,
+    rested_max_pct: 150,
+)

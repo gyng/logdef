@@ -1,0 +1,13 @@
+// **Up before the lamps are out.**
+//
+// A longer working day out of the same night.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.early_riser",
+    name: "Early riser",
+    blurb: "up before the lamps are out",
+    weight: 100,
+    rested_max_pct: 115,
+)

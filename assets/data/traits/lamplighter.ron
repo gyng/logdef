@@ -1,0 +1,15 @@
+// **Keeps working when the tower goes dark.**
+//
+// Sees in the dark, mends half again as well, and arrives practised at it. A whole answer to a brown-out standing in one pair of boots.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.lamplighter",
+    name: "Lamplighter",
+    blurb: "keeps working when the tower goes dark",
+    weight: 10,
+    sees_in_the_dark: true,
+    mend_pct: 150,
+    practised_at: Mend,
+)

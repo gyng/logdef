@@ -1,0 +1,14 @@
+// **Nobody has ever seen them lie down.**
+//
+// Three times the rested ceiling and a tired threshold they will practically never reach. Effectively a crew member the rota does not apply to — which is why it is rare rather than priced.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.sleepless",
+    name: "Sleepless",
+    blurb: "nobody has ever seen them lie down",
+    weight: 10,
+    rested_max_pct: 300,
+    tired_pct: 40,
+)

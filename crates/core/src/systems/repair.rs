@@ -49,11 +49,14 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         // what it mends, so the kit makes somebody's hour worth more
         // rather than making repair cheap — the poles still come off the
         // shelves at the same rate per point.
-        let mend_pct = member
+        // A kit is lent; a knack came aboard with the person. They
+        // compose, so a mender holding a mender's kit is the best the
+        // tower can do about a wall (`SYSTEMS.md` §6.25).
+        let kit_pct = member
             .kit
             .and_then(|item| content.item(item).kit.as_ref())
-            .map_or(100, |kit| kit.mend_pct)
-            .max(1);
+            .map_or(100, |kit| kit.mend_pct);
+        let mend_pct = (kit_pct * member.trait_pct(content, |t| t.mend_pct) / 100).max(1);
         let per_shift = (balance.repair_hp_per_shift * mend_pct / 100).max(1);
         let cost = balance.repair_poles_per_10_hp * per_shift / 10;
         if state.stock_of(poles) < cost {

@@ -1,0 +1,13 @@
+// **In no particular hurry, ever.**
+//
+// Slower along a floor, and nothing else. Somebody you would rather station than send.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.heavy_footed",
+    name: "Heavy-footed",
+    blurb: "in no particular hurry, ever",
+    weight: 100,
+    walk_pct: 125,
+)

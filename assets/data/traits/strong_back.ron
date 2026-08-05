@@ -1,0 +1,13 @@
+// **Picks up more than looks wise.**
+//
+// A third again on a three-item trip, and no other cost. The plainest good trait in the pack.
+//
+// Family argument and the full table: `SYSTEMS.md` §6.25.
+#![enable(implicit_some)]
+TraitDef(
+    id: "trait.strong_back",
+    name: "Strong back",
+    blurb: "picks up more than looks wise",
+    weight: 100,
+    carry_bonus: 1,
+)

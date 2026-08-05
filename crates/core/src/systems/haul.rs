@@ -174,7 +174,15 @@ fn advance(
         CrewState::Walking { to_slot } => {
             crew.wait_ticks = 0;
             let target = Fx::from_int(i32::from(to_slot));
-            let ticks = effective_ticks(balance.walk_ticks_per_slot, pct);
+            // Long legs and short ones. Applied to the *duration*, never
+            // to the `Fx` step — see `needs::effective_ticks`.
+            let ticks = effective_ticks(
+                scale_ticks(
+                    balance.walk_ticks_per_slot,
+                    crew.trait_pct(content, |t| t.walk_pct),
+                ),
+                pct,
+            );
             let step = Fx::ratio(1, ticks.max(1) as i32);
             let arrived = if crew.slot_fx < target {
                 crew.slot_fx += step;
@@ -227,8 +235,17 @@ fn advance(
             // drift apart, crew choose a shaft on one number and pay
             // another, and the mistake is invisible from outside.
             let load = crew.carrying.map_or(0, |(_, count)| count.max(0) as u32);
+            // **Sure-footedness scales the per-floor cost and not the
+            // per-item one.** Being good on stairs is about the stairs;
+            // the tax on carrying freight up them is what a shaft
+            // exists to answer (§6.24), and a trait that undercut it
+            // would be a person who does not need the game's central
+            // building.
             let ticks = effective_ticks(
-                balance.climb_ticks_per_floor + load * balance.climb_ticks_per_item,
+                scale_ticks(
+                    balance.climb_ticks_per_floor,
+                    crew.trait_pct(content, |t| t.climb_pct),
+                ) + load * balance.climb_ticks_per_item,
                 pct,
             );
             let step = Fx::ratio(1, ticks.max(1) as i32);
@@ -298,6 +315,12 @@ fn advance(
 
 /// What a crew member does after finishing a leg — which depends on
 /// whether they are hauling or on an errand.
+/// A tick count times a percentage, floored at one.
+fn scale_ticks(ticks: u32, pct: i64) -> u32 {
+    let scaled = i64::from(ticks) * pct.max(0) / 100;
+    u32::try_from(scaled).unwrap_or(ticks).max(1)
+}
+
 fn resume(
     crew: &Crew,
     tower: &Tower,
