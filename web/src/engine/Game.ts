@@ -987,7 +987,10 @@ export class Game {
       halt: view?.journey.halt ?? "stopped",
       fork: view?.journey.fork ?? null,
       atEnclave: view?.journey.at_enclave ?? false,
-      enclave: view === null ? null : (this.catalog.regions[view.journey.region]?.enclave ?? null),
+      enclave:
+        view === null || view.journey.enclave_at === null
+          ? null
+          : (this.catalog.regions[view.journey.enclave_at]?.enclave ?? null),
       enclaveAhead: view?.journey.enclave_ahead ?? null,
       offers: view?.journey.offers ?? [],
       recruits: view?.journey.recruits ?? 0,

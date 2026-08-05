@@ -256,6 +256,23 @@ button {
   color: var(--accent-brass);
 }
 
+/* A settlement, named on the ground it stands on. Warm rather than
+   white: a fork is a decision about ground and this is a place people
+   live, and the hearth colour is the only thing in the scene that says
+   so from across the frame. Brighter once the tower has stopped
+   alongside — the whole of the "you are berthed" feedback, because a
+   berth is somewhere the tower stopped rather than a mode it entered. */
+.label-place {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-wide);
+  color: rgb(255 176 87 / 82%);
+}
+
+.label-place.label-place-berthed {
+  color: rgb(255 240 196 / 100%);
+}
+
 /* What a ruin holds, for the ones near enough to be a live decision.
    The heap on the strip is the primary read; this is the precision
    layer on top of it (DECISIONS.md §8). */

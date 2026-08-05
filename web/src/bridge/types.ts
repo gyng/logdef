@@ -253,6 +253,16 @@ export interface JourneyView {
   enclave_ahead: number | null;
   /** Berthed at the enclave right now. */
   at_enclave: boolean;
+  /**
+   * **Which** settlement `enclave_ahead`, `offers`, `recruits` and
+   * `shell_work` are all talking about. Indexes `catalog.regions`.
+   *
+   * Not necessarily the region the tower is standing in: a tower that
+   * has passed its own region's board is already being shown the next
+   * one's. Naming it from `journey.region` is a different question, and
+   * was wrong in three places.
+   */
+  enclave_at: number | null;
   /** What the enclave has left, one entry per authored offer. */
   offers: number[];
   recruits: number;

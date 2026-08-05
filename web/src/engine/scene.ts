@@ -109,6 +109,7 @@ export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
   drawSky(batch, ctx);
   drawTerrain(batch, ctx);
   drawJourneyEdge(batch, ctx);
+  drawEnclave(batch, ctx);
   drawFork(batch, ctx);
   drawLegs(batch, ctx);
   drawWake(batch, ctx);
@@ -854,6 +855,134 @@ function drawJourneyEdge(batch: QuadBatch, ctx: SceneContext): void {
       },
     );
   }
+}
+
+/**
+ * Where a settlement lands on screen as the tower closes on it.
+ *
+ * **It was invisible.** `journey.enclave_ahead` has been on the snapshot
+ * since M3 and was plumbed all the way into the UI state object — and
+ * rendered by nothing, anywhere. A settlement existed only once you were
+ * already standing in it, and standing in it means having stopped inside
+ * a window 160 paces wide that nothing on screen marked. A run played
+ * through the agent tools walked past all three without ever being
+ * offered one, which is what made this visible at all (`SYSTEMS.md`
+ * §6.31).
+ *
+ * Same compression as the fork, for the same reason: laid out at the
+ * scene's own `paceW` a settlement seven thousand paces out is off the
+ * frame by a factor of hundreds, then crosses it in a second. Compressed,
+ * it crests at the vanishing point and walks in — so "you can see it
+ * coming, and stopping is how you meet it" has a picture.
+ *
+ * Exported because the name has to land on the same spot the roofs do.
+ */
+export interface EnclaveGeometry {
+  x: number;
+  y: number;
+  /** Height of the tallest roof, which everything else is sized against. */
+  roof: number;
+  /** 0 while it is a speck at the vanishing point, 1 alongside. */
+  near: number;
+  /** The tower is stopped close enough; the board is open. */
+  berthed: boolean;
+}
+
+export function enclaveGeometry(view: ViewSnapshot, layout: Layout): EnclaveGeometry | null {
+  const ahead = view.journey.enclave_ahead;
+  if (ahead === null && !view.journey.at_enclave) return null;
+  const { x, y, far } = aheadPoint(view, layout, ahead ?? 0);
+  const near = unit(1 - far);
+  return {
+    x,
+    y,
+    roof: layout.slotW * (0.5 + near * 1.6),
+    near,
+    berthed: view.journey.at_enclave,
+  };
+}
+
+/**
+ * A settlement on the ground ahead: low roofs and lit windows.
+ *
+ * **Warm, and small.** People live here and the tower is passing
+ * through (`SYSTEMS.md` §3.5) — so this is hearth light in a clearing
+ * rather than a waypoint pin, and it never grows to compete with the
+ * tower. The lights are the part that carries: like the salvage glint
+ * and the creature eye, they are deliberately not washed toward the mist
+ * with the rest of the distance, because warm-against-cold is the only
+ * cue that survives the far parallax layer.
+ *
+ * The lit windows brighten as the tower closes and brighten again when
+ * it berths, which is the whole of the feedback — no ring, no marker, no
+ * "in range" readout. A player who stops next to it is next to it.
+ */
+function drawEnclave(batch: QuadBatch, ctx: SceneContext): void {
+  const { layout, view, clock } = ctx;
+  const place = enclaveGeometry(view, layout);
+  if (!place || place.near <= 0.02) return;
+  if (place.x >= layout.viewport.width) return;
+
+  const dark = darkness(view);
+  const timber = atNight(palette.roomBody, dark * 0.8);
+  const { x, y, roof } = place;
+
+  // Three sheds, the middle one tallest. Counting them is not the
+  // point — the silhouette is, so it reads as *somewhere* rather than
+  // as an icon, from the first frame it is more than a speck.
+  const sheds = [
+    { dx: -roof * 1.15, w: roof * 0.95, h: roof * 0.62 },
+    { dx: -roof * 0.2, w: roof * 1.15, h: roof },
+    { dx: roof * 0.95, w: roof * 0.8, h: roof * 0.5 },
+  ];
+  for (const shed of sheds) {
+    batch.push(x + shed.dx, y - shed.h, shed.w, shed.h, timber, {
+      colorBottom: atNight(palette.floorPlate, dark * 0.8),
+      radius: shed.h * 0.12,
+    });
+    // A pitched roof, drawn as a lid rather than a triangle: the batch
+    // is quads, and at this size a lid reads as a roof.
+    batch.push(
+      x + shed.dx - shed.w * 0.12,
+      y - shed.h - roof * 0.1,
+      shed.w * 1.24,
+      roof * 0.13,
+      atNight(palette.floorEdge, dark * 0.8),
+      { radius: roof * 0.06 },
+    );
+  }
+
+  // The windows, and the reason this is worth drawing at all. Brighter
+  // as it nears, brighter again once the tower has stopped alongside.
+  const glow = (0.35 + place.near * 0.5) * (place.berthed ? 1.35 : 1);
+  const breath = 0.9 + Math.sin(clock * 0.7) * 0.1;
+  for (const shed of sheds) {
+    const w = roof * 0.16;
+    batch.push(
+      x + shed.dx + shed.w * 0.3,
+      y - shed.h * 0.62,
+      w,
+      w * 1.2,
+      fade(palette.hearth, glow * breath),
+      {
+        radius: w * 0.25,
+      },
+    );
+  }
+  // And a lantern over the middle of it, the part that carries across
+  // the frame.
+  const lamp = roof * (0.5 + place.near * 0.5);
+  batch.push(
+    x - lamp * 0.5,
+    y - roof * 1.5 - lamp * 0.5,
+    lamp,
+    lamp,
+    fade(palette.hearthCore, glow * 0.5 * breath),
+    {
+      radius: lamp * 0.5,
+      softness: lamp * 0.8,
+    },
+  );
 }
 
 /**

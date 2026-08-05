@@ -7698,6 +7698,48 @@ The other thing that run showed: a tower that builds all seven chain rooms by Da
 bamboo the burner also eats. That is `charge_per_burn` and `provocation_per_burn` doing exactly
 what the note at the top of `AGENTS.md` says they do.
 
+#### And the settlements were invisible — to a player, not just to an agent
+
+Chasing why the played run never berthed turned up the largest single thing this pass found, and
+it is not about tools at all. **Nothing anywhere drew a settlement.** `journey.enclave_ahead` has
+been on the snapshot since M3 and is plumbed all the way into the UI's state object at
+`Game.ts`; it is read by nothing. The board panel appears only once `at_enclave` is already true.
+So a settlement existed only once you were standing in it — and standing in it means having
+stopped inside a window 160 paces wide that nothing on screen marked.
+
+The tools' first attempt made the shape of the problem obvious: the agent stopped the tower at
+136 paces, which is outside the 80-pace reach, and it stood there for the rest of the run berthed
+at nothing with no sign anything was wrong.
+
+`scene.ts` draws it now, with the same compression the fork uses and for the same reason — low
+roofs and lit windows on the ground ahead, a lantern over them, and the name beside it. Hearth
+colour rather than white, because a fork is a decision about ground and this is a place people
+live. The windows brighten as the tower closes and brighten again when it berths, and **that is
+the whole of the feedback**: no ring, no in-range readout, no marker. A player who stops next to
+it is next to it (`DECISIONS.md` §8).
+
+**`understory_wait` stops early now.** The berth window is 160 paces wide and the tower covers
+288 in four seconds at 4×, so an agent could ask for four seconds and go from "a settlement is
+300 paces ahead" to "it is behind you" without ever being offered the choice. A player watching
+the screen simply sees it coming; this is the agent's version of looking up. It interrupts for a
+settlement in reach, an unanswered fork closing, a waypoint alongside, somebody at the door,
+something chewing the tower, a brown-out, and the run ending — and says which.
+
+**And the view was handing over an enclave's contents without its identity.** `offers`,
+`recruits` and `shell_work` all come from `nearest_enclave`, which walks *forward* to the first
+settlement not yet behind the tower — so a tower past its own region's board is already being
+shown the next region's. Three separate readers were naming it from `journey.region`, which is a
+different question: the board panel, the tools' `look`, and the new marker. `journey.enclave_at`
+carries the answer now.
+
+**What the berth showed is a balance finding and it is not a small one.** A tower that reaches
+Ropewalk on schedule arrives holding **`Rope 12` and nothing else**, and *every* item on the
+board is out of reach: 6 poles for rope, 4 poles for darts, 4 scrap for 3 poles, 18 poles for a
+person — no poles, no scrap — and Ropewalk has no shell work at all. The one trade that would
+answer the pole famine costs scrap, which comes from salvaging ruins the tower did not stop at.
+Walking 7,300 paces to a board you can do nothing with is worth somebody deciding about
+deliberately.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —

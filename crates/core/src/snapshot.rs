@@ -218,6 +218,20 @@ pub struct JourneyView {
     pub enclave_ahead: Option<f32>,
     /// Berthed at the enclave right now.
     pub at_enclave: bool,
+    /// **Which** settlement `enclave_ahead`, `offers`, `recruits` and
+    /// `shell_work` are all talking about. Indexes `catalog.regions`,
+    /// and its `enclave` is the one in question.
+    ///
+    /// **Not necessarily the region the tower is standing in.**
+    /// `World::enclave_ahead` walks forward to the first settlement not
+    /// yet behind the tower, so a tower that has passed its own
+    /// region's board is already being shown the next region's — and
+    /// every reader of these fields was naming it from `region`, which
+    /// is a different question. The view handed over an enclave's
+    /// contents without its identity and three separate readers guessed:
+    /// the board panel, the tools' `look`, and the new marker on the
+    /// ground (`SYSTEMS.md` §6.31).
+    pub enclave_at: Option<u16>,
     /// What the enclave has left, one entry per authored offer.
     pub offers: Vec<i64>,
     pub recruits: u8,
@@ -1065,6 +1079,7 @@ fn build_journey(state: &GameState, content: &Content) -> JourneyView {
         // what the chrome needs to draw is whichever one the tower is
         // standing at — or the one ahead of it, so the offers can be
         // read before deciding whether stopping is worth it.
+        enclave_at: nearest_enclave(state, content).and_then(|at| u16::try_from(at).ok()),
         offers: nearest_enclave(state, content)
             .and_then(|region| state.enclave_stock.get(region).cloned())
             .unwrap_or_default(),

@@ -10,7 +10,7 @@ import { expect, test } from "@playwright/test";
  * surface is wrong, and the log at the end says where.
  */
 test("a whole run can be played through the tools alone", async ({ page }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   const log: string[] = [];
   const gaps: string[] = [];
 
@@ -153,13 +153,16 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
   let waypoints = 0;
   let answered = 0;
   let rewired = false;
+  let berthed = false;
+  let traded = 0;
+  let plated = 0;
 
   // **Bounded by the clock, not by turns.** A run is 31–36 minutes at
   // 1× (§6.19) and this plays at 4×, so arriving is nine minutes of
   // wall time — more than a spec should cost, and the findings are the
   // gaps rather than the ending. Play until the budget runs out and
   // write down how far it got.
-  const until = Date.now() + 80_000;
+  const until = Date.now() + 170_000;
   while (!arrived && Date.now() < until) {
     const look = await call("understory_look");
     if (look.text.includes("reached the Refugia") || look.text.includes("Arrived")) {
@@ -170,10 +173,58 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
       if ((await call("understory_take_fork", { branch: 0 })).ok) forks += 1;
       continue;
     }
-    if (look.text.includes("wants to come aboard")) {
+    // **Berthing, which is a decision and not a mechanic.** There is no
+    // docking: a settlement is somewhere the tower *stopped*, near
+    // enough, and walking past loses it for good. The played run walked
+    // past all three because `look` never mentioned one — everything
+    // below is the layer that gap hid.
+    if (look.text.includes("BERTHED at")) {
+      if (!berthed) {
+        log.push(`  --- berthed ---`);
+        for (const line of look.text.split("\n")) {
+          if (/Shelves:|trades:|people would|shell work/.test(line)) log.push(line);
+        }
+      }
+      berthed = true;
+      // Take what is here, cheapest commitment first. Every one of
+      // these refuses away from a settlement, so this is also the only
+      // place they can be exercised at all.
+      // Every posted swap, cheapest first — the one that matters here
+      // is scrap for poles, which is the settlement answering the pole
+      // famine the rope chain causes (§6.31, `examples/glut.rs`).
+      for (const m of look.text.matchAll(/(\d+): \d+ [^;()]+ for \d+ [^;()]+ \(\d+ left\)/g)) {
+        if ((await call("understory_trade", { offer: Number(m[1]) })).ok) traded += 1;
+      }
+      if ((await call("understory_reinforce")).ok) plated += 1;
+      if (!look.text.includes("0 people would come aboard")) {
+        if ((await call("understory_recruit")).ok) recruited += 1;
+      }
+      await call("understory_set_striding", { walking: true });
+      continue;
+    }
+    // Only worth asking when the shelves can pay: the prompt is set
+    // *because* the tower is berthed, so an unaffordable one otherwise
+    // repeats every turn for as long as the tower stands there.
+    if (look.text.includes("wants to come aboard") && !look.text.includes("cannot pay")) {
       if ((await call("understory_recruit")).ok) recruited += 1;
       continue;
     }
+    const near = /^(.+) is (\d+) paces ahead — trades/m.exec(look.text);
+    if (near) {
+      // **The window is 80 paces and stopping outside it does nothing.**
+      // A first pass stopped at 136 and the tower stood there for the
+      // rest of the run, berthed at nothing, with no sign anything was
+      // wrong — which is the same blindness the settlement being
+      // undrawn caused, one step later. `understory_wait` stops early
+      // inside 300 paces now, so there is always a turn in here.
+      if (Number(near[2]) < 70) {
+        await call("understory_set_striding", { walking: false });
+      } else {
+        await call("understory_wait", { seconds: 1 });
+      }
+      continue;
+    }
+
     // **A wave, answered.** M6 is entirely about the verbs a player has
     // while one is landing, and the tool surface had none of them until
     // this run: the agent could read a list of species and do nothing.
@@ -236,7 +287,8 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
   log.push(
     `journey: ${arrived ? "arrived" : "still walking"}, lift ${lift ? "yes" : "no"}, ` +
       `${String(forks)} forks, ${String(recruited)} recruits, ${String(waypoints)} waypoints, ` +
-      `${String(sieges)} siege beats (${String(answered)} answered)${rewired ? ", rewired" : ""}`,
+      `${String(sieges)} siege beats (${String(answered)} answered)${rewired ? ", rewired" : ""}, ` +
+      `${berthed ? "berthed" : "never berthed"} (${String(traded)} trades, ${String(plated)} plating)`,
   );
 
   const final = await call("understory_look");

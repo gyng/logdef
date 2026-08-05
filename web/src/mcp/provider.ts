@@ -83,7 +83,8 @@ function report(result: string | { Error: unknown }, ok: string): ToolResult {
 function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
   const item = (i: number) => catalog.items[i]?.name ?? "?";
   const lines: string[] = [];
-  const enclave = catalog.regions[view.journey.region]?.enclave ?? null;
+  const shown = view.journey.enclave_at;
+  const enclave = shown === null ? null : (catalog.regions[shown]?.enclave ?? null);
 
   lines.push(
     `Day ${String(view.clock.day + 1)}, ${catalog.dayparts[view.clock.daypart]?.name ?? "?"} · ` +
@@ -372,6 +373,45 @@ function legalSpans(
 }
 
 /**
+ * Why a wait should stop early, if it should.
+ *
+ * **A wait can walk past a decision that cannot be taken back.** The
+ * berth window is 160 paces wide and the tower covers 288 in four
+ * seconds at 4×, so an agent that asked for four seconds could go from
+ * "a settlement is 300 paces ahead" to "it is behind you" without ever
+ * being offered the choice — and there is no going back down the axis.
+ * A player watching the screen simply sees it coming.
+ *
+ * This is the agent's version of looking up. Everything here is either
+ * irreversible (a settlement passed, a fork crossed, a waypoint missed)
+ * or wants answering now (something chewing the tower, the bank empty,
+ * the run over). Nothing here is advice — it is only the reason the
+ * clock stopped, and the fresh `look` underneath says the rest.
+ */
+function interruption(view: ViewSnapshot, catalog: CatalogSnapshot): string | null {
+  if (view.journey.arrived) return "the tower has arrived";
+  if (view.siege.lost) return "the Heartseed is gone";
+  if (view.journey.fork && view.journey.fork.answer === null && view.journey.fork.ahead < 400) {
+    return "a fork is close and unanswered";
+  }
+  if (view.journey.at_enclave) {
+    const at = view.journey.enclave_at;
+    const enclave = at === null ? null : catalog.regions[at]?.enclave;
+    return `the tower is berthed at ${enclave?.name ?? "a settlement"} — trades, people and shell work, and only while it is standing here`;
+  }
+  if (view.journey.enclave_ahead !== null && view.journey.enclave_ahead < 300) {
+    return `a settlement is ${String(Math.round(view.journey.enclave_ahead))} paces ahead — stop the tower to berth, or it is lost for good`;
+  }
+  if (view.journey.waypoint) return "a waypoint is alongside";
+  if (view.recruit) return `${view.recruit.name} wants to come aboard`;
+  if (view.siege.enemies.some((e) => e.state === "attack")) {
+    return "something is at the tower";
+  }
+  if (view.power.brownout) return "the tower is in a brown-out";
+  return null;
+}
+
+/**
  * Register the game's tools with whatever agent surface is present.
  *
  * Returns a teardown, because the page can rebuild its `Game` (a hot
@@ -399,7 +439,9 @@ export function registerGameTools(game: Game): () => void {
         "are waiting for something — poles to be milled, a room to fill, ground to be covered " +
         "— rather than asking again immediately. Nothing about the tower changes on your turn; " +
         "it changes because time passed. Capped at 30 seconds; raise the speed first if you " +
-        "want more done per second.",
+        "want more done per second. **It stops early** when something arrives that cannot wait " +
+        "— a settlement coming into reach, an unanswered fork closing, a creature reaching the " +
+        "tower — and says so, so a long wait is safe to ask for.",
       inputSchema: {
         type: "object",
         properties: {
@@ -409,10 +451,31 @@ export function registerGameTools(game: Game): () => void {
       },
       execute: async (a) => {
         const want = Math.max(1, Math.min(30, Number(a.seconds) || 1));
-        await new Promise((done) => setTimeout(done, want * 1000));
-        return say(`waited ${String(want)}s.
+        // **Checked often enough to catch a berth**, which is 160 paces
+        // wide and about two seconds at 4×. A quarter-second poll costs
+        // nothing and is the difference between being offered a
+        // settlement and reading about one going past.
+        const until = Date.now() + want * 1000;
+        let stopped: string | null = null;
+        const before = interruption(game.viewForTool(), game.getCatalog());
+        while (Date.now() < until) {
+          await new Promise((done) => setTimeout(done, 250));
+          const now = interruption(game.viewForTool(), game.getCatalog());
+          // Only a *new* reason stops the clock. Waiting during a
+          // brown-out to see whether it clears is a reasonable thing to
+          // ask for, and a wait that returned instantly every time
+          // would be no wait at all.
+          if (now !== null && now !== before) {
+            stopped = now;
+            break;
+          }
+        }
+        const waited = Math.round((want * 1000 - Math.max(0, until - Date.now())) / 100) / 10;
+        return say(
+          `waited ${String(waited)}s${stopped === null ? "" : ` and stopped early: ${stopped}`}.
 
-${look(game.viewForTool(), game.getCatalog())}`);
+${look(game.viewForTool(), game.getCatalog())}`,
+        );
       },
     },
     {

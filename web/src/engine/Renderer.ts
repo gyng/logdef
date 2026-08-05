@@ -17,6 +17,7 @@ import {
   crewPosition,
   enemyPosition,
   featurePoint,
+  enclaveGeometry,
   forkGeometry,
   towerShape,
   type PlaceMode,
@@ -294,6 +295,7 @@ function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layou
   const labels: Label[] = [];
 
   labels.push(...forkLabels(view, catalog, layout, edgeScreenX(view, layout)));
+  labels.push(...enclaveLabel(view, catalog, layout));
   labels.push(...salvageLabels(view, catalog, layout));
 
   for (const floor of view.tower.floors) {
@@ -429,6 +431,32 @@ function buildLabels(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layou
  * this the card is a dialogue box about something happening off screen
  * (`SYSTEMS.md` §3.3).
  */
+/**
+ * The settlement's name, once it is more than a speck.
+ *
+ * A place people live gets named the way a branch does — and for the
+ * same reason the branch names are drawn from the catalog rather than
+ * authored beside the geometry: a name that can drift out of step with
+ * what it names is worse than no name.
+ */
+function enclaveLabel(view: ViewSnapshot, catalog: CatalogSnapshot, layout: Layout): Label[] {
+  const place = enclaveGeometry(view, layout);
+  if (!place || place.near <= 0.15) return [];
+  const at = view.journey.enclave_at;
+  const name = at === null ? undefined : catalog.regions[at]?.enclave?.name;
+  if (name === undefined) return [];
+  return [
+    {
+      key: "enclave-name",
+      text: name,
+      x: place.x,
+      y: place.y - place.roof * 1.9,
+      variant: place.berthed ? "label-place label-place-berthed" : "label-place",
+      alpha: place.near,
+    },
+  ];
+}
+
 function forkLabels(
   view: ViewSnapshot,
   catalog: CatalogSnapshot,
