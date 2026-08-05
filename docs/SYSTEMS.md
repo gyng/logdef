@@ -6557,6 +6557,48 @@ it walked its whole journey and died on the elevator at zero poles. It takes onl
 and only once a storeroom exists — two rules a player would keep, and the second is the one the
 scrap-and-produce failure taught.
 
+### 6.15 Sized creatures, and a reason to stand
+
+**"Combat needs to be a bigger part of the game."** Two changes, and the second is the one
+that matters.
+
+**Waves land more often.** `wave_interval_ticks` 4,800 → **3,400** — from one every two and a
+half minutes at 1× to one every minute and three quarters, which is often enough that a tower
+has to be *arranged* for a wave rather than repaired after one. It did not go further because
+the reasoning that set 4,800 still binds: at 2,400 a recorded run went into a spiral it could
+not climb out of, 120 poles of repair against nothing in the bank, because a damaged mill mills
+more slowly and a tower that cannot mill cannot mend.
+
+**And something worth standing still for.** `enemy.thicket_mother` is 500 hp — half again a
+mire-hulk, the largest number in the pack — at threat 60, gated behind provocation 420. A dart
+battery needs 34 hits to fell one; a lone thorn gun would need 63 and run the tower out of
+bamboo first. It is felled by a *tower*, not by an emplacement.
+
+It drops 2 alloy and 8 scrap. **That is the whole point of it.**
+
+§11 makes walking away the free answer to every wave, which is right — and *a free answer with
+no alternative is not a decision*. A mother is slow enough to walk away from (9 paces per 100
+ticks) and carries enough that you might not. Alloy otherwise needs a salvage rig, a forge and
+a ruin to stop at, so felling one is a shortcut through a whole chain rather than a pile of the
+material you already have.
+
+#### It is a resident, not a boss
+
+`DECISIONS.md` §8 is defenders rather than soldiers, and creatures defending territory rather
+than a gallery to clear. A mother is not a health bar with a name on it and it is not hunted:
+it is what has been living here the whole time, and it comes out when a tower has made enough
+noise in its home that ignoring the tower stops being an option. You are in somebody's house.
+
+That framing is also why **only the residents carry anything**. A jungle where every skitter
+pays out is a jungle you farm, and `ordinary_creatures_leave_nothing` is the test that keeps it
+one creature.
+
+`felled()` is called from every path that can kill — a battery's shot and a cutter arm's blade
+today, whatever comes next tomorrow — because a drop that depends on *how* you fought is a
+distinction this game makes nowhere else. Anything that does not fit on a shelf is lost, which
+is the same rule the waypoints keep: a tower with nowhere to put two alloy has told you
+something about itself.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -6565,29 +6607,33 @@ scrap-and-produce failure taught.
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
+1. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
+   instrument cannot tell them apart — the numbers are sized against the kill-shot table and
+   nobody has met one. The tell is whether a player who fells one goes looking for the next,
+   because that is the jungle becoming a gallery, which `DECISIONS.md` §8 rules out.
+2. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
    screensaver" by putting something in front of the player roughly once a minute, and the
    failure mode of that fix is the opposite complaint: a prompt often enough to become
    wallpaper. The tell is whether anybody reads the second one. Note also that the streaming
    window (900 ahead, 300 behind) is *narrower* than the interval, so beats can appear without
    being seen coming — deliberate for now, and the first thing to change if they read as
    pop-ups.
-2. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
+3. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
    edge from the shaft column, which is a placement fix — but every layout puzzle now has two
    more answers, and `floor_slots`' own row is explicit that its value was chosen for scarcity.
    Nobody has played a ten-wide tower against an eight-wide one. It is on the difficulty pass's
    list and it is the change on that list most likely to have made the game softer by accident.
-3. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
+4. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
    of what a posting does and cleans up after itself. If nobody ever uses the permanent form
    once they have the temporary one, that is not two verbs, it is one verb and a trap — and
    the tell is whether anybody posts somebody *for the run* rather than *for the minute*.
-4. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+5. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-5. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+6. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

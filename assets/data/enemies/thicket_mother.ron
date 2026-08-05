@@ -1,0 +1,57 @@
+// The thing whose jungle this is.
+//
+// **A resident, not a boss**, and the distinction is the tone gate
+// (`DECISIONS.md` §8): the jungle is not a target gallery and this is
+// not a health bar with a name on it. It is what has been living here
+// the whole time, and it comes out when a tower has made enough noise
+// in its home that ignoring the tower stops being an option.
+//
+// **It is also the only reason to stand and fight.** §11 makes walking
+// away the free answer to every wave, which is right — and a free
+// answer with no alternative is not a decision. A mother is slow enough
+// to walk away from and carries enough that you might not. That is the
+// whole of what it adds.
+//
+// What it carries is not loot. It is what a very large thing that has
+// been pulling apart machines for years turns out to have in it.
+#![enable(implicit_some)]
+EnemyDef(
+    id: "enemy.thicket_mother",
+    name: "Thicket Mother",
+    glyph: "🕷",
+    // Half again a mire-hulk's 340, and the largest number in the pack
+    // by a distance. A dart battery needs thirty-four hits; a lone
+    // thorn gun would need sixty-three and run the tower out of bamboo
+    // first. It is not shot down by an emplacement — it is shot down by
+    // a *tower*, which is the shape of encounter this exists to make.
+    hp: 500,
+    // Slow, like everything large here. You see it a long way off and
+    // the decision it poses is made at leisure: walk, or commit.
+    speed_paces_per_100_ticks: 9,
+    // Hits harder than anything else, on a long cycle. A mother that
+    // reaches the hull takes a room apart rather than scratching it.
+    damage: 26,
+    attack_ticks: 85,
+    // Long, but not a hulk's 3000: this can be walked away from, and
+    // that has to stay true or the alternative stops being a choice.
+    cling_ticks: 1500,
+    approach: Ground,
+    // The most expensive thing a wave can field. At
+    // threat_per_100_provocation 40 a budget of 60 needs provocation
+    // 150 — well past the point where a run has been noticed.
+    threat: 60,
+    min_provocation: 420,
+    // Region 1. The jungle's own resident, met in the jungle, which is
+    // the opposite of the mire-hulk's "the coast is not impressed by
+    // you" — this is "you are in somebody's home".
+    min_region: 0,
+    // **What it leaves.** Alloy, which otherwise needs a salvage rig, a
+    // forge and a ruin to stop at — so felling one is a genuine
+    // shortcut through a whole chain rather than a pile of the material
+    // you already have. Two of them: enough to matter, not enough to
+    // replace the chain.
+    drops: [
+        CostEntryDef(item: "item.alloy", amount: 2),
+        CostEntryDef(item: "item.scrap", amount: 8),
+    ],
+)

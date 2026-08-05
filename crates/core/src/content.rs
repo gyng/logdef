@@ -435,6 +435,20 @@ pub struct EnemyDef {
     /// would make region 3 less itself rather than more.
     #[serde(default)]
     pub min_region: u16,
+    /// What it leaves behind when it goes down.
+    ///
+    /// **Only the residents carry anything**, and the reason is the
+    /// tone gate (`DECISIONS.md` §8): creatures defend territory rather
+    /// than being a gallery to clear, and a jungle where every skitter
+    /// pays out is a jungle you farm. A drop is not loot — it is what a
+    /// very large thing turns out to have been carrying, once, and it
+    /// is the only reason to *stand and fight* rather than walk away.
+    ///
+    /// Which is the point. §11 makes walking the free answer to every
+    /// wave, and a free answer with no alternative is not a decision.
+    /// This is the alternative.
+    #[serde(default)]
+    pub drops: Vec<CostEntryDef>,
     /// Takes what is in an outbox instead of damaging what it lands on.
     ///
     /// The one creature shape that attacks the *chain* rather than the
@@ -673,6 +687,18 @@ pub struct EnclaveDef {
     /// Crew available to hire here, across the whole run.
     pub recruits: u8,
     pub recruit_cost: Vec<CostEntryDef>,
+}
+
+/// What a creature leaves behind, interned.
+///
+/// A table of its own rather than a string lookup at death: `DECISIONS.md`
+/// §6 is that content is authored as `"item.alloy"` and the simulation
+/// only ever sees an `ItemIdx`, and "it only happens when something
+/// dies" is exactly the reasoning that lets a string creep into a
+/// system.
+#[derive(Debug, Clone, Default)]
+pub struct EnemyRuntime {
+    pub drops: Vec<(ItemIdx, i64)>,
 }
 
 /// A waypoint's costs and gifts, interned.
@@ -1039,6 +1065,7 @@ pub struct Content {
     pub regions: Vec<RegionDef>,
     pub waypoints: Vec<WaypointDef>,
     pub waypoint_runtime: Vec<WaypointRuntime>,
+    pub enemy_runtime: Vec<EnemyRuntime>,
     /// Every region's branches, flattened in region order and, within a
     /// region, by branch id; `BranchIdx` indexes this. Each region's
     /// slice is recorded in its `RegionRuntime`, so a fork draws from
@@ -1335,6 +1362,7 @@ impl Content {
             branches,
             content_hash: hasher.digest(),
             waypoint_runtime: Vec::new(),
+            enemy_runtime: Vec::new(),
             room_runtime: Vec::new(),
             shaft_runtime: Vec::new(),
             terrain_runtime: Vec::new(),
@@ -1742,12 +1770,36 @@ impl Content {
             })
             .collect();
 
+        self.resolve_enemies(errors);
         self.resolve_journey(errors);
     }
 
     /// Regions, their branches, and their enclaves. Split out of
     /// `resolve` only because the journey is a chunk of its own; it runs
     /// as part of the same pass.
+    fn resolve_enemies(&mut self, errors: &mut Vec<LoadError>) {
+        let mut runtime = Vec::with_capacity(self.enemies.len());
+        for enemy in &self.enemies {
+            runtime.push(EnemyRuntime {
+                drops: enemy
+                    .drops
+                    .iter()
+                    .filter_map(|entry| match self.item_idx(&entry.item) {
+                        Some(idx) => Some((idx, entry.amount)),
+                        None => {
+                            errors.push(LoadError {
+                                path: format!("enemies/{}", enemy.id),
+                                message: format!("unknown drop {}", entry.item),
+                            });
+                            None
+                        }
+                    })
+                    .collect(),
+            });
+        }
+        self.enemy_runtime = runtime;
+    }
+
     fn resolve_journey(&mut self, errors: &mut Vec<LoadError>) {
         let mut waypoint_runtime = Vec::with_capacity(self.waypoints.len());
         for waypoint in &self.waypoints {

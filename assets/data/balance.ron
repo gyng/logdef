@@ -371,7 +371,23 @@ Balance(
         // against a 120-pole repair bill. At 4,800 the same tower
         // spends about a quarter of its income staying whole and keeps
         // the rest.
-        wave_interval_ticks: 4800,
+        //
+        // **3,400 from M6, down from 4,800, and this is the "combat
+        // should be a bigger part of the game" dial.** A wave every
+        // 4,800 ticks is one every two and a half minutes at 1x — a
+        // punctuation mark rather than a pressure. At 3,400 it is
+        // closer to a minute and three quarters, which is often enough
+        // that a tower has to be *arranged* for it rather than repaired
+        // after it.
+        //
+        // The repair reasoning above still binds and is why this did
+        // not go further: the whole argument for 4,800 was that 2,400
+        // put a tower into a spiral it could not climb out of, at 120
+        // poles of repair against nothing in the bank. 3,400 is most of
+        // the way to the frequency and none of the way to the spiral —
+        // and the tower has more answers now than it did when that was
+        // measured, including a gun it starts with (§6.13).
+        wave_interval_ticks: 3400,
         // Every 100 points of provocation buys 40 more threat budget.
         // At provocation_max (1000) that is +400 on top of
         // base_threat — a wave more than twenty times richer than the

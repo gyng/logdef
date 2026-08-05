@@ -157,6 +157,38 @@ fn maybe_spawn_wave(state: &mut GameState, content: &Content, sounds: &mut Vec<S
     }
 }
 
+/// Something went down. Put what it was carrying on the shelves.
+///
+/// **One place, called from every path that can kill.** There are three
+/// — a dart battery's shot, a cutter arm's blade, and whatever comes
+/// next — and a drop that only happens on one of them is a drop that
+/// depends on *how* you fought, which is not a distinction this game
+/// makes anywhere else.
+///
+/// Anything that does not fit is lost, and that is the honest outcome
+/// rather than a special case: a tower with nowhere to put two alloy
+/// has told you something about itself. It is also the same rule the
+/// waypoints keep.
+pub fn felled(state: &mut GameState, content: &Content, def: EnemyIdx) {
+    let Some(runtime) = content.enemy_runtime.get(def.get()) else {
+        return;
+    };
+    for (item, amount) in &runtime.drops {
+        let mut left = *amount;
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                left -= room.shelve(*item, left);
+                if left <= 0 {
+                    break;
+                }
+            }
+            if left <= 0 {
+                break;
+            }
+        }
+    }
+}
+
 /// Wake what a ruin has instead of a lock.
 ///
 /// Called by `intake` the first time a rig takes anything out of a given

@@ -689,38 +689,44 @@ fn the_moment_something_gives_way_has_its_own_sound() {
         floor.panel.hp = 1;
     }
 
+    // **Counted across the whole tower, not on one named panel.** M6
+    // shortened `wave_interval_ticks` to 3,400 (`SYSTEMS.md` §6.15), so
+    // a second creature working a *different* floor now lands inside
+    // this window — and a Breach from that one is a correct Breach
+    // about a panel this test was not watching.
+    let intact = |game: &crate::engine::GameEngine| {
+        game.state()
+            .tower
+            .floors
+            .iter()
+            .filter(|floor| floor.panel.hp > 0)
+            .count()
+    };
+
     let mut ever_breached = false;
     for _ in 0..20_000 {
-        let intact_before = !panel_broken(&game);
+        let standing = intact(&game);
         let breached = game.step(1).contains(&crate::systems::SoundEvent::Breach);
         if breached {
             // The bite that made that sound has to be the bite that
             // took the last hit point. Anything else means the two
             // cues are telling the player the wrong thing.
             assert!(
-                intact_before && panel_broken(&game),
-                "a Breach sounded while the panel was still standing"
+                intact(&game) < standing,
+                "a Breach sounded while every panel was still standing"
             );
             ever_breached = true;
             break;
         }
         assert!(
-            intact_before || !breached,
-            "a Breach sounded for a panel that had already fallen in"
+            standing > 0 || !breached,
+            "a Breach sounded when every panel had already fallen in"
         );
     }
 
     assert!(ever_breached, "a panel fell in without a sound");
 }
 
-fn panel_broken(game: &crate::engine::GameEngine) -> bool {
-    game.state()
-        .tower
-        .floor(0)
-        .expect("the tower has a ground floor")
-        .panel
-        .is_broken()
-}
 
 #[test]
 fn the_pack_defines_creatures_that_each_teach_something() {
@@ -793,6 +799,34 @@ fn harvesting_hard_draws_attention_and_walking_quietly_sheds_it() {
     // test placed exactly one and there is exactly one to pull.
     game.try_send(GameCommand::RemoveRoom { floor: 1, slot: 8 })
         .expect("a cutter arm is removable");
+
+    // **And the burners off, or this measures an equilibrium.** Smoke
+    // is provocation too (`provocation_per_burn`), so a tower that has
+    // stopped *harvesting* is still being topped up by the thing that
+    // powers it — measured, 11 before and 11 after, which is decay
+    // exactly cancelling burn rather than decay failing.
+    let burners: Vec<(u8, u8)> = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter().map(move |room| (floor.index, room.slot)))
+        .filter(|(floor, slot)| {
+            game.state()
+                .tower
+                .find_room(*floor, *slot)
+                .is_some_and(|room| game.content().room_rt(room.def).burner_fuel.is_some())
+        })
+        .collect();
+    for (floor, slot) in burners {
+        let _ = game.try_send(GameCommand::SetRoomActive {
+            floor,
+            slot,
+            active: false,
+        });
+    }
+    let provoked = game.state().siege.provocation.max(provoked);
+
     crate::tests::step_walking(&mut game, 12_000);
     assert!(
         game.state().siege.provocation < provoked,
@@ -2436,5 +2470,104 @@ fn a_cutter_arm_cuts_what_climbs_into_it() {
     assert!(
         armed < bare,
         "an arm on the floor a creature was clinging to did nothing: {armed} against {bare}"
+    );
+}
+
+#[test]
+fn what_a_resident_was_carrying_lands_on_the_shelves() {
+    // **The only reason to stand and fight.** §11 makes walking away the
+    // free answer to every wave, and a free answer with no alternative
+    // is not a decision — a drop is the alternative. It is not loot: a
+    // skitter leaves nothing, and only the residents carry anything, or
+    // the jungle becomes something you farm (`DECISIONS.md` §8).
+    let content = content();
+    let alloy = item(&content, "item.alloy");
+    let mother = content
+        .enemy_idx("enemy.thicket_mother")
+        .expect("the pack defines a thicket mother");
+
+    let mut game = engine(1500);
+    hold_the_repairs_off(&mut game);
+    // **Stopped.** A mother moves at 9 paces per 100 ticks against a
+    // striding tower's 18, so a walking tower simply leaves it behind —
+    // which is §11 working exactly as designed and is not what this
+    // test is about.
+    game.try_send(GameCommand::SetStriding { walking: false })
+        .expect("always legal");
+    // Shelf room, or the drop lands nowhere and this measures storage.
+    crate::tests::stock_item(&mut game, "item.alloy", 1);
+
+    let before = game.state().stock_of(alloy);
+    place_creature(&mut game, mother, 0);
+    {
+        // Down to its last point, so the next thing that touches it
+        // fells it. What this test is about is what happens *then*, not
+        // how long five hundred hit points take.
+        let state = game.state_mut_for_test();
+        state.siege.enemies[0].hp = 1;
+    }
+    // **A battery on the floor it is chewing, and loaded.** A weapon
+    // with no ammunition is as quiet as a starved mill, which is the
+    // equivalence `defence.rs` is built on — and the tower's own thorn
+    // gun ships with an empty rack.
+    // Floor 3, because an emplacement's reach is *horizontal* — it is
+    // `(enemy.at - tower_at).abs()` against `range_paces`, and which
+    // deck it stands on decides nothing about what it can hit. Floor 3
+    // is the one the fixture leaves clear.
+    crate::tests::stock_poles(&mut game, 20);
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.dart_battery".into(),
+        floor: 3,
+        slot: content.balance.tower.floor_slots - 1,
+    })
+    .expect("floor 3's leading edge is clear in the fixture tower");
+    {
+        let darts = item(&content, "item.darts");
+        let state = game.state_mut_for_test();
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                if let Some(rack) = room.inputs.iter_mut().find(|stack| stack.item == darts) {
+                    let space = rack.space();
+                    rack.deposit(space);
+                }
+            }
+        }
+    }
+    for _ in 0..2000 {
+        game.step(1);
+        if game.state().stock_of(alloy) > before {
+            break;
+        }
+    }
+
+    assert!(
+        game.state().stock_of(alloy) > before,
+        "a resident went down and left nothing: {before} then {}, enemies {:?}",
+        game.state().stock_of(alloy),
+        game.state()
+            .siege
+            .enemies
+            .iter()
+            .map(|e| (e.hp, e.state, e.at - game.state().world.distance))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn ordinary_creatures_leave_nothing() {
+    // The other half, and the one that keeps the jungle from being a
+    // gallery to clear: everything that is not a resident drops
+    // nothing at all.
+    let content = content();
+    let carrying: Vec<&str> = content
+        .enemies
+        .iter()
+        .filter(|enemy| !enemy.drops.is_empty())
+        .map(|enemy| enemy.id.as_str())
+        .collect();
+    assert_eq!(
+        carrying,
+        vec!["enemy.thicket_mother"],
+        "more than the residents are carrying something"
     );
 }

@@ -79,7 +79,9 @@ fn cut_what_climbs_in(state: &mut GameState, content: &Content, sounds: &mut Vec
         if enemy.hp <= 0 {
             enemy.state = EnemyState::Dying;
             enemy.fade_left = content.balance.siege.enemy_fade_ticks;
+            let def = enemy.def;
             sounds.push(SoundEvent::EnemyDown);
+            super::siege::felled(state, content, def);
         } else {
             sounds.push(SoundEvent::Shot);
         }
@@ -181,7 +183,9 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         if enemy.hp <= 0 {
             enemy.state = EnemyState::Dying;
             enemy.fade_left = content.balance.siege.enemy_fade_ticks;
+            let def = enemy.def;
             sounds.push(SoundEvent::EnemyDown);
+            super::siege::felled(state, content, def);
         } else {
             sounds.push(SoundEvent::Shot);
         }
