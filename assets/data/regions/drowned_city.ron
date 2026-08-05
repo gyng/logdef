@@ -11,8 +11,8 @@ RegionDef(
     id: "region.drowned_city",
     name: "The Drowned City",
     order: 1,
-    length_min_paces: 9700,
-    length_max_paces: 13100,
+    length_min_paces: 8200,
+    length_max_paces: 11100,
     ruin_richness_min_pct: 60,
     ruin_richness_max_pct: 140,
     // Four kinds, comfortably clear of the three-kind minimum. Clearing
@@ -35,13 +35,13 @@ RegionDef(
     // (`SYSTEMS.md` §6.14). Sparser than the jungle: the drowned city already has ruins to
     // berth at, and stacking waypoints on top of them would make one
     // beat cover the other.
-    waypoint_interval_paces: 1400,
-    fork_interval_paces: 4300,
+    waypoint_interval_paces: 1200,
+    fork_interval_paces: 3700,
     branches: [
         BranchDef(
             id: "branch.collapsed_district",
             name: "Collapsed District",
-            length_paces: 6000,
+            length_paces: 5100,
             palette: [
                 TerrainWeight(terrain: "terrain.ruin_field", weight: 55),
                 TerrainWeight(terrain: "terrain.drowned_street", weight: 30),
@@ -54,7 +54,7 @@ RegionDef(
         BranchDef(
             id: "branch.flooded_boulevard",
             name: "Flooded Boulevard",
-            length_paces: 6000,
+            length_paces: 5100,
             palette: [
                 TerrainWeight(terrain: "terrain.drowned_street", weight: 60),
                 TerrainWeight(terrain: "terrain.ruin_field", weight: 25),
@@ -67,7 +67,7 @@ RegionDef(
         BranchDef(
             id: "branch.green_terraces",
             name: "Green Terraces",
-            length_paces: 6000,
+            length_paces: 5100,
             palette: [
                 TerrainWeight(terrain: "terrain.canopy", weight: 50),
                 TerrainWeight(terrain: "terrain.clearing", weight: 25),
@@ -91,7 +91,7 @@ RegionDef(
     enclave: EnclaveDef(
         id: "enclave.high_water",
         name: "High Water",
-        at_paces: 2300,
+        at_paces: 2000,
         // Neighbours, not a merchant's inventory. Every rate here is
         // worse than the chain's own — a mill turns bamboo into poles
         // one for one, a thornwright turns a pole into three darts — so

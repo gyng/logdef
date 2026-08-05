@@ -15,8 +15,8 @@ RegionDef(
     // midpoint is about 55 minutes of unbroken 1x walking; the +/-8,000
     // spread is a little over half a fork interval, so most seeds
     // differ by one fork and none by more than one.
-    length_min_paces: 14900,
-    length_max_paces: 19400,
+    length_min_paces: 12700,
+    length_max_paces: 16500,
     // Likewise rolled once. Wide enough that a lean run and a generous
     // one are different propositions rather than different rounding.
     ruin_richness_min_pct: 60,
@@ -38,8 +38,8 @@ RegionDef(
     // eleven hundred paces is about one a minute at the shipped stride
     // — often enough to be a rhythm, rare enough that the prompt is
     // still an event when it comes.
-    waypoint_interval_paces: 1100,
-    fork_interval_paces: 4300,
+    waypoint_interval_paces: 900,
+    fork_interval_paces: 3700,
     // Three archetypes, so the pair a fork draws differs between forks
     // and between seeds. Every palette clears the three-kind minimum.
     branches: [
@@ -49,7 +49,7 @@ RegionDef(
             // ~5.5 minutes at 1x — long enough to change what the chain
             // is doing, short enough that a bad pick is not a lost
             // region.
-            length_paces: 6000,
+            length_paces: 5100,
             palette: [
                 TerrainWeight(terrain: "terrain.canopy", weight: 70),
                 TerrainWeight(terrain: "terrain.clearing", weight: 20),
@@ -61,7 +61,7 @@ RegionDef(
         BranchDef(
             id: "branch.old_riverbed",
             name: "Old Riverbed",
-            length_paces: 6000,
+            length_paces: 5100,
             palette: [
                 TerrainWeight(terrain: "terrain.clearing", weight: 55),
                 TerrainWeight(terrain: "terrain.ruin_field", weight: 25),
@@ -74,7 +74,7 @@ RegionDef(
         BranchDef(
             id: "branch.overgrown_ruins",
             name: "Overgrown Ruins",
-            length_paces: 6000,
+            length_paces: 5100,
             palette: [
                 TerrainWeight(terrain: "terrain.ruin_field", weight: 55),
                 TerrainWeight(terrain: "terrain.canopy", weight: 25),
@@ -105,7 +105,7 @@ RegionDef(
         // A little past halfway through the shortest roll this region
         // can take, so it lands after a fork or two rather than in the
         // opening minutes, and no run misses it.
-        at_paces: 8600,
+        at_paces: 7300,
         // **What the jungle has, and what it has not.** Timber and
         // thorn in quantity; no metal at all. So it pays in rope and
         // darts and buys scrap, and every rate here is worse than the

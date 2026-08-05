@@ -99,8 +99,12 @@ adding anything to a wave**, because the tone gate is what shaped every one of t
 loadouts and crew fighting boarders were cut rather than softened, and what survived is the
 shape of *attention* rather than the shape of a fight.
 
-A run is now **37–44 minutes at 1×**, down from 129–147 — the journey layer scaled by 3.5 and
-nothing else moved. §6.6 records the three things tried instead and why each made it worse; the
+A run is now **31–36 minutes at 1×** (`SYSTEMS.md` §6.19), down from 37–44 — the journey layer
+scaled again and nothing else moved. **Thirty was the target and thirty does not work yet**:
+0.73 delivers 28–32 minutes and a tower that reaches the Refugia four poles short of the ten a
+lift costs, permanently, because arriving ends its income. Four compensations were measured
+and all four were worse; §6.19 lists them. That gap is now the largest open balance question
+in the project. §6.6 records the three things tried instead and why each made it worse; the
 short version is that crew hauling is the binding constraint, so speeding production only fills
 shelves the crew cannot clear.
 

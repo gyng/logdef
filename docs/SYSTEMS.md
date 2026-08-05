@@ -6854,6 +6854,71 @@ goes up, so the whole "which shaft" decision the ladder was supposed to offer is
 left is *whether*, *where* and *how tall*, which §6.9's shaft-placement question already says
 the game teaches nothing about.
 
+### 6.19 A shorter run, and what it cost
+
+**The journey is scaled to 0.85 and the walker's floor is 31–36 minutes**, down from 37–44.
+Every pace-denominated distance in the region pack moved together — region lengths, waypoint
+and fork intervals, branch lengths, enclave positions — so the *shape* of a run is untouched:
+the same number of beats, the same number of forks, the enclave at the same fraction of the
+way through. Only the clock moved.
+
+Twelve seeds, twelve arrivals.
+
+#### 30 was the target and 30 does not work yet
+
+The ask was thirty minutes. A scale of 0.73 delivers it — **28–32 minutes, 12/12 arriving** —
+and it is not shipped, because at that length **a tower cannot afford a lift before the run
+ends.**
+
+Measured on `examples/record_golden.rs`, which walks a scripted tower the whole way and buys
+in the best order found: at 0.73 the tower covers all 33,753 paces, builds its ladder, its
+chain, a storeroom, a canteen, two burners, a comb and a ropery — and reaches the Refugia
+holding **four poles** of the ten a shaft costs. It never gets them, because a tower that has
+arrived earns nothing. A lift is worth +256% hauls at eight floors (§6.18), so a 30-minute run
+is a run without the game's largest single improvement in it.
+
+Four compensations were tried and all four measured worse:
+
+1. **Raise harvest.** `paces_per_item` 78 → 57 on the cutter arm made the tower *poorer*: the
+   arm outran the mill, bamboo claimed the shelves, and poles had nowhere to land. The cutter
+   arm's own balance row has warned about this since M2, and this is the second time it has
+   been paid for.
+2. **Buy the shaft first**, on the grounds that it is the throughput multiplier. Worse — ten
+   purchases against twelve. The lift's +256% is measured at eight floors and this tower has
+   five.
+3. **Cut the price to six poles.** No effect: four is less than six too.
+4. **Grant the tail.** Diverges the replay at the first granted pole, because a grant is not a
+   `GameCommand` and the fixture replays commands. The fixture was right to refuse it.
+
+0.85 is the shortest scale at which the fixture completes. That makes **31–36 minutes the
+current floor for a run that contains a shaft**, and the gap between that and thirty is a real
+design question rather than a tuning oversight: either the run is a little longer than thirty,
+or a tower's mid-run income has to rise without the shelves jamming — and nothing measured so
+far does the second.
+
+#### Two things dropped out of the fixture on the way
+
+Both because a shorter run pays for less, and both worth knowing:
+
+- **The weapons.** A dart battery and a thornwright used to be scripted. They are not
+  affordable at this length. Weapon *behaviour* is still covered — the opening tower ships
+  with a thorn gun (§6.11) — but placing one is now only covered by `tests/`.
+- **The second bunk.** The opening tower ships with one bed and three crew, so a tower is
+  already short of hammocks and the fixture still records both halves of sleep — somebody in a
+  bed and somebody on the deck — without buying anything.
+
+**And the berth had to move earlier.** The script is longer than the run: 30 minutes is about
+54,000 ticks and the recording is 119,000, so by the time the tower has saved for a shaft it
+has *arrived* — parked, with no ground streaming past and therefore no ruin that could ever
+come into reach. It failed exactly that way, forty thousand ticks of a stationary tower
+looking for one. Anything in the fixture that needs *terrain* now happens while the legs are
+still moving.
+
+#### What is not settled
+
+The thirty-minute target, above. And every figure in `BALANCE.md`'s Journey section is now
+doubly stale — read off a broken harness, and then measured against a journey 15% shorter.
+
 ### 6.9 Open questions
 
 0. **Is the ladder legible, or merely short?** §6.11 can show the opening is *buildable* —
@@ -6862,13 +6927,19 @@ the game teaches nothing about.
    wants two people in it, or that the menu growing is a reward rather than a bug. That is the
    same stranger-at-the-keyboard criterion this project has carried open since M5, and it is now
    load-bearing for the first five minutes rather than only for balance.
-1. **Is ten percent a rank the right ten percent?** §6.17's practice was measured as a
+1. **Can a thirty-minute run contain a shaft?** §6.19 hit thirty minutes and did not ship it:
+   at that length a tower reaches the Refugia holding four poles of the ten a lift costs, and
+   never gets the rest, because arriving ends its income. Four compensations were measured and
+   all four were worse. The choices are a slightly longer run, a cheaper shaft, or mid-run
+   income that rises without jamming the shelves — and the third is the one nothing has found
+   yet. This is the largest open balance question in the project.
+2. **Is ten percent a rank the right ten percent?** §6.17's practice was measured as a
    maximum against a zero: two towers, one seed, one of them starting at the ceiling, and
    the veterans get more done. That answers *does it reach the tower* and not *is this the
    number*. Nobody has played a run at 20% or at 5%, and the failure mode to watch for is
    the one the modesty is guarding against — a run won by parking one person on one job
    from the first pace, which would mean the bonus is large enough to be a build order.
-2. **Where should a shaft go, and is there a decision left at all?** §6.16's width sweep
+3. **Where should a shaft go, and is there a decision left at all?** §6.16's width sweep
    turned `lift.rs`'s oldest hypothesis into a measurement — the elevator's value fell from
    +91% to +48% as the hull widened, entirely through crew walking further to reach it. §6.18
    then folded the dumbwaiter in, and the merged shaft holds +251% to +271% across the same
@@ -6876,33 +6947,33 @@ the game teaches nothing about.
    there is now one built shaft that goes up, so "which shaft" is not a choice any more.
    Whether, where and how tall are what is left, and the game still teaches none of them and
    offers no way to move a shaft once built.
-3. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
+4. **Does a mother read as territory or as a boss fight?** §6.15 argues the first and an
    instrument cannot tell them apart — the numbers are sized against the kill-shot table and
    nobody has met one. The tell is whether a player who fells one goes looking for the next,
    because that is the jungle becoming a gallery, which `DECISIONS.md` §8 rules out.
-4. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
+5. **Is a beat every 1,100 paces a rhythm or a metronome?** §6.14 answers "the journey is a
    screensaver" by putting something in front of the player roughly once a minute, and the
    failure mode of that fix is the opposite complaint: a prompt often enough to become
    wallpaper. The tell is whether anybody reads the second one. Note also that the streaming
    window (900 ahead, 300 behind) is *narrower* than the interval, so beats can appear without
    being seen coming — deliberate for now, and the first thing to change if they read as
    pop-ups.
-5. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
+6. **Is a ten-wide floor a quietly easier floor?** §6.13 widened it to decouple the weapon
    edge from the shaft column, which is a placement fix — but every layout puzzle now has two
    more answers, and `floor_slots`' own row is explicit that its value was chosen for scarcity.
    Nobody has played a ten-wide tower against an eight-wide one. It is on the difficulty pass's
    list and it is the change on that list most likely to have made the game softer by accident.
-6. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
+7. **Does the push make stationing redundant?** §6.12 gives the player a verb that does most
    of what a posting does and cleans up after itself. If nobody ever uses the permanent form
    once they have the temporary one, that is not two verbs, it is one verb and a trap — and
    the tell is whether anybody posts somebody *for the run* rather than *for the minute*.
-7. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
+8. **What stops a tower that loses its only cutter arm?** Nothing, currently. §6.10 records the
    spiral: repair wants poles, poles want the mill, the mill wants bamboo, bamboo wants the arm.
    The sails used to fund enough slack that it never came up; `starting_stock` now buys exactly
    one mend of margin. The candidate answers are a second intake room the opening tower can
    afford, a repair path that does not cost the material the dead room makes, or accepting it as
    a loss condition and *saying so* — which is the one thing the current version does not do.
-8. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
+9. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
 2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves

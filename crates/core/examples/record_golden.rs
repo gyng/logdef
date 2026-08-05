@@ -114,6 +114,56 @@ fn main() {
     place_when_affordable(&mut engine, "room.canteen", 3, 1);
     step_walking(&mut engine, 600);
 
+    // **The berth, early, because the script is now longer than the
+    // run.** A 30-minute journey is about 54,000 ticks and this
+    // recording is 115,000, so by the time the tower has saved for a
+    // shaft it has *arrived* — parked at the Refugia with no ground
+    // streaming past and therefore no ruin that could ever come into
+    // reach. It failed exactly that way: "the recorder never walked
+    // past a ruin", forty thousand ticks of a stationary tower.
+    //
+    // Everything after arrival still records — commands work, crew
+    // work, the tower simply earns nothing — so only the parts that
+    // need *terrain* have to happen while the legs are moving. This is
+    // the one that does.
+    let reach = rig_reach(&engine);
+    for _ in 0..40_000 {
+        answer_any_fork(&mut engine);
+        engine.step(1);
+        if engine.state().world.ruin_in_reach(reach).is_some() {
+            break;
+        }
+    }
+    assert!(
+        engine.state().world.ruin_in_reach(reach).is_some(),
+        "the recorder never walked past a ruin, so the fixture has no berth in it"
+    );
+    engine
+        .try_send(GameCommand::SetStriding { walking: false })
+        .expect("always legal");
+    step_walking(&mut engine, 4500);
+
+    // And off again. **The resume belongs to the berth**, not to a
+    // later paragraph: left behind when the berth moved earlier, the
+    // tower stopped at its ruin and stayed stopped, and the recording
+    // died 90,000 ticks later on a burner it could not afford with
+    // eleven thousand paces walked and `arrived false`.
+    engine
+        .try_send(GameCommand::SetStriding { walking: true })
+        .expect("always legal");
+    step_walking(&mut engine, 3000);
+
+    // What the berth actually produced, asserted rather than assumed. A
+    // fixture that walked past a ruin, stopped, and extracted nothing
+    // would still be a valid recording — of a tower standing still.
+    // **No rig in the fixture from M5, so no scrap and no wardens.**
+    // The berth is still recorded — the tower still stops with a ruin in
+    // reach, which exercises the halt, the world state and the intake
+    // system's berthed branch — but there is nothing aboard to extract
+    // with. See the note above the walk for why the rig lost its slot,
+    // and `tests/journey.rs` for where ruin intake and wardens are
+    // covered end to end.
+
     // Higher again, and a second burner with it: charge is no longer
     // free, growing the tower adds lamps, and the fixture should record
     // a tower that can pay for the height it just bought.
@@ -227,11 +277,22 @@ fn main() {
     // which is the better home for it: a spill is a haul decision, and
     // testing it needs a deliberately jammed tower rather than a healthy
     // one that happens to own a chute.
-    // Beds, on the new top floor. Two of them, which at a three-crew
-    // tower with everybody on the day shift is one short — deliberately,
-    // so the fixture records both halves of sleep: somebody in a
-    // hammock, and somebody on the deck at half the rest rate.
-    place_when_affordable(&mut engine, "room.bunk", 4, 3);
+    // **The extra bunk is off this list too, and the shipped bed
+    // covers what it was for.**
+    //
+    // This used to buy a second bunk so the fixture recorded both
+    // halves of sleep — somebody in a hammock and somebody on the deck
+    // at half the rest rate. It still does: the opening tower ships
+    // with one bed and three crew (`SYSTEMS.md` §6.11), so the tower is
+    // *already* short of hammocks and both halves are in the recording
+    // without buying anything.
+    //
+    // What buying it now costs is the recording itself. Measured: the
+    // tower walks all 35,470 paces, builds its ladder, chain,
+    // storeroom, canteen, two burners, comb, ropery and lift, and
+    // arrives at the Refugia with **zero poles**, three short. See the
+    // note further down about the weapons for the three compensations
+    // tried and why each was worse.
     // An elevator costs a lot of poles. Bank them before asking for
     // one, and before adding a second consumer of the same item — a
     // thornwright eats poles as fast as the mill can supply them, so
@@ -243,37 +304,45 @@ fn main() {
     // recorded against a quieter one would not be recording this game.
     step_walking(&mut engine, 12_000);
 
-    // **The battery before the elevator, and the order is the finding.**
-    // A dart battery is 6 poles and 2 rope; an elevator is 12 and 4.
-    // Bought after the shaft it never became affordable at all once the
-    // journey was scaled for a 40-minute run: the tower spent everything
-    // on the lift, walked its 43,972 paces, *arrived*, and then stood
-    // still earning nothing for the rest of the script. Measured — the
-    // wait ran to tick 141,300 with `arrived true` and no poles at all,
-    // having already built and demolished a thornwright and made twelve
-    // darts, so it was one purchase short of the whole recording.
+    // **The weapons are off this list, and that is a finding rather
+    // than a trim.**
     //
-    // A run is now about two fifths as long, so a tower's whole income
-    // is about two fifths of what this script was written against, and
-    // the order it buys in stopped being free. Cheap and load-bearing
-    // first — the rule the shopping lists in `examples/` already follow,
-    // arrived at here the hard way.
-    // The front, like every weapon since M6.
-    place_when_affordable(&mut engine, "room.dart_battery", 3, 9);
-    step_walking(&mut engine, 1800);
+    // This block used to buy a dart battery and a thornwright, and
+    // carried three paragraphs of reasoning about which order a
+    // 40-minute run could pay them in. The run is now **30 minutes**
+    // (`SYSTEMS.md` §6.19), and it cannot pay for them at all: measured
+    // over the whole journey in every ordering tried, the tower reaches
+    // the far edge having earned its ladder, its chain, a canteen, two
+    // burners, a comb, a ropery, a bunk and **the lift**, and is then
+    // standing at the Refugia with two to nine poles and no ground left
+    // to cover. Roughly a dozen poles short of a maximal build-out.
+    //
+    // Three ways out were tried and measured, and all three were worse:
+    //
+    // - **Raise harvest to compensate.** `paces_per_item` 78 -> 57 on
+    //   the cutter arm made the tower *poorer* — the arm outran the
+    //   mill, bamboo claimed the shelves, and poles had nowhere to
+    //   land. The cutter arm's own row has warned about this since M2.
+    // - **Buy the shaft first**, on the grounds that it is worth +256%
+    //   hauls (§6.18). Worse: it got ten purchases where buying it last
+    //   got twelve. The lift's advantage is measured at eight floors
+    //   and this tower has five.
+    // - **Grant the tail.** Diverges the replay at the first granted
+    //   pole, because a grant is not a `GameCommand` and the fixture
+    //   replays commands. The fixture was right to refuse it.
+    //
+    // So the fixture records the tower a 30-minute run actually buys.
+    // Whether the game should be longer, or the tree cheaper, is a
+    // design question and a player's to answer — §6.19 carries it.
 
-    // Darts to put in it, from the same argument: a thornwright is 5
-    // poles and it used to sit after the elevator, where the tower had
-    // four poles and needed five. One short, with the whole journey
-    // already walked. Both cheap rooms now come before the expensive
-    // shaft, which is the only ordering a 40-minute run can pay for.
-    place_when_affordable(&mut engine, "room.thornwright", 4, 5);
-    step_walking(&mut engine, 1800);
-
-    // And a demolition, so the stale-task path is covered too.
+    // A demolition, so the stale-task path is covered. The fiber comb,
+    // which by now is switched off and whose fiber nothing is eating —
+    // a better subject than the thornwright this used to remove,
+    // because a room with hauls still pointed at it is the case the
+    // stale-task path is for.
     engine
-        .try_send(GameCommand::RemoveRoom { floor: 4, slot: 5 })
-        .expect("the thornwright placed above should still be there");
+        .try_send(GameCommand::RemoveRoom { floor: 1, slot: 5 })
+        .expect("the fiber comb placed above should still be there");
     step_walking(&mut engine, 900);
 
     // The elevator: cars, dispatch, dwell, and a charge draw per floor.
@@ -367,33 +436,6 @@ fn main() {
     //
     // That three ground rooms do not fit on two ground floors is a real
     // tension rather than a fixture problem — see `SYSTEMS.md` §5.11.
-    let reach = rig_reach(&engine);
-    for _ in 0..40_000 {
-        answer_any_fork(&mut engine);
-        engine.step(1);
-        if engine.state().world.ruin_in_reach(reach).is_some() {
-            break;
-        }
-    }
-    assert!(
-        engine.state().world.ruin_in_reach(reach).is_some(),
-        "the recorder never walked past a ruin, so the fixture has no berth in it"
-    );
-    engine
-        .try_send(GameCommand::SetStriding { walking: false })
-        .expect("always legal");
-    step_walking(&mut engine, 4500);
-
-    // What the berth actually produced, asserted rather than assumed. A
-    // fixture that walked past a ruin, stopped, and extracted nothing
-    // would still be a valid recording — of a tower standing still.
-    // **No rig in the fixture from M5, so no scrap and no wardens.**
-    // The berth is still recorded — the tower still stops with a ruin in
-    // reach, which exercises the halt, the world state and the intake
-    // system's berthed branch — but there is nothing aboard to extract
-    // with. See the note above the walk for why the rig lost its slot,
-    // and `tests/journey.rs` for where ruin intake and wardens are
-    // covered end to end.
     let scrap = scrap_held(&engine);
     let roused = wardens_out(&engine);
 
@@ -411,11 +453,6 @@ fn main() {
         crew_ticks_asleep > 0,
         "the fixture has bunks in it but nobody ever slept"
     );
-
-    engine
-        .try_send(GameCommand::SetStriding { walking: true })
-        .expect("always legal");
-    step_walking(&mut engine, 3000);
 
     // The enclave is deliberately **not** in this fixture. Reaching it
     // means walking into region 2, which took the recording from 40,000

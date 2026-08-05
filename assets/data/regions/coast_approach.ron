@@ -19,8 +19,8 @@ RegionDef(
     // is at its most built and the crew at their most numerous, and the
     // run needs somewhere to spend all of that before it ends. At 0.6
     // paces a tick it is roughly 25-33 minutes of 1x walking.
-    length_min_paces: 12900,
-    length_max_paces: 17100,
+    length_min_paces: 11000,
+    length_max_paces: 14500,
     // Poorer than the city. What the sea left is picked over.
     ruin_richness_min_pct: 50,
     ruin_richness_max_pct: 120,
@@ -48,13 +48,13 @@ RegionDef(
     // out and the point of it is that there is less out here — a
     // waypoint every two thousand paces reads as *scarcity* rather
     // than as the generator having forgotten.
-    waypoint_interval_paces: 2000,
-    fork_interval_paces: 4300,
+    waypoint_interval_paces: 1700,
+    fork_interval_paces: 3700,
     branches: [
         BranchDef(
             id: "branch.tide_road",
             name: "Tide Road",
-            length_paces: 6000,
+            length_paces: 5100,
             // Three kinds, which is the pack's minimum — fewer makes
             // the no-repeat rule alternate and the ground read as a
             // stripe pattern rather than as country.
@@ -71,7 +71,7 @@ RegionDef(
         BranchDef(
             id: "branch.driftwood_shelf",
             name: "Driftwood Shelf",
-            length_paces: 6000,
+            length_paces: 5100,
             palette: [
                 TerrainWeight(terrain: "terrain.ruin_field", weight: 45),
                 TerrainWeight(terrain: "terrain.salt_flat", weight: 35),
@@ -84,7 +84,7 @@ RegionDef(
         BranchDef(
             id: "branch.last_green",
             name: "The Last Green",
-            length_paces: 6000,
+            length_paces: 5100,
             palette: [
                 TerrainWeight(terrain: "terrain.clearing", weight: 55),
                 TerrainWeight(terrain: "terrain.salt_flat", weight: 25),
@@ -112,7 +112,7 @@ RegionDef(
     enclave: EnclaveDef(
         id: "enclave.tidewatch",
         name: "Tidewatch",
-        at_paces: 4600,
+        at_paces: 3900,
         // **The coast wants alloy, which nowhere else does.** A tower
         // that ran a forge arrives with something these people cannot
         // make and will pay for; one that never berthed has poles and

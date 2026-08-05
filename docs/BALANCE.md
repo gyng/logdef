@@ -299,10 +299,15 @@ What creatures attack, how far ahead they appear, how often waves come, the one 
 > branch again: reckless pays on 10 seeds of 12, careful on 10, with the same seeds
 > disagreeing violently (−90.6% and +211.4% both occur).
 >
-> The rows below have **not** been re-derived from the working harness. The scrap ranges and
-> the poles-equivalent comparisons in particular were read off the broken one and should be
-> re-measured before they are relied on. That is the difficulty pass's work, and it is a
-> person's.
+> **And then the journey moved under them again.** `SYSTEMS.md` §6.19 scaled every
+> pace-denominated distance in the region pack to 0.85 for a shorter run — the walker's floor
+> is 31–36 minutes now, down from 37–44 — so every length, interval and position quoted below
+> is 15% longer than the pack ships.
+>
+> The rows below have therefore **not** been re-derived, twice over: read off a broken harness,
+> then measured against a longer journey. The scrap ranges and the poles-equivalent
+> comparisons in particular should be re-measured before they are relied on. That is the
+> difficulty pass's work, and it is a person's.
 
 The handful of constants that belong to the run rather than to any one room or creature:
 where a fork is allowed to fall, how near an enclave counts as berthed, and what a ruin

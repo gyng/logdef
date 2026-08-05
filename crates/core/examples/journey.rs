@@ -42,11 +42,24 @@ fn ticks_per_day() -> u32 {
 /// Long enough for the longest region-1 roll at a walking pace, with
 /// room for a policy that stops a lot.
 const PATIENCE: u32 = 400_000;
-/// Just over seven and a half days — long enough for a tower to finish
-/// its shopping list, jam if it is going to, and settle into a steady
-/// state, and short enough that every seed's region-1 roll outlasts it.
-/// The route comparison runs to this rather than to the region edge.
-const FIXED_BUDGET: u32 = 109_520;
+/// Long enough for a tower to finish its shopping list, jam if it is
+/// going to, and settle into a steady state — and **short enough that
+/// every seed's region-1 roll outlasts it**, which is the property that
+/// makes it a route comparison rather than a comparison of two
+/// different regions.
+///
+/// **It was 109,520 and that property had quietly failed.** The old
+/// figure was calibrated against a tower with no cutter arm and no mill
+/// — the harness bug two commits back — which spent three quarters of
+/// its run parked and therefore took about 107,000 ticks to cross
+/// region 1. A tower that can afford to walk crosses it in a fifth of
+/// that, so the "budget" ran three regions deep and the comparison was
+/// over whatever ground happened to follow.
+///
+/// Region 1's shortest roll is now 10,900 paces, which at
+/// `stride_paces_per_100_ticks` 60 is 18,167 ticks of walking. Fifteen
+/// thousand sits inside that with room for the halts a tower takes.
+const FIXED_BUDGET: u32 = 15_000;
 
 fn main() {
     println!("=== one policy, {SEEDS} seeds ===\n");
@@ -192,6 +205,18 @@ fn how_long_is_a_run() {
     for seed in 1..=SEEDS {
         let mut engine = GameEngine::new(seed);
         engine.set_speed(SimSpeed::X1);
+        // **The same empty tower that broke `play_tower`, in the
+        // function next door.** A bare `GameEngine::new` since M6 is a
+        // Heartseed, a bed and a gun: no cutter arm, no mill, no
+        // burner, and therefore no charge but the Heartseed's trickle —
+        // which is a *floor* rather than an income (`SYSTEMS.md`
+        // §6.10). Such a tower cannot afford to walk, so it spent about
+        // three quarters of every run parked, and this reported a run
+        // as **155-185 minutes** when pure walking is 35-46.
+        //
+        // That figure had been quoted as the run length. It was the
+        // length of a run with no economy in it.
+        understory_core::harness::chain_tower(&mut engine, 4);
         let mut ticks = 0u32;
         while ticks < 900_000 {
             if let Some(fork) = engine.state().world.fork
