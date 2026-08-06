@@ -131,8 +131,50 @@ const fail = (text: string): ToolResult => ({
  */
 function report(result: string | { Error: unknown }, ok: string): ToolResult {
   if (result === "Ok") return say(ok);
-  const why = typeof result === "string" ? result : JSON.stringify(result.Error);
-  return fail(`refused: ${why}`);
+  return fail(`refused: ${refusal(result)}`);
+}
+
+/**
+ * A `CommandError` in words.
+ *
+ * **Verbatim is not the same as legible.** These used to go out as the
+ * engine's serde, so a dogfood run's log is full of lines like
+ * `{"InsufficientStock":{"item":"item.poles","needed":18,"available":1}}`
+ * and bare `"NotBerthedAtAnEnclave"`. Both carry the fact and neither
+ * carries what to do about it, and the second is why one run spent
+ * dozens of calls re-offering trades at a settlement it was six
+ * thousand paces from: nothing in the refusal said *walk there first*.
+ *
+ * Only the shapes a player actually collides with are translated. The
+ * rest fall through to the raw form on purpose — a refusal nobody has
+ * written words for should look unfamiliar rather than be quietly
+ * smoothed into something that reads like it was expected.
+ */
+function refusal(result: string | { Error: unknown }): string {
+  if (typeof result === "string") {
+    if (result === "NotBerthedAtAnEnclave") {
+      return (
+        "you are not standing at a settlement. Trades, people and shell work only happen " +
+        "while berthed — walk to the one `understory_look` names and it halts there by itself."
+      );
+    }
+    if (result === "NoShellWorkHere") return "this settlement does not do shell work.";
+    if (result === "NoForkPending") return "the route does not split here.";
+    return result;
+  }
+  const error = result.Error as Record<string, Record<string, unknown>> | string;
+  if (typeof error === "string") return error;
+  const [kind, body] = Object.entries(error)[0] ?? [];
+  if (kind === "InsufficientStock" && body) {
+    // `item.charge_cells` -> `Charge cells`. Taken off the id rather
+    // than out of the catalog so this stays a pure function of the
+    // error: threading a catalog through fourteen call sites to
+    // capitalise a word is a poor trade.
+    const bare = String(body["item"] ?? "?").replace("item.", "").replace(/_/g, " ");
+    const name = bare.charAt(0).toUpperCase() + bare.slice(1);
+    return `you need ${String(body["needed"])} ${name} and hold ${String(body["available"])}.`;
+  }
+  return JSON.stringify(result.Error);
 }
 
 /** Everything a player can see, in one read. */
@@ -179,11 +221,33 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
   lines.push(`  shafts: ${shafts || "stairs only"}`);
 
   lines.push("");
+  // **Rest is the line that matters now** (`SYSTEMS.md` §6.32). It used
+  // to read "sleep, Day shift", which at least said something about the
+  // clock; cutting the rota briefly left it saying only what somebody
+  // was doing this second, and rest is now the thing that decides when
+  // they will stop doing it. A dogfood `look` with three crew all
+  // walking and no way to tell that one was about to go to bed is a
+  // surface that hides its own mechanism.
   lines.push("Crew:");
+  const bed = view.crew.filter((m) => m.asleep).length;
   for (const member of view.crew) {
+    const rest = member.asleep
+      ? "asleep"
+      : member.tired
+        ? "flagging, heading for a bed"
+        : `about ${String(Math.max(1, Math.round(member.rested / 30 / 60)))} min of work left`;
     lines.push(
-      `  ${member.name} — ${member.state}${member.stressed ? " (held up)" : ""}` +
-        (member.tired && !member.asleep ? ", flagging and heading for a bed" : ""),
+      `  ${member.name} — ${member.state}${member.stressed ? " (held up)" : ""}, ${rest}`,
+    );
+  }
+  // Crew sleep when they are tired, not on a rota, so how many are down
+  // at once is a fact the player has no control over and every reason
+  // to know — it is the difference between a slow tower and a stopped
+  // one, and there is no roster toggle to explain it any more.
+  if (bed > 0) {
+    lines.push(
+      `  (${String(bed)} of ${String(view.crew.length)} asleep. Nobody is woken — they get up ` +
+        `rested, or when the night is over. More bunks means they are down for less of it.)`,
     );
   }
 
@@ -200,19 +264,49 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
   // **Marked by whether the shelves can pay**, because "unlocked" and
   // "buildable right now" are different questions and an agent that
   // cannot tell them apart spends its turns being refused for money.
+  // **Split, not marked.** This was one list of nineteen entries with
+  // "— cannot pay" on sixteen of them, and a dogfood run's final `look`
+  // is the argument: three affordable rooms buried in a wall of
+  // refusals that all say the same thing. A model reading top-to-bottom
+  // has to hold sixteen negatives to find the three facts, and what it
+  // actually needs is "what can I do right now".
+  //
+  // The unaffordable ones are not dropped — knowing the *next* thing
+  // and its price is how a player decides what to save for — but they
+  // are summarised behind the nearest one rather than enumerated at
+  // full width.
   const held = new Map(view.stock.map((s) => [s.item, s.count]));
-  const buildable: string[] = [];
+  const affordable: string[] = [];
+  const beyond: { id: string; cost: string; short: number }[] = [];
   for (const at of view.unlocked) {
     const room = catalog.rooms[at];
     if (!room || room.category === "Heart") continue;
-    const paid = room.build_cost.every((c) => (held.get(c.item) ?? 0) >= c.amount);
     const cost = room.build_cost
       .map((c) => `${String(c.amount)} ${catalog.items[c.item]?.name ?? "?"}`)
       .join(" + ");
-    buildable.push(`${room.id} (${cost})${paid ? "" : " — cannot pay"}`);
+    // How far off it is, summed over everything it wants, so "nearest"
+    // means nearest to affordable rather than merely cheapest — a room
+    // wanting one more pole beats one wanting four rope the tower has
+    // none of.
+    const short = room.build_cost.reduce(
+      (sum, c) => sum + Math.max(0, c.amount - (held.get(c.item) ?? 0)),
+      0,
+    );
+    if (short === 0) affordable.push(`${room.id} (${cost})`);
+    else beyond.push({ id: room.id, cost, short });
   }
   lines.push("");
-  lines.push(`Can build: ${buildable.join("; ") || "nothing yet"}`);
+  lines.push(`Can build now: ${affordable.join("; ") || "nothing — the shelves cannot pay for anything"}`);
+  if (beyond.length > 0) {
+    let nearest = beyond[0]!;
+    for (const one of beyond) if (one.short < nearest.short) nearest = one;
+    const rest = beyond.length - 1;
+    lines.push(
+      `Cannot pay for ${String(beyond.length)} more. The nearest is ${nearest.id} ` +
+        `(${nearest.cost}), ${String(nearest.short)} short` +
+        (rest > 0 ? `; the other ${String(rest)} cost more.` : "."),
+    );
+  }
 
   if (view.journey.fork) {
     // **An answered fork is not a question.** `world.fork` keeps its

@@ -15,6 +15,16 @@ import { expect, test } from "@playwright/test";
 const BUILD_MS = Number(process.env.UNDERSTORY_BUILD_MS ?? "120000");
 const PLAY_MS = Number(process.env.UNDERSTORY_PLAY_MS ?? "170000");
 
+/**
+ * Is this refusal about money rather than about the slot?
+ *
+ * One place, because two greps for the same idea drift apart and the
+ * second one is always the one nobody updates.
+ */
+function cannotPay(text: string): boolean {
+  return /you need \d+ .* and hold \d+/.test(text);
+}
+
 test("a whole run can be played through the tools alone", async ({ page }) => {
   test.setTimeout(BUILD_MS + PLAY_MS + 60_000);
   const log: string[] = [];
@@ -159,8 +169,17 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
         continue;
       }
       // A legal spot the command still refused is the two layers
-      // disagreeing, and worth shouting about.
-      if (r.text.includes("InsufficientStock")) {
+      // disagreeing, and worth shouting about — but not being able to
+      // *pay* is not a disagreement about the slot.
+      //
+      // **This used to grep for `InsufficientStock`**, the serde name of
+      // the error, which coupled the spec to a wire format the surface
+      // should be free to improve. It broke the moment refusals were
+      // rewritten into words a model can act on, and it broke as a
+      // *false* gap report — thirty lines of "the placement tool offered
+      // a slot the command refused" about a tower that simply had two
+      // poles. Match the sentence a reader gets.
+      if (cannotPay(r.text)) {
         await call("understory_wait", { seconds: 3 });
       } else {
         gaps.push(`${next}: ${spots.text.slice(0, 60)} but ${r.text}`);
@@ -358,7 +377,7 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
           log.push(`  lift: ${look.text.split("\n")[0]}`);
           continue;
         }
-        if (!r.text.includes("InsufficientStock")) {
+        if (!cannotPay(r.text)) {
           gaps.push(`shaft.elevator: ${spots.text.slice(0, 70)} but ${r.text}`);
         }
       }
