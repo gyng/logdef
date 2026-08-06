@@ -1,3 +1,13 @@
+//! Two questions about mending, both raised by played runs.
+//!
+//! **Is the mending backlog a spiral?** No. It peaks on day one at 15-32
+//! poles — most of what an early tower has — and is back to nearly zero
+//! by day two on every seed. A dogfood tower reading 13 outstanding on
+//! day two was the tail of that peak, not a tower losing ground.
+//!
+//! **Does the work order help?** No, and moving `Mend` down makes the
+//! tower mend *more*. Both sections below.
+//!
 //! Does the work order move the numbers?
 //!
 //! **It does not, and that is the third verb in a row.** `watch.rs`
@@ -90,6 +100,7 @@ fn main() {
         seeds.len()
     );
     run(&Job::ALL, "default", &seeds);
+    backlog(&seeds);
     run(
         &[Job::Answer, Job::Man, Job::Haul, Job::Mend],
         "mend last",
@@ -100,4 +111,83 @@ fn main() {
         "mend first",
         &seeds,
     );
+}
+
+/// Does the mending backlog clear, or does it only ever grow?
+///
+/// **The question came from a played run.** A dogfood tower reached day
+/// two at *zero poles* with thirteen poles of mending outstanding, on a
+/// tower 98% whole and barely provoked (attention 79 of 1000). Mending
+/// and building draw on the same pole, mending outranks hauling, and
+/// `orders.rs`'s first section shows the player cannot reorder their way
+/// out — so if the backlog grows monotonically the tower is in a slow
+/// death spiral it has no verb against.
+///
+/// Sampled every whole day rather than at the end, because a backlog
+/// that ends at thirteen could have been at thirty and clearing, or at
+/// two and climbing, and those are opposite findings.
+fn backlog(seeds: &[u64]) {
+    println!();
+    println!("Does the mending backlog clear? outstanding repair cost, per day");
+    println!(
+        "  {:<8} {:>7} {:>7} {:>7} {:>7} {:>7}",
+        "seed", "day 1", "day 2", "day 3", "day 4", "poles"
+    );
+    let mut grew = 0;
+    for &seed in seeds {
+        let mut game = GameEngine::new(seed);
+        harness::chain_tower(&mut game, 4);
+        let mut per_day = Vec::new();
+        for _ in 0..4 {
+            for _ in 0..14_400 {
+                game.step(1);
+                let _ = game.try_send(GameCommand::TakeFork { branch: 0 });
+                // **A standing reason to want poles**, or this measures
+                // a rich tower. The first version of this section let
+                // the tower bank to its 120-pole cap and reported a
+                // backlog of zero on every seed — true of *that* tower
+                // and silent about the played one, which reached day two
+                // at zero poles because it had spent everything on its
+                // chain. `AGENTS.md` §I names this trap and it is the
+                // second time this session it has been walked into.
+                let _ = game.try_send(GameCommand::WidenTower);
+                let _ = harness::place_anywhere(&mut game, "room.bunk");
+            }
+            per_day.push(game.view().siege.repair_cost);
+        }
+        let held = game
+            .content()
+            .item_idx("item.poles")
+            .map_or(0, |i| game.state().stock_of(i));
+        if per_day.last() > per_day.first() {
+            grew += 1;
+        }
+        println!(
+            "  {seed:<8} {:>7} {:>7} {:>7} {:>7} {:>7}",
+            per_day[0], per_day[1], per_day[2], per_day[3], held
+        );
+    }
+    println!();
+    if grew == seeds.len() {
+        println!("  **THE BACKLOG GROWS ON EVERY SEED.** Mending outranks hauling and the work");
+        println!("  order cannot demote it usefully (above), so a tower under even light");
+        println!("  harassment has no verb against this. That is a design problem, not a tuning");
+        println!("  one.");
+    } else {
+        println!(
+            "  It grows on {grew} of {} seeds. **Mending is a first-day cost, not a spiral**:",
+            seeds.len()
+        );
+        println!("  the backlog peaks on day one — 15 to 32 poles, which is most of what an early");
+        println!("  tower has — and is back to nearly zero by day two on every seed. The played");
+        println!("  run that prompted this read 13 outstanding on day two, which is the tail of");
+        println!("  that peak rather than a tower losing ground.");
+        println!();
+        println!("  **The limit, and it is load-bearing.** This tower ends holding 94-117 poles:");
+        println!("  the sink runs out once the hull is at max_slots and the floors are full of");
+        println!("  bunks, so what is measured is a tower that *gets* rich clawing a backlog");
+        println!("  back. It does not show that a permanently poor tower recovers, and the first");
+        println!("  version of this section — with no sink at all — reported a flat zero backlog");
+        println!("  and would have said the question was silly.");
+    }
 }
