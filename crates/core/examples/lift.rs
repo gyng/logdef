@@ -559,11 +559,21 @@ fn does_a_second_car_pay(pack: &Arc<Content>) {
     }
     println!();
 
+    // **Kept, so the prose below can be computed from it.** This block
+    // used to end in hardcoded percentages — "+4% hauls", "not
+    // crew-bound", "hauls stop at ~225" — every one of them drifted
+    // from the table printed directly above it, and `AGENTS.md` quoted
+    // the drifted version. Four instruments here had that bug in one
+    // session: a figure your own code computes is interpolated or
+    // deleted, never typed.
+    let mut grid: Vec<Vec<u64>> = Vec::new();
     for crew in CREWS {
         print!("{crew:<6}");
         let mut first = None;
+        let mut row: Vec<u64> = Vec::new();
         for cars in CARS {
             let s = Sample::mean(&SEEDS.map(|seed| measure_cars(pack, seed, crew, cars)));
+            row.push(s.hauls);
             let delta = match first {
                 None => {
                     first = Some(s.hauls);
@@ -577,22 +587,45 @@ fn does_a_second_car_pay(pack: &Arc<Content>) {
             };
             print!("{:>22}", format!("{}{delta} ({})", s.hauls, s.boarding));
         }
+        grid.push(row);
         println!();
     }
+    println!();
+    println!("  A car is a *turn*, not speed. Flat at three crew and rising at eight is the");
+    println!("  shape `AddCar` is for; flat everywhere means it buys nothing.");
+    println!();
+
+    // Read off the grid, never typed. `last` is the most-cars column.
+    let last = CARS.len() - 1;
+    let low = grid.first().map_or(0, |r| r[last]);
+    let high = grid.last().map_or(0, |r| r[last]);
+    let peak = grid.iter().map(|r| r[last]).max().unwrap_or(0);
+    let monotone = grid.windows(2).all(|w| w[1][last] >= w[0][last]);
     println!(
-        "\n  A car is a *turn*, not speed. Flat at three crew and rising at eight is the\n         shape `AddCar` is for; flat everywhere means it buys nothing."
+        "  At {} car(s), {} crew haul {low} and {} crew haul {high} — {:+.0}%.",
+        CARS[last],
+        CREWS[0],
+        CREWS[CREWS.len() - 1],
+        pct(low, high),
     );
-    println!(
-        "
-  **What it says is not that shape.** A second car does exactly what a car
-         is for -- queueing falls 60-75% at every crew count -- but it pays *less* at
-         eight crew (+7%) than at three (+11%). The reason is the first column: three
-         crew to eight buys +4% hauls. **This tower is not crew-bound.** Read the
-         plateau rather than the deltas: hauls stop at ~225 whatever is thrown at the
-         transport, so the binding constraint sits downstream of the shaft and more
-         bodies cannot make a car more necessary. Growing the *tower* alongside the
-         crew is the sweep this wants next; it holds the room plan fixed."
-    );
+    if monotone {
+        println!("  Hauls rise with every crew step, so the tower is crew-bound at this shape.");
+    } else {
+        // **The honest branch, and the one that fires today.** A monotone
+        // input producing a non-monotone output is noise wearing a
+        // finding's clothes, and this sweep is three seeds wide.
+        println!("  **But it is not monotone**: the best crew count hauls {peak}, which is not");
+        println!("  the largest one. A monotone input producing a non-monotone output is noise");
+        println!("  wearing a finding's clothes — so the crew effect is UNRESOLVED at");
+        println!(
+            "  {} seeds, not worth {:+.0}%. Widen the sweep before quoting it.",
+            SEEDS.len(),
+            pct(low, high)
+        );
+    }
+    println!();
+    println!("  Growing the *tower* alongside the crew is the sweep this wants next; it holds");
+    println!("  the room plan fixed.");
 }
 
 /// Percentage change from `from` to `to`, guarding a zero baseline.
