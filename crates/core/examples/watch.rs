@@ -66,14 +66,33 @@
 //! identical 2348..2732 spread. A harness whose control and whose
 //! reproduction of the control disagreed would be measuring itself.
 //!
+//! ## The specialists, which were supposed to be where it paid
+//!
+//! §6.22 gave each emplacement an approach it answers, so a tower of a
+//! lantern mast, a root ward and a tanglenet should be where
+//! nearest-in-range is wrong most often — a mast's nearest is not a
+//! burrower. **It is not.** At provocation 1000 the five policies land
+//! on 4231..4265 against a 4016..4396 seed spread: within 1%, the same
+//! answer as the generalists.
+//!
+//! The reason was predictable from `defence.rs` and is written here
+//! before the numbers deliberately: `answers()` lives *inside*
+//! `in_reach`, so a specialist's default target is already filtered to
+//! what it can answer. Specialising **narrows** the set a focus can
+//! reorder rather than widening it.
+//!
 //! ## What it does not cover
 //!
-//! One tower shape, three days, and **two weapons that answer every
-//! approach** — a thorn gun and a dart battery both carry an empty
-//! `targets`. §6.22 gave each emplacement an approach it answers, and a
-//! tower of *specialists* is exactly where nearest-in-range should be
-//! wrong most often, because a mast's nearest is not a burrower. If
-//! focus pays anywhere, it pays there, and that is the run to do next.
+//! Three days, one seed family, provocation held rather than earned.
+//!
+//! **And the two tower shapes must not be compared with each other.**
+//! The specialist tower is six floors and the generalist four, so it has
+//! more to lose by construction and loses more (4241 against 2566) for
+//! reasons that have nothing to do with weapons. That is the trap
+//! `siege_run.rs` sprang four times, in a milder form: only the policies
+//! *within* a shape are a comparison here. The rows are printed together
+//! because they answer the same question, not because they are a
+//! ladder.
 
 use understory_core::GameEngine;
 use understory_core::command::GameCommand;
@@ -96,6 +115,17 @@ enum Policy {
     Weakest,
     /// Prefer whatever is nearest the tower, hurt or not.
     Nearest,
+    /// Prefer whatever has got **past the skin** — something chewing a
+    /// room, a shaft or the Heartseed outranks something scraping a
+    /// panel.
+    ///
+    /// **This is the case the verb exists for and the first four
+    /// missed.** An emplacement's default is nearest-in-range, and
+    /// nearest cannot tell a creature scratching the hull from one
+    /// inside a mill. That distinction is exactly a player's judgement
+    /// and exactly what `DamageTarget` already carries. If focus pays
+    /// anywhere, it should pay here.
+    Inside,
     /// Prefer whatever is still walking in — shoot it down before it
     /// arrives.
     ///
@@ -114,6 +144,7 @@ impl Policy {
             Self::Ignore => "left alone",
             Self::Weakest => "finish weakest",
             Self::Nearest => "stop nearest",
+            Self::Inside => "stop what is inside",
             Self::Incoming => "shoot it walking in",
         }
     }
@@ -138,68 +169,78 @@ fn main() {
     );
 
     let mut said_something = false;
-    for level in LEVELS {
-        let mut cells = Vec::new();
-        for policy in [
-            Policy::Ignore,
-            Policy::Weakest,
-            Policy::Nearest,
-            Policy::Incoming,
-        ] {
-            let mut lost_hp = 0i64;
-            let mut repelled = 0u64;
-            let mut shots = 0u64;
-            let mut deaths = 0u64;
-            let mut low = i64::MAX;
-            let mut high = i64::MIN;
-            for seed in 1..=SEEDS {
-                let cell = press(policy, level, seed);
-                lost_hp += cell.lost_hp;
-                repelled += cell.repelled;
-                shots += cell.shots;
-                deaths += cell.deaths;
-                low = low.min(cell.lost_hp);
-                high = high.max(cell.lost_hp);
+    for (arms, arms_name) in [
+        (Arms::Generalists, "generalists (thorn gun + dart battery)"),
+        (Arms::Specialists, "specialists (mast + ward + tanglenet)"),
+    ] {
+        println!(
+            "
+  == {arms_name} =="
+        );
+        for level in LEVELS {
+            let mut cells = Vec::new();
+            for policy in [
+                Policy::Ignore,
+                Policy::Weakest,
+                Policy::Nearest,
+                Policy::Inside,
+                Policy::Incoming,
+            ] {
+                let mut lost_hp = 0i64;
+                let mut repelled = 0u64;
+                let mut shots = 0u64;
+                let mut deaths = 0u64;
+                let mut low = i64::MAX;
+                let mut high = i64::MIN;
+                for seed in 1..=SEEDS {
+                    let cell = press(arms, policy, level, seed);
+                    lost_hp += cell.lost_hp;
+                    repelled += cell.repelled;
+                    shots += cell.shots;
+                    deaths += cell.deaths;
+                    low = low.min(cell.lost_hp);
+                    high = high.max(cell.lost_hp);
+                }
+                let n = i64::try_from(SEEDS).unwrap_or(1);
+                if lost_hp > 0 {
+                    said_something = true;
+                }
+                println!(
+                    "  {:<10} {:<16} {:>10} {:>15} {:>10} {:>8} {:>6}",
+                    if policy == Policy::Ignore {
+                        level.to_string()
+                    } else {
+                        String::new()
+                    },
+                    policy.name(),
+                    lost_hp / n,
+                    format!("{low}..{high}"),
+                    repelled / SEEDS,
+                    shots / SEEDS,
+                    deaths,
+                );
+                cells.push((policy, lost_hp / n));
             }
-            let n = i64::try_from(SEEDS).unwrap_or(1);
-            if lost_hp > 0 {
-                said_something = true;
-            }
-            println!(
-                "  {:<10} {:<16} {:>10} {:>15} {:>10} {:>8} {:>6}",
-                if policy == Policy::Ignore {
-                    level.to_string()
+            // The verdict for this level, stated in the same breath as the
+            // numbers so nobody has to do the subtraction themselves.
+            let alone = cells[0].1;
+            for (policy, hp) in cells.iter().skip(1) {
+                let delta = alone - hp;
+                let pct = if alone == 0 {
+                    0.0
                 } else {
-                    String::new()
-                },
-                policy.name(),
-                lost_hp / n,
-                format!("{low}..{high}"),
-                repelled / SEEDS,
-                shots / SEEDS,
-                deaths,
-            );
-            cells.push((policy, lost_hp / n));
+                    (delta * 100) as f64 / alone as f64
+                };
+                println!(
+                    "      {} vs left alone: {}{:.0}% of the damage {}",
+                    policy.name(),
+                    if delta > 0 { "−" } else { "+" },
+                    pct.abs(),
+                    if delta > 0 { "avoided" } else { "ADDED" },
+                );
+            }
+            println!();
         }
-        // The verdict for this level, stated in the same breath as the
-        // numbers so nobody has to do the subtraction themselves.
-        let alone = cells[0].1;
-        for (policy, hp) in cells.iter().skip(1) {
-            let delta = alone - hp;
-            let pct = if alone == 0 {
-                0.0
-            } else {
-                (delta * 100) as f64 / alone as f64
-            };
-            println!(
-                "      {} vs left alone: {}{:.0}% of the damage {}",
-                policy.name(),
-                if delta > 0 { "−" } else { "+" },
-                pct.abs(),
-                if delta > 0 { "avoided" } else { "ADDED" },
-            );
-        }
-        println!();
     }
 
     assert!(
@@ -209,10 +250,39 @@ fn main() {
     );
 }
 
-fn press(policy: Policy, level: i64, seed: u64) -> Cell {
+/// Which weapons the tower gets.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Arms {
+    /// A thorn gun and a dart battery: both carry an empty `targets`,
+    /// so both answer every approach.
+    Generalists,
+    /// A lantern mast (canopy), a root ward (burrow) and a tanglenet
+    /// (ground) — §6.22's specialists, each answering one approach.
+    ///
+    /// **The shape where nearest-in-range should be wrong most often**,
+    /// because a mast's nearest is not a burrower. Note that `answers()`
+    /// lives *inside* `in_reach` in `defence.rs`, so a specialist's
+    /// default is already filtered to what it can answer — which
+    /// predicts, before running anything, that specialising narrows the
+    /// room for a focus rather than widening it.
+    Specialists,
+}
+
+fn press(arms: Arms, policy: Policy, level: i64, seed: u64) -> Cell {
     let mut engine = GameEngine::new(seed);
     engine.set_speed(SimSpeed::X1);
-    harness::chain_tower(&mut engine, 4);
+    // Five floors for the specialists: three emplacements all want a
+    // leading edge, and `front_only` means one per floor.
+    harness::chain_tower(&mut engine, if arms == Arms::Specialists { 6 } else { 4 });
+
+    // **Shelves before stock.** `Tower::shelve` puts what fits and drops
+    // the rest in silence, and one storeroom cannot hold eleven items —
+    // so the specialist tower was refused its root ward for an alloy it
+    // had been "given" and never received. Two more storerooms, then the
+    // stock, then an assertion that the stock is actually there.
+    for _ in 0..2 {
+        let _ = harness::place_anywhere(&mut engine, "room.storeroom");
+    }
 
     // **Guns, then insist on them.** A tower with nothing that shoots
     // measures the same under every policy by construction, and this
@@ -222,14 +292,19 @@ fn press(policy: Policy, level: i64, seed: u64) -> Cell {
     // naming the thornwright here as well built two of them and filled
     // the tower — the battery then had nowhere to go and the assert
     // below caught it, which is the assert doing its job.
-    let weapon = "room.dart_battery";
-    harness::open_the_armoury(&mut engine, weapon);
-    let _ = stock(&mut engine);
-    assert!(
-        harness::place_anywhere(&mut engine, weapon),
-        "could not build {weapon}: this is not a defended tower and it would measure          nothing. The tower is {}",
-        describe(&engine)
-    );
+    let weapons: &[&str] = match arms {
+        Arms::Generalists => &["room.dart_battery"],
+        Arms::Specialists => &["room.lantern_mast", "room.root_ward", "room.tanglenet"],
+    };
+    for weapon in weapons {
+        harness::open_the_armoury(&mut engine, weapon);
+        stock_or_panic(&mut engine);
+        assert!(
+            harness::place_anywhere(&mut engine, weapon),
+            "could not build {weapon}: this is not a defended tower and it would measure              nothing. The tower is {}",
+            describe(&engine)
+        );
+    }
 
     let mut shots = 0u64;
 
@@ -300,7 +375,7 @@ fn pick(engine: &GameEngine, policy: Policy) -> Option<understory_core::ids::Ene
     let state = engine.state();
     let mut best: Option<(understory_core::ids::EnemyId, i64)> = None;
     for enemy in &state.siege.enemies {
-        use understory_core::state::siege::EnemyState;
+        use understory_core::state::siege::{DamageTarget, EnemyState};
         let arrived = matches!(enemy.state, EnemyState::Attacking { .. });
         let walking = matches!(enemy.state, EnemyState::Approaching);
         let score = match policy {
@@ -309,6 +384,22 @@ fn pick(engine: &GameEngine, policy: Policy) -> Option<understory_core::ids::Ene
             Policy::Nearest if arrived => (enemy.at - state.world.distance).abs(),
             // This one names only what has not arrived yet.
             Policy::Incoming if walking => (enemy.at - state.world.distance).abs(),
+            // And this one ranks by what it is chewing, nearest first
+            // within a rank. The Heartseed is the run; a room or a
+            // shaft is something the tower needs; a panel is the skin
+            // doing its job.
+            Policy::Inside if arrived => {
+                let rank = match enemy.state {
+                    EnemyState::Attacking {
+                        target: DamageTarget::Heart,
+                    } => 0,
+                    EnemyState::Attacking {
+                        target: DamageTarget::Room { .. } | DamageTarget::Shaft { .. },
+                    } => 1,
+                    _ => 2,
+                };
+                rank * 100_000 + (enemy.at - state.world.distance).abs()
+            }
             _ => continue,
         };
         if best.is_none_or(|(_, seen)| score < seen) {
@@ -346,6 +437,15 @@ fn behind_the_skin_lost(state: &understory_core::state::GameState) -> i64 {
 /// surfaced as "could not build room.dart_battery" with two empty front
 /// slots sitting right there in the tower dump.
 fn stock(engine: &mut GameEngine) -> i64 {
+    stock_inner(engine, false)
+}
+
+/// Stock, and refuse to continue if any of it failed to land.
+fn stock_or_panic(engine: &mut GameEngine) {
+    stock_inner(engine, true);
+}
+
+fn stock_inner(engine: &mut GameEngine, insist: bool) -> i64 {
     let content = engine.content().clone();
     let state = engine.state_mut_for_test();
     for id in [
@@ -357,6 +457,14 @@ fn stock(engine: &mut GameEngine) -> i64 {
         "item.thorns",
         "item.produce",
         "item.meals",
+        // **Every weapon's ammunition, and every weapon's price.** A
+        // root ward costs an alloy and fires alloy; a mast fires charge
+        // cells. Leaving them out is how the specialist tower failed to
+        // build at all — and had it built without them, it would have
+        // measured a tower whose guns never fired, which is worse.
+        "item.alloy",
+        "item.charge_cells",
+        "item.mechanisms",
     ] {
         let Some(item) = content.item_idx(id) else {
             continue;
@@ -365,12 +473,29 @@ fn stock(engine: &mut GameEngine) -> i64 {
         if held < 12 {
             state.shelve(item, 12 - held);
         }
+        assert!(
+            !insist || state.stock_of(item) >= 6,
+            "{id} would not go on a shelf: the tower has nowhere to put it, so anything priced              in {id} is about to be refused for a shortage this harness caused"
+        );
     }
-    // And the racks, so a battery is measured on its reload rather than
+    // And the racks, so a weapon is measured on its reload rather than
     // on its supply line.
-    let Some(darts) = content.item_idx("item.darts") else {
-        return 0;
-    };
+    //
+    // **Every rack, not the dart rack.** A first pass topped up only
+    // darts, which is fine for a thorn gun and a battery and reads a
+    // flat zero for a tower of masts and wards — a shots column that
+    // cannot see the guns firing is the column not doing the one job it
+    // has (trap 3).
+    let ammo: Vec<_> = [
+        "item.darts",
+        "item.alloy",
+        "item.charge_cells",
+        "item.rope",
+        "item.bamboo",
+    ]
+    .iter()
+    .filter_map(|id| content.item_idx(id))
+    .collect();
     // **What the racks swallow is what the guns fired.** The first
     // version counted darts put back on the *shelves*, which is a
     // different quantity entirely — the racks are refilled here too, so
@@ -381,7 +506,7 @@ fn stock(engine: &mut GameEngine) -> i64 {
     let mut reloaded = 0;
     for floor in &mut state.tower.floors {
         for room in &mut floor.rooms {
-            if let Some(rack) = room.inputs.iter_mut().find(|s| s.item == darts) {
+            for rack in room.inputs.iter_mut().filter(|s| ammo.contains(&s.item)) {
                 let space = rack.space();
                 reloaded += rack.deposit(space);
             }

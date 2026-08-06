@@ -7788,11 +7788,26 @@ engine's own default written as a policy, and it reproduces the untouched tower 
 — 2581 against 2583 on an identical 2348..2732 spread. A harness whose control and whose
 reproduction of that control disagreed would be measuring itself.
 
-**What it does not cover, and this is the run to do next.** One tower shape and **two weapons that
-answer every approach** — a thorn gun and a dart battery both carry an empty `targets`. §6.22
-gave each emplacement an approach it answers, and a tower of *specialists* is where
-nearest-in-range should be wrong most often, because a mast's nearest is not a burrower. If focus
-pays anywhere it pays there.
+**The specialists were supposed to be where it paid, and they are not.** §6.22 gave each
+emplacement an approach it answers, so a tower of a lantern mast, a root ward and a tanglenet
+should be where nearest-in-range is wrong most often — a mast's nearest is not a burrower. At
+provocation 1000 the five policies land on 4231..4265 against a 4016..4396 spread: within 1%, the
+same answer. The reason was predictable from `defence.rs` and was written into the instrument
+before the run: **`answers()` lives inside `in_reach`, so a specialist's default is already
+filtered to what it can answer.** Specialising narrows the set a focus can reorder rather than
+widening it.
+
+A fifth policy was added for the same reason — "stop what is inside", ranking a creature chewing
+a room, a shaft or the Heartseed above one scraping a panel, which is the judgement
+nearest-in-range structurally cannot make and exactly what `DamageTarget` already carries. It
+lands within 1% too, on both shapes.
+
+**The two tower shapes must not be compared with each other**: the specialist tower is six floors
+and the generalist four, so it has more to lose by construction and loses more (4241 against
+2566) for reasons that have nothing to do with weapons. Only the policies *within* a shape are a
+comparison — the same trap `siege_run.rs` sprang four times, in a milder form.
+
+**What it does not cover**: three days, one seed family, and provocation held rather than earned.
 
 #### The ruins were the third invisible thing, and the rope chain closes the door to them
 
