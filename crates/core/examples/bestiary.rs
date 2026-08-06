@@ -42,9 +42,18 @@ fn main() {
         "creature", "hp", "threat", "undefended", "answered", "darts", "ended"
     );
 
+    // **Whether the undefended tower was ever actually hurt.** If it
+    // ends every fight at 1000 permille then nothing reached it, both
+    // columns are the same number, and "what a battery is worth" comes
+    // out as zero against everything — which is `siege_run.rs`'s oldest
+    // bug (`AGENTS.md` II rule 3) rather than a finding about batteries.
+    let mut ever_hurt = false;
     for (idx, def) in content.enemies.iter().enumerate() {
         let bare = fight(idx, false);
         let armed = fight(idx, true);
+        if bare.standing < 1000 {
+            ever_hurt = true;
+        }
         println!(
             "{:<16} {:>5} {:>7} {:>8}‰ {:>8}‰ {:>7} {:>6}",
             def.name,
@@ -61,6 +70,16 @@ fn main() {
                 "still on"
             },
         );
+    }
+
+    if !ever_hurt {
+        println!();
+        println!("  **THE UNDEFENDED COLUMN IS DEGENERATE AND THIS TABLE SAYS NOTHING.**");
+        println!("  Every creature left the bare tower whole, so nothing reached it inside the");
+        println!("  window and the gap against the armed column is zero by construction. Read");
+        println!("  no verdict about a battery off these rows. The window, the spawn distance");
+        println!("  or the approach is wrong - `siege_run.rs` drew a confident conclusion from");
+        println!("  exactly this shape over eight seeds (`AGENTS.md` II rule 3).");
     }
 
     println!(
@@ -89,12 +108,28 @@ fn fight(enemy: usize, armed: bool) -> Fight {
     // from the battery, and since M6 a fresh tower has no chain at all.
     understory_core::harness::chain_tower(&mut game, 4);
 
+    // **Strip the tower's own weapons from both sides.** The starting
+    // tower ships a thorn gun and the ladder puts up a cutter arm, which
+    // deals melee damage — so without this the "undefended" column is a
+    // tower that shoots back, and once the panic above was fixed every
+    // creature read 1000‰ in *both* columns. A comparison against an
+    // armed copy of itself, which is `siege_run.rs`'s oldest bug.
+    understory_core::harness::disarm(&mut game);
+
     if armed {
         // Paid for, then insisted on — a "defended" tower that failed to
         // build its battery is how `siege_run.rs` spent a milestone
         // reporting a defence comparison in which nothing was defended.
         endow(&mut game);
-        for room in ["room.dart_battery", "room.thornwright"] {
+        // **Thornwright first, and the order is the whole bug.** The
+        // battery is `unlocked_by: room.thornwright`, so a list with the
+        // battery at the front can never place it — `PlaceRoom` answers
+        // "not on the menu until a room.thornwright is standing" forty
+        // times and the assert below fires. This instrument had been
+        // panicking on its own seed and printing an empty table, while
+        // fifteen `BALANCE.md` rows quoted it. A fourth dead instrument
+        // after the three `AGENTS.md` §II already records.
+        for room in ["room.thornwright", "room.dart_battery"] {
             assert!(
                 build_anywhere(&mut game, room),
                 "the armed tower could not build {room}"

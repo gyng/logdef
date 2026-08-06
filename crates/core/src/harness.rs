@@ -264,3 +264,28 @@ pub fn span<T>(each: &[T], get: impl Fn(&T) -> f64) -> (f64, f64, f64) {
     let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     (vals.iter().sum::<f64>() / vals.len() as f64, lo, hi)
 }
+
+/// Strip everything that can hurt a creature, so an "undefended" tower
+/// really is one.
+///
+/// **The gun *and* the arm.** The starting tower ships a thorn gun
+/// (`balance.ron` `starting_rooms`) and the opening ladder puts up a
+/// cutter arm, which deals melee damage since M6 — so a harness that
+/// builds a chain and calls the result undefended is comparing a tower
+/// against an armed copy of itself. `AGENTS.md` records four tests that
+/// had quietly started measuring the gun instead of their own subject,
+/// and `examples/bestiary.rs` was doing the same thing at instrument
+/// scale: every creature read 1000‰ in both columns, so "what a battery
+/// is worth" came out as zero against everything.
+///
+/// Mirrors `tests::disarm`, which is the same three lines behind the
+/// test-only wall.
+pub fn disarm(game: &mut GameEngine) {
+    let content = game.content().clone();
+    let state = game.state_mut_for_test();
+    for floor in &mut state.tower.floors {
+        floor.rooms.retain(|room| {
+            content.room(room.def).defence.is_none() && content.room_rt(room.def).melee_damage == 0
+        });
+    }
+}

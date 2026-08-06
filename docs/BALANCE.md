@@ -214,6 +214,23 @@ Dwell, dispatch, and the estimates crew use to pick a shaft. See `SYSTEMS.md` §
 
 ## Siege
 
+> **`examples/bestiary.rs` was dead and fifteen rows below quote it (2026-08-07).** It
+> panicked on its own seed — `room.dart_battery` is `unlocked_by: room.thornwright` and the
+> build list had the battery first, so `PlaceRoom` refused it forty times and the assert fired
+> — printing an empty table and exiting **zero**. A fourth instrument in the dead-or-lying
+> category after the three `AGENTS.md` §II records.
+>
+> It runs now, and running revealed two more problems stacked underneath. Its "undefended"
+> tower still carried the starting thorn gun and the cutter arm, which deals melee damage, so
+> it was comparing a tower against an armed copy of itself. And with both disarmed, **every
+> creature still leaves the bare tower whole** — nothing reaches it inside the window, so the
+> gap between the two columns is zero by construction.
+>
+> **So the per-creature figures in the rows below are not currently supported by anything.**
+> The instrument prints that verdict itself now rather than letting a reader infer one. What
+> it needs is a window, spawn distance or approach that lets a creature actually arrive; that
+> is a fix to the harness and nobody has made it.
+
 > **Re-measured, and the grades stand.** These rows were tuned with `examples/siege_run.rs`'s
 > three-tower narrative, which stopped being able to measure anything when M3 changed the
 > economy: a tower only provokes while it is consuming, so once its shopping list runs out the
