@@ -201,10 +201,13 @@ fn backlog(seeds: &[u64]) {
         println!("  for it to have, because the first two days are exactly when a tower is");
         println!("  trying to afford its chain and has the fewest poles to give.");
         println!();
-        println!("  Days three and four sitting at a backlog of 1-8 while spending *nothing* is");
-        println!("  worth a second look by somebody: a repair shift costs its poles whether it");
-        println!("  mends twenty points or one, so a tower ignoring small damage may be correct");
-        println!("  or may be a threshold nobody chose. This instrument does not settle it.");
+        println!("  Days three and four spending *nothing* is `pick_repair`'s threshold working:");
+        println!("  a shift costs its poles whether it mends twenty points or one, so crew do not");
+        println!("  chase scratches. Chasing this down found the readout disagreeing with it —");
+        println!("  `outstanding_repair_cost` counted every missing hit point including the ones");
+        println!("  crew are right to leave, so a tower reported a standing bill it would never");
+        println!("  be offered the chance to pay. Fixed; the 1-2 that used to sit here forever");
+        println!("  are now zero, and seed 101's real 8 still shows and is paid the next day.");
         println!();
         println!("  **The limit, and it is load-bearing.** This tower ends holding 94-117 poles:");
         println!("  the sink runs out once the hull is at max_slots and the floors are full of");

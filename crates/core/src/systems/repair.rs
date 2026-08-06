@@ -273,15 +273,40 @@ fn consider(
 /// only — the player sees the bill before deciding what to triage.
 #[must_use]
 pub fn outstanding_repair_cost(state: &GameState, content: &Content) -> i64 {
+    // **Only the damage crew will actually mend.**
+    //
+    // `pick_repair` will not start a shift on anything below
+    // `repair_hp_per_shift` — a shift costs its poles whether it mends
+    // twenty points or one, so chasing scratches is how a tower stops
+    // being able to afford an elevator. That threshold is deliberate and
+    // this figure used to ignore it, summing *every* missing hit point.
+    //
+    // The result was a bill nobody could pay. A tower would sit at 98%
+    // whole reporting "15 poles of mending outstanding" for the rest of
+    // the run, because most of that was scratches the crew were right to
+    // leave — and the number is presentation only, read by the roster
+    // readout and by the agent tools, both of which phrase it as
+    // something the player owes. Found by pricing the backlog per day
+    // (`examples/orders.rs`) and noticing days three and four spent
+    // nothing while the figure stayed put.
+    //
+    // What is left on the tower below the threshold is still visible:
+    // the cross-section carries the mark, which `pick_repair`'s own note
+    // calls the health readout doing its job.
+    let per_shift = content.balance.siege.repair_hp_per_shift;
+    let worth = |health: &crate::state::Health| {
+        let missing = health.max - health.hp;
+        if missing >= per_shift { missing } else { 0 }
+    };
     let mut missing = 0i64;
     for floor in &state.tower.floors {
-        missing += floor.panel.max - floor.panel.hp;
+        missing += worth(&floor.panel);
         for room in &floor.rooms {
-            missing += room.health.max - room.health.hp;
+            missing += worth(&room.health);
         }
     }
     for shaft in &state.tower.shafts {
-        missing += shaft.health.max - shaft.health.hp;
+        missing += worth(&shaft.health);
     }
     missing * content.balance.siege.repair_poles_per_10_hp / 10
 }
