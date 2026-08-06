@@ -128,9 +128,9 @@ fn main() {
 /// two and climbing, and those are opposite findings.
 fn backlog(seeds: &[u64]) {
     println!();
-    println!("Does the mending backlog clear? outstanding repair cost, per day");
+    println!("Does the mending backlog clear?  outstanding/poles-spent, per day");
     println!(
-        "  {:<8} {:>7} {:>7} {:>7} {:>7} {:>7}",
+        "  {:<8} {:>10} {:>10} {:>10} {:>10} {:>7}",
         "seed", "day 1", "day 2", "day 3", "day 4", "poles"
     );
     let mut grew = 0;
@@ -138,6 +138,7 @@ fn backlog(seeds: &[u64]) {
         let mut game = GameEngine::new(seed);
         harness::chain_tower(&mut game, 4);
         let mut per_day = Vec::new();
+        let mut spent_before = 0u64;
         for _ in 0..4 {
             for _ in 0..14_400 {
                 game.step(1);
@@ -153,18 +154,29 @@ fn backlog(seeds: &[u64]) {
                 let _ = game.try_send(GameCommand::WidenTower);
                 let _ = harness::place_anywhere(&mut game, "room.bunk");
             }
-            per_day.push(game.view().siege.repair_cost);
+            let spent = game.state().stats.repair_poles_spent;
+            per_day.push((game.view().siege.repair_cost, spent - spent_before));
+            spent_before = spent;
         }
         let held = game
             .content()
             .item_idx("item.poles")
             .map_or(0, |i| game.state().stock_of(i));
-        if per_day.last() > per_day.first() {
+        if per_day.last().map(|d| d.0) > per_day.first().map(|d| d.0) {
             grew += 1;
         }
+        // **Outstanding, and what it cost that day.** The backlog alone
+        // says whether the tower is losing ground; the poles spent say
+        // what staying level is worth, and only the second is a design
+        // number. A tower ending every day at zero backlog having spent
+        // forty poles on it is not the same tower as one that spent two.
         println!(
-            "  {seed:<8} {:>7} {:>7} {:>7} {:>7} {:>7}",
-            per_day[0], per_day[1], per_day[2], per_day[3], held
+            "  {seed:<8} {:>10} {:>10} {:>10} {:>10} {:>7}",
+            format!("{}/{}", per_day[0].0, per_day[0].1),
+            format!("{}/{}", per_day[1].0, per_day[1].1),
+            format!("{}/{}", per_day[2].0, per_day[2].1),
+            format!("{}/{}", per_day[3].0, per_day[3].1),
+            held
         );
     }
     println!();
@@ -182,6 +194,17 @@ fn backlog(seeds: &[u64]) {
         println!("  tower has — and is back to nearly zero by day two on every seed. The played");
         println!("  run that prompted this read 13 outstanding on day two, which is the tail of");
         println!("  that peak rather than a tower losing ground.");
+        println!();
+        println!("  **What it costs is 30 to 48 poles, all of it in the first two days, and then");
+        println!("  nothing.** Days three and four spend zero on every seed. So mending is an");
+        println!("  opening tax rather than an ongoing one — which is the worst possible shape");
+        println!("  for it to have, because the first two days are exactly when a tower is");
+        println!("  trying to afford its chain and has the fewest poles to give.");
+        println!();
+        println!("  Days three and four sitting at a backlog of 1-8 while spending *nothing* is");
+        println!("  worth a second look by somebody: a repair shift costs its poles whether it");
+        println!("  mends twenty points or one, so a tower ignoring small damage may be correct");
+        println!("  or may be a threshold nobody chose. This instrument does not settle it.");
         println!();
         println!("  **The limit, and it is load-bearing.** This tower ends holding 94-117 poles:");
         println!("  the sink runs out once the hull is at max_slots and the floors are full of");
