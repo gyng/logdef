@@ -8170,3 +8170,64 @@ pole — and stops.
   integrity, so the backlog is small damage on a healthy tower and the question of a threshold
   ("do not start a shift for less than N points") was never put. It is a balance question and
   belongs to the difficulty pass.
+
+### 6.34 The lift is worth a quarter of what §6.18 says, and three seeds was why
+
+**Two claims went into `AGENTS.md` on the strength of three seeds, and both were wrong in
+different directions.** Re-measured at twelve. The sweep costs **forty seconds**; three seeds
+cost nine. It was never a cost decision, and nobody had checked.
+
+#### Crew: unresolved at three seeds, resolved and smaller at twelve
+
+`lift.rs` reported 3 crew → 286 hauls, 5 → 414, 8 → 346 at three cars. Non-monotone, so §6.33's
+instrument correctly refused to call it. At twelve seeds it is monotone and modest:
+
+| crew | hauls at 3 cars |
+|---|---|
+| 3 | 314 |
+| 5 | 328 |
+| 8 | 392 |
+
+**+25% from three crew to eight**, against the **+63%** `AGENTS.md` carried. So crew still
+matter and the file's number was simply too big — and the correction written into it *last*
+iteration, that "the constraint sits on intake, not hands", **overstated in the other
+direction**. Both statements came from too few seeds. The mill really is 86.8% starved
+(`chain.rs`), and more hands really do still buy 25% more hauls; those are consistent, because
+hauling is how bamboo reaches the mill.
+
+#### The lift: revalued by roughly four
+
+The bigger finding is underneath. `SYSTEMS.md` §6.18 records the elevator at +119% / +256% /
++493% / +913% across five, eight, eleven and fourteen floors. Twelve seeds, after the rota:
+
+| floors | stairs only | with the lift | §6.18 said |
+|---|---|---|---|
+| 5 | 123 | +14 (**+11%**) | +119% |
+| 8 | 87 | +47 (**+54%**) | +256% |
+| 11 | 66 | +49 (**+74%**) | +493% |
+| 14 | 55 | +110 (**+200%**) | +913% |
+
+**Both sides moved and they moved opposite ways.** The stairs-only tower at eight floors went
+from 57 hauls to 87 — up half again — while the lifted one fell from 203 to 134. Need-driven
+sleep spread the crew's hours around the clock, and a stairs-only tower is the shape that
+benefits most from hours it did not have, because queueing is a per-moment cost and spreading
+the same work over more of the day thins it. The lift was bought to solve exactly that queue,
+so the problem it solves got smaller.
+
+**This lands on the largest open balance question in the project.** §6.19 asks whether a tower
+can afford a lift inside a 31–36 minute run, and §6.32 moved the answer from 26 minutes to 32.
+This says the thing it is saving for is worth a quarter of what the record claims — and at the
+four-to-five floors a run actually reaches, **+11%**. A lift at ten poles for +11% is not
+obviously worth buying, which reframes the question: it may not be that the tower cannot afford
+the lift, but that the lift is not worth affording at the heights a run reaches.
+
+That is a design decision and it belongs to the difficulty pass. What is settled here is that
+the numbers it would have been decided on were four times too generous.
+
+#### Deferred out of 6.34
+
+- **Whether the lift's price should move, or its value.** Both are levers and this measures
+  neither. `lift.rs` sweeps height with the room plan fixed; growing the tower alongside the
+  crew is the sweep it asks for next.
+- **§6.18's width row.** Re-measured only at the height sweep; the flat-across-width finding is
+  untouched and may have moved the same way.

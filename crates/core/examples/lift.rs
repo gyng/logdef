@@ -272,7 +272,20 @@ const WINDOW: u32 = DAY * 2;
 /// Three seeds, because one run of a stochastic world is an anecdote,
 /// and the same three for both towers, because the comparison is only
 /// meaningful if the ground underfoot was identical.
-const SEEDS: [u64; 3] = [0x00C0_FFEE, 0x0BAD_F00D, 0x00DE_FACE];
+const SEEDS: [u64; 12] = [
+    0x00C0_FFEE,
+    0x0BAD_F00D,
+    0x00DE_FACE,
+    0x0051_1CE5,
+    0x00FA_CADE,
+    0x00DE_CADE,
+    0x0BEE_F1E5,
+    0x00CA_5CAD,
+    0x00DA_FF0D,
+    0x0FEE_DBAC,
+    0x00AC_CEDE,
+    0x0DEA_DBED,
+];
 
 /// The heights to try. Five is where a run starts; the top of the range
 /// is past anything the capture stills have ever shown a tower reach,

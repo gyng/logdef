@@ -127,13 +127,23 @@ in the project. §6.6 records the three things tried instead and why each made i
 short version is that crew hauling *was* the binding constraint, so speeding production only
 filled shelves the crew cannot clear.
 
-**That is no longer where the constraint sits.** Cutting the rota (§6.32) gave the tower ~64%
-crew-awake against 58%, and `chain.rs` now measures the mill **6.7% backed up against 86.8%
-starved** where it used to be 43.1% against 45.2% — near enough half and half. More crew hours
-clear an outbox faster than they fill an inbox, so the tower flipped from *nobody empties the
-mill* to *nothing arrives at it*. Those want opposite fixes (§II rule 5), and it means the
-compensations §6.6 rejected were rejected against a tower that no longer exists. Anything
-reaching for "add hands" should re-measure first.
+**Where the constraint sits moved, but less than the previous version of this paragraph
+claimed.** Cutting the rota (§6.32) gave the tower ~64% crew-awake against 58%, and `chain.rs`
+now measures the mill **6.7% backed up against 86.8% starved** where it used to be 43.1%
+against 45.2% — near enough half and half. So the tower flipped from *nobody empties the mill*
+to *nothing arrives at it*, which want opposite fixes (§II rule 5).
+
+**This paragraph then said "the constraint sits on intake, not hands", and that overstated
+it** (§6.34). Twelve seeds say more crew still buy +25% more hauls. Both are true and
+consistent: hauling is how bamboo reaches the mill, so a starved mill is partly a hauling
+result. What is safe to say is that the compensations §6.6 rejected were rejected against a
+tower that no longer exists, and that anything reaching for "add hands" should re-measure
+rather than assume either the old +63% or the newer overcorrection.
+
+**And the lift is worth about a quarter of what §6.18 records** — +11% at five floors, +54% at
+eight, against +119% and +256%. Both sides of that comparison moved and in opposite directions.
+It bears directly on §6.19: the question may not be whether a tower can afford a lift, but
+whether one is worth affording at the heights a run reaches.
 
 Not built: the difficulty pass. **Every balance row is `MEASURED`** — checked against an
 instrument, section by section — and **none is `PLAYTESTED`**, because nobody has played with a
@@ -152,10 +162,13 @@ invalidated by it.
 **This line used to say "three to eight crew is now +63% at three cars" and that number came
 from an instrument quoting itself wrong.** `lift.rs` printed a hardcoded "+4%" under a table
 its own run had moved to +21%, and this file had copied a third figure from an older run
-still. Re-measured after the rota was cut: 3 crew haul 286, 5 haul 414, 8 haul 346 — **not
-monotone**, so the crew effect is *unresolved* at three seeds rather than worth any of those
-percentages. `lift.rs` computes that sentence off its own grid now and says UNRESOLVED in as
-many words. Widen the sweep before quoting a crew number.
+still. **Resolved at twelve seeds (§6.34): 314, 328, 392 hauls at three, five and eight crew —
+monotone, and +25%.** Crew still matter; the number was simply too big. `lift.rs` computes that
+sentence off its own grid now and prints UNRESOLVED when the curve is not monotone.
+
+**Three seeds was never a cost decision.** The whole sweep runs in forty seconds at twelve and
+nine at three, and nobody had checked. Two claims went into this file on three seeds and both
+were wrong, in opposite directions.
 
 **Read `SYSTEMS.md` §6.10 before touching terrain, yields, charge or a chain — and §5.11
 open question 0 after it, for the method.** Question 0 was the largest open finding in the
