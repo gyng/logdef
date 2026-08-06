@@ -11,6 +11,11 @@ It is about two and a half hours, and it closes all four.
 > one wherever the change is the interesting part, because a playtester who knows the game
 > used to starve its crew will read a fed one differently. If a number here surprises you,
 > re-run the instrument before believing either of us.
+>
+> **And the crew figures are now ranges over eight seeds, not one.** They were published
+> from a single seed on 2026-08-06 and that seed turned out to be the *worst* of eight —
+> right to within a percentage point, and still not the figure. `needs.rs` sweeps and
+> prints ranges now.
 
 ---
 
@@ -73,15 +78,16 @@ logs rather than scripted harnesses".
 Three questions the harnesses cannot answer, all of them measured and none of them judged.
 **All three moved when the rota was cut, and two of them reversed direction:**
 
-- A crew member spends **4.2% of their life working two-thirds as fast** (14.6% hungry,
-  **0.0% starving**, 4.2% tired) on a tower doing everything right — against **35.5%**
+- A crew member spends **3.6% of their life working two-thirds as fast** (13.9% hungry,
+  **0.0% starving on every one of eight seeds**, 3.6% tired) on a tower doing everything
+  right — against **35.5%**
   (33.3% / 13.4% / 22.0%) under the rota. Nobody starves at all any more. The question used
   to be "too harsh?" and is now **"too gentle?"**: needs may have stopped being a pressure.
   Judge whether you ever felt the kitchen mattered.
 - Crew are **queued at a shaft 11% of the day** on a stairs-only starting tower (3,250 of
   28,800 ticks), falling to **1%** once an elevator is up. The old figure here was 3.4% and
   under-sold it by three times. Did contention read as a thing that was happening?
-- A tower delivers **2.56 meals a person a day** where the design intends three, against
+- A tower delivers **2.60 meals a person a day** where the design intends three, against
   2.00 before. The shortfall is structural and always will be — hunger rises while you sleep
   and eating does not — but it is now a shortfall rather than a deficit. Did hunger feel like
   a system or like a leak?

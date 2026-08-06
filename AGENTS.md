@@ -166,6 +166,13 @@ still. **Resolved at twelve seeds (§6.34): 314, 328, 392 hauls at three, five a
 monotone, and +25%.** Crew still matter; the number was simply too big. `lift.rs` computes that
 sentence off its own grid now and prints UNRESOLVED when the curve is not monotone.
 
+**Nine of the seventeen instruments run on a single seed**, including `chain.rs`,
+`haulcycle.rs` and `needs.rs` — the three that feed `BALANCE.md`'s Crew rows and
+`PLAYTEST.md` criterion 3. `needs.rs` sweeps eight now and prints ranges; it turned out
+stable, but the figures published from it were the *worst* seed of eight rather than the
+figure, and one run could not have told anybody that. **Check an instrument's seed count
+before quoting it**, and widen it before you quote it twice.
+
 **Three seeds was never a cost decision.** The whole sweep runs in forty seconds at twelve and
 nine at three, and nobody had checked. Two claims went into this file on three seeds and both
 were wrong, in opposite directions.

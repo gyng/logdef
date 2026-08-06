@@ -26,32 +26,35 @@ use understory_core::state::SimSpeed;
 const DAY: u32 = 14_400;
 const DAYS: u32 = 7;
 
-fn main() {
-    // **A hardcoded day goes stale silently.** `journey.rs` reported a
-    // 57,372-tick run as "3 days" when the pack said 7,200 and the
-    // answer was eight, because it kept its own copy of the day length.
-    // Every instrument here windows on whole days, so a stale copy makes
-    // the window a measurement of what time it started at — the trap
-    // `throughput.rs` documents at the top of itself. Fail loudly rather
-    // than quietly measure a different game.
-    assert_eq!(
-        DAY,
-        understory_core::content::Content::load_embedded()
-            .expect("the shipped pack should load")
-            .balance
-            .clock
-            .ticks_per_day,
-        "the pack's day length has moved; update this file's day constant"
-    );
-    println!("=== do the crew eat and sleep as designed? ===\n");
-    println!(
-        "  A fed, housed tower over {DAYS} whole days. The first day is the warm-up:\n\
-         everybody starts full and rested, so day one measures the opening position\n\
-         rather than a tower sustaining anything.\n"
-    );
+/// One seed's answer. **Swept, because this instrument fed ten
+/// `BALANCE.md` rows and `PLAYTEST.md` criterion 3 off a single seed.**
+/// The numbers turned out stable — but the published figures were the
+/// worst seed of five rather than the figure, and nobody could have
+/// known that from one run.
+struct Run {
+    crew: u64,
+    meals: f64,
+    asleep_hours: f64,
+    hungry: f64,
+    starving: f64,
+    tired: f64,
+    slowed: f64,
+}
 
+/// Every seed this sweeps. Twelve costs seconds — `lift.rs` spent a
+/// milestone on three for no reason anybody had checked.
+const SEEDS: [u64; 8] = [0x_FED, 1, 2, 3, 4, 5, 6, 7];
+
+fn span(each: &[Run], get: fn(&Run) -> f64) -> (f64, f64, f64) {
+    let vals: Vec<f64> = each.iter().map(get).collect();
+    let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
+    let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    (vals.iter().sum::<f64>() / vals.len() as f64, lo, hi)
+}
+
+fn measure(seed: u64) -> Run {
     let content = understory_core::content::Content::load_embedded().expect("pack");
-    let mut game = GameEngine::new(0x_FED);
+    let mut game = GameEngine::new(seed);
     game.set_speed(SimSpeed::X1);
     // **The opening ladder first** (`SYSTEMS.md` §6.11). M6 cut the
     // starting tower to a Heartseed and a bed, so a harness that places
@@ -122,26 +125,59 @@ fn main() {
     let meals = state.stats.meals_eaten - meals_at_start;
     let asleep = state.stats.crew_ticks_asleep - asleep_at_start;
 
-    println!("crew                          {crew}");
-    println!(
-        "meals a person a day          {:.2}   (`hungry_ticks` 4,800 says 3)",
-        meals as f64 / crew as f64 / days as f64
+    Run {
+        crew,
+        meals: meals as f64 / crew as f64 / days as f64,
+        asleep_hours: asleep as f64 / crew as f64 / days as f64 / f64::from(DAY) * 24.0,
+        hungry: pct(hungry, samples),
+        starving: pct(starving, samples),
+        tired: pct(tired, samples),
+        slowed: pct(slowed, samples),
+    }
+}
+
+fn main() {
+    // **A hardcoded day goes stale silently.** `journey.rs` reported a
+    // 57,372-tick run as "3 days" when the pack said 7,200 and the
+    // answer was eight, because it kept its own copy of the day length.
+    // Every instrument here windows on whole days, so a stale copy makes
+    // the window a measurement of what time it started at — the trap
+    // `throughput.rs` documents at the top of itself. Fail loudly rather
+    // than quietly measure a different game.
+    assert_eq!(
+        DAY,
+        understory_core::content::Content::load_embedded()
+            .expect("the shipped pack should load")
+            .balance
+            .clock
+            .ticks_per_day,
+        "the pack's day length has moved; update this file's day constant"
     );
+    println!("=== do the crew eat and sleep as designed? ===\n");
     println!(
-        "hours asleep a person a day    {:.1}h  (of a 24h day-cycle)",
-        asleep as f64 / crew as f64 / days as f64 / f64::from(DAY) * 24.0
+        "  A fed, housed tower over {DAYS} whole days. The first day is the warm-up:\n\
+         everybody starts full and rested, so day one measures the opening position\n\
+         rather than a tower sustaining anything.\n"
     );
-    println!(
-        "\nshare of a person's time spent:\n  \
-         hungry (past 4,800)         {:>5.1}%\n  \
-         starving (past 7,200)       {:>5.1}%\n  \
-         tired (under 1,440 rest)    {:>5.1}%\n  \
-         **slowed** (either)         {:>5.1}%",
-        pct(hungry, samples),
-        pct(starving, samples),
-        pct(tired, samples),
-        pct(slowed, samples),
-    );
+
+    let each: Vec<Run> = SEEDS.iter().map(|&seed| measure(seed)).collect();
+    let show = |name: &str, get: fn(&Run) -> f64, unit: &str| {
+        let (mean, lo, hi) = span(&each, get);
+        println!(
+            "{name:<30}{mean:>6.2}{unit}   (range {lo:.2}-{hi:.2} across {} seeds)",
+            SEEDS.len()
+        );
+    };
+
+    println!("crew                          {}", each[0].crew);
+    show("meals a person a day", |r| r.meals, " ");
+    show("hours asleep a person a day", |r| r.asleep_hours, "h");
+    println!();
+    println!("share of a person's time spent:");
+    show("  hungry (past 4,800)", |r| r.hungry, "%");
+    show("  starving (past 7,200)", |r| r.starving, "%");
+    show("  tired (under 1,440 rest)", |r| r.tired, "%");
+    show("  **slowed** (either)", |r| r.slowed, "%");
     for line in [
         "",
         "  **The shortfall is structural, and cutting the rota took most of it away.**",
