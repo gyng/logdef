@@ -7756,6 +7756,44 @@ region's, by name.
 this source" rather than mystifying the next person. It is the cheap version of a contract check
 and it would have caught this in one run.
 
+#### And then the verb M6 is built around turned out not to move the numbers
+
+Naming a creature for every emplacement to prefer is the central verb of this milestone, and
+nothing had ever measured it. `examples/watch.rs` does: four policies — leave them alone, finish
+the weakest, stop the nearest, shoot whatever is still walking in — twelve seeds a cell, three
+provocation levels, damage counted on rooms and shafts.
+
+| provocation | hp lost, left alone | seed spread | best policy | worst policy |
+|---|---|---|---|---|
+| 300 | 0 | 0..0 | — nothing reaches a room | — |
+| 600 | 1382 | **0..2316** | — the spread swallows everything | — |
+| 1000 | 2583 | 2348..2732 | 2581 (−0%) | 2617 (+1%) |
+
+**At the one level where the spread is tight enough to see a small effect, no policy moves damage
+by more than 1%.** And `systems/defence.rs` says why, which is the useful half: an emplacement's
+default target is the *nearest live creature inside its range*, and a focus only overrides that
+when the named creature is **also** in range — a focus out of reach falls back to nearest,
+deliberately, because "a battery that sat idle while something chewed on the tower would be a
+trap rather than a decision". So naming a creature can only reorder among things that gun could
+already shoot, and the default is already the nearest of those. **The room for it to matter is
+small by construction.**
+
+That is not "the verb is wrong". §6.4's own comment says it "gives the player a second moment to
+supply their judgement" and "costs attention during a wave to use" — a claim about *attention*,
+which is exactly what the tone gate left standing. What this establishes is narrower and worth
+having: **do not balance around focus reducing damage, because it does not.**
+
+The validity check that makes the rest believable is worth copying: **"stop nearest" is the
+engine's own default written as a policy, and it reproduces the untouched tower almost exactly**
+— 2581 against 2583 on an identical 2348..2732 spread. A harness whose control and whose
+reproduction of that control disagreed would be measuring itself.
+
+**What it does not cover, and this is the run to do next.** One tower shape and **two weapons that
+answer every approach** — a thorn gun and a dart battery both carry an empty `targets`. §6.22
+gave each emplacement an approach it answers, and a tower of *specialists* is where
+nearest-in-range should be wrong most often, because a mast's nearest is not a burrower. If focus
+pays anywhere it pays there.
+
 #### The ruins were the third invisible thing, and the rope chain closes the door to them
 
 The board's one useful trade is **4 scrap for 3 poles**, and scrap comes out of ruins. The whole
