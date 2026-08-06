@@ -214,22 +214,38 @@ Dwell, dispatch, and the estimates crew use to pick a shaft. See `SYSTEMS.md` §
 
 ## Siege
 
-> **`examples/bestiary.rs` was dead and fifteen rows below quote it (2026-08-07).** It
-> panicked on its own seed — `room.dart_battery` is `unlocked_by: room.thornwright` and the
-> build list had the battery first, so `PlaceRoom` refused it forty times and the assert fired
-> — printing an empty table and exiting **zero**. A fourth instrument in the dead-or-lying
-> category after the three `AGENTS.md` §II records.
+> **`examples/bestiary.rs` was dead, and fifteen rows below quote it (2026-08-07).** Three
+> bugs stacked, each hidden by the one above it:
 >
-> It runs now, and running revealed two more problems stacked underneath. Its "undefended"
-> tower still carried the starting thorn gun and the cutter arm, which deals melee damage, so
-> it was comparing a tower against an armed copy of itself. And with both disarmed, **every
-> creature still leaves the bare tower whole** — nothing reaches it inside the window, so the
-> gap between the two columns is zero by construction.
+> 1. It **panicked on its own seed**, printed an empty table and exited **zero**.
+>    `room.dart_battery` is `unlocked_by: room.thornwright` and the build list had the battery
+>    first. A fourth instrument in the dead-or-lying category after the three `AGENTS.md` §II
+>    records.
+> 2. Its "undefended" tower still carried the starting thorn gun and the cutter arm, which
+>    deals melee damage — so it compared a tower against an armed copy of itself.
+>    `harness::disarm` strips both now.
+> 3. **The tower was still striding**, so the creature had to catch something moving away from
+>    it. Every creature left the bare tower whole and the gap between the columns was zero
+>    against all eight, which reads as "a battery is worth nothing".
 >
-> **So the per-creature figures in the rows below are not currently supported by anything.**
-> The instrument prints that verdict itself now rather than letting a reader infer one. What
-> it needs is a window, spawn distance or approach that lets a creature actually arrive; that
-> is a fix to the harness and nobody has made it.
+> All three are fixed and the table means something now. Halted, over 12,000 ticks, seven of
+> eight creatures damage an undefended tower and an armed one holds at 1000‰ against every one
+> of them:
+>
+> | creature | undefended | answered |
+> |---|---|---|
+> | Night Prowler | **88‰** | 1000‰ |
+> | Root Borer | 785‰ | 1000‰ |
+> | Feral Warden | 828‰ | 1000‰ |
+> | Skitter | 840‰ | 1000‰ |
+> | Thicket Mother | 842‰ | 1000‰ |
+> | Canopy Leaper | 862‰ | 1000‰ |
+> | Mire-hulk | 983‰ | 998‰ |
+> | Glean-crow | 1000‰ | 1000‰ |
+>
+> The glean-crow reading 1000‰ on both sides is correct rather than degenerate — it steals
+> from an outbox and never damages the shell. The instrument now detects the all-1000‰ case
+> and refuses to let a reader draw a verdict from it.
 
 > **Re-measured, and the grades stand.** These rows were tuned with `examples/siege_run.rs`'s
 > three-tower narrative, which stopped being able to measure anything when M3 changed the

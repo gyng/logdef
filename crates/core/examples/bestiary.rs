@@ -24,7 +24,7 @@ use understory_core::systems::siege::tower_integrity_permille;
 
 /// Long enough for the slowest thing in the pack to close, bite its way
 /// through a panel, and either be shot down or lose its grip.
-const TICKS: u32 = 6_000;
+const TICKS: u32 = 12_000;
 
 fn main() {
     println!("=== one of each, against one tower ===\n");
@@ -166,6 +166,20 @@ fn fight(enemy: usize, armed: bool) -> Fight {
         });
     }
 
+    // **Halt the tower, or this is a chase rather than a fight.**
+    //
+    // The creature is placed `spawn_paces_ahead` in front of a tower
+    // that is still striding, so it has to catch something moving away
+    // from it at close to its own speed. Measured: every creature left
+    // the bare tower at 1000 permille, the gap against the armed column
+    // was zero against all eight, and the table read as "a battery is
+    // worth nothing" — `siege_run.rs`'s bug, where eight seeds of zero
+    // damage produced a confident conclusion.
+    //
+    // Halted, six of the eight land: the night prowler takes an
+    // undefended tower to 618 permille. That is the number this
+    // instrument exists to produce.
+    let _ = game.try_send(GameCommand::SetStriding { walking: false });
     let mut darts_used = 0i64;
     for tick in 0..TICKS {
         if tick % 60 == 0 && armed {
