@@ -138,28 +138,57 @@ fn main() {
         pct(asleep, samples),
         pct(idle, samples),
     );
+    // **Interpolated, never spelled out.** This block used to carry
+    // "queueing is 3.4%" and "34.2% of a day against 12.1%" as literals,
+    // directly under a table that had drifted to 5.6%, 29.0% and 13.2%.
+    // An instrument whose prose disagrees with its own numbers is worse
+    // than one that is merely out of date, because the sentence is what
+    // gets quoted into `BALANCE.md` — and it was, into ten rows.
+    // `needs.rs` had the same bug in the same session.
+    println!();
+    println!("  Three things worth reading off that table.");
+    println!();
     println!(
-        "\n  Three things worth reading off that table.\n\
-         \n\
-         1. **Queueing is 3.4%, and the design rests on it.** `DESIGN.md` insight 1 is\n\
-            that transport is shared rather than dedicated, and a shaft's capacity is\n\
-            the point rather than a limitation to work around. On a *starting* tower\n\
-            that thesis is real but thin — present, not felt. It has to arrive with\n\
-            height and room count or it does not arrive at all.\n\
-         \n\
-         2. **Crew are idle 0.2% of the time.** They are saturated, so anything added\n\
-            to this tower is paid for out of something else it was already doing. That\n\
-            is the shape the game wants, and it also means throughput measurements on\n\
-            a starting tower measure the crew rather than the thing being added.\n\
-         \n\
-         3. **Walking costs nearly three times what climbing does**, 34.2% of a day\n\
-            against 12.1%. `climb_ticks_per_floor` 30 is two and a half times\n\
-            `walk_ticks_per_slot` 12 *per unit*, so the rows read as though vertical\n\
-            movement dominates — and on a four-floor tower it plainly does not, because\n\
-            there is far more horizontal distance to cover than vertical. `DESIGN.md`\n\
-            pillar 2 calls vertical transport the belt; that is a claim about a tall\n\
-            tower, and this is what it looks like before the tower is tall."
+        "1. **Queueing is {:.1}%, and the design rests on it.** `DESIGN.md` insight 1 is",
+        pct(boarding, samples)
     );
+    for line in [
+        "   that transport is shared rather than dedicated, and a shaft's capacity is the",
+        "   point rather than a limitation to work around. On a *starting* tower that",
+        "   thesis is real but thin — present, not felt. It has to arrive with height and",
+        "   room count or it does not arrive at all.",
+        "",
+    ] {
+        println!("{line}");
+    }
+    println!(
+        "2. **Crew are idle {:.1}% of the time.** They are saturated, so anything added",
+        pct(idle, samples)
+    );
+    for line in [
+        "   to this tower is paid for out of something else it was already doing. That is",
+        "   the shape the game wants, and it also means throughput measurements on a",
+        "   starting tower measure the crew rather than the thing being added.",
+        "",
+    ] {
+        println!("{line}");
+    }
+    println!(
+        "3. **Walking costs about {:.1}x what climbing does**, {:.1}% of a day against {:.1}%.",
+        pct(walking, samples) / pct(climbing, samples).max(0.1),
+        pct(walking, samples),
+        pct(climbing, samples)
+    );
+    for line in [
+        "   `climb_ticks_per_floor` 30 is two and a half times `walk_ticks_per_slot` 12",
+        "   *per unit*, so the rows read as though vertical movement dominates — and on a",
+        "   four-floor tower it plainly does not, because there is far more horizontal",
+        "   distance to cover than vertical. `DESIGN.md` pillar 2 calls vertical transport",
+        "   the belt; that is a claim about a tall tower, and this is what it looks like",
+        "   before the tower is tall.",
+    ] {
+        println!("{line}");
+    }
 }
 
 fn pct(n: u64, of: u64) -> f64 {
