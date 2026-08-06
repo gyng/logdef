@@ -13,7 +13,7 @@ pub mod world;
 
 use serde::{Deserialize, Serialize};
 
-use crate::content::{Content, Shift};
+use crate::content::Content;
 use crate::fx::Paces;
 use crate::ids::{CrewId, ItemIdx, RoomId, ShaftId};
 use crate::rng::RngStreams;
@@ -174,10 +174,6 @@ pub struct GameState {
     /// How many more times each settlement will plate the shell. Only
     /// one of them does any, but the shape follows the others.
     pub shell_work_left: Vec<u8>,
-    /// Which shift the clock says is awake. Held only so the handover
-    /// can be noticed and sounded once for the tower rather than once
-    /// per crew member; every other reader derives it from the daypart.
-    pub shift_now: Shift,
     /// What kind of work an idle crew member reaches for first.
     ///
     /// **One order for the whole tower, not a rota per person.** A
@@ -229,12 +225,6 @@ impl GameState {
             walking: true,
             strode: false,
             paces_last: 0,
-            // `Clock::new` starts the run exactly at the handover onto
-            // the day shift, so this is Day by construction — and
-            // seeding it correctly is what stops tick 1 emitting a
-            // spurious `ShiftChange` for a handover that already
-            // happened before the run began.
-            shift_now: Shift::Day,
             work: default_work_order(),
             stats: RunStats {
                 // One slot per item in the pack, so a harvest counter is
@@ -444,8 +434,31 @@ impl GameState {
         self.next_crew_id += 1;
         let index = (self.next_crew_id as usize).saturating_sub(2) % names.len();
         let fidget = (self.rng.cosmetic.next_u32() & 0xFFFF) as u16;
-        let rested = content.balance.crew.rested_max_ticks;
-        let mut member = Crew::new(id, names[index].clone(), fidget, rested);
+
+        // **Nobody comes aboard in step with anybody else.**
+        //
+        // Sleep is need-driven since M6 (`SYSTEMS.md` §6.32): somebody
+        // works until `tired_ticks` and sleeps until full. Crew who all
+        // started at exactly `rested_max` would therefore lie down on
+        // the same tick and get up on the same tick for the first
+        // several cycles — which is the rota's own failure mode arriving
+        // by the back door, and the whole reason for cutting it was that
+        // a tower with nobody awake at night stops.
+        //
+        // A quarter-cycle of jitter is enough to break it on turn one,
+        // and drift does the rest: different `tired_ticks`, different
+        // walks to a bunk, and a deck sleeper taking twice as long.
+        //
+        // **Counted off the roster, not rolled.** A draw would have to
+        // come from the `sim` stream — when a pair of hands is on the
+        // stairs is as economic as a fact gets — and adding a draw there
+        // perturbs every world roll downstream of it, which is a large
+        // price for a stagger that does not need to be random at all.
+        // Four steps of a twelfth spreads the opening crew across a
+        // quarter of a cycle and repeats harmlessly past that.
+        let full = content.balance.crew.rested_max_ticks;
+        let jitter = (full / 12) * (id.0 % 4);
+        let mut member = Crew::new(id, names[index].clone(), fidget, full - jitter);
 
         // **One trait, drawn on the `sim` stream** (`SYSTEMS.md` §6.25).
         // Not `cosmetic`, which is where `fidget` above comes from: a
@@ -456,6 +469,20 @@ impl GameState {
         // *is* an economic act.
         if let Some(drawn) = given.or_else(|| self.roll_trait(content)) {
             member.traits.push(drawn);
+        }
+
+        // **What is left of "starts on the night shift."** The trait
+        // used to put somebody on the other half of a rota; it now puts
+        // them half a cycle out of step, which is the same fiction and
+        // survives the rota being gone. Applied after the trait is
+        // drawn, because it is the trait that decides it.
+        if member.traits.iter().any(|idx| {
+            content
+                .traits
+                .get(idx.get())
+                .is_some_and(|def| def.starts_out_of_phase)
+        }) {
+            member.rested = full / 2;
         }
 
         // And whatever that trait already knows how to do. A rank

@@ -35,7 +35,6 @@ import type {
   ShaftInfo,
   ShaftPriority,
   ShaftView,
-  ShiftTag,
   SimSpeed,
   StoreView,
   ViewSnapshot,
@@ -357,10 +356,6 @@ export class Game {
 
   stationCrew(crew: number, room: number | null): void {
     this.send({ StationCrew: { crew, room } });
-  }
-
-  setShift(crew: number, shift: ShiftTag): void {
-    this.send({ SetShift: { crew, shift } });
   }
 
   /**

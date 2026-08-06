@@ -449,27 +449,17 @@ test("the roster writes both of the player's schedules", async ({ page }) => {
   // this spec has to pay for: measured, zero poles after 120,000
   // ticks. Both halves are about UI writing a schedule, and neither
   // cares which order they are checked in.
-  // The rota. One click should move one named person onto the night
-  // shift and leave everybody else alone.
+  // **The rota used to be checked here** — one click moving one named
+  // person onto nights. M6 cut it (`SYSTEMS.md` §6.32): crew go to bed
+  // when they are tired and get up when they are rested, so there is no
+  // button. What the roster still has to carry is that the tower can
+  // see tiredness at all, which is the flag the card reads.
   const crew = await page.evaluate(() => window.__understory!.view().crew.map((m) => m.id));
   expect(crew.length).toBeGreaterThan(0);
-  const who = crew[0]!;
-  await expect(page.getByTestId(`shift-${who}`)).toHaveAttribute("aria-pressed", "false");
-  await page.getByTestId(`shift-${who}`).click();
-  await expect
-    .poll(() =>
-      page.evaluate((id) => window.__understory!.view().crew.find((m) => m.id === id)?.shift, who),
-    )
-    .toBe("Night");
-  const others = await page.evaluate(
-    (id) =>
-      window
-        .__understory!.view()
-        .crew.filter((m) => m.id !== id)
-        .every((m) => m.shift === "Day"),
-    who,
+  const tiredIsReal = await page.evaluate(() =>
+    window.__understory!.view().crew.every((m) => typeof m.tired === "boolean"),
   );
-  expect(others).toBe(true);
+  expect(tiredIsReal, "CrewView.tired is missing — the WASM predates this source").toBe(true);
 
   // Skip a floor this daypart, and check the program says so.
   await expect(page.getByTestId(`stop-${shaft}-1`)).toHaveAttribute("aria-pressed", "true");

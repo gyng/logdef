@@ -226,10 +226,6 @@ fn every_command_survives_the_replay_format() {
         C::Trade { offer: 2 },
         C::Recruit,
         C::Reinforce,
-        C::SetShift {
-            crew: crate::ids::CrewId(1),
-            shift: crate::content::Shift::Night,
-        },
         C::SetPowerPriority {
             order: vec![
                 crate::state::power::PowerUse::Legs,
@@ -289,7 +285,6 @@ fn every_command_survives_the_replay_format() {
             | C::Trade { .. }
             | C::Recruit
             | C::Reinforce
-            | C::SetShift { .. }
             | C::SetPowerPriority { .. }
             | C::FocusEnemy { .. }
             | C::StationCrew { .. }

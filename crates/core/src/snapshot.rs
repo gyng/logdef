@@ -437,6 +437,15 @@ pub struct CrewView {
     pub hunger: u32,
     /// Ticks of work left in them.
     pub rested: u32,
+    /// Past `tired_ticks`, and therefore on the way to a bed and
+    /// working at `tired_work_pct` until they reach one.
+    ///
+    /// **Derived here rather than in the frontend**, the same way
+    /// `stressed` is, because the threshold is trait-scaled per person
+    /// (`SYSTEMS.md` §6.25) and a UI that compared `rested` against the
+    /// pack's constant would be wrong about exactly the people the
+    /// traits exist to make different.
+    pub tired: bool,
     /// The room this person has been posted to, if any. A standing
     /// order, so it survives them going to eat and to bed.
     pub stationed: Option<u32>,
@@ -454,23 +463,8 @@ pub struct CrewView {
     /// and the figure the simulation applies are the same fact, and
     /// there is no finer number underneath for a player to chase.
     pub ranks: Vec<u8>,
-    /// Which half of the rota they are on.
-    pub shift: ShiftTag,
-    /// Actually asleep, as against merely off shift and walking to bed.
+    /// Actually asleep, as against merely tired and walking to bed.
     pub asleep: bool,
-}
-
-/// Which half of the rota, flattened for the renderer.
-///
-/// Deliberately **not** `rename_all = "lowercase"`, unlike the tags
-/// around it. `SetShift` carries a `content::Shift`, which serialises as
-/// `"Day"`/`"Night"`; spelling the same fact two ways depending on which
-/// direction it is crossing the bridge is the kind of contract detail
-/// that costs somebody an afternoon.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ShiftTag {
-    Day,
-    Night,
 }
 
 /// Why a room is quiet. Ordered by which answer a player needs first:
@@ -521,7 +515,7 @@ pub enum CrewStateTag {
     /// Standing in a room something is taking from, until it leaves.
     /// Nobody fights — being there is the whole of it.
     Shoo,
-    /// Off shift — in a hammock if a bed was free, on the deck if not.
+    /// Asleep — in a hammock if a bed was free, on the deck if not.
     Sleep,
 }
 
@@ -1460,6 +1454,7 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
             fidget: member.fidget,
             hunger: member.hunger,
             rested: member.rested,
+            tired: crate::systems::needs::wants_sleep(member, content),
             stationed: member.stationed.map(|room| room.0),
             post_until_tired: member.post_until_tired,
             traits: member.traits.iter().map(|idx| idx.0).collect(),
@@ -1467,10 +1462,6 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
                 .iter()
                 .map(|job| member.rank(*job, content))
                 .collect(),
-            shift: match member.shift {
-                crate::content::Shift::Day => ShiftTag::Day,
-                crate::content::Shift::Night => ShiftTag::Night,
-            },
             asleep: member.is_asleep(),
         })
         .collect()

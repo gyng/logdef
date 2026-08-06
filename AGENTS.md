@@ -63,7 +63,7 @@ Home") are shipped. That is: the deterministic chassis and streaming terrain; th
 charge, elevators and dumbwaiters, and the crafting chain; creatures, infrastructure damage,
 emplacements and repair; regions, route forks, berthing at ruins, an enclave, and a run that
 ends two ways; and now named crew with two needs — meals from a canteen chain and sleep in a
-bunk on a shift rota the player sets — plus the art pass and the whole audio subsystem. A run
+bunk — plus the art pass and the whole audio subsystem. A run
 can be played from the first pace to the last, and the tower is somewhere people live.
 
 M5 ("The Refugia") is most of the way there: the tier-two chains and the materials under
@@ -94,7 +94,16 @@ quietly started measuring the gun instead of their own subject.
 Charge priority
 handed over — it used to *be* the tick order — a creature the emplacements can be told to
 prefer, a person posted to a room, kit that belongs to somebody named, the berth given its own
-halt, and a thief answered by somebody standing in the room. **Read `SYSTEMS.md` §6 before
+halt, and a thief answered by somebody standing in the room. **The shift rota was cut** (`SYSTEMS.md` §6.32). Crew go to bed when `rested` reaches
+`tired_ticks` and get up when it is full; there is no `Shift`, no `SetShift`, and no roster
+toggle. Every split of the old rota cost the tower 28-44% of its poles and the *mixed* splits
+were the worst option on the board, which made it a menu whose every non-default option was a
+trap. What replaced it covers the tower's nights (night work 1 -> 29 poles) and switched on
+thirteen rest traits that had only ever fed a hidden work-rate multiplier. **It also moved
+shaft affordability from 26 minutes to 32** in a 31-36 minute run — recorded, not tuned away,
+and §6.19's problem rather than a new one.
+
+**Read `SYSTEMS.md` §6 before
 adding anything to a wave**, because the tone gate is what shaped every one of them: weapon
 loadouts and crew fighting boarders were cut rather than softened, and what survived is the
 shape of *attention* rather than the shape of a fight.
@@ -216,7 +225,7 @@ crates/
         defence.rs              # emplacements, fed off the same shelves as everything
         repair.rs               # putting the tower back together, for poles and crew time
         haul.rs                  # crew state machine + task assignment/scoring
-        needs.rs                 # hunger, rest, the shift band, and the work multiplier
+        needs.rs                 # hunger, rest, who is tired enough to sleep, work multiplier
       snapshot.rs                # presentation boundary — the only place Fx::to_f32 runs
       replay.rs                  # Replay, Recorder, hash_state, embedded golden fixture
       tests.rs, tests/            # tests grouped by topic (determinism, haul, journey, ...)
@@ -228,6 +237,11 @@ crates/
       lift.rs                     # M6's: does a shaft ever pay, swept over tower height.
                                   #   Reads its pack from UNDERSTORY_PACK when set, so a
                                   #   tuning pass costs seconds rather than a rebuild
+      rest.rs                     # did cutting the shift rota pay? Every split of it cost the
+                                  #   tower 28-44% of its poles and the mixed rotas were the
+                                  #   worst option on the board (SYSTEMS.md 6.32), so the rota
+                                  #   went and sleep became need-driven. Now the after: night
+                                  #   work 1 -> 29 poles, run length unchanged
       watch.rs                    # do M6's wave verbs move the numbers? Focus does not
                                   #   (<=1%, five policies, two tower shapes) and charge
                                   #   priority does not either (five orders, identical to

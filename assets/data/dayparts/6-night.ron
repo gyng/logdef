@@ -6,5 +6,4 @@ DaypartDef(
     id: "daypart.night",
     name: "Night",
     start_permille: 860,
-    shift: Night,
 )

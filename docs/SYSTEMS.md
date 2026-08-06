@@ -8017,3 +8017,117 @@ deliberately.
 5. **Still nothing is `PLAYTESTED`.** Every constant M6 added is `MEASURED`: an instrument
    confirms the effect it exists to produce. None has been played with, or played with against its
    neighbours, and `docs/PLAYTEST.md` remains the work that closes it.
+
+### 6.32 The rota, cut
+
+**The shift rota is gone.** Crew go to a bunk when `rested` reaches `tired_ticks` and get up
+when it is full again. There is no `SetShift`, no `Shift`, no `DaypartDef.shift`, no
+`shift_now`, and no toggle on the roster card. The dayparts still exist and still decide the
+light; they no longer decide who is awake.
+
+#### What the measurement was
+
+`examples/rota.rs` (now `rest.rs`) asked whether splitting the rota ever paid. Six crew, six
+whole days, five seeds, two bunk counts:
+
+```text
+  rota     sleepers  poles   by day  by night   hauls
+  6d/0n           2     50       48         1     225
+  4d/2n           2     36       27         9     195
+  3d/3n           2     34       25         9     188
+  0d/6n           2     41        5        35     191
+  6d/0n           6     59       52         6     264
+  4d/2n           6     33       22        11     188
+  3d/3n           6     28       21         7     176
+  0d/6n           6     41        6        35     196
+```
+
+Every split cost 28-44% of the tower's poles, and **the mixed rotas — the ones a thoughtful
+player picks, wanting cover around the clock — were the worst option on the board**, beaten by
+putting everybody on nights. The reason the mixed ones lose: `rested_max_ticks` is 8,640
+against a 6,048-tick night, so a night worker never crosses `tired_ticks` and never pays
+`tired_work_pct`, while a day worker finishes at 60%. An all-night tower has the fewest hands
+and no tiredness tax; a split tower pays the tax *and* has fewer hands.
+
+A menu whose every non-default option is a trap is not a decision. It is also the shape
+`DESIGN.md`'s fourth structural call exists to prevent — a rota is a build order for people.
+
+#### What replaced it, and what that buys
+
+The cycle is `rested_max` awake against `rested_max / rest_gain` asleep — 8,640 and 4,320,
+a 12,960-tick loop against a 14,400-tick day — so crew drift round the clock by themselves.
+They also come aboard staggered, a twelfth of a cycle apart by roster position, so they never
+start in step. Measured on the same harness:
+
+- **Night work went from 1-6 poles to 29-32.** The tower covers its own nights with nobody
+  assigned to one.
+- Crew are awake **64%** of the time against the rota's 58%.
+- On a five-floor chain tower: hauls **+19%**, crafts **+25%**, harvest **+18%**, and
+  *fewer* poles spent on repair.
+- The twelve-seed walker floor is **unchanged**: 31-36 minutes, 12/12 arrived.
+
+**Thirteen traits became behaviour.** `tired_pct`, `rested_max_pct`, `bunk_rest_pct` and
+`deck_rest_pct` fed one hidden work-rate multiplier before; they now set how long somebody
+works and how long they sleep, and therefore *when*. `sleepless` and `quick_to_tire` visibly
+keep different hours. `starts_on_nights` became `starts_out_of_phase` — half a cycle out of
+step, which is the same fiction and, unlike a rota, not something the player can set for
+everybody.
+
+#### Two rules that had to be invented, and one that did not survive contact
+
+**A night has a length.** Waking only at `rested_max` meant somebody who could not reach a bed
+refilled at `no_bunk_rest_gain` and was therefore *absent* for twice as long as a bunked
+sleeper — a bed shortage that compounds instead of degrading, against `bunk.ron`'s own "visibly
+degrading, never fatal". `Crew.slept` caps a sleep at `rested_max_ticks / rest_gain_per_tick`,
+so the cap never binds on a bunked sleeper and always binds on a deck one, who gets up tired.
+
+**Nobody is woken by an event**, which is the one piece of the rota worth keeping. Not by a
+wave, not by a stall. If the simulation roused people when things got bad, the beds would be
+decorative.
+
+**The sleep threshold is a rule, not a fit.** Swept on the chain-first tower of
+`tests::journey`, measured as when a shaft first becomes affordable: empty gives no lift at all
+inside 43 minutes; `tired_ticks` gives 32 minutes; `tired_ticks * 2` gives 41. Both directions
+are worse for different reasons — later means working the tail of every waking life at
+`tired_work_pct`, earlier means a shorter cycle, and a bed is a floor above the works by
+design, so every cycle is a trip on the stairs the tower does not get as haul time.
+
+#### The cost, recorded rather than tuned away
+
+**A chain-first tower reached a shaft at 26 minutes before this and reaches one at 32 now.**
+The whole-run floor did not move, so what moved is shaft affordability specifically: a quicker
+tower runs its *rope* chain harder, and `glut.rs` prices that at 56% of the tower's poles. The
+golden recorder had to drop its second burner — five poles and a share of the same bamboo the
+mill wants — to record at all.
+
+The test's bar was widened from 30 minutes to 36 with that written into it. **Widened to the
+run, not to 32**: asserting a hair above the measurement is how a criterion gets closed by
+redefining a word, which is the failure this repo watches for. What is true is that the lift is
+reachable inside a run and is no longer comfortable, and §6.19 already names shaft
+affordability as the largest open balance question in the project. It belongs to the difficulty
+pass.
+
+#### Three things that went red for reasons that were not this change
+
+1. **`the_golden_fixture_verifies`, after a grant.** Handing the recorder its shaft cost
+   through `harness::give` made the *recording* succeed and the *replay* diverge at tick
+   127,710 — a grant is not a `GameCommand`, so a replay of the same commands has a poorer
+   tower. The script's own comment had already said so; it was rediscovered anyway.
+2. **`harvesting_hard_draws_attention`.** It stepped 12,000 ticks of a 14,400-tick day — 0.83
+   of one, and therefore a measurement of what time it started (`AGENTS.md` §I rule 1). It
+   survived only because a run used to open at the morning handover. A run now opens at
+   predawn, the window landed on a different mix of daylight, and it went red without a single
+   thing about provocation changing. Now a whole day.
+3. **A tower parked at the first fork for five and a half days**, in the instrument that
+   started all of this. The tell was `paces` reading identical to the digit in all eight runs.
+   `watch.rs` had recorded that trap by name.
+
+#### Deferred out of 6.32
+
+- **A preference for sleeping in the dark.** Crew sleep whenever they tire, so "the tower is
+  quiet at night" is now a tendency produced by `dark_work_pct` and the lamps rather than a
+  rule. A bias toward the dark band would restore more of it and is a second mechanism to
+  tune; there is no measurement yet that says it is needed.
+- **`crew_cap: 8`'s reasoning is now stale.** Its note says "eight, which the rota earns ...
+  raising the cap without the rota would have been a straight throughput gift". Whether eight
+  is still the right ceiling is a balance question and untouched here.

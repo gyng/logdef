@@ -3,8 +3,6 @@ DaypartDef(
     id: "daypart.dusk",
     name: "Dusk",
     start_permille: 760,
-    // Night shift begins. Exposure drops below
-    // `night_light_threshold` at about 835 per-mille, inside dusk — so
-    // the night shift is the dark shift, exactly.
-    shift: Night,
+    // Exposure drops below `night_light_threshold` at about 835
+    // per-mille, inside dusk, so the lamps come on here.
 )

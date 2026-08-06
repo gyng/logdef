@@ -64,27 +64,7 @@ pub fn apply(
         GameCommand::SetWorkOrder { order } => set_work_order(state, order),
         GameCommand::AddCar { shaft } => add_car(state, content, *shaft),
         GameCommand::Reinforce => reinforce(state, content),
-        GameCommand::SetShift { crew, shift } => set_shift(state, *crew, *shift),
     }
-}
-
-/// Put one crew member on a shift.
-///
-/// The whole of the mechanism: nothing is woken, nothing is cancelled,
-/// no errand is disturbed. "Awake" is derived from this and the daypart
-/// every tick, so a sleeping day worker set to `Night` at midnight is
-/// awake on the very next tick, and a day worker set to `Night` at noon
-/// walks to a bed as soon as their hands are empty.
-fn set_shift(
-    state: &mut GameState,
-    crew: crate::ids::CrewId,
-    shift: crate::content::Shift,
-) -> Result<(), CommandError> {
-    let Some(member) = state.crew.iter_mut().find(|member| member.id == crew) else {
-        return Err(CommandError::NoSuchCrew { crew });
-    };
-    member.shift = shift;
-    Ok(())
 }
 
 /// Answer the pending fork.

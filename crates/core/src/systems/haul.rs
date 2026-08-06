@@ -35,9 +35,8 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     // Repair spends poles off the shelves, and the assignment pass runs
     // with the crew moved out of state, so the figure comes with it.
     let poles = super::repair::repair_item(content).map_or(0, |item| state.stock_of(item));
-    let awake_shift = super::needs::shift_now(state, content);
     // Working in the dark is the third penalty, and the one that
-    // connects the rota to charge. `lit` is true all day, so this only
+    // connects the crew to charge. `lit` is true all day, so this only
     // bites in a brown-out — not merely on a dark night.
     let lit = state.power.lit;
 
@@ -63,7 +62,6 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         &queues,
         daypart,
         poles,
-        awake_shift,
         &state.work,
     );
 
@@ -133,9 +131,9 @@ fn advance(
         }
 
         CrewState::Sleeping => {
-            // Off shift. Rest accrues in `needs`; waking is the
-            // assignment pass's job, since a woken crew member is just
-            // somebody with nothing to do yet.
+            // Rest accrues in `needs`; waking is the assignment pass's
+            // job, since a woken crew member is just somebody with
+            // nothing to do yet.
             crew.wait_ticks = 0;
         }
 
@@ -603,7 +601,7 @@ const PRIORITY_SPILL: i64 = 1;
 ///    re-deciding it
 /// 2. a load in hand with somewhere to put it — finish the delivery;
 ///    nothing carried is ever dropped
-/// 3. off shift — go to a bunk, or lie down where they are
+/// 3. past `tired_ticks` — go to a bunk, or lie down where they are
 /// 4. past `hungry_ticks` — go and eat
 /// 5. damage worth a shift — mend it
 /// 6. a haul
@@ -613,10 +611,12 @@ const PRIORITY_SPILL: i64 = 1;
 /// repair shift's 80 plus the walk. Feeding them first is the cheaper
 /// order.
 ///
-/// Off shift sits *below* a task already under way, and that is what
+/// Going to bed sits *below* a task already under way, and that is what
 /// holds the invariant that a crew member never falls asleep holding
-/// something: going off shift stops them taking new work, and they head
-/// for a bunk once their hands are empty.
+/// something: getting tired stops them taking new work, and they head
+/// for a bunk once their hands are empty. They make that walk at
+/// `tired_work_pct`, which is where the penalty for having no spare bed
+/// is actually paid.
 #[allow(clippy::too_many_arguments)]
 fn assign_idle(
     crew: &mut [Crew],
@@ -626,20 +626,19 @@ fn assign_idle(
     queues: &[u32],
     daypart: DaypartIdx,
     poles: i64,
-    awake_shift: crate::content::Shift,
     work: &[Job],
 ) {
     for i in 0..crew.len() {
-        let off_shift = crew[i].shift != awake_shift;
+        let tired = super::needs::wants_sleep(&crew[i], content);
 
-        // A sleeper whose shift has come round wakes up — and only
-        // then. **Crew are never woken automatically.** An attack does
-        // not rouse anybody: if the simulation woke people when things
-        // got bad, the rota would be decorative and the interesting
-        // decision — do I burn tomorrow morning to answer tonight —
-        // would be made by the game instead of the player.
+        // A sleeper who has had enough gets up — and only then.
+        // **Crew are never woken automatically.** An attack does not
+        // rouse anybody: if the simulation woke people when things got
+        // bad, the beds would be decorative and the interesting
+        // decision — this tower is short-handed tonight, what do I do
+        // about it — would be made by the game instead of the player.
         if crew[i].is_asleep() {
-            if off_shift {
+            if !super::needs::is_rested(&crew[i], content) {
                 continue;
             }
             crew[i].errand = None;
@@ -704,8 +703,8 @@ fn assign_idle(
             });
         let free_to_choose = !crew[i].is_carrying() || stranded;
 
-        // Off shift. Bed if there is one; the deck if not.
-        if off_shift && free_to_choose {
+        // Tired. Bed if there is one; the deck if not.
+        if tired && free_to_choose {
             crew[i].wait_ticks = 0;
             crew[i].errand = find_bunk(tower, content, crew, i, crew[i].floor());
             crew[i].state = match crew[i].errand {

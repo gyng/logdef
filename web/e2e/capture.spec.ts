@@ -1285,14 +1285,12 @@ test("capture the home", async ({ page }) => {
   await buy("room.canteen", 2);
   await buy("room.bunk", 2);
 
-  // Put one crew member on nights, so the evening frame has somebody
-  // up and about as well as somebody asleep. A dormitory with everyone
-  // in it and nobody moving is a still life, not a home.
-  await page.evaluate(() => {
-    const crew = window.__understory!.view().crew;
-    const last = crew[crew.length - 1];
-    if (last) window.__understory!.send({ SetShift: { crew: last.id, shift: "Night" } });
-  });
+  // **Nobody is posted to nights any more** (`SYSTEMS.md` §6.32). This
+  // used to set one crew member onto the night shift so the evening
+  // frame had somebody up as well as somebody asleep — a dormitory with
+  // everyone in it and nobody moving is a still life, not a home. Crew
+  // now drift apart by themselves, so the frame gets both for free, and
+  // the loop below already waits for exactly that.
 
   // Walk to dusk, and then keep stepping in small increments until the
   // frame actually has what it is a picture of: somebody eating, and

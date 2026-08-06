@@ -1,80 +1,72 @@
-//! Is the shift rota a verb, or a setting the player is right to ignore?
+//! Did cutting the rota pay, and does the tower cover its own nights?
 //!
-//! **Answer: it is a verb, and every use of it costs the tower.**
-//! Splitting six crew across both bands loses 28-44% of the poles the
-//! shipped default mills, on five seeds at two bunk counts, and the
-//! *mixed* rotas -- the ones a thoughtful player picks, wanting cover
-//! around the clock -- are the worst option on the board. Putting
-//! everybody on nights beats splitting.
+//! **This file used to be `rota.rs` and it measured a system that no
+//! longer exists.** The finding stands and is why: six crew, six whole
+//! days, five seeds, two bunk counts, splitting the shift rota cost
+//! **28-44% of the tower's poles** at every split, and the *mixed*
+//! rotas -- the ones a thoughtful player picks, wanting cover around
+//! the clock -- were the worst option on the board, beaten by putting
+//! everybody on nights. A menu whose every non-default option is a trap
+//! is not a decision. The numbers it produced, kept so the change has a
+//! before:
 //!
-//! **The question came from a played run.** A dogfood tower on day 3
-//! held no poles at all, could build nothing in a menu of nineteen
-//! rooms, and had four rooms backed up on their outputs. All three crew
-//! were on `Day`, which is the engine's default and which nobody had
-//! ever changed, and at dawn all three were asleep.
+//! ```text
+//!   rota     sleepers  poles   by day  by night   hauls
+//!   6d/0n           2     50       48         1     225
+//!   4d/2n           2     36       27         9     195
+//!   3d/3n           2     34       25         9     188
+//!   0d/6n           2     41        5        35     191
+//!   6d/0n           6     59       52         6     264
+//!   4d/2n           6     33       22        11     188
+//!   3d/3n           6     28       21         7     176
+//!   0d/6n           6     41        6        35     196
+//! ```
 //!
-//! The arithmetic underneath is not subtle. A day is 14,400 ticks. The
-//! `Day` band runs permille 180-760, which is **8,352 ticks**; `Night`
-//! is the other **6,048**. So a tower on the shipped default has 42% of
-//! every day during which nobody hauls anything -- the mill fills its
-//! output buffer, stops, and the hours are gone.
+//! So the rota went (`SYSTEMS.md` §6.32) and sleep became need-driven:
+//! somebody works until `rested` reaches `tired_ticks`, goes to bed, and
+//! gets up when it is full. This instrument is the after. It asks two
+//! things and the second is the one that could still go wrong:
 //!
-//! Two readings fit that and they want opposite fixes:
+//! 1. **Does the tower mill more?** It should. The cycle is 8,640 awake
+//!    against 4,320 asleep -- 67% of a 12,960-tick loop -- where the day
+//!    shift was 8,352 of a 14,400-tick day, or 58%. Same people, more
+//!    hours, and the last stretch before bed is the only tired one.
+//! 2. **Does it cover its own nights?** This is the claim that does not
+//!    follow from arithmetic. Crew drift because their loop is shorter
+//!    than the day, and they start jittered so they are never in step;
+//!    if that drift is too slow or too weak, the tower still stops at
+//!    dusk and the change bought hours without buying cover. `by night`
+//!    is the column, and the rota's own best (1 and 6 poles) is the bar.
 //!
-//! 1. **Coverage.** Split the rota and the tower works around the
-//!    clock.
-//! 2. **Total hands.** A night worker is awake 6,048 ticks against a
-//!    day worker's 8,352, so moving somebody to nights *removes* 27.5%
-//!    of their working time.
-//!
-//! Reading 2 wins, and the reason is that hauling is the binding
-//! constraint (`AGENTS.md` §I) -- which is precisely the thing moving
-//! somebody to nights takes away. Coverage is real and visible in the
-//! `by night` column, which goes 1 -> 9 -> 9 -> 35 across the splits:
-//! the verb does exactly what it says. It just buys hours in the band
-//! where the tower has fewest hands, at the price of hours in the band
-//! where it has most.
-//!
-//! **Why the mixed rotas lose to an all-night one** is the part worth
-//! keeping. `rested_max_ticks` is 8,640 and a night shift is 6,048, so
-//! a night worker **never crosses `tired_ticks`** and never pays
-//! `tired_work_pct`; a day worker crosses it about four-fifths through
-//! and finishes at 60%. An all-night tower has the fewest hands and no
-//! tiredness tax at all. A split tower pays the tax *and* has fewer
-//! hands, which is how 4d/2n and 3d/3n come out under 0d/6n.
-//!
-//! **Poles milled is the column**, counted off the mill's own output as
-//! it rises -- the trick `glut.rs` had to invent after widenings turned
-//! out to cap at three purchases. It has no ceiling and no policy in
-//! it. Hauls and crafts are carried beside it as the uncorrelated
-//! check, and they track it: 225 -> 195 -> 188 -> 191.
+//! **Poles milled is the headline**, counted off the mill's own output
+//! as it rises -- the trick `glut.rs` had to invent after widenings
+//! turned out to cap at three purchases. It has no ceiling and no policy
+//! in it. Hauls and crafts sit beside it as the uncorrelated check.
 //!
 //! Whole days only, six of them. A window that is not a whole number of
 //! days is a measurement of what time it started (`AGENTS.md` §I), and
-//! that rule has never mattered more than it does here, where the
-//! subject *is* the time of day.
+//! that rule has never mattered more than here, where the subject *is*
+//! the time of day.
 //!
 //! **Three harness traps on the way, all three already written down in
-//! this repo**, which is the argument for reading §II before building
-//! an instrument rather than after:
+//! this repo**, which is the argument for reading §II before building an
+//! instrument rather than after:
 //!
 //! - *The tower parked at the first fork* and stood there five and a
-//!   half days. The tell was `paces` reading **exactly 37,438 in all
-//!   eight runs** -- identical across four rotas and two bunk counts.
+//!   half days. The tell was `paces` reading **identical to the digit in
+//!   all eight runs** -- across four rotas and two bunk counts.
 //!   `watch.rs` recorded this one by name.
-//! - *The mill was starved 98% of the run*, so every split reported the
-//!   same flat number. No bamboo meant no burn, no burn meant no
-//!   charge, and the tower crawled 3,700 paces where a walking one does
-//!   12,754 in region 1 alone. Fixed with a standing top-up, asserted,
-//!   because `harness::give` drops overflow silently.
+//! - *The mill was starved 98% of the run*, so every configuration
+//!   reported the same flat number. No bamboo meant no burn, no burn
+//!   meant no charge, and the tower crawled 3,700 paces where a walking
+//!   one does 12,754 in region 1 alone. Fixed with a standing top-up,
+//!   asserted, because `harness::give` drops overflow silently.
 //! - *One seed said 46, 46, 34, 45*, a 3d/3n row worse than putting
 //!   everybody on nights. Non-monotone output from a monotone input is
-//!   noise wearing a finding's clothes; five seeds and a printed range
-//!   made the real order legible.
+//!   noise wearing a finding's clothes.
 
 use understory_core::GameEngine;
 use understory_core::command::GameCommand;
-use understory_core::content::Shift;
 use understory_core::harness;
 use understory_core::ids::ItemIdx;
 
@@ -83,10 +75,10 @@ use understory_core::ids::ItemIdx;
 /// the window being a whole number of these.
 const TICKS_PER_DAY: u32 = 14_400;
 
-/// How many of the six aboard work nights, in the four splits worth
-/// asking about: the shipped default, a third, half, and the inverse of
-/// the default.
-const SPLITS: [usize; 4] = [0, 2, 3, 6];
+/// What the rota's best configuration milled, at 2 and 6 sleepers, on
+/// this harness with these seeds. **The bar.** Cutting a system has to
+/// beat the system, and "it feels better" is not a measurement.
+const ROTA_BEST: [(usize, i64, i64); 2] = [(2, 50, 1), (6, 59, 6)];
 
 /// **Five seeds, because one was not enough and said so.** The single-
 /// seed version reported 46, 46, 34, 45 poles across the four splits —
@@ -96,7 +88,6 @@ const SPLITS: [usize; 4] = [0, 2, 3, 6];
 const SEEDS: [u64; 5] = [4242, 7, 101, 2718, 31337];
 
 struct Run {
-    nights: usize,
     /// Extra bunks built on top of the one the tower starts with.
     extra: usize,
     /// How many people the tower can actually put in a bed at once,
@@ -161,32 +152,30 @@ fn main() {
         .unwrap_or(6);
     let ticks = TICKS_PER_DAY * days;
 
-    println!("Does splitting the shift rota pay?");
+    println!("Did cutting the rota pay, and does the tower cover its own nights?");
     println!(
         "  Six crew, {days} whole days ({ticks} ticks, {:.0} minutes at 1x), {} seeds averaged.",
         f64::from(ticks) / 30.0 / 60.0,
         SEEDS.len()
     );
-    println!("  A day shift is 8,352 ticks and a night shift 6,048, so a tower on the default has");
-    println!("  6,048 ticks a day — 42% — during which nobody hauls anything at all.\n");
+    println!("  Sleep is need-driven: to bed at `tired_ticks`, up at `rested_max`. Compared");
+    println!("  against the rota's own best on the same harness, same seeds, same days.");
+    println!();
 
     // Bunks are the obvious confound: half the argument for splitting a
     // rota anywhere is that two shifts can share one bed. Swept rather
     // than fixed, so it cannot quietly be the thing being measured.
     let mut runs = Vec::new();
     for extra in [0usize, 2] {
-        for nights in SPLITS {
-            let each: Vec<Run> = SEEDS
-                .iter()
-                .map(|&seed| measure(nights, extra, ticks, seed))
-                .collect();
-            runs.push(mean(&each));
-        }
+        let each: Vec<Run> = SEEDS
+            .iter()
+            .map(|&seed| measure(extra, ticks, seed))
+            .collect();
+        runs.push(mean(&each));
     }
 
     println!(
-        "  {:<8} {:>8} {:>6} {:>8} {:>7} {:>8} {:>6} {:>6} {:>6} {:>5} {:>6} {:>7} {:>6} {:>5} {:>9}",
-        "rota",
+        "  {:>8} {:>6} {:>8} {:>7} {:>8} {:>6} {:>6} {:>6} {:>5} {:>6} {:>7} {:>6} {:>5} {:>9}",
         "sleepers",
         "poles",
         "range",
@@ -204,8 +193,7 @@ fn main() {
     );
     for run in &runs {
         println!(
-            "  {:<8} {:>8} {:>6} {:>8} {:>7} {:>8} {:>6} {:>6} {:>6} {:>5} {:>6} {:>7} {:>5}% {:>4}% {:>8}%",
-            format!("{}d/{}n", 6 - run.nights, run.nights),
+            "  {:>8} {:>6} {:>8} {:>7} {:>8} {:>6} {:>6} {:>6} {:>5} {:>6} {:>7} {:>5}% {:>4}% {:>8}%",
             run.sleepers,
             run.poles_milled,
             format!("{}-{}", run.poles_low, run.poles_high),
@@ -241,28 +229,35 @@ fn main() {
 "
     );
 
-    for extra in [0usize, 2] {
-        let of = |nights: usize| -> &Run {
-            runs.iter()
-                .find(|r| r.nights == nights && r.extra == extra)
-                .expect("every split was measured at every bunk count")
+    for (sleepers, rota_poles, rota_night) in ROTA_BEST {
+        let Some(run) = runs.iter().find(|r| r.sleepers == sleepers) else {
+            println!(
+                "  {sleepers} sleepers: NOT MEASURED — the tower would not stand that many bunks,                  so there is nothing here to compare the rota against."
+            );
+            continue;
         };
-        let base = of(0);
-        let best = SPLITS
-            .iter()
-            .map(|&n| of(n))
-            .max_by_key(|r| r.poles_milled)
-            .expect("SPLITS is not empty");
-        let delta = best.poles_milled - base.poles_milled;
-        let pct = (delta * 100) as f64 / base.poles_milled.max(1) as f64;
+        let pct = ((run.poles_milled - rota_poles) * 100) as f64 / rota_poles.max(1) as f64;
+        // **The poles delta is the weak half of this and says so.** The
+        // seed spread on this harness is wide enough to swallow it
+        // whole — see the `range` column — so what it supports is "no
+        // worse", not a percentage. The night column is the finding.
         println!(
-            "  {} sleepers: the default (6d/0n) mills {}, the best split ({}d/{}n) mills {} — {}{pct:.0}%.",
-            base.sleepers,
-            base.poles_milled,
-            6 - best.nights,
-            best.nights,
-            best.poles_milled,
-            if delta >= 0 { "+" } else { "" },
+            "  {sleepers} sleepers: {} poles against the rota's best of {rota_poles} — {}{pct:.0}%.",
+            run.poles_milled,
+            if run.poles_milled >= rota_poles {
+                "+"
+            } else {
+                ""
+            },
+        );
+        println!(
+            "    {} of them after dark, against the rota's {rota_night}. {}",
+            run.poles_night,
+            if run.poles_night > rota_night * 2 {
+                "The tower covers its own nights."
+            } else {
+                "IT DOES NOT COVER ITS NIGHTS — the drift is too slow or too weak."
+            }
         );
     }
 }
@@ -275,7 +270,6 @@ fn mean(each: &[Run]) -> Run {
     let first = &each[0];
     let poles: Vec<i64> = each.iter().map(|r| r.poles_milled).collect();
     Run {
-        nights: first.nights,
         extra: first.extra,
         sleepers: first.sleepers,
         poles_milled: poles.iter().sum::<i64>() / n,
@@ -298,7 +292,7 @@ fn mean(each: &[Run]) -> Run {
     }
 }
 
-fn measure(nights: usize, extra: usize, ticks: u32, seed: u64) -> Run {
+fn measure(extra: usize, ticks: u32, seed: u64) -> Run {
     let mut game = GameEngine::new(seed);
     // Four floors, the same shape `glut.rs` measures on, so the two
     // instruments' pole figures can be read against each other.
@@ -314,7 +308,7 @@ fn measure(nights: usize, extra: usize, ticks: u32, seed: u64) -> Run {
         build(&mut game, "room.bunk");
     }
 
-    crew_of(&mut game, 6, nights);
+    crew_of(&mut game, 6);
 
     // Counted, not assumed. `min_floor: 1` and a two-slot footprint mean
     // the tower's beds are limited by the floors above the works, and a
@@ -394,11 +388,14 @@ fn measure(nights: usize, extra: usize, ticks: u32, seed: u64) -> Run {
         if now > in_the_mill {
             let made = now - in_the_mill;
             poles_milled += made;
-            // Which band the tick belonged to, read off the engine's own
-            // definition rather than off the tick number — `shift_now`
-            // is what decides who is awake, so it is what has to decide
-            // which column a pole lands in.
-            if understory_core::systems::needs::shift_now(game.state(), &content) == Shift::Day {
+            // **Which band the tick belonged to.** There is no shift to
+            // ask any more, so this is the clock: the stretch the rota
+            // used to call Night is permille 760 to 180, and keeping the
+            // same boundary is what lets the `by night` column be read
+            // against the table in the header.
+            let permille = i64::from(game.state().clock.tick_of_day) * 1000
+                / i64::from(content.balance.clock.ticks_per_day.max(1));
+            if (180..760).contains(&permille) {
                 poles_day += made;
             } else {
                 poles_night += made;
@@ -449,7 +446,6 @@ fn measure(nights: usize, extra: usize, ticks: u32, seed: u64) -> Run {
     let capacity = game.state().power.capacity;
     let stats = &game.state().stats;
     Run {
-        nights,
         extra,
         sleepers,
         poles_milled,
@@ -540,29 +536,19 @@ fn build(game: &mut GameEngine, room: &str) {
     );
 }
 
-/// Put six people aboard and post `nights` of them on the night rota.
+/// Put `crew` people aboard, through the game's own recruiter.
 ///
-/// The shift goes through `GameCommand::SetShift` rather than the
-/// field, so what is measured is the verb a player actually has. A
-/// harness that wrote `member.shift` directly would be measuring a
-/// state the game might not let anybody reach.
-fn crew_of(game: &mut GameEngine, crew: usize, nights: usize) {
-    {
-        let content = game.content().clone();
-        let state = game.state_mut_for_test();
-        while state.crew.len() > crew {
-            state.crew.pop();
-        }
-        while state.crew.len() < crew {
-            state.add_crew(&content);
-        }
+/// `add_crew` is what jitters their starting `rested` and what applies
+/// `starts_out_of_phase`, so a harness that built its own crew would be
+/// measuring a tower whose sleep never desynchronises — which is
+/// precisely the thing under test.
+fn crew_of(game: &mut GameEngine, crew: usize) {
+    let content = game.content().clone();
+    let state = game.state_mut_for_test();
+    while state.crew.len() > crew {
+        state.crew.pop();
     }
-    let ids: Vec<_> = game.state().crew.iter().map(|member| member.id).collect();
-    for id in ids.into_iter().take(nights) {
-        game.try_send(GameCommand::SetShift {
-            crew: id,
-            shift: Shift::Night,
-        })
-        .unwrap_or_else(|err| panic!("a crew member should be re-shiftable: {err}"));
+    while state.crew.len() < crew {
+        state.add_crew(&content);
     }
 }

@@ -8,7 +8,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::content::Shift;
 use crate::ids::{CrewId, FloorIdx, ShaftId, SlotIdx};
 use crate::state::{ShaftPriority, SimSpeed};
 
@@ -202,22 +201,6 @@ pub enum GameCommand {
     /// it, and re-sendable until then — the last answer before the line
     /// is the one that counts (`SYSTEMS.md` §3.3).
     TakeFork { branch: u8 },
-
-    /// Put one crew member on the day or the night shift.
-    ///
-    /// One person per command rather than a bulk setter: commands batch
-    /// cheaply (`DECISIONS.md` §3), a rejection then names the crew
-    /// member it is about, and the replay reads as a list of decisions
-    /// about people.
-    ///
-    /// This is also the rota's one emergency verb. Because awake means
-    /// "the current daypart belongs to my shift", setting a sleeping
-    /// day worker to `Night` in the middle of the night wakes them
-    /// immediately — unrested, on the slow multiplier — and come
-    /// morning they are off shift and will sleep through the day you
-    /// needed them for. A real all-hands lever with a real price, built
-    /// out of nothing but that definition.
-    SetShift { crew: CrewId, shift: Shift },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

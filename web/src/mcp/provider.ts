@@ -32,7 +32,6 @@ import type {
   PowerUse,
   RoomInfo,
   ShaftInfo,
-  ShiftTag,
   ViewSnapshot,
 } from "../bridge/types";
 import { placementFits } from "../engine/scene";
@@ -183,7 +182,8 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
   lines.push("Crew:");
   for (const member of view.crew) {
     lines.push(
-      `  ${member.name} — ${member.state}${member.stressed ? " (held up)" : ""}, ${member.shift} shift`,
+      `  ${member.name} — ${member.state}${member.stressed ? " (held up)" : ""}` +
+        (member.tired && !member.asleep ? ", flagging and heading for a bed" : ""),
     );
   }
 
@@ -935,30 +935,6 @@ ${look(game.viewForTool(), game.getCatalog())}`,
             },
           }),
           a.active ? "it is working again" : "it is off",
-        );
-      },
-    },
-    {
-      name: "understory_set_shift",
-      description:
-        "Put somebody on the day or the night shift. Crew sleep through their off band, so a " +
-        "tower with everybody on days does nothing for a third of the clock — and one with " +
-        "everybody on nights harvests in the dark with the lamps on. Balance them.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          crew: { type: "number", description: "Crew id from `look`" },
-          shift: { type: "string", enum: ["Day", "Night"] },
-        },
-        required: ["crew", "shift"],
-      },
-      execute: (a) => {
-        const got = numbers(a, ["crew"]);
-        if ("missing" in got) return needs("understory_set_shift", got.missing);
-        const shift = a.shift === "Night" ? "Night" : "Day";
-        return report(
-          send({ SetShift: { crew: got.got[0]!, shift: shift as ShiftTag } }),
-          `they are on the ${shift.toLowerCase()} shift now`,
         );
       },
     },

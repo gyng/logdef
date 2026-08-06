@@ -13,7 +13,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::content::Shift;
 use crate::fx::Fx;
 use crate::ids::{CrewId, FloorIdx, ItemIdx, RoomId, ShaftId, SlotIdx, TraitIdx};
 
@@ -214,7 +213,7 @@ pub enum CrewState {
     Shooing {
         ticks_left: u32,
     },
-    /// Off shift. In a bunk if one was free, on the deck where they
+    /// Asleep. In a bunk if one was free, on the deck where they
     /// stopped if not; which it is depends on the errand, not on this
     /// tag. A sleeper takes no tasks, advances no legs, mends nothing,
     /// and accrues no `wait_ticks` — a red-tinted sleeper would make
@@ -245,13 +244,24 @@ pub struct Crew {
     /// who ate late does not carry the deficit forward.
     pub hunger: u32,
     /// Ticks of work left in them. Counts down while awake and up while
-    /// asleep. Tiredness is a scheduling problem the way hunger is a
-    /// supply problem: there is no mid-shift nap, and the only thing
-    /// that refills this is being off shift.
+    /// asleep, and **it is what decides which of those they are**: at
+    /// `tired_ticks` they go to bed, at `rested_max` they get up
+    /// (`SYSTEMS.md` §6.32). Until M6 the player assigned a shift and
+    /// this was only a work-rate tax.
     pub rested: u32,
-    /// Which half of the rota they work. The player sets it; the
-    /// simulation never does.
-    pub shift: Shift,
+    /// Ticks spent in the current sleep, zero while awake.
+    ///
+    /// **A night has a length.** Without this, somebody who cannot
+    /// reach a bed refills at `no_bunk_rest_gain` and therefore stays
+    /// down for twice as long as a bunked sleeper — so a tower short of
+    /// beds does not get a tired crew, it gets an *absent* one, and the
+    /// shortage compounds instead of merely degrading. `bunk.ron` calls
+    /// deck sleeping "visibly degrading, never fatal", and this is what
+    /// keeps that true now that the clock no longer gets anybody up.
+    ///
+    /// `serde(default)` so replays recorded before it still load.
+    #[serde(default)]
+    pub slept: u32,
     /// A room this person has been told to stand in and work.
     ///
     /// **A standing order, not an errand.** The errand is how they get
@@ -276,7 +286,7 @@ pub struct Crew {
     ///
     /// So it expires by itself, on the one clock that already means
     /// "this person has given what they have": `tired_ticks`. A push
-    /// lasts the rest of somebody's shift and no longer.
+    /// lasts until they go to bed and no longer.
     ///
     /// `serde(default)` so replays recorded before it still load.
     #[serde(default)]
@@ -425,11 +435,7 @@ impl Crew {
             errand: None,
             hunger: 0,
             rested,
-            // Everybody starts on the day shift, so a player who never
-            // opens the roster has a tower that works in daylight and
-            // sleeps at night. The rota is a decision offered, not one
-            // demanded before the first pace.
-            shift: Shift::Day,
+            slept: 0,
             stationed: None,
             kit: None,
             practice: [0; 4],

@@ -7,7 +7,6 @@
 //! instrument lie.
 
 use crate::command::{CommandError, GameCommand};
-use crate::content::Shift;
 use crate::ids::CrewId;
 use crate::state::{CrewState, Errand};
 use crate::tests::{content, engine, item};
@@ -33,35 +32,102 @@ fn a_run_opens_with_its_crew_awake() {
         game.state().crew.iter().all(|member| !member.is_asleep()),
         "a run opened with its crew in bed"
     );
+    // And nobody comes aboard in step with anybody else — the jitter
+    // in `add_crew` is what stops need-driven sleep from rebuilding the
+    // rota's own failure mode, a whole tower lying down on one tick.
+    let rested: Vec<u32> = game
+        .state()
+        .crew
+        .iter()
+        .map(|member| member.rested)
+        .collect();
     assert!(
-        game.state()
-            .crew
-            .iter()
-            .all(|member| member.shift == Shift::Day),
-        "crew should start on the day shift, so a player who never opens the roster has a tower that works in daylight"
+        rested.iter().any(|r| *r != rested[0]),
+        "every crew member came aboard with identical rest, so they will sleep in lockstep: {rested:?}"
     );
 }
 
 #[test]
-fn the_day_shift_sleeps_at_night_and_wakes_in_the_morning() {
+fn crew_go_to_bed_when_tired_and_get_up_when_rested() {
+    // **The whole of the sleep model** (`SYSTEMS.md` §6.32). It used to
+    // be the clock: awake meant "the current daypart belongs to my
+    // shift". It is now the person.
     let mut game = engine(2);
-    let length = day(&game);
+    let content = game.content().clone();
+    let id = game.state().crew[0].id;
 
-    // Somewhere in the middle of the night band.
-    game.step(length * 3 / 4);
-    assert!(
-        game.state()
+    // Drain one person and leave everybody else alone, so what is
+    // measured is that *their* meter sent *them* to bed.
+    {
+        let state = game.state_mut_for_test();
+        let member = state
             .crew
-            .iter()
-            .any(super::super::state::crew::Crew::is_asleep),
-        "nobody was asleep in the middle of the night"
+            .iter_mut()
+            .find(|member| member.id == id)
+            .expect("aboard");
+        member.rested = 1;
+    }
+    // Long enough to finish whatever is in their hands and walk to a
+    // bunk; the errand is deliberately below a task already under way.
+    game.step(600);
+    let member = game.state().crew.iter().find(|m| m.id == id).unwrap();
+    assert!(
+        member.is_asleep(),
+        "{} was out of rest and did not go to bed",
+        member.name
     );
 
-    // And round to the next morning.
-    game.step(length / 2);
+    // And they get up on their own, without the clock being consulted.
+    let full = crate::systems::needs::rested_max(member, &content);
+    {
+        let state = game.state_mut_for_test();
+        let member = state.crew.iter_mut().find(|m| m.id == id).unwrap();
+        member.rested = full;
+    }
+    game.step(2);
+    let member = game.state().crew.iter().find(|m| m.id == id).unwrap();
     assert!(
-        game.state().crew.iter().all(|member| !member.is_asleep()),
-        "somebody was still asleep well into the morning"
+        !member.is_asleep(),
+        "{} was fully rested and stayed in bed",
+        member.name
+    );
+}
+
+#[test]
+fn a_tower_left_alone_stops_sleeping_in_lockstep() {
+    // **The claim the rota was cut for.** Crew loop in
+    // `rested_max` + `rested_max / rest_gain` ticks, which is shorter
+    // than a day, so they drift round the clock — and they start
+    // jittered, so they never begin in step either. If that drift were
+    // too weak the tower would still go dark at dusk and cutting the
+    // rota would have bought hours without buying cover.
+    let mut game = engine(31);
+    let mut everybody_asleep = 0u32;
+    let mut nobody_asleep = 0u32;
+    let mut mixed = 0u32;
+    for _ in 0..day(&game) * 3 {
+        game.step(1);
+        let asleep = game
+            .state()
+            .crew
+            .iter()
+            .filter(|member| member.is_asleep())
+            .count();
+        if asleep == 0 {
+            nobody_asleep += 1;
+        } else if asleep == game.state().crew.len() {
+            everybody_asleep += 1;
+        } else {
+            mixed += 1;
+        }
+    }
+    assert!(
+        mixed > everybody_asleep,
+        "the tower spent more time wholly asleep ({everybody_asleep}) than partly ({mixed}),          which is the rota's failure mode arriving by the back door"
+    );
+    assert!(
+        nobody_asleep > 0 && mixed > 0,
+        "sleep never staggered at all: {nobody_asleep} awake, {mixed} mixed, {everybody_asleep} out"
     );
 }
 
@@ -186,42 +252,14 @@ fn a_sleeper_is_never_handed_work() {
 }
 
 #[test]
-fn setting_a_sleeper_to_the_other_shift_wakes_them_at_once() {
-    // The rota's one emergency verb, built out of nothing but the
-    // definition of awake. It costs what it should: they wake unrested
-    // and on the slow multiplier, and come morning they are off shift.
-    let mut game = engine(6);
-    game.step(day(&game) * 3 / 4);
-
-    let sleeper = game
-        .state()
-        .crew
-        .iter()
-        .find(|member| member.is_asleep())
-        .map(|member| member.id)
-        .expect("somebody is asleep in the middle of the night");
-
-    game.try_send(GameCommand::SetShift {
-        crew: sleeper,
-        shift: Shift::Night,
-    })
-    .expect("the roster may reshift anybody");
-    game.step(1);
-
-    let woken = game
-        .state()
-        .crew
-        .iter()
-        .find(|member| member.id == sleeper)
-        .expect("they are still aboard");
-    assert!(!woken.is_asleep(), "the surge lever did not wake anybody");
-}
-
-#[test]
 fn nothing_wakes_a_sleeper_by_itself() {
     // An attack does not rouse anybody. If the simulation woke people
-    // when things got bad, the rota would be decorative and the
-    // interesting decision would be made by the game.
+    // when things got bad, the beds would be decorative and the
+    // interesting decision — this tower is short-handed tonight, what
+    // do I do about it — would be made by the game.
+    //
+    // 120 ticks is well inside a sleep, so nobody in this window is due
+    // to get up of their own accord.
     let mut game = engine(7);
     game.step(day(&game) * 3 / 4);
     let asleep: Vec<CrewId> = game
@@ -250,26 +288,11 @@ fn nothing_wakes_a_sleeper_by_itself() {
             .find(|member| member.id == id)
             .expect("still aboard");
         assert!(
-            member.is_asleep() || member.shift != Shift::Day,
+            member.is_asleep(),
             "{} woke up because the tower was attacked",
             member.name
         );
     }
-}
-
-#[test]
-fn reshifting_nobody_is_refused() {
-    let mut game = engine(8);
-    let err = game
-        .try_send(GameCommand::SetShift {
-            crew: CrewId(9999),
-            shift: Shift::Night,
-        })
-        .expect_err("there is no crew member 9999");
-    assert!(matches!(
-        err,
-        crate::command::CommandError::NoSuchCrew { .. }
-    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -277,10 +300,11 @@ fn reshifting_nobody_is_refused() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn beds_are_shared_between_shifts() {
+fn one_bed_serves_more_than_one_sleeper() {
     // The thing nobody designed, which falls straight out of the model:
-    // a bed is only occupied while its sleeper is off shift, so two
-    // crew on opposite shifts need one bed between them.
+    // a bed is only occupied while somebody is in it, and crew who
+    // drift apart are not in it at the same time. Under the rota this
+    // needed the player to split the roster; it now happens by itself.
     let mut game = engine(9);
     crate::tests::stock_poles(&mut game, 10);
     game.try_send(GameCommand::PlaceRoom {
@@ -289,17 +313,6 @@ fn beds_are_shared_between_shifts() {
         slot: 1,
     })
     .expect("a bunk is three poles and two slots");
-
-    let ids: Vec<CrewId> = game.state().crew.iter().map(|member| member.id).collect();
-    // Everybody but the first onto the night shift, so at most one
-    // person is ever off shift at a time.
-    for id in ids.iter().skip(1) {
-        game.try_send(GameCommand::SetShift {
-            crew: *id,
-            shift: Shift::Night,
-        })
-        .expect("the roster may reshift anybody");
-    }
 
     let mut slept_in_a_bed = 0;
     for _ in 0..day(&game) {
@@ -657,66 +670,30 @@ fn a_slow_crew_member_still_arrives() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn the_rota_is_two_contiguous_bands() {
-    // A rota with two separate night stretches is not a rota; it is a
-    // bug in the content pack, and a broken pack is a load error.
-    let content = content();
-    let parts = &content.dayparts;
-    let handovers = parts
-        .iter()
-        .zip(parts.iter().cycle().skip(1))
-        .take(parts.len())
-        .filter(|(a, b)| a.shift != b.shift)
-        .count();
-    assert_eq!(handovers, 2, "the shipped rota is not two contiguous bands");
-    assert!(parts.iter().any(|part| part.shift == Shift::Day));
-    assert!(parts.iter().any(|part| part.shift == Shift::Night));
-}
-
-#[test]
-fn the_night_shift_is_the_dark_shift() {
+fn the_dark_is_one_contiguous_stretch_around_midnight() {
     // Against the shipped sun curve, exposure drops below the lighting
-    // threshold and climbs back through it entirely inside the night
-    // band. That is what makes "the night shift is the dark shift"
-    // true rather than merely intended.
+    // threshold and climbs back through it exactly once round the
+    // clock. Two dark stretches would mean the lamps came on twice a
+    // day, which is a bug in the curve rather than a shape anybody
+    // wants — and it used to be caught by `validate_rota`, which went
+    // with the rota (`SYSTEMS.md` §6.32).
     let content = content();
     let threshold = content.balance.clock.night_light_threshold;
-    for permille in (0..1000).step_by(10) {
-        let dark = content.sun_pct_at(permille) < threshold;
-        if dark {
-            let part = &content.dayparts[content.daypart_at(permille).0 as usize];
-            assert_eq!(
-                part.shift,
-                Shift::Night,
-                "permille {permille} is dark but belongs to the day shift"
-            );
-        }
-    }
-}
-
-#[test]
-fn the_night_band_is_the_shorter_one() {
-    // Staffing the night costs more hands than it returns, and that
-    // asymmetry is the night shift's compensation for being the
-    // dangerous one.
-    let content = content();
-    let parts = &content.dayparts;
-    let mut day_span = 0i64;
-    for (i, part) in parts.iter().enumerate() {
-        let next = parts[(i + 1) % parts.len()].start_permille;
-        let span = if next > part.start_permille {
-            next - part.start_permille
-        } else {
-            1000 - part.start_permille + next
-        };
-        if part.shift == Shift::Day {
-            day_span += span;
-        }
-    }
-    assert!(
-        day_span > 500,
-        "the day band should be the longer of the two; it is {day_span} per-mille"
+    let dark: Vec<bool> = (0..1000)
+        .step_by(10)
+        .map(|permille| content.sun_pct_at(permille) < threshold)
+        .collect();
+    let flips = dark
+        .iter()
+        .zip(dark.iter().cycle().skip(1))
+        .take(dark.len())
+        .filter(|(a, b)| a != b)
+        .count();
+    assert_eq!(
+        flips, 2,
+        "the lamps change state {flips} times round the day; one dark stretch means two"
     );
+    assert!(dark[0], "permille 0 is predawn and should be dark");
 }
 
 /// **A hand lamp keeps the dark off one person.**

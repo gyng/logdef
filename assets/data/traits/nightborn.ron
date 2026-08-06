@@ -1,6 +1,6 @@
 // **Was never a morning person, and never will be.**
 //
-// Comes aboard on the night shift with the deck to sleep on. The player can move them at once — this is where they start, not where they belong.
+// Comes aboard half a sleep cycle out of step with everybody else, with the deck to sleep on. Awake while the tower rests, asleep while it works.
 //
 // Family argument and the full table: `SYSTEMS.md` §6.25.
 #![enable(implicit_some)]
@@ -9,6 +9,6 @@ TraitDef(
     name: "Nightborn",
     blurb: "was never a morning person, and never will be",
     weight: 40,
-    starts_on_nights: true,
+    starts_out_of_phase: true,
     deck_rest_pct: 200,
 )

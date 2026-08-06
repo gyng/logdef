@@ -37,18 +37,9 @@ export type CrewStateTag =
    * Nobody fights — being there is the whole of it.
    */
   | "shoo"
-  /** Off shift — in a hammock if a bed was free, on the deck if not. */
+  /** Asleep — in a hammock if a bed was free, on the deck if not. */
   | "sleep";
 
-/**
- * Which half of the rota a crew member works. The player sets it.
- *
- * Capitalised, unlike the lowercase tags around it, because the same
- * value crosses the bridge in both directions — `SetShift` carries it
- * back — and one fact should not have two spellings depending on which
- * way it is going.
- */
-export type ShiftTag = "Day" | "Night";
 
 /**
  * `dying` was shot down; `leaving` lost its grip on a walking tower.
@@ -498,8 +489,13 @@ export interface CrewView {
    * finer number underneath for a player to chase.
    */
   ranks: number[];
-  shift: ShiftTag;
-  /** Actually asleep, as against merely off shift and walking to bed. */
+  /**
+   * Past `tired_ticks`, and therefore on the way to a bed and working
+   * at `tired_work_pct` until they reach one. Derived in `snapshot.rs`
+   * because the threshold is trait-scaled per person.
+   */
+  tired: boolean;
+  /** Actually asleep, as against merely tired and walking to bed. */
   asleep: boolean;
 }
 
@@ -842,12 +838,6 @@ export type GameCommand =
   /** Commit to branch 0 or 1 of the pending fork. Re-answerable. */
   | { TakeFork: { branch: number } }
   /**
-   * Put one crew member on the day or the night shift. One person per
-   * command, so a rejection names who it is about and the replay reads
-   * as a list of decisions about people.
-   */
-  | { SetShift: { crew: number; shift: ShiftTag } }
-  /**
    * Rank what keeps running when the bank runs short, best first.
    *
    * Sent whole rather than as a swap: the simulation rejects anything
@@ -864,7 +854,7 @@ export type GameCommand =
   /**
    * Post somebody to a room, or call them back. `null` returns them to
    * hauling. A standing order about somebody's working day, the same
-   * category as the shift rota.
+   * category as the work order.
    */
   | {
       StationCrew: {
@@ -918,7 +908,7 @@ export type SoundEvent =
   /** Somebody sat down to a meal. The warmest moment in the tower. */
   | "MealServed"
   /** The rota turned over — the only reliable way to *hear* the time. */
-  | "ShiftChange"
+  | "Daybreak"
   /**
    * A load went down a chute and out of the tower. Deliberately not
    * `Deliver`: something the chain worked for has just been thrown

@@ -465,13 +465,22 @@ pub struct TraitDef {
     /// carrying a lamp. A brown-out is somebody else's problem.
     #[serde(default)]
     pub sees_in_the_dark: bool,
-    /// Comes aboard on the night shift rather than the day.
+    /// Comes aboard already half a sleep cycle out of step with
+    /// everybody else.
     ///
-    /// The player can move them at once — this is where they *start*,
-    /// not where they belong. A tower whose first recruit turns up
-    /// nocturnal has had a rota decision made for it and can unmake it.
+    /// **What is left of "starts on the night shift"** after the rota
+    /// was cut (`SYSTEMS.md` §6.32). It used to put somebody on the
+    /// other half of a rota the player could undo in one click. It now
+    /// puts them at half `rested`, so they lie down while the tower is
+    /// working and are up while it sleeps — which is the same fiction
+    /// and, unlike the rota, a thing the player cannot simply set for
+    /// everybody.
+    ///
+    /// It is also the seed of the tower's own desynchronisation: crew
+    /// who all woke at the same moment drift apart slowly, and one who
+    /// started out of phase never has to.
     #[serde(default)]
-    pub starts_on_nights: bool,
+    pub starts_out_of_phase: bool,
     /// Comes aboard already practised at this job (`SYSTEMS.md` §6.17).
     #[serde(default)]
     pub practised_at: Option<crate::state::Job>,
@@ -510,7 +519,7 @@ impl TraitDef {
             || self.mend_pct != 100
             || self.carry_bonus != 0
             || self.sees_in_the_dark
-            || self.starts_on_nights
+            || self.starts_out_of_phase
             || self.practised_at.is_some()
     }
 }
@@ -646,16 +655,6 @@ pub struct DefenceDef {
     pub range_paces: i64,
 }
 
-/// Which half of the rota a crew member works. Awake is "the current
-/// daypart belongs to my shift" and nothing else — which is what makes
-/// re-shifting a sleeper mid-night an all-hands lever with a real price,
-/// out of nothing but the definition.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Shift {
-    Day,
-    Night,
-}
-
 /// A named stretch of the day. The simulation only uses the index; the
 /// name is for the player, and the boundaries are what the elevator's
 /// per-daypart programs key off.
@@ -666,11 +665,6 @@ pub struct DaypartDef {
     pub name: String,
     /// Per-mille of the day at which this daypart begins.
     pub start_permille: i64,
-    /// Which shift is awake through this stretch. Content rather than a
-    /// constant in a system, so the handover is a designer's decision —
-    /// and validated as one contiguous band per shift, because a rota
-    /// with two night stretches is a bug in the pack.
-    pub shift: Shift,
 }
 
 /// A stretch of terrain with one character. In M0 a band's only
@@ -1568,27 +1562,6 @@ impl Content {
         }
     }
 
-    /// Tick of the day at which the day shift takes over.
-    ///
-    /// The handover, found rather than authored: the one daypart on the
-    /// day shift whose predecessor round the clock is on the night one.
-    /// `validate_rota` guarantees there is exactly one, so this is a
-    /// lookup and not a search with a policy.
-    #[must_use]
-    pub fn day_shift_start_tick(&self) -> u32 {
-        let ticks = i64::from(self.balance.clock.ticks_per_day.max(1));
-        let count = self.dayparts.len();
-        (0..count)
-            .find(|&i| {
-                let previous = (i + count - 1) % count;
-                self.dayparts[i].shift == Shift::Day
-                    && self.dayparts[previous].shift == Shift::Night
-            })
-            .map_or(0, |i| {
-                (self.dayparts[i].start_permille * ticks / 1000) as u32
-            })
-    }
-
     /// Does anything in the pack cost this item to build?
     ///
     /// The other half of "wanted" in `haul::find_destination`. A material
@@ -2109,48 +2082,7 @@ impl Content {
     }
 }
 
-/// Each shift has to be one contiguous run of dayparts modulo the day,
-/// and both have to exist.
-///
-/// A pack with two separate night stretches is not describing a rota, it
-/// is describing a bug: crew would wake and sleep twice a day, and
-/// `rested_max_ticks` would be tuned against a shift length that never
-/// happens. Same spirit as the contiguous-`order` check on regions.
-fn validate_rota(dayparts: &[DaypartDef], errors: &mut Vec<LoadError>) {
-    if dayparts.is_empty() {
-        return;
-    }
-    let path = "dayparts".to_string();
-    if !dayparts.iter().any(|d| d.shift == Shift::Day)
-        || !dayparts.iter().any(|d| d.shift == Shift::Night)
-    {
-        errors.push(LoadError {
-            path,
-            message: "the rota needs both a day shift and a night shift".into(),
-        });
-        return;
-    }
-    // Two bands round the clock means exactly two handovers, one onto
-    // each shift. More than that and a band is split in half.
-    let handovers = dayparts
-        .iter()
-        .zip(dayparts.iter().cycle().skip(1))
-        .take(dayparts.len())
-        .filter(|(a, b)| a.shift != b.shift)
-        .count();
-    if handovers != 2 {
-        errors.push(LoadError {
-            path,
-            message: format!(
-                "the rota changes shift {handovers} times round the day; a rota has \
-                 exactly two handovers, one onto each shift"
-            ),
-        });
-    }
-}
-
 fn validate(content: &Content, errors: &mut Vec<LoadError>) {
-    validate_rota(&content.dayparts, errors);
     if content.items.is_empty() {
         errors.push(LoadError {
             path: "items".into(),

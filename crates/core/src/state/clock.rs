@@ -1,9 +1,14 @@
 //! The day.
 //!
-//! Two things read this: the sun, which decides how much charge the
-//! sails make, and the elevator, which can run a different program on
-//! the night shift. Everything is derived from a single counter, so the
-//! clock costs one increment a tick and nothing else.
+//! What reads this: the sun, which sets the garden's rate and decides
+//! when the lamps come on, and the elevator, which can run a different
+//! program after dark. Everything is derived from a single counter, so
+//! the clock costs one increment a tick and nothing else.
+//!
+//! **Nothing about sleep reads it any more** (`SYSTEMS.md` §6.32).
+//! Crew lie down when they are tired and get up when they are rested,
+//! so the day no longer decides who is awake — it decides what the
+//! light is like while they work.
 
 use serde::{Deserialize, Serialize};
 
@@ -19,27 +24,26 @@ pub struct Clock {
 }
 
 impl Clock {
-    /// A run begins at the handover onto the day shift.
+    /// A run begins at permille 0, which is predawn.
     ///
-    /// **Not at permille 0**, which is predawn, which is the night band.
-    /// Until M4 the clock started there and nothing minded: it meant a
-    /// tower that set out in the dark with its sails idle for the first
-    /// minute and a half, which was atmospheric and cost nothing. The
-    /// rota made it cost something. Every crew member defaults to the
-    /// day shift — the tower a player who never opens the roster gets —
-    /// so starting at predawn would open every run with the entire crew
-    /// asleep for 2,592 ticks, about 86 seconds at 1x. Nothing moves,
-    /// nothing is hauled, and the only reading available to somebody
-    /// who has not yet been taught what a rota is, is that the game is
-    /// broken.
+    /// **It used to begin at the handover onto the day shift**, and the
+    /// reason was the rota: every crew member defaulted to `Day`, so a
+    /// run opened at predawn was a run that opened with the entire crew
+    /// asleep for 2,592 ticks — about 86 seconds at 1x of nothing
+    /// moving, which reads as a broken game to somebody who has not yet
+    /// been taught what a rota is.
     ///
-    /// So the tower sets out in the morning. Derived from the pack
-    /// rather than hardcoded, because which daypart opens the day shift
-    /// is a designer's decision (`content::validate_rota`).
+    /// M6 cut the rota (`SYSTEMS.md` §6.32) and that reason went with
+    /// it. Crew now come aboard rested and stay up until they are
+    /// tired, so what time the tower sets out no longer decides whether
+    /// anybody is standing. Starting at 0 is the simpler statement, and
+    /// it is the one `power.starting_charge` was already tuned against:
+    /// its note reads "tick 0 is predawn" and says 800 covers the
+    /// ~2,200 ticks until real daylight.
     #[must_use]
-    pub fn new(content: &Content) -> Self {
+    pub fn new(_content: &Content) -> Self {
         Self {
-            tick_of_day: content.day_shift_start_tick(),
+            tick_of_day: 0,
             day: 0,
         }
     }

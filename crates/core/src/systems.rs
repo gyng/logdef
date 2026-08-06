@@ -108,9 +108,15 @@ pub enum SoundEvent {
     /// Somebody sat down to a meal. The warmest moment in the tower,
     /// and the audible confirmation that the kitchen chain is alive.
     MealServed,
-    /// The rota turned over. The tower's one daily ritual, and the only
+    /// A new day began. The tower's one daily ritual, and the only
     /// reliable way to *hear* what time it is.
-    ShiftChange,
+    ///
+    /// **It used to be the rota's handover**, emitted twice a day when
+    /// the shifts changed over. M6 cut the rota (`SYSTEMS.md` §6.32) and
+    /// crew now sleep when they are tired, so there is no handover to
+    /// sound — but the ritual was worth keeping, and the day turning
+    /// over is the thing it was really about.
+    Daybreak,
     /// Something took a load out of an outbox and left with it.
     ///
     /// Not `Impact`: nothing was hit and nothing needs mending. What it
@@ -208,7 +214,11 @@ pub fn staffed(
 }
 
 pub fn tick(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
+    let day = state.clock.day;
     state.clock.advance(content);
+    if state.clock.day != day {
+        sounds.push(SoundEvent::Daybreak);
+    }
     power::income(state, content, sounds);
     transport::run(state, content, sounds);
     intake::run(state, content, sounds);

@@ -3,7 +3,4 @@ DaypartDef(
     id: "daypart.dawn",
     name: "Dawn",
     start_permille: 80,
-    // Still night shift: exposure only climbs back through
-    // `night_light_threshold` at about 150 per-mille, inside dawn.
-    shift: Night,
 )

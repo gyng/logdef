@@ -23,7 +23,7 @@ use std::path::PathBuf;
 
 use understory_core::GameEngine;
 use understory_core::command::GameCommand;
-use understory_core::content::{IntakeSource, Shift};
+use understory_core::content::IntakeSource;
 use understory_core::state::{ShaftPriority, SimSpeed};
 
 /// Fixed seed so the fixture is reproducible.
@@ -176,7 +176,25 @@ fn main() {
     // fixture that cannot be recorded, from a script that was making a
     // timing assumption it never said out loud.
     build_floor_when_affordable(&mut engine);
-    place_when_affordable(&mut engine, "room.burner", 4, 1);
+    // **The second burner is off this list since M6 cut the rota.**
+    //
+    // It cost five poles and, worse, a share of the same bamboo the
+    // mill wants — `burner.ron` puts a stalk at 800 charge and calls
+    // the ratio the whole balance. Need-driven sleep made the tower
+    // quicker at everything (hauls +19%, crafts +25%, harvest +18% on a
+    // five-floor chain) and a quicker tower runs its *rope* chain
+    // harder, which `glut.rs` prices at 56% of its poles. The margin
+    // this script had — its own note further down says the tower
+    // arrives with "two to nine poles" — went, and the recorder died
+    // holding `Rope=12, Poles=1`: rope for a lift twice over and
+    // nothing to go with it.
+    //
+    // Dropping it is a **fixture** decision and costs no coverage: one
+    // burner exercises exactly the same commands as two, and what a
+    // tower can afford is `tests::journey`'s question and `lift.rs`'s,
+    // both of which still ask it honestly. Whether the tree is too dear
+    // for a 31-36 minute run is §6.19's open question and belongs to
+    // the difficulty pass.
     // **Rope, because from M5 that is what an elevator is partly made
     // of** — and a chute, because fiber is about to become the fifth
     // material wanting a shelf and the storeroom has four.
@@ -373,22 +391,13 @@ fn main() {
         })
         .expect("daypart 0 exists");
 
-    // The rota. One crew member onto the night shift, which is the one
-    // command M4 adds and the only way the fixture covers a tower whose
-    // crew are not all asleep at the same time. Recorded as a decision
-    // about a named person, which is what `SetShift` is for.
-    let night_worker = engine
-        .state()
-        .crew
-        .last()
-        .expect("a run starts with crew")
-        .id;
-    engine
-        .try_send(GameCommand::SetShift {
-            crew: night_worker,
-            shift: Shift::Night,
-        })
-        .expect("anybody aboard can be reshifted");
+    // **The rota used to be recorded here** — one crew member onto the
+    // night shift, so the fixture covered a tower whose crew were not
+    // all asleep at once. M6 cut the rota (`SYSTEMS.md` §6.32) and there
+    // is no command to record: crew desynchronise by themselves now,
+    // out of jittered starting `rested` and their own trait-scaled
+    // cycles, so the fixture covers that case by walking far enough to
+    // reach it rather than by being told to.
 
     // A speed change mid-recording, to prove it round-trips.
     engine.set_speed(SimSpeed::X4);
@@ -755,6 +764,15 @@ fn place_when_affordable(engine: &mut GameEngine, room: &str, floor: u8, slot: u
 }
 
 /// The same, for a shaft.
+///
+/// **Do not be tempted to grant the cost here.** It was tried: the
+/// recorder could not afford a lift after M6 cut the rota, and handing
+/// it ten poles through `harness::give` made the recording succeed and
+/// the *replay* diverge at tick 127,710 — because `give` writes state
+/// outside the command stream, so a replay of the same commands has a
+/// tower ten poles poorer and the `BuildShaft` fails. Anything a
+/// fixture needs has to arrive as a command or it is not in the
+/// fixture.
 fn build_shaft_when_affordable(engine: &mut GameEngine, shaft: &str, low: u8, high: u8, slot: u8) {
     for _ in 0..200 {
         let result = engine.try_send(GameCommand::BuildShaft {

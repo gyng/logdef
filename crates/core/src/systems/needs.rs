@@ -1,4 +1,4 @@
-//! Hunger, rest, and the shift band that decides who is awake.
+//! Hunger, rest, and the tiredness that decides who lies down.
 //!
 //! **Nothing here adds an economy.** It adds *needs*, and a need is not
 //! a new resource loop — it is a new customer for the loops already
@@ -7,9 +7,32 @@
 //!
 //! The two needs fail differently on purpose, and are read differently
 //! because of it. Hunger can be fixed by walking to a meal, so hunger
-//! says *your chain broke*. Tiredness cannot be fixed at all except by
-//! being off shift, so tiredness says *your rota is wrong, or you have
-//! no beds*.
+//! says *your chain broke*. Tiredness can only be fixed by lying down,
+//! and how fast it clears is a fact about the bed, so tiredness says
+//! *you have no beds*.
+//!
+//! **Sleep is need-driven, and this is where the rota used to be**
+//! (`SYSTEMS.md` §6.32). Until M6 a crew member was awake if and only if
+//! the current daypart belonged to the shift the player had assigned
+//! them, `rested` was a work-rate tax and nothing else, and the whole
+//! tower lay down and stood up on the same two ticks. Measured on
+//! `examples/rota.rs`, every split of that rota cost the tower 28-44% of
+//! its poles and the mixed splits — the ones a thoughtful player picks —
+//! were the worst option on the board.
+//!
+//! What replaced it: somebody works until `rested` reaches
+//! `tired_ticks`, goes to bed, and gets up when it is full again. The
+//! cycle is `rested_max` awake against `rested_max / rest_gain` asleep,
+//! which at the shipped constants is 8,640 and 4,320 — a 12,960-tick
+//! loop against a 14,400-tick day, so crew drift round the clock by
+//! themselves and the tower covers its own nights without anybody being
+//! assigned to one.
+//!
+//! **Thirteen traits became behaviour the day this changed.**
+//! `tired_pct`, `rested_max_pct`, `bunk_rest_pct` and `deck_rest_pct`
+//! all fed that one hidden multiplier before and now set how long
+//! somebody works, how long they sleep, and therefore *when* — so
+//! `sleepless` and `quick_to_tire` visibly keep different hours.
 //!
 //! This system runs between `defence` and `haul`. Before haul, because
 //! haul both reads the work multiplier and executes every leg of going
@@ -17,24 +40,13 @@
 //! decision this tick should be about the same tick's hunger. After
 //! production, so a meal cooked this tick can be eaten this tick.
 
-use crate::content::{Content, Shift};
+use crate::content::Content;
 use crate::state::{Crew, CrewState, GameState, Job};
 
 use super::SoundEvent;
 
-pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
+pub fn run(state: &mut GameState, content: &Content, _sounds: &mut Vec<SoundEvent>) {
     let balance = &content.balance.crew;
-    let awake_shift = shift_now(state, content);
-
-    // The handover is the tower's one daily ritual, and the only
-    // reliable way to *hear* what time it is. Emitted once for the
-    // tower, not once per crew member: three people going off shift on
-    // the same tick is one handover.
-    if state.shift_now != awake_shift {
-        state.shift_now = awake_shift;
-        sounds.push(SoundEvent::ShiftChange);
-    }
-
     let mut asleep = 0u64;
     for member in &mut state.crew {
         // Hunger rises awake or asleep. You do not stop needing to eat
@@ -52,30 +64,41 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             asleep += 1;
         }
 
-        if member.shift == awake_shift {
+        // **Awake is "not asleep", and that is the whole rule now.**
+        // It used to be "the current daypart belongs to my shift",
+        // which meant somebody walking to a bunk at the end of their
+        // shift was already refilling, and somebody exhausted in the
+        // middle of one could not refill at all. Both were artefacts of
+        // the rota; neither survives it.
+        if !member.is_asleep() {
             member.rested = member.rested.saturating_sub(1);
             // **A push ends when the person does.** `post_until_tired`
             // is the temporary half of stationing: *everybody on the
             // mill, now*, which is a thing a player wants and which
             // would be a trap if it outlived their attention. It
             // expires on the one clock that already means "this person
-            // has given what they have", so a push lasts the rest of a
-            // shift and no longer, and the tower goes back to hauling
+            // has given what they have" — which is now the same clock
+            // that sends them to bed, so a push lasts until they are
+            // tired and no longer, and the tower goes back to hauling
             // without anybody having to remember.
             if member.post_until_tired && member.rested <= tired_ticks(member, content) {
                 member.stationed = None;
                 member.post_until_tired = false;
             }
+            member.slept = 0;
         } else {
-            // Asleep, or on the way to bed. Only actual sleep refills:
-            // walking to a bunk is still walking.
+            member.slept = member.slept.saturating_add(1);
+            // Actually asleep. Walking to a bunk is still walking, and
+            // is caught by the branch above.
             // **And how well they sleep is a fact about them**
             // (`SYSTEMS.md` §6.25). A nocturnal crew member rests as
             // well on bare deck as most people do in a bed, which hands
             // the tower a bunk back; a light sleeper gets almost
             // nothing from the deck and makes the second bunk a
-            // decision. Applied to the *rate*, not to a cap, so the
-            // rota is where it is felt.
+            // decision. Applied to the *rate*, not to a cap, and the
+            // rate is now how long somebody is off the floor for — so a
+            // light sleeper on bare deck is not merely worse rested,
+            // they are away four times as long.
             let gain = match member.state {
                 CrewState::Sleeping => {
                     if member.errand.is_some_and(|errand| errand.is_bunk()) {
@@ -99,26 +122,70 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     state.stats.crew_ticks_asleep += asleep;
 }
 
-/// Which shift the current daypart belongs to.
+/// Has this person given what they have?
 ///
-/// Awake is "the current daypart belongs to my shift" and nothing else.
-/// That single definition is what makes re-shifting a sleeping day
-/// worker to `Night` in the middle of the night an all-hands lever with
-/// a real price — they wake immediately, unrested and slow, and come
-/// morning they are off shift and will sleep through the day you needed
-/// them for. Built out of nothing but the definition.
+/// **The whole of the sleep decision** (`SYSTEMS.md` §6.32): work until
+/// you would start slowing down, then go to bed. It is a rule rather
+/// than a number — `tired_ticks` is already defined as the point where
+/// somebody flags, and it is already what `post_until_tired` expires
+/// on, so a push ending and a shift ending are one idea.
+///
+/// **Swept, because a threshold like this invites a fitted constant.**
+/// On the chain-first tower of `tests::journey`, measured as when a
+/// shaft first becomes affordable:
+///
+/// ```text
+///   trigger              lift at
+///   0 (empty)            never, inside 43 minutes
+///   tired_ticks          32 minutes
+///   tired_ticks * 2      41 minutes
+/// ```
+///
+/// Both directions are worse and the reasons are different, which is
+/// what makes the middle a rule rather than a fit. Later means working
+/// the tail of every waking life at `tired_work_pct`. Earlier means a
+/// shorter cycle, and a bed is a floor above the works by design
+/// (`bunk.ron`), so every cycle is a trip on the stairs that the tower
+/// does not get as haul time.
+///
+/// **The rota reached that shaft at 26 minutes and this does not.**
+/// Recorded rather than tuned away: the twelve-seed walker floor is
+/// unchanged at 31-36 minutes either way, so what moved is shaft
+/// affordability specifically — which `AGENTS.md` already names as the
+/// largest open balance question in the project, and which belongs to
+/// the difficulty pass rather than to this change.
 #[must_use]
-pub fn shift_now(state: &GameState, content: &Content) -> Shift {
-    content
-        .dayparts
-        .get(state.clock.daypart(content).0 as usize)
-        .map_or(Shift::Day, |part| part.shift)
+pub fn wants_sleep(crew: &Crew, content: &Content) -> bool {
+    crew.rested <= tired_ticks(crew, content)
 }
 
-/// Whether this crew member is awake right now.
+/// Has this person had enough — either because they are full, or
+/// because the night is over?
+///
+/// **Nobody is ever woken by an event** — not by a wave, not by a
+/// stall, not by a stalled chain. That is the one piece of the rota
+/// worth keeping: if the simulation roused people when things got bad,
+/// the beds would be decorative.
+///
+/// **But a night has a length**, and that is the second clause. A
+/// bunked sleeper reaches `rested_max` in exactly
+/// `rested_max_ticks / rest_gain_per_tick` ticks, so the cap never
+/// binds on them. It binds on somebody who could not get a bed, and
+/// what it does is turn a bed shortage back into a *tired* crew rather
+/// than an absent one — which is what `bunk.ron` means by "visibly
+/// degrading, never fatal". Without it a deck sleeper is off the floor
+/// for twice as long as a bunked one and the shortage compounds.
+///
+/// The cap is the pack's figure, unscaled by traits, because it is a
+/// fact about the night rather than about the person. Somebody with a
+/// big tank (`tireless`, `sleepless`) simply never tops it up, and runs
+/// on a partial charge for far longer — which is what those traits say
+/// on the label.
 #[must_use]
-pub fn is_awake(crew: &Crew, state: &GameState, content: &Content) -> bool {
-    crew.shift == shift_now(state, content)
+pub fn is_rested(crew: &Crew, content: &Content) -> bool {
+    let balance = &content.balance.crew;
+    let night = balance.rested_max_ticks / balance.rest_gain_per_tick.max(1);
+    crew.rested >= rested_max(crew, content) || crew.slept >= night
 }
 
 /// How fast this crew member works, in percent of normal.

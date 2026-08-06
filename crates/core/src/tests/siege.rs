@@ -794,7 +794,14 @@ fn harvesting_hard_draws_attention_and_walking_quietly_sheds_it() {
     })
     .expect("floor 1's leading edge is where a second arm goes");
 
-    crate::tests::step_walking(&mut game, 12_000);
+    // **A whole day, not 12,000 ticks.** `ticks_per_day` is 14,400, so
+    // the old window was 0.83 of one and therefore a measurement of
+    // what time it started (`AGENTS.md` §I rule 1). It survived only
+    // because the clock used to open a run at the morning handover; M6
+    // cut the rota and a run now starts at predawn (`state/clock.rs`),
+    // the window landed on a different mix of daylight, and this went
+    // green-to-red without a single thing about provocation changing.
+    crate::tests::step_walking(&mut game, 14_400);
     let provoked = game.state().siege.provocation;
     assert!(
         provoked > 0,

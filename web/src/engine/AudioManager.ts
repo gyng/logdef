@@ -493,9 +493,11 @@ export class AudioManager {
         this.hiss(now, 0.35, 0.07, 3200);
         this.blip(now + 0.06, 900, 0.07, 0.05, "triangle");
         break;
-      case "ShiftChange":
-        // The handover: the tower's one daily ritual, and the only
-        // reliable way to *hear* what time it is.
+      case "Daybreak":
+        // A new day. The tower's one daily ritual, and the only
+        // reliable way to *hear* what time it is. It used to be the
+        // rota's handover, twice a day; M6 cut the rota and crew now
+        // sleep when they are tired, so there is no handover to sound.
         this.chime(now, [262, 392], 2.4, 0.06);
         break;
       default:

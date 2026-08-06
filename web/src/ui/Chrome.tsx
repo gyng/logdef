@@ -91,7 +91,12 @@ export function Chrome({ game, ui }: Props) {
 }
 
 /**
- * Who is aboard, what they are doing, and which shift they work.
+ * Who is aboard and what they are doing.
+ *
+ * **The shift toggle is gone** (`SYSTEMS.md` §6.32). Crew sleep when
+ * they are tired and get up when they are rested, so there is nothing
+ * here to set — what a player does about the night is build beds and
+ * hire people, not assign a rota.
  *
  * **This is a schedule the player writes, not a readout of state**,
  * which is what makes it defensible under `DECISIONS.md` §8 — the same
@@ -116,7 +121,6 @@ function Roster({ game, ui }: Props) {
       <h2 className="section-title">Aboard</h2>
       <ul className="roster-list">
         {ui.crew.map((member) => {
-          const night = member.shift === "Night";
           return (
             <li className="roster-row" key={member.id} data-testid={`crew-${member.id}`}>
               <span className="roster-face" aria-hidden="true">
@@ -144,20 +148,6 @@ function Roster({ game, ui }: Props) {
               <Practice catalog={game.getCatalog()} member={member} />
               <KitButton game={game} ui={ui} member={member} />
               <StationButton game={game} ui={ui} member={member} />
-              <button
-                type="button"
-                className={`shift-toggle${night ? " night" : ""}`}
-                data-testid={`shift-${member.id}`}
-                aria-pressed={night}
-                title={
-                  night
-                    ? `${member.name} works the night. Set them back to days.`
-                    : `${member.name} works the day. Put them on nights — they will be up while the day crew sleep, and their bed is free for somebody else.`
-                }
-                onClick={() => game.setShift(member.id, night ? "Day" : "Night")}
-              >
-                {night ? "night" : "day"}
-              </button>
             </li>
           );
         })}
