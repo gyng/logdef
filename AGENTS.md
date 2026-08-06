@@ -94,7 +94,17 @@ quietly started measuring the gun instead of their own subject.
 Charge priority
 handed over — it used to *be* the tick order — a creature the emplacements can be told to
 prefer, a person posted to a room, kit that belongs to somebody named, the berth given its own
-halt, and a thief answered by somebody standing in the room. **The shift rota was cut** (`SYSTEMS.md` §6.32). Crew go to bed when `rested` reaches
+halt, and a thief answered by somebody standing in the room. **An instrument's prose goes stale where its table cannot.** Three were caught in one
+session, all the same way: `needs.rs` printed "a third of a person's life spent hungry" above
+a table reading 14.6%, `haulcycle.rs` printed "queueing is 3.4%" above one reading 5.6%, and
+`chain.rs` quoted *another instrument's* idle share as 0.2% when it was 3.8%. The computed
+numbers were right every time. The sentences underneath were literals from an older run — and
+the sentence is what gets quoted, so ten `BALANCE.md` rows agreed with each other by all
+copying the same wrong words. `haulcycle.rs` interpolates now; `chain.rs` names the other
+instrument instead of quoting it. **If you write a figure into prose that your own code also
+computes, interpolate it or delete it.**
+
+**The shift rota was cut** (`SYSTEMS.md` §6.32). Crew go to bed when `rested` reaches
 `tired_ticks` and get up when it is full; there is no `Shift`, no `SetShift`, and no roster
 toggle. Every split of the old rota cost the tower 28-44% of its poles and the *mixed* splits
 were the worst option on the board, which made it a menu whose every non-default option was a

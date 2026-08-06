@@ -141,9 +141,11 @@ fn main() {
          `AGENTS.md` means by a stall being visible rather than silently discarded. A\n\
          room stalled on an empty inbox is waiting for a haul, and that is the crew.\n\
          \n\
-         Read them against `haulcycle.rs`, where the same tower's crew are idle 0.2%\n\
-         of the day: if both stall figures are high while nobody is idle, the tower is\n\
-         not short of rooms or of buffers, it is short of hands."
+         Read them against `haulcycle.rs`'s idle share — that instrument's to\n\
+         report, and not this one's to quote, because a figure copied between two\n\
+         instruments is a figure that goes stale in the copy. If both stall shares\n\
+         are high while nobody is idle, the tower is not short of rooms or of\n\
+         buffers, it is short of hands."
     );
 }
 
