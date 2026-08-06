@@ -8313,9 +8313,34 @@ damage is apples to apples.
 - At 500 and above it is *worse behind the skin* than bare — 1,832 against 1,436
   at 500, 2,901 against 2,216 at 1,000.
 
-So the inversion is real and sharper than the first reading: a battery keeps
-creatures off the shell while the tower is lightly harassed, and once they are
-getting through anyway it is a room that adds surface and eats crew time.
+#### The fifth instance of the same trap, caught before it shipped
+
+Reading the two columns together exposed it. **`Shape::Answered` builds a
+thornwright, a battery and a mill the bare tower does not have**, so it owns
+more room hit points and loses more of them by construction — and `behind` was
+an absolute. The battery inversion had been reported twice off a column that
+could not tell "worse" from "bigger".
+
+Normalised to a permille of the inner maximum, the inversion **survives**, which
+is the only reason it stays in this section:
+
+| provocation | bare | plated | battery |
+|---|---|---|---|
+| 500 | 214‰ | **158‰** | 245‰ |
+| 700 | 258‰ | 274‰ | 308‰ |
+| 1000 | 331‰ | **320‰** | 388‰ |
+
+So: a battery keeps creatures off the shell at every level (panel damage 66
+against 250 at provocation 100, and lower than bare at all five), and costs more
+*behind* the shell once anything is getting through. Plating helps at 500 and
+1,000 and is roughly neutral at 700.
+
+**Five times now, one file.** Panels-as-absolute, panels-as-fraction,
+whole-tower permille, rooms-as-absolute against a tower with more rooms — every
+one of them a comparison on a quantity whose maximum was the thing under test.
+`AGENTS.md` §II rule 2 names it, and naming it has not been enough: the table
+now labels each column with which pairs it is valid for, because the rule is
+easier to apply to a column than to remember about a table.
 
 #### It is four places, not two
 

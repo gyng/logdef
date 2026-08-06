@@ -86,31 +86,46 @@ fn pressure_table() {
     println!("\n=== how much attention can a tower take? ===\n");
     println!(
         "  provocation held, tower held fixed, {DAYS} days a run, {SEEDS} seeds a cell.\n  \
-         `behind` is hit points lost from **rooms and shafts only**, averaged, and\n  \
-         `worst` is the unluckiest seed of the six.\n\n  \
-         **Panels are excluded on purpose.** `reinforce` raises `panel_hp` and\n  \
-         nothing else, so a column counting panels compares two towers whose\n  \
-         maxima differ by exactly the thing under test — the plated one reads\n  \
-         worse for having more to lose. That false finding has been produced\n  \
-         three times here and withdrawn twice. `standing` still counts panels\n  \
-         and is a survival signal only: do not read plated against bare on it.\n"
+         **Two damage columns, and which one is honest depends on the pair\n  \
+         you are comparing.**\n\n  \
+         `panel` is panel hit points lost, absolute. Valid for battery against\n  \
+         bare — a battery raises no maximum. NOT valid for plated against bare:\n  \
+         `reinforce` raises `panel_hp` and nothing else, so the plated tower has\n  \
+         more to lose and reads worse for having it. That false finding has been\n  \
+         produced three times here and withdrawn twice.\n\n  \
+         `behind` is rooms and shafts, as a permille of their own maximum.\n  \
+         Valid for every pair, and the only column that is. It was an absolute\n  \
+         until the answered tower — which builds three rooms the bare one does\n  \
+         not — read worse simply for owning more to lose. Fifth instance of the\n  \
+         same trap in this file, and it had been reported twice.\n\n  \
+         `standing` counts panels and is a survival signal only. `worst` is the\n  \
+         unluckiest seed of the six, on `behind`.\n"
     );
     println!(
-        "{:<20} {:>5} {:>9} {:>7} {:>7} {:>8} {:>7} {:>6}    verdict",
-        "tower", "prov", "standing", "behind", "worst", "seen off", "mend", "darts"
+        "{:<20} {:>5} {:>9} {:>7} {:>7} {:>7} {:>8} {:>7} {:>6}    verdict",
+        "tower", "prov", "standing", "panel", "behind", "worst", "seen off", "mend", "darts"
     );
 
     for shape in [Shape::Bare, Shape::Plated, Shape::Answered] {
         for level in LEVELS {
             let mut standing_sum = 0;
             let mut lost_sum = 0;
+            // **Panel damage, kept as its own column.** At provocation
+            // 100 and 300 nothing gets behind the skin on any shape, so
+            // `behind` is a row of zeroes and the table would look like
+            // it measured nothing. It did: the panel took it all, which
+            // is exactly what a battery is for. Valid for battery
+            // against bare — a battery raises no maximum — and *not*
+            // valid for plated against bare, which is the whole reason
+            // `behind` exists.
+            let mut panel_sum = 0;
             let mut worst = 0;
             let mut repelled_sum = 0;
             let mut mended_sum = 0;
             let mut spent_sum = 0i64;
             let mut deaths = 0;
             for seed in 1..=SEEDS {
-                let (standing, lost, repelled, mended, _, inner, spent) =
+                let (standing, _lost, repelled, mended, _, inner, spent, panel) =
                     press(shape, level, DAYS, seed);
                 standing_sum += standing;
                 // **`inner`, not `lost`.** `lost` counts panels, which is
@@ -120,8 +135,8 @@ fn pressure_table() {
                 // has used it since the fourth false finding; this table
                 // had not, and was still producing the reading that got
                 // withdrawn.
-                let _ = lost;
                 lost_sum += inner;
+                panel_sum += panel;
                 worst = worst.max(inner);
                 repelled_sum += repelled;
                 mended_sum += mended;
@@ -133,8 +148,9 @@ fn pressure_table() {
             let n = i64::try_from(SEEDS).unwrap_or(1);
             let standing = standing_sum / n;
             println!(
-                "{:<20} {level:>5} {standing:>8}‰ {:>7} {worst:>7} {:>8} {:>7} {:>6}  {}",
+                "{:<20} {level:>5} {standing:>8}‰ {:>7} {:>7} {worst:>7} {:>8} {:>7} {:>6}  {}",
                 shape.name(),
+                panel_sum / n,
                 lost_sum / n,
                 repelled_sum / u64::from(SEEDS as u32),
                 mended_sum / u64::from(SEEDS as u32),
@@ -196,8 +212,8 @@ fn does_plating_help() {
     // that the mechanism does nothing.
     for level in [300, 500, 700] {
         for seed in 1..=8u64 {
-            let (_, _, _, _, _, bare, _) = press(Shape::Bare, level, 3, seed);
-            let (_, _, _, _, _, plated, _) = press(Shape::Plated, level, 3, seed);
+            let (_, _, _, _, _, bare, _, _) = press(Shape::Bare, level, 3, seed);
+            let (_, _, _, _, _, plated, _, _) = press(Shape::Plated, level, 3, seed);
             if bare == 0 && plated == 0 {
                 continue;
             }
@@ -245,7 +261,12 @@ impl Shape {
 }
 
 /// Hold provocation at `level` and see what happens.
-fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64, i64, i64, i64) {
+fn press(
+    shape: Shape,
+    level: i64,
+    days: u32,
+    seed: u64,
+) -> (i64, i64, u64, u64, i64, i64, i64, i64) {
     let mut engine = GameEngine::new(seed);
     engine.set_speed(SimSpeed::X1);
     // **The opening ladder first** (`SYSTEMS.md` §6.11). M6 cut the
@@ -321,6 +342,7 @@ fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64,
         understory_core::systems::repair::outstanding_repair_cost(state, &content),
         behind_the_skin_lost(state),
         darts_spent,
+        panel_lost(state),
     )
 }
 
@@ -342,15 +364,36 @@ fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64,
 /// mill behind it. If plating does anything at all, it shows up here.
 fn behind_the_skin_lost(state: &understory_core::state::GameState) -> i64 {
     let mut lost = 0;
+    let mut max = 0;
     for floor in &state.tower.floors {
         for room in &floor.rooms {
             lost += room.health.max - room.health.hp;
+            max += room.health.max;
         }
     }
     for shaft in &state.tower.shafts {
         lost += shaft.health.max - shaft.health.hp;
+        max += shaft.health.max;
     }
-    lost
+    if max == 0 { 0 } else { lost * 1000 / max }
+}
+
+/// Hit points lost from **panels only**.
+///
+/// Valid for battery-against-bare, because a battery raises no maximum —
+/// both towers have the same panels. **Not** valid for
+/// plated-against-bare, which is the entire reason
+/// `behind_the_skin_lost` exists. It is here because at provocation 100
+/// and 300 nothing gets behind the skin on any shape, so without it the
+/// table looks like it measured nothing when in fact the panel took
+/// everything — which is exactly what a battery is for.
+fn panel_lost(state: &understory_core::state::GameState) -> i64 {
+    state
+        .tower
+        .floors
+        .iter()
+        .map(|floor| floor.panel.max - floor.panel.hp)
+        .sum()
 }
 
 /// Hit points the tower is missing, in absolute terms.
