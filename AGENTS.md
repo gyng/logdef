@@ -242,6 +242,11 @@ crates/
                                   #   worst option on the board (SYSTEMS.md 6.32), so the rota
                                   #   went and sleep became need-driven. Now the after: night
                                   #   work 1 -> 29 poles, run length unchanged
+      orders.rs                   # does the work order move the numbers? No — the third verb
+                                  #   in a row that does not (SYSTEMS.md 6.33). Demoting Mend
+                                  #   below Haul makes the tower mend MORE, because hauling
+                                  #   first is what funds the repairs. Contains its own
+                                  #   control: "mend first" is the shipped default
       watch.rs                    # do M6's wave verbs move the numbers? Focus does not
                                   #   (<=1%, five policies, two tower shapes) and charge
                                   #   priority does not either (five orders, identical to

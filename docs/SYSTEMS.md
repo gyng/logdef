@@ -8131,3 +8131,42 @@ pass.
 - **`crew_cap: 8`'s reasoning is now stale.** Its note says "eight, which the rota earns ...
   raising the cap without the rota would have been a straight throughput gift". Whether eight
   is still the right ceiling is a balance question and untouched here.
+
+### 6.33 The work order does not move the numbers either
+
+**Three verbs in a row now.** §6.31 measured focus (<=1% of damage, five policies, two tower
+shapes) and charge priority (identical to the digit, five orders). `examples/orders.rs` adds
+the work order: five seeds, 60,000 ticks, a five-floor chain tower.
+
+```text
+  default        poles  119  hauls  152  hp mended  456  poles spent  48  whole 99%
+  mend last      poles  112  hauls  157  hp mended  566  poles spent  61  whole 99%
+  mend first     poles  119  hauls  152  hp mended  456  poles spent  48  whole 99%
+```
+
+Two things there are worth more than the verdict.
+
+**"Mend first" is byte-identical to the default**, because the default already *is*
+`Answer, Mend, Man, Haul` — Mend is second, and `Answer` fires only when something is being
+stolen. A sweep that contains its own control without noticing has one fewer arm than it
+thinks. `watch.rs` had to invent that check deliberately; this one got it by printing all
+three rows.
+
+**Demoting Mend below Haul makes the tower mend *more*, not less** — 566 hit points against
+456, 61 poles against 48. The intuition it kills is a reasonable one: mending outranks
+hauling, and a repair shift costs its poles whether it mends twenty points or one, so a
+barely-scratched tower looks like it should be wasting poles on a backlog it cannot clear.
+What actually happens is that hauling first *funds* the repairs. **The order does not decide
+how much mending happens; the poles do.**
+
+This came out of writing tool-surface advice, and it is why the advice is not there. A `look`
+that said "demote mending" would be telling a player to do something that measurably does the
+opposite. The line that shipped says only what is true — mending and building draw on the same
+pole — and stops.
+
+#### Deferred out of 6.33
+
+- **Whether a nearly-whole tower should mend at all.** Every run measured here finishes at 99%
+  integrity, so the backlog is small damage on a healthy tower and the question of a threshold
+  ("do not start a shift for less than N points") was never put. It is a balance question and
+  belongs to the difficulty pass.

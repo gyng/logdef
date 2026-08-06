@@ -484,6 +484,55 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
           .join("\n"),
     );
   }
+  // **What is quietly going wrong**, in the tower's own terms.
+  //
+  // Both of these were visible in a dogfood run's final `look` and
+  // neither was *sayable* from it. A room reading `(backedup)` in the
+  // floor plan is the fact; that the tower has thirteen rope nothing
+  // will ever ask for, and a verb to stop making more, is the reading.
+  // `RoomView.stalled` cannot tell "starved" from "backed up"
+  // (`AGENTS.md` §II rule 5) — `stall` can, and only one of the two is
+  // something the player should act on by switching a room *off*.
+  //
+  // Deliberately short and deliberately conditional: a block that is
+  // always there is a dashboard, and a reader learns to skip it.
+  const wrong: string[] = [];
+  for (const floor of view.tower.floors) {
+    for (const room of floor.rooms) {
+      if (room.stall !== "backedup") continue;
+      const info = catalog.rooms[room.def];
+      const made = room.outputs
+        .map((o) => `${String(o.count)} ${item(o.item)}`)
+        .join(" + ");
+      wrong.push(
+        `${info?.name ?? "?"} on floor ${String(floor.index)} is backed up${made ? ` holding ${made}` : ""} — ` +
+          "nothing is taking what it makes, so it has stopped. Either build something that eats it, " +
+          "or switch it off with understory_set_room_active and get the shelf back.",
+      );
+    }
+  }
+  // **No remedy attached, because the obvious one is wrong.** Mending
+  // outranks hauling and a repair shift costs its poles whether it mends
+  // twenty points or one, so demoting Mend in the work order looks like
+  // the fix. Measured on `examples/orders.rs`, it makes the tower mend
+  // *more* — 566 hit points against 456, 61 poles against 48 — because
+  // hauling first is what funds the repairs. The order does not decide
+  // how much mending happens; the poles do. So this says what is true
+  // and stops there.
+  const poles = view.stock.find((s) => catalog.items[s.item]?.id === "item.poles")?.count ?? 0;
+  if (view.siege.repair_cost > poles) {
+    wrong.push(
+      `Mending wants ${String(view.siege.repair_cost)} poles and the shelves hold ${String(poles)}. ` +
+        "Mending and building draw on the same pole, so the backlog is competing with the build " +
+        "menu above until the mill gets ahead of it.",
+    );
+  }
+  if (wrong.length > 0) {
+    lines.push("");
+    lines.push("Wants attention:");
+    for (const one of wrong) lines.push(`  - ${one}`);
+  }
+
   lines.push("");
   lines.push(
     `Tower ${String(Math.round(view.siege.integrity_permille / 10))}% whole` +
