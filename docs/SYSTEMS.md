@@ -8274,12 +8274,48 @@ adds surface for creatures to reach and hit-points to lose; and loading racks is
 crew time, which at high provocation competes with mending. Which dominates is
 open.
 
-**Do not tune anything on this yet.** It is six seeds a cell on one tower shape,
-and the plating rows beside it still compare on `lost hp`, which is an absolute
-that rises with `panel_hp` — the trap `AGENTS.md` §II rule 2 names and the same
-one that produced a false plating finding four times. The battery rows do not
-share that flaw (the battery does not raise any maximum), but the table they sit
-in has not been re-derived.
+**Do not tune anything on this yet.** It is six seeds a cell on one tower shape.
+
+#### The pressure table was still producing the withdrawn plating finding
+
+`behind_the_skin_lost` — hit points from rooms and shafts only, ignoring panels —
+was written after the *fourth* false plating finding, and the third section of
+`siege_run.rs` has used it ever since. **The pressure table above it never
+switched.** It was still summing `lost`, which counts panels, and `reinforce`
+raises `panel_hp` and nothing else.
+
+Switching that one column flips the sign:
+
+| provocation | bare | plated, panels in | bare | plated, **behind the skin** |
+|---|---|---|---|---|
+| 500 | 1,932 | 1,839 | 1,436 | **1,065** |
+| 700 | 2,319 | 2,918 | 1,727 | 1,838 |
+| 1000 | 2,816 | 3,201 | 2,216 | **2,140** |
+
+Plating reads *worse* at 700 and 1000 on the trapped column and *better* at 500
+and 1000 on the honest one. The withdrawn finding was still being printed.
+
+**And provocation 100 and 300 say nothing about any of it.** On the neutral
+column all three towers lose **zero** hit points behind the skin at those levels
+— nothing ever gets past a panel, so the rows cannot distinguish the shapes.
+That is the *other* documented trap (`AGENTS.md` §II rule 3, "check the run gave
+the mechanism something to do"), and it was invisible while panels were in the
+column. It is now a row of zeroes that says so.
+
+#### What the battery rows actually say
+
+Both readings are valid and they are about different things, because unlike
+plating **the battery raises no maximum** — so comparing it to bare on panel
+damage is apples to apples.
+
+- At provocation 100–300 it cuts *panel* damage hard (250 hit points to 66) and
+  nothing reaches the rooms on either tower.
+- At 500 and above it is *worse behind the skin* than bare — 1,832 against 1,436
+  at 500, 2,901 against 2,216 at 1,000.
+
+So the inversion is real and sharper than the first reading: a battery keeps
+creatures off the shell while the tower is lightly harassed, and once they are
+getting through anyway it is a room that adds surface and eats crew time.
 
 #### It is four places, not two
 

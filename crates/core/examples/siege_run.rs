@@ -86,11 +86,18 @@ fn pressure_table() {
     println!("\n=== how much attention can a tower take? ===\n");
     println!(
         "  provocation held, tower held fixed, {DAYS} days a run, {SEEDS} seeds a cell.\n  \
-         `lost` is hit points still missing at the end, averaged; `worst` is the \n           unluckiest seed of the six.\n"
+         `behind` is hit points lost from **rooms and shafts only**, averaged, and\n  \
+         `worst` is the unluckiest seed of the six.\n\n  \
+         **Panels are excluded on purpose.** `reinforce` raises `panel_hp` and\n  \
+         nothing else, so a column counting panels compares two towers whose\n  \
+         maxima differ by exactly the thing under test — the plated one reads\n  \
+         worse for having more to lose. That false finding has been produced\n  \
+         three times here and withdrawn twice. `standing` still counts panels\n  \
+         and is a survival signal only: do not read plated against bare on it.\n"
     );
     println!(
         "{:<20} {:>5} {:>9} {:>7} {:>7} {:>8} {:>7} {:>6}    verdict",
-        "tower", "prov", "standing", "lost hp", "worst", "seen off", "mend", "darts"
+        "tower", "prov", "standing", "behind", "worst", "seen off", "mend", "darts"
     );
 
     for shape in [Shape::Bare, Shape::Plated, Shape::Answered] {
@@ -103,11 +110,19 @@ fn pressure_table() {
             let mut spent_sum = 0i64;
             let mut deaths = 0;
             for seed in 1..=SEEDS {
-                let (standing, lost, repelled, mended, _, _, spent) =
+                let (standing, lost, repelled, mended, _, inner, spent) =
                     press(shape, level, DAYS, seed);
                 standing_sum += standing;
-                lost_sum += lost;
-                worst = worst.max(lost);
+                // **`inner`, not `lost`.** `lost` counts panels, which is
+                // the whole of what plating changes; `behind_the_skin_lost`
+                // ignores them and so compares two towers on maxima that
+                // are identical either way. The third section of this file
+                // has used it since the fourth false finding; this table
+                // had not, and was still producing the reading that got
+                // withdrawn.
+                let _ = lost;
+                lost_sum += inner;
+                worst = worst.max(inner);
                 repelled_sum += repelled;
                 mended_sum += mended;
                 spent_sum += spent;
