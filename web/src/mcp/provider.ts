@@ -37,6 +37,63 @@ import type {
 } from "../bridge/types";
 import { placementFits } from "../engine/scene";
 
+/**
+ * An argument that should be a list of strings, or nothing.
+ *
+ * **A tool must answer a mistake with a "no", never a stack trace.** An
+ * agent that has misread a schema and sent no arguments at all is the
+ * ordinary case, not the exotic one — and `(a.order as unknown[]).map()`
+ * type-checks perfectly and throws on `undefined`. `__webmcp.call` does
+ * not catch, so that reached the agent as a broken tool rather than as a
+ * correction it could act on. Found by `e2e/toolsurface.spec.ts`, which
+ * calls every tool with no arguments for exactly this reason.
+ */
+function words(value: unknown): string[] {
+  return Array.isArray(value) ? value.map(String) : [];
+}
+
+/**
+ * Required numbers, or a sentence saying which ones were missing.
+ *
+ * **`Number(undefined)` is `NaN`, which serialises to `null`**, and the
+ * bridge then answers `invalid type: null, expected u32 at line 1 column
+ * 23`. That is a refusal rather than a crash, so it passed the
+ * throw-check — but a model cannot correct itself against a serde error
+ * about column 23 of a JSON document it never saw. Compare
+ * `understory_set_charge_priority`, which says "give all four of Lifts,
+ * Works, Lamps, Legs, most important first": one of those is a tool
+ * teaching its caller and the other is a leak.
+ */
+function numbers(
+  args: Record<string, unknown>,
+  keys: string[],
+): { got: number[] } | { missing: string[] } {
+  const got: number[] = [];
+  const missing: string[] = [];
+  for (const key of keys) {
+    const value = Number(args[key]);
+    if (args[key] === undefined || args[key] === null || Number.isNaN(value)) missing.push(key);
+    else got.push(value);
+  }
+  return missing.length > 0 ? { missing } : { got };
+}
+
+/** `a`, `b` and `c` — because the reader is a model and reads prose. */
+function list(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  return `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)!}`;
+}
+
+/** The refusal `numbers` earns when something is missing. */
+function needs(tool: string, missing: string[]): ToolResult {
+  return fail(
+    `${tool} needs ${list(missing.map((key) => `\`${key}\``))} as ` +
+      `${missing.length === 1 ? "a number" : "numbers"}, and ${
+        missing.length === 1 ? "it was" : "they were"
+      } not given. Call understory_look for the ids and positions it wants.`,
+  );
+}
+
 /** What a tool hands back. Text, because the caller is a model. */
 interface ToolResult {
   content: { type: "text"; text: string }[];
@@ -193,8 +250,8 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
     // past every free pole in the game (`SYSTEMS.md` §6.31). Two
     // different facts must not wear the same words in one document.
     const way = catalog.waypoints[view.journey.waypoint.def];
-    const cost = (list: { item: number; amount: number }[]) =>
-      list.map((c) => `${String(c.amount)} ${item(c.item)}`).join(" + ");
+    const cost = (entries: { item: number; amount: number }[]) =>
+      entries.map((c) => `${String(c.amount)} ${item(c.item)}`).join(" + ");
     const terms: string[] = [];
     if (way && way.costs.length > 0) terms.push(`costs ${cost(way.costs)}`);
     if (way && way.gives.length > 0) terms.push(`gives ${cost(way.gives)}`);
@@ -659,17 +716,20 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         },
         required: ["room", "floor", "slot"],
       },
-      execute: (a) =>
-        report(
+      execute: (a) => {
+        const got = numbers(a, ["floor", "slot"]);
+        if ("missing" in got) return needs("understory_build_room", got.missing);
+        return report(
           send({
             PlaceRoom: {
               room: String(a.room),
-              floor: Number(a.floor),
-              slot: Number(a.slot),
+              floor: got.got[0]!,
+              slot: got.got[1]!,
             },
           }),
           `built ${String(a.room)}`,
-        ),
+        );
+      },
     },
     {
       name: "understory_build_floor",
@@ -703,18 +763,21 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         },
         required: ["shaft", "low", "high", "slot"],
       },
-      execute: (a) =>
-        report(
+      execute: (a) => {
+        const got = numbers(a, ["low", "high", "slot"]);
+        if ("missing" in got) return needs("understory_build_shaft", got.missing);
+        return report(
           send({
             BuildShaft: {
               shaft: String(a.shaft),
-              low: Number(a.low),
-              high: Number(a.high),
-              slot: Number(a.slot),
+              low: got.got[0]!,
+              high: got.got[1]!,
+              slot: got.got[2]!,
             },
           }),
           "the shaft is up",
-        ),
+        );
+      },
     },
     {
       name: "understory_focus_creature",
@@ -759,7 +822,7 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         required: ["order"],
       },
       execute: (a) => {
-        const want = (a.order as unknown[]).map(String);
+        const want = words(a.order);
         const legal = ["Lifts", "Works", "Lamps", "Legs"];
         if (want.length !== 4 || !legal.every((use) => want.includes(use))) {
           return fail(`give all four of ${legal.join(", ")}, most important first`);
@@ -800,7 +863,7 @@ ${look(game.viewForTool(), game.getCatalog())}`,
       },
       execute: (a) => {
         const catalog = game.getCatalog();
-        const want = (a.order as unknown[]).map(String);
+        const want = words(a.order);
         const known = catalog.jobs.map((job) => job.id);
         if (want.length !== known.length || !known.every((job) => want.includes(job))) {
           return fail(`give all of ${known.join(", ")}, most important first`);
@@ -822,8 +885,11 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         properties: { shaft: { type: "number", description: "Shaft id from `look`" } },
         required: ["shaft"],
       },
-      execute: (a) =>
-        report(send({ AddCar: { shaft: Number(a.shaft) } }), "another car is running"),
+      execute: (a) => {
+        const got = numbers(a, ["shaft"]);
+        if ("missing" in got) return needs("understory_add_car", got.missing);
+        return report(send({ AddCar: { shaft: got.got[0]! } }), "another car is running");
+      },
     },
     {
       name: "understory_trade",
@@ -836,7 +902,11 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         properties: { offer: { type: "number", description: "Offer number from `look`" } },
         required: ["offer"],
       },
-      execute: (a) => report(send({ Trade: { offer: Number(a.offer) } }), "traded"),
+      execute: (a) => {
+        const got = numbers(a, ["offer"]);
+        if ("missing" in got) return needs("understory_trade", got.missing);
+        return report(send({ Trade: { offer: got.got[0]! } }), "traded");
+      },
     },
     {
       name: "understory_set_room_active",
@@ -853,17 +923,20 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         },
         required: ["floor", "slot", "active"],
       },
-      execute: (a) =>
-        report(
+      execute: (a) => {
+        const got = numbers(a, ["floor", "slot"]);
+        if ("missing" in got) return needs("understory_set_room_active", got.missing);
+        return report(
           send({
             SetRoomActive: {
-              floor: Number(a.floor),
-              slot: Number(a.slot),
+              floor: got.got[0]!,
+              slot: got.got[1]!,
               active: Boolean(a.active),
             },
           }),
           a.active ? "it is working again" : "it is off",
-        ),
+        );
+      },
     },
     {
       name: "understory_set_shift",
@@ -879,11 +952,15 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         },
         required: ["crew", "shift"],
       },
-      execute: (a) =>
-        report(
-          send({ SetShift: { crew: Number(a.crew), shift: String(a.shift) as ShiftTag } }),
-          `they are on the ${String(a.shift).toLowerCase()} shift now`,
-        ),
+      execute: (a) => {
+        const got = numbers(a, ["crew"]);
+        if ("missing" in got) return needs("understory_set_shift", got.missing);
+        const shift = a.shift === "Night" ? "Night" : "Day";
+        return report(
+          send({ SetShift: { crew: got.got[0]!, shift: shift as ShiftTag } }),
+          `they are on the ${shift.toLowerCase()} shift now`,
+        );
+      },
     },
     {
       name: "understory_set_speed",
@@ -895,11 +972,14 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         properties: { speed: { type: "string", enum: ["Paused", "X1", "X2", "X4"] } },
         required: ["speed"],
       },
-      execute: (a) =>
-        report(
-          send({ SetSpeed: { speed: String(a.speed) as "Paused" | "X1" | "X2" | "X4" } }),
-          `speed ${String(a.speed)}`,
-        ),
+      execute: (a) => {
+        const legal = ["Paused", "X1", "X2", "X4"] as const;
+        const want = legal.find((speed) => speed === a.speed);
+        if (!want) {
+          return fail(`understory_set_speed needs \`speed\` to be one of ${list([...legal])}.`);
+        }
+        return report(send({ SetSpeed: { speed: want } }), `speed ${want}`);
+      },
     },
     {
       name: "understory_take_fork",
@@ -912,7 +992,7 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         required: ["branch"],
       },
       execute: (a) =>
-        report(send({ TakeFork: { branch: Number(a.branch) } }), "the route is chosen"),
+        report(send({ TakeFork: { branch: Number(a.branch) || 0 } }), "the route is chosen"),
     },
     {
       name: "understory_take_waypoint",
@@ -957,17 +1037,20 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         },
         required: ["crew"],
       },
-      execute: (a) =>
-        report(
+      execute: (a) => {
+        const got = numbers(a, ["crew"]);
+        if ("missing" in got) return needs("understory_station_crew", got.missing);
+        return report(
           send({
             StationCrew: {
-              crew: Number(a.crew),
+              crew: got.got[0]!,
               room: a.room === null || a.room === undefined ? null : Number(a.room),
               until_tired: false,
             },
           }),
           "posted",
-        ),
+        );
+      },
     },
   ];
 
