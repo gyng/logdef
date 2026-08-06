@@ -16,6 +16,17 @@
 //! `AGENTS.md` makes that visible-not-silent on purpose. So this counts
 //! the ticks each room spends unable to work, and what it was waiting
 //! for.
+//!
+//! **This one does not sweep seeds, and that is a finding rather than an
+//! omission.** Eight of the seventeen instruments here ran on a single
+//! seed; `needs.rs` and `haulcycle.rs` both turned out to have real
+//! spread once swept — haulcycle's idle share runs 0.0% to 9.1%. This
+//! one was checked the same way and produced 6.7%/86.8% **to the digit
+//! on five different seeds**, because a three-day window covers 34,000
+//! paces and enough terrain bands that the yield mix converges. The
+//! ground-covered line below is the check that it is converging rather
+//! than parked — a stationary tower would also be seed-stable, and
+//! that is the trap `watch.rs` and `rest.rs` each fell into.
 
 use understory_core::GameEngine;
 use understory_core::command::GameCommand;
@@ -115,6 +126,17 @@ fn main() {
         }
     }
 
+    // **Seed-independence is a claim and this is the check.** Five
+    // seeds produced 6.7%/86.8% to the digit, which is either a
+    // deterministic scenario or a parked tower — and a parked tower is
+    // the trap `watch.rs` and `rest.rs` both fell into. Printing the
+    // ground covered settles it in one line instead of an argument.
+    println!(
+        "ground covered {} paces over {} days, harvest {}",
+        game.state().world.distance / 256,
+        DAYS - 1,
+        game.state().stats.items_harvested
+    );
     println!("{:<16} {:>10} {:>12}", "room", "outbox full", "inbox empty");
     for (name, ticks, full, empty) in &blocked {
         println!(

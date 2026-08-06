@@ -170,7 +170,15 @@ sentence off its own grid now and prints UNRESOLVED when the curve is not monoto
 `haulcycle.rs` and `needs.rs` — the three that feed `BALANCE.md`'s Crew rows and
 `PLAYTEST.md` criterion 3. `needs.rs` sweeps eight now and prints ranges; it turned out
 stable, but the figures published from it were the *worst* seed of eight rather than the
-figure, and one run could not have told anybody that. **Check an instrument's seed count
+figure, and one run could not have told anybody that. **And a stable instrument is worth as much as a swept one, once you know which it is.**
+`chain.rs` gives 6.7%/86.8% to the digit on five seeds because a three-day window covers
+34,000 paces and the terrain mix converges — so its figure needs no range. `haulcycle.rs`
+does not: its idle share runs **0.0% to 9.1%**, meaning saturation is a property of the
+*run* rather than of the tower, and one seed cannot tell you which end you got. A
+stationary tower is also seed-stable, so check the ground covered before reading
+stability as convergence.
+
+**Check an instrument's seed count
 before quoting it**, and widen it before you quote it twice.
 
 **Three seeds was never a cost decision.** The whole sweep runs in forty seconds at twelve and

@@ -28,31 +28,33 @@ use understory_core::state::{CrewState, SimSpeed};
 const DAY: u32 = 14_400;
 const DAYS: u32 = 4;
 
-fn main() {
-    // **A hardcoded day goes stale silently.** `journey.rs` reported a
-    // 57,372-tick run as "3 days" when the pack said 7,200 and the
-    // answer was eight, because it kept its own copy of the day length.
-    // Every instrument here windows on whole days, so a stale copy makes
-    // the window a measurement of what time it started at — the trap
-    // `throughput.rs` documents at the top of itself. Fail loudly rather
-    // than quietly measure a different game.
-    assert_eq!(
-        DAY,
-        understory_core::content::Content::load_embedded()
-            .expect("the shipped pack should load")
-            .balance
-            .clock
-            .ticks_per_day,
-        "the pack's day length has moved; update this file's day constant"
-    );
-    println!("=== what does a haul cost? ===\n");
-    println!(
-        "  A fed, housed tower over {DAYS} whole days, first day discarded as warm-up.\n\
-         The rows this checks are hand arithmetic about an idealised trip; what they\n\
-         cannot see is queueing, sleep, and the ticks spent deciding.\n"
-    );
+/// One seed's answer. **Swept, because six `BALANCE.md` rows quote this
+/// instrument** and it ran on one seed until now. It turned out broadly
+/// stable — except `idle`, which spans 3.8% to 9.1% and is the exact
+/// figure the "this tower is saturated" claim rests on.
+struct Run {
+    crew: u64,
+    hauls_per_day: f64,
+    ticks_per_haul: f64,
+    carrying: f64,
+    walking: f64,
+    climbing: f64,
+    boarding: f64,
+    asleep: f64,
+    idle: f64,
+}
 
-    let mut game = GameEngine::new(0x_4A17);
+const SEEDS: [u64; 8] = [0x_4A17, 1, 2, 3, 4, 5, 6, 7];
+
+fn span(each: &[Run], get: fn(&Run) -> f64) -> (f64, f64, f64) {
+    let vals: Vec<f64> = each.iter().map(get).collect();
+    let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
+    let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    (vals.iter().sum::<f64>() / vals.len() as f64, lo, hi)
+}
+
+fn measure(seed: u64) -> Run {
+    let mut game = GameEngine::new(seed);
     game.set_speed(SimSpeed::X1);
     // **The opening ladder first** (`SYSTEMS.md` §6.11). M6 cut the
     // starting tower to a Heartseed and a bed, so a harness that places
@@ -114,30 +116,64 @@ fn main() {
     }
 
     let hauls = game.state().stats.hauls_completed - hauls_at_start;
-    println!("crew                             {crew}");
-    println!(
-        "hauls completed a person a day   {:.1}",
-        hauls as f64 / crew as f64 / f64::from(DAYS - 1)
+    Run {
+        crew,
+        hauls_per_day: hauls as f64 / crew as f64 / f64::from(DAYS - 1),
+        ticks_per_haul: f64::from(window) * crew as f64 / hauls.max(1) as f64,
+        carrying: pct(carrying, samples),
+        walking: pct(walking, samples),
+        climbing: pct(climbing, samples),
+        boarding: pct(boarding, samples),
+        asleep: pct(asleep, samples),
+        idle: pct(idle, samples),
+    }
+}
+
+fn main() {
+    // **A hardcoded day goes stale silently.** `journey.rs` reported a
+    // 57,372-tick run as "3 days" when the pack said 7,200 and the
+    // answer was eight, because it kept its own copy of the day length.
+    // Every instrument here windows on whole days, so a stale copy makes
+    // the window a measurement of what time it started at — the trap
+    // `throughput.rs` documents at the top of itself. Fail loudly rather
+    // than quietly measure a different game.
+    assert_eq!(
+        DAY,
+        understory_core::content::Content::load_embedded()
+            .expect("the shipped pack should load")
+            .balance
+            .clock
+            .ticks_per_day,
+        "the pack's day length has moved; update this file's day constant"
     );
+    println!("=== what does a haul cost? ===\n");
     println!(
-        "ticks of crew time a haul        {:.0}   (all crew time, sleep included)",
-        f64::from(window) * crew as f64 / hauls.max(1) as f64
+        "  A fed, housed tower over {DAYS} whole days, first day discarded as warm-up.\n\
+         The rows this checks are hand arithmetic about an idealised trip; what they\n\
+         cannot see is queueing, sleep, and the ticks spent deciding.\n"
     );
-    println!(
-        "\nwhere a person's day goes:\n  \
-         carrying a load             {:>5.1}%\n  \
-         walking                     {:>5.1}%\n  \
-         climbing                    {:>5.1}%\n  \
-         **queued at a shaft**       {:>5.1}%\n  \
-         asleep                      {:>5.1}%\n  \
-         idle or otherwise           {:>5.1}%",
-        pct(carrying, samples),
-        pct(walking, samples),
-        pct(climbing, samples),
-        pct(boarding, samples),
-        pct(asleep, samples),
-        pct(idle, samples),
-    );
+
+    let each: Vec<Run> = SEEDS.iter().map(|&seed| measure(seed)).collect();
+    let show = |name: &str, get: fn(&Run) -> f64, unit: &str| {
+        let (mean, lo, hi) = span(&each, get);
+        println!(
+            "{name:<32}{mean:>6.1}{unit}  (range {lo:.1}-{hi:.1} across {} seeds)",
+            SEEDS.len()
+        );
+    };
+    println!("crew                             {}", each[0].crew);
+    show("hauls completed a person a day", |r| r.hauls_per_day, " ");
+    show("ticks of crew time a haul", |r| r.ticks_per_haul, " ");
+    println!();
+    println!("where a person's day goes:");
+    show("  carrying a load", |r| r.carrying, "%");
+    show("  walking", |r| r.walking, "%");
+    show("  climbing", |r| r.climbing, "%");
+    show("  **queued at a shaft**", |r| r.boarding, "%");
+    show("  asleep", |r| r.asleep, "%");
+    show("  idle or otherwise", |r| r.idle, "%");
+
+    let grid = &each;
     // **Interpolated, never spelled out.** This block used to carry
     // "queueing is 3.4%" and "34.2% of a day against 12.1%" as literals,
     // directly under a table that had drifted to 5.6%, 29.0% and 13.2%.
@@ -150,7 +186,7 @@ fn main() {
     println!();
     println!(
         "1. **Queueing is {:.1}%, and the design rests on it.** `DESIGN.md` insight 1 is",
-        pct(boarding, samples)
+        span(grid, |r| r.boarding).0
     );
     for line in [
         "   that transport is shared rather than dedicated, and a shaft's capacity is the",
@@ -163,7 +199,7 @@ fn main() {
     }
     println!(
         "2. **Crew are idle {:.1}% of the time.** They are saturated, so anything added",
-        pct(idle, samples)
+        span(grid, |r| r.idle).0
     );
     for line in [
         "   to this tower is paid for out of something else it was already doing. That is",
@@ -175,9 +211,9 @@ fn main() {
     }
     println!(
         "3. **Walking costs about {:.1}x what climbing does**, {:.1}% of a day against {:.1}%.",
-        pct(walking, samples) / pct(climbing, samples).max(0.1),
-        pct(walking, samples),
-        pct(climbing, samples)
+        span(grid, |r| r.walking).0 / span(grid, |r| r.climbing).0.max(0.1),
+        span(grid, |r| r.walking).0,
+        span(grid, |r| r.climbing).0
     );
     for line in [
         "   `climb_ticks_per_floor` 30 is two and a half times `walk_ticks_per_slot` 12",

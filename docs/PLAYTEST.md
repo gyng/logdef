@@ -84,9 +84,10 @@ Three questions the harnesses cannot answer, all of them measured and none of th
   (33.3% / 13.4% / 22.0%) under the rota. Nobody starves at all any more. The question used
   to be "too harsh?" and is now **"too gentle?"**: needs may have stopped being a pressure.
   Judge whether you ever felt the kitchen mattered.
-- Crew are **queued at a shaft 11% of the day** on a stairs-only starting tower (3,250 of
-  28,800 ticks), falling to **1%** once an elevator is up. The old figure here was 3.4% and
-  under-sold it by three times. Did contention read as a thing that was happening?
+- Crew are **queued at a shaft 5.5% of a person's day** (8 seeds, range 4.3-6.2) on a
+  four-floor tower, and **11% of ticks** on a stairs-only eight-floor one, falling to 1% once
+  an elevator is up. The old figure here was 3.4%. Did contention read as a thing that was
+  happening?
 - A tower delivers **2.60 meals a person a day** where the design intends three, against
   2.00 before. The shortfall is structural and always will be — hunger rises while you sleep
   and eating does not — but it is now a shortfall rather than a deficit. Did hunger feel like
