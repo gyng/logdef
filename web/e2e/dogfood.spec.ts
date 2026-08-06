@@ -9,8 +9,14 @@ import { expect, test } from "@playwright/test";
  * the buttons a player has. If a run cannot be played this way, the
  * surface is wrong, and the log at the end says where.
  */
+// The two phases' budgets, and the spec's own deadline derived from
+// them — a `--timeout` on the command line loses to `setTimeout` here,
+// so a longer run has to be asked for in the same place it is spent.
+const BUILD_MS = Number(process.env.UNDERSTORY_BUILD_MS ?? "120000");
+const PLAY_MS = Number(process.env.UNDERSTORY_PLAY_MS ?? "170000");
+
 test("a whole run can be played through the tools alone", async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(BUILD_MS + PLAY_MS + 60_000);
   const log: string[] = [];
   const gaps: string[] = [];
 
@@ -99,7 +105,9 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
 
   // Play it: the ladder, then the chain, widening rather than growing
   // because the rooms that reach the ground never get another floor.
-  const plan = [
+  // `UNDERSTORY_PLAN` replaces the shopping list outright, which is how
+  // one shape gets compared against another without editing the spec.
+  const plan = process.env.UNDERSTORY_PLAN?.split(",") ?? [
     "room.garden",
     "room.cutter_arm",
     "room.burner",
@@ -107,10 +115,20 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
     "room.fiber_comb",
     "room.storeroom",
     "room.ropery",
+    // **The rig is a question rather than a fixture.** Scrap is what the
+    // settlement board actually wants, and every run reaches Ropewalk
+    // with none — but an eighth room doubles how long the build phase
+    // takes, so `UNDERSTORY_EXTRA=room.salvage_rig` asks it deliberately
+    // instead of every run paying for it (`SYSTEMS.md` §6.31).
+    ...(process.env.UNDERSTORY_EXTRA === undefined ? [] : [process.env.UNDERSTORY_EXTRA]),
   ];
   const built: string[] = [];
 
-  for (let beat = 0; beat < 220; beat += 1) {
+  // **Bounded by the clock as well as by turns.** A beat that waits
+  // three seconds and a cap of 220 is eleven minutes if the tower is
+  // poor, and adding one room to the plan is what found that out.
+  const buildUntil = Date.now() + BUILD_MS;
+  for (let beat = 0; beat < 220 && Date.now() < buildUntil; beat += 1) {
     const look = await call("understory_look");
 
     // Anything asking for a decision, answered the way a player would.
@@ -182,13 +200,15 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
   let berthed = false;
   let traded = 0;
   let plated = 0;
+  let stripping = false;
+  let scrapped = 0;
 
   // **Bounded by the clock, not by turns.** A run is 31–36 minutes at
   // 1× (§6.19) and this plays at 4×, so arriving is nine minutes of
   // wall time — more than a spec should cost, and the findings are the
   // gaps rather than the ending. Play until the budget runs out and
   // write down how far it got.
-  const until = Date.now() + 170_000;
+  const until = Date.now() + PLAY_MS;
   while (!arrived && Date.now() < until) {
     const look = await call("understory_look");
     if (look.text.includes("reached the Refugia") || look.text.includes("Arrived")) {
@@ -253,6 +273,32 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
         await call("understory_wait", { seconds: 1 });
       }
       continue;
+    }
+
+    // **Standing still is the whole of salvaging.** There is no command:
+    // own a rig, stop with a ruin alongside, wait. An agent that cannot
+    // see a ruin coming cannot do it at all, which is why `look` reports
+    // them now.
+    if (look.text.includes("scrap ALONGSIDE") && built.includes("room.salvage_rig")) {
+      if (!stripping) {
+        stripping = true;
+        await call("understory_set_striding", { walking: false });
+      }
+      const before = /Scrap (\d+)/.exec(look.text)?.[1] ?? "0";
+      await call("understory_wait", { seconds: 4 });
+      const after = await call("understory_look");
+      const now = /Scrap (\d+)/.exec(after.text)?.[1] ?? "0";
+      // Nothing more coming out of it, or it is empty: walk on.
+      if (now === before || !after.text.includes("scrap ALONGSIDE")) {
+        stripping = false;
+        await call("understory_set_striding", { walking: true });
+      }
+      scrapped = Number(now);
+      continue;
+    }
+    if (stripping) {
+      stripping = false;
+      await call("understory_set_striding", { walking: true });
     }
 
     // **A wave, answered.** M6 is entirely about the verbs a player has
@@ -323,6 +369,7 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
     `journey: ${arrived ? "arrived" : "still walking"}, lift ${lift ? "yes" : "no"}, ` +
       `${String(forks)} forks, ${String(recruited)} recruits, ${String(waypoints)} waypoints, ` +
       `${String(sieges)} siege beats (${String(answered)} answered)${rewired ? ", rewired" : ""}, ` +
+      `${String(scrapped)} scrap stripped, ` +
       `${berthed ? "berthed" : "never berthed"} (${String(traded)} trades, ${String(plated)} plating)`,
   );
 

@@ -217,6 +217,46 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
           : "the shelves cannot meet its terms, so only walking on is available"),
     );
   }
+  // **Ruins, which are the third stop-worthy thing the tools could not
+  // see.** A ruin holds scrap, scrap is what the first settlement's one
+  // useful trade wants, and the whole of the mechanism is: own a salvage
+  // rig, stop with the ruin alongside, wait. There is no command — no
+  // "strip it" to call — so an agent that cannot see a ruin coming
+  // cannot salvage at all, and every run so far reached the board with
+  // no scrap and could buy nothing (`SYSTEMS.md` §6.31). The scene has
+  // drawn the heap and its glint since M3, so this is an agent's blind
+  // spot rather than a player's.
+  // Nearest three, by insertion — `toSorted` is not in this lib target
+  // and `sort` is denied by the linter for mutating in place.
+  const ruins: { off: number; held: number }[] = [];
+  for (const f of view.world.features) {
+    if (f.salvage <= 0) continue;
+    const one = { off: Math.round(f.at - view.world.distance), held: f.salvage };
+    if (one.off < -80) continue;
+    let at = ruins.length;
+    while (at > 0 && Math.abs(ruins[at - 1]!.off) > Math.abs(one.off)) at -= 1;
+    ruins.splice(at, 0, one);
+    if (ruins.length > 3) ruins.pop();
+  }
+  if (ruins.length > 0) {
+    const rig = view.tower.floors.some((floor) =>
+      floor.rooms.some((room) => catalog.rooms[room.def]?.id === "room.salvage_rig"),
+    );
+    lines.push("");
+    lines.push(
+      `Ruins with scrap in them: ${ruins
+        .map((r) =>
+          Math.abs(r.off) < 60
+            ? `${String(r.held)} scrap ALONGSIDE`
+            : `${String(r.held)} scrap ${String(Math.abs(r.off))} paces ${r.off > 0 ? "ahead" : "behind"}`,
+        )
+        .join(", ")}. ` +
+        (rig
+          ? "Stop the tower alongside one and the rig strips it — there is no command, only standing still in the right place."
+          : "A Salvage Rig is what takes scrap out of them, and this tower has none."),
+    );
+  }
+
   // **The settlements were invisible.** A run passes three of them and
   // they are where the shell work, the trades and the people are
   // (`SYSTEMS.md` §5); `look` reported none of it, so an agent walked
@@ -429,6 +469,11 @@ function interruption(view: ViewSnapshot, catalog: CatalogSnapshot): string | nu
     return `a settlement is ${String(Math.round(view.journey.enclave_ahead))} paces ahead — stop the tower to berth, or it is lost for good`;
   }
   if (view.journey.waypoint) return "a waypoint is alongside";
+  if (
+    view.world.features.some((f) => f.salvage > 0 && Math.abs(f.at - view.world.distance) < 140)
+  ) {
+    return "a ruin with scrap in it is coming alongside — stopping is the only way to strip it";
+  }
   if (view.recruit) return `${view.recruit.name} wants to come aboard`;
   if (view.siege.enemies.some((e) => e.state === "attack")) {
     return "something is at the tower";

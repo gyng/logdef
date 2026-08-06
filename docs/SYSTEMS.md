@@ -7756,6 +7756,37 @@ region's, by name.
 this source" rather than mystifying the next person. It is the cheap version of a contract check
 and it would have caught this in one run.
 
+#### The ruins were the third invisible thing, and the rope chain closes the door to them
+
+The board's one useful trade is **4 scrap for 3 poles**, and scrap comes out of ruins. The whole
+of salvaging is: own a salvage rig, stop with a ruin alongside, wait — **there is no command to
+call**, so an agent that cannot see a ruin coming cannot salvage at all. `look` never mentioned
+ruins. The scene has drawn the heap and its glint since M3, so unlike the settlements this one
+was an agent's blind spot rather than a player's; `look` reports the nearest three with what is
+in them now, and `understory_wait` interrupts for one coming alongside.
+
+Then the measurement, and it is the sharpest thing in this section:
+
+| tower | rig built? | scrap |
+|---|---|---|
+| chain + rope chain, ~10 minutes of play | **no — 7 of 8 rooms** | 0 |
+| chain, no comb and no ropery | **yes** | **137** |
+
+**A tower that owns the rope chain cannot afford the salvage rig that would earn it the scrap
+that would buy it poles.** Eight poles, and it never has eight. §6.31's earlier finding was that
+the rope chain costs 56% of a tower's poles; this is the consequence — it also closes the only
+route out of the famine it causes. 137 scrap is 34 trades is about a hundred poles, which is a
+lift and floors and everything else.
+
+**The limit of this measurement**, and it is a real one: the tower that stripped 137 scrap
+*stopped walking to do it* — one waypoint, no forks, never berthed. It traded journey for scrap
+and this does not say whether that trade is good. What it does say is that one shape has the
+choice and the other does not.
+
+A longer run also reached a **second** settlement, whose board is priced differently: `4 Scrap
+for 3 Poles (20 left)`, `10 Bamboo for 4 Poles (10 left)`, `4 Poles for 6 Darts`. Bamboo is the
+one thing a walking tower always has, so region 2's board has a door region 1's does not.
+
 #### The beats had no picture either
 
 §6.14 exists because "between one fork and the next the tower walked through scenery and decided
