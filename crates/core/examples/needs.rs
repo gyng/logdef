@@ -142,26 +142,31 @@ fn main() {
         pct(tired, samples),
         pct(slowed, samples),
     );
-    println!(
-        "\n  **Two meals a day, not three, and the shortfall is structural.**\n\
-         \n\
-         `hungry_ticks` 4,800 is a third of a 14,400-tick day and the row reads it as\n\
-         three meals a person a day. Hunger does rise around the clock — `needs.rs`\n\
-         says so in as many words, you do not stop needing to eat because you are in\n\
-         bed — but *eating* does not. A crew member sleeps about 9.6 of 24 hours, and\n\
-         hunger climbs by more than one whole 4,800-tick cycle while they are under,\n\
-         so they cannot help waking at least one meal in debt. The clock says three\n\
-         and the rota can only deliver two.\n\
-         \n\
-         That is what the shares below are: a third of a person's life spent hungry\n\
-         and an eighth spent *starving*, on a tower with a working kitchen, beds, and\n\
-         nothing attacking it. `hungry_work_pct` and `tired_work_pct` are both 60, so\n\
-         the slowed line is the share of a crew member's life spent working two-thirds\n\
-         as fast — and on a well-run tower it is over a third.\n\
-         \n\
-         Whether that is too harsh is a judgement. That it is not what the row says is\n\
-         not."
-    );
+    for line in [
+        "",
+        "  **The shortfall is structural, and cutting the rota took most of it away.**",
+        "",
+        "`hungry_ticks` 4,800 is a third of a 14,400-tick day, so the row reads as three meals",
+        "a person a day. Hunger rises around the clock — you do not stop needing to eat because",
+        "you are in bed — but *eating* does not, so anybody who sleeps through a whole 4,800-tick",
+        "cycle wakes a meal in debt. That much is unchanged and always will be.",
+        "",
+        "What changed is how long they are under. **Under the rota this instrument read 2.00",
+        "meals, 33.3% hungry, 13.4% starving and 22.0% tired — a crew member spent 35.5% of their",
+        "life working two-thirds as fast.** Everybody slept the same 6,048-tick band whether they",
+        "needed it or not, and hunger ran the whole way through it. Sleep is need-driven since M6",
+        "(`SYSTEMS.md` §6.32): people are under for shorter stretches, at staggered times, and the",
+        "numbers above are what that did to the needs economy.",
+        "",
+        "`hungry_work_pct` and `tired_work_pct` are both 60, so **slowed** is the share of a crew",
+        "member's life spent working two-thirds as fast. Read it against 35.5%.",
+        "",
+        "Whether what is left is too gentle rather than too harsh is now the open judgement, and",
+        "it is the opposite of the one this instrument used to pose. `docs/PLAYTEST.md` criterion",
+        "3 carries it.",
+    ] {
+        println!("{line}");
+    }
 }
 
 fn pct(n: u64, of: u64) -> f64 {
