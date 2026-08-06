@@ -64,8 +64,8 @@ fn main() {
     );
 
     println!(
-        "{:<26} {:>8} {:>8} {:>8} {:>6} {:>9} {:>8}",
-        "tower", "income", "draw", "net", "fuel", "brownout", "dark"
+        "{:<26} {:>8} {:>8} {:>8} {:>6} {:>9} {:>8}  {:<12}",
+        "tower", "income", "draw", "net", "fuel", "brownout", "dark", "net range"
     );
     let mut rows = Vec::new();
     for (label, floors, walking, burners) in [
@@ -86,14 +86,22 @@ fn main() {
         ("no burner, striding", 0, true, 0),
     ] {
         let day = measure(floors, walking, burners);
+        // **The net's range, and a marker when it changes sign.** The
+        // mean alone said "+10 floors, striding" nets +368; one seed of
+        // eight says -264. A column that straddles zero is two different
+        // towers averaged, and thirteen `BALANCE.md` rows quote this.
+        let flips = day.net_low < 0 && day.net_high > 0;
+        let net_range = format!("{}..{}", day.net_low, day.net_high);
         println!(
-            "{label:<26} {:>8} {:>8} {:>8} {:>6} {:>8}% {:>7}%",
+            "{label:<26} {:>8} {:>8} {:>8} {:>6} {:>8}% {:>7}%  {}{}",
             day.income,
             day.draw,
             day.income - day.draw,
             day.fuel,
             day.brownout_ticks * 100 / i64::from(DAY),
             day.dark_ticks * 100 / i64::from(DAY),
+            &net_range,
+            if flips { "  SIGN FLIPS" } else { "" },
         );
         rows.push((label, day));
     }
@@ -153,6 +161,11 @@ struct Day {
     /// place is lit", not "the lamps are burning", and reading it as
     /// the second thing says a tower runs its lamps 100% of the day.
     dark_ticks: i64,
+    /// The lowest and highest net across `SEEDS`. **A mean that
+    /// straddles zero is not a tower that breaks even**, it is two
+    /// different towers averaged, and this is what says which.
+    net_low: i64,
+    net_high: i64,
 }
 
 /// One whole day-cycle, after a whole-day warm-up so the bank and the
@@ -162,8 +175,39 @@ struct Day {
 /// `burners` counts the burners the tower ends up with, *including* the
 /// one the starting tower already owns. Zero strips it out, which is the
 /// only way to see what the Heartseed's trickle does on its own.
+/// Every seed this averages over.
+///
+/// **It ran on one until 2026-08-06, and one was not enough.** A
+/// ten-floor striding tower nets **+368** charge on one seed and
+/// **-264** on another — a surplus or a deficit depending on nothing but
+/// the terrain it happened to walk. Thirteen `BALANCE.md` rows quote
+/// this instrument, and any of them saying a tall tower runs a surplus
+/// was true on the seed it was measured on and false on the next.
+const SEEDS: [u64; 8] = [0x_5A_11, 1, 2, 3, 4, 5, 6, 7];
+
+/// The mean across `SEEDS`, plus the net's range — because the net is
+/// the column that changes sign, and a mean that straddles zero is a
+/// different statement from one that does not.
 fn measure(extra_floors: u8, walking: bool, burners: u8) -> Day {
-    let mut game = GameEngine::new(0x_5A_11);
+    let each: Vec<Day> = SEEDS
+        .iter()
+        .map(|&seed| measure_seed(seed, extra_floors, walking, burners))
+        .collect();
+    let n = each.len() as i64;
+    let nets: Vec<i64> = each.iter().map(|d| d.income - d.draw).collect();
+    Day {
+        income: each.iter().map(|d| d.income).sum::<i64>() / n,
+        draw: each.iter().map(|d| d.draw).sum::<i64>() / n,
+        fuel: each.iter().map(|d| d.fuel).sum::<i64>() / n,
+        brownout_ticks: each.iter().map(|d| d.brownout_ticks).sum::<i64>() / n,
+        dark_ticks: each.iter().map(|d| d.dark_ticks).sum::<i64>() / n,
+        net_low: nets.iter().copied().min().unwrap_or(0),
+        net_high: nets.iter().copied().max().unwrap_or(0),
+    }
+}
+
+fn measure_seed(seed: u64, extra_floors: u8, walking: bool, burners: u8) -> Day {
+    let mut game = GameEngine::new(seed);
     game.set_speed(SimSpeed::X1);
 
     let poles = game
@@ -239,6 +283,9 @@ fn measure(extra_floors: u8, walking: bool, burners: u8) -> Day {
         fuel: (game.state().stats.fuel_burned - fuel_before) as i64,
         brownout_ticks,
         dark_ticks,
+        // A single seed has no range; `measure` fills these in.
+        net_low: income - draw,
+        net_high: income - draw,
     }
 }
 

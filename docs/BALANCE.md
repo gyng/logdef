@@ -165,6 +165,19 @@ The day, and what reads it.
 
 ## Power
 
+> **Swept over eight seeds on 2026-08-06, and the headline is that four of nine rows in
+> `charge.rs` change *sign*.** A striding tower's daily net runs −172..+684 at the starting
+> height, −404..+316 at four extra floors, −180..+480 at ten, and −516..+480 with three
+> burners. **Whether a walking tower runs a charge surplus or a deficit is decided by the
+> terrain it happens to walk, not by its shape.** Parked rows do not flip, which is the tell:
+> a parked tower's income does not depend on the ground it crossed.
+>
+> The instrument ran on one seed until then, so every row below that says a tower of a given
+> height runs a surplus or a deficit is a statement about the seed it was measured on. The
+> means are now averages of eight and the table prints the range with `SIGN FLIPS` beside any
+> row that straddles zero. **Read the range, not the mean**, and do not tune a constant
+> against a net whose sign is not stable.
+
 Charge income, storage, and draw. See `SYSTEMS.md` §1.2.
 
 > **Re-measured at M6, when the canopy sails were cut.** Charge no longer arrives from the
