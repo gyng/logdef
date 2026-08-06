@@ -504,10 +504,28 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
       const made = room.outputs
         .map((o) => `${String(o.count)} ${item(o.item)}`)
         .join(" + ");
+      // **Which of the two it is, checked rather than asserted.** This
+      // used to say "nothing is taking what it makes" about every
+      // backed-up room, and a dogfood run caught it telling a player
+      // that about a mill holding six poles while the same screen said
+      // mending wanted fifteen. A full outbox has two causes and they
+      // want opposite actions: no shelf will take it (free a shelf), or
+      // a shelf will and nobody has carried it yet (wait, or look at
+      // why the crew are busy).
+      const stuck = room.outputs[0]?.item;
+      const roomOnAShelf =
+        stuck === undefined ||
+        view.tower.floors.some((f) =>
+          f.rooms.some((r) =>
+            r.shelves.some((sh) => sh.item === null || (sh.item === stuck && sh.count < sh.max)),
+          ),
+        );
+      const why = roomOnAShelf
+        ? "there is shelf room for it, so it is waiting on a pair of hands rather than on space."
+        : `every shelf that could take it is full. Switching off whatever is filling them ` +
+          `(understory_set_room_active) is what frees one.`;
       wrong.push(
-        `${info?.name ?? "?"} on floor ${String(floor.index)} is backed up${made ? ` holding ${made}` : ""} — ` +
-          "nothing is taking what it makes, so it has stopped. Either build something that eats it, " +
-          "or switch it off with understory_set_room_active and get the shelf back.",
+        `${info?.name ?? "?"} on floor ${String(floor.index)} is backed up${made ? ` holding ${made}` : ""} — ${why}`,
       );
     }
   }
