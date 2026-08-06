@@ -257,7 +257,14 @@ fn press(shape: Shape, level: i64, days: u32, seed: u64) -> (i64, i64, u64, u64,
         // was ever defended is worse than one that crashes. So: stock
         // it, then insist.
         pay_for_rooms(&mut engine);
-        for room in ["room.dart_battery", "room.thornwright", "room.mill"] {
+        // **Thornwright first.** The battery is
+        // `unlocked_by: room.thornwright`, so this list built the gate
+        // after the thing it gates and `PlaceRoom` refused the battery
+        // every time — the assert above fired and the whole third
+        // section of this instrument never ran. `bestiary.rs` had the
+        // identical bug in the identical order (`SYSTEMS.md` §6.35); the
+        // two were written from the same template.
+        for room in ["room.thornwright", "room.dart_battery", "room.mill"] {
             assert!(
                 build_anywhere(&mut engine, room),
                 "the answered tower could not build {room}, so it is not an answered tower"
@@ -462,11 +469,17 @@ fn run(plan: Plan) {
     let mut list: Vec<&str> = match plan {
         Plan::Subsistence => vec![],
         Plan::Greedy => vec!["room.cutter_arm"],
+        // **Thornwright before the battery it unlocks.** Fourth
+        // instance of the same word order across three files
+        // (`SYSTEMS.md` §6.35). This list is bought when affordable and
+        // retried, so a wrong order costs purchases rather than killing
+        // the run — which is why it survived: it degrades quietly where
+        // the two asserted copies died loudly.
         Plan::Answered => vec![
             "room.cutter_arm",
+            "room.thornwright",
             "room.dart_battery",
             "room.mill",
-            "room.thornwright",
         ],
     };
     list.push("room.canteen");

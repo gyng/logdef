@@ -8231,3 +8231,73 @@ the numbers it would have been decided on were four times too generous.
   crew is the sweep it asks for next.
 - **§6.18's width row.** Re-measured only at the height sweep; the flat-across-width finding is
   untouched and may have moved the same way.
+
+### 6.35 Two dead instruments, one typo, and a defence finding nobody could have had
+
+**`bestiary.rs` and `siege_run.rs` both built a dart battery before the
+thornwright that unlocks it.** `room.dart_battery` is
+`unlocked_by: room.thornwright`, so `PlaceRoom` refused it every time. The two
+files were written from the same template and carried the same word order.
+
+What each one did about that differs, and the difference is the lesson.
+`bestiary.rs` asserted and **panicked on its own seed**, printing an empty table
+and exiting zero — dead, and quiet enough that fifteen `BALANCE.md` rows went on
+quoting it. `siege_run.rs` asserted too, and its assert had been *added* after
+the M2 failure it documents in its own comment ("a harness that reports a
+defence comparison in which nothing was ever defended is worse than one that
+crashes"). That assert worked exactly as intended — it failed loudly, killed the
+third section, and nobody ran the instrument to see.
+
+Both were found by trying to *sweep* them, not by reading their output.
+
+#### What the fixed comparison says
+
+The `battery + darts` rows exist for the first time, and they fire darts —
+168, 236, 488, 391 across the pressure levels, against the `0` that every other
+row shows.
+
+| provocation | bare, hp lost | battery, hp lost |
+|---|---|---|
+| 100 | 250 | **66** |
+| 300 | 366 | **287** |
+| 500 | 1,932 | 2,296 |
+| 700 | 2,319 | 2,833 |
+
+**A dart battery's value inverts with pressure.** It is a clear win while the
+tower is lightly harassed — a quarter of the damage at provocation 100 — and a
+*loss* once the tower is being mauled. That is the opposite of how a defensive
+building is usually expected to behave, and it is the kind of thing M2's exit
+criterion existed to establish.
+
+Two candidate mechanisms, neither measured here: the battery is a room, so it
+adds surface for creatures to reach and hit-points to lose; and loading racks is
+crew time, which at high provocation competes with mending. Which dominates is
+open.
+
+**Do not tune anything on this yet.** It is six seeds a cell on one tower shape,
+and the plating rows beside it still compare on `lost hp`, which is an absolute
+that rises with `panel_hp` — the trap `AGENTS.md` §II rule 2 names and the same
+one that produced a false plating finding four times. The battery rows do not
+share that flaw (the battery does not raise any maximum), but the table they sit
+in has not been re-derived.
+
+#### It is four places, not two
+
+Grepping every instrument that builds a gated room turned up **two more**, both
+with the battery before the thornwright: `siege_run.rs`'s own `Plan::Answered`
+shopping list, and `journey.rs`'s equipped-tower list. Both are *retried* rather
+than asserted — bought whenever affordable — so a wrong order costs purchases
+instead of killing the run. **That is why they survived**: they degraded quietly
+where the two asserted copies died loudly, which is the argument for the assert
+rather than against it.
+
+`profile.rs` and `journey.rs`'s second list have the order right, so the template
+was copied four times and corrected twice by luck.
+
+#### Deferred out of 6.35
+
+- **Why the battery stops paying.** Room surface versus crew time; neither is
+  measured here.
+- **The plating rows' comparison column.** Still `lost hp`, an absolute that
+  rises with `panel_hp`. The rows are not wrong so much as unreadable against
+  each other, and `AGENTS.md` §II rule 2 says why.

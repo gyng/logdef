@@ -170,7 +170,14 @@ sentence off its own grid now and prints UNRESOLVED when the curve is not monoto
 `haulcycle.rs` and `needs.rs` — the three that feed `BALANCE.md`'s Crew rows and
 `PLAYTEST.md` criterion 3. `needs.rs` sweeps eight now and prints ranges; it turned out
 stable, but the figures published from it were the *worst* seed of eight rather than the
-figure, and one run could not have told anybody that. **Two instruments disagree about the elevator and neither is wrong.** `throughput.rs` puts
+figure, and one run could not have told anybody that. **A room built before the room that unlocks it is a bug four instruments had.** 
+`room.dart_battery` is `unlocked_by: room.thornwright`, and `bestiary.rs`, `siege_run.rs` 
+(twice) and `journey.rs` all listed the battery first. The two that *asserted* died loudly 
+and stayed dead for milestones; the two that retried degraded quietly and nobody noticed. 
+Fixing them made M2's defence comparison run for the first time (`SYSTEMS.md` §6.35). 
+**If a harness builds from a list, order it by `unlocked_by` and assert each one.**
+
+**Two instruments disagree about the elevator and neither is wrong.** `throughput.rs` puts
 a four-floor tower at **+88%** hauls with a shaft; `lift.rs` puts a five-floor one at
 **+11%**. Both are eight-seed means with non-overlapping ranges, so neither is noise —
 they are measuring different towers (one buys a canteen and a bunk over a fixed window,

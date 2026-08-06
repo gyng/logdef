@@ -821,8 +821,11 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
     let mut list: Vec<&str> = Vec::new();
     if equipped {
         list.push("room.salvage_rig");
-        list.push("room.dart_battery");
+        // **Thornwright before the battery it unlocks** — third file
+        // with the same word order (`SYSTEMS.md` §6.35). Retried rather
+        // than asserted here, so it cost purchases rather than the run.
         list.push("room.thornwright");
+        list.push("room.dart_battery");
     }
     // **The garden first, because it is the only room that needs the
     // roof.** Everything else fits anywhere, so anything bought before
