@@ -45,13 +45,6 @@ struct Run {
 /// milestone on three for no reason anybody had checked.
 const SEEDS: [u64; 8] = [0x_FED, 1, 2, 3, 4, 5, 6, 7];
 
-fn span(each: &[Run], get: fn(&Run) -> f64) -> (f64, f64, f64) {
-    let vals: Vec<f64> = each.iter().map(get).collect();
-    let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
-    let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    (vals.iter().sum::<f64>() / vals.len() as f64, lo, hi)
-}
-
 fn measure(seed: u64) -> Run {
     let content = understory_core::content::Content::load_embedded().expect("pack");
     let mut game = GameEngine::new(seed);
@@ -162,7 +155,7 @@ fn main() {
 
     let each: Vec<Run> = SEEDS.iter().map(|&seed| measure(seed)).collect();
     let show = |name: &str, get: fn(&Run) -> f64, unit: &str| {
-        let (mean, lo, hi) = span(&each, get);
+        let (mean, lo, hi) = understory_core::harness::span(&each, get);
         println!(
             "{name:<30}{mean:>6.2}{unit}   (range {lo:.2}-{hi:.2} across {} seeds)",
             SEEDS.len()

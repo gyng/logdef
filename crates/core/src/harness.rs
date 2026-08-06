@@ -237,3 +237,30 @@ pub fn place_anywhere(game: &mut GameEngine, room: &str) -> bool {
     }
     false
 }
+
+/// Mean, low and high of one column across a swept set of runs.
+///
+/// **Every instrument that quotes a single seed has been wrong at least
+/// once** (`SYSTEMS.md` §6.34, and the three commits after it). The ones
+/// swept so far all published the *worst* seed as though it were the
+/// figure, `haulcycle.rs`'s idle share turned out to run 0.0-9.1%, and
+/// four of `charge.rs`'s nine rows change **sign** depending on the
+/// terrain the tower happened to walk.
+///
+/// So this lives here rather than being written a fourth time. A mean
+/// on its own is the thing that went wrong; the range is what makes it
+/// readable, and a caller that prints both cannot quietly publish a
+/// point estimate.
+///
+/// Returns `(mean, low, high)`. An empty slice gives all zeroes rather
+/// than a panic — a sweep with no seeds is a caller bug, but not one
+/// worth taking an instrument down for.
+pub fn span<T>(each: &[T], get: impl Fn(&T) -> f64) -> (f64, f64, f64) {
+    if each.is_empty() {
+        return (0.0, 0.0, 0.0);
+    }
+    let vals: Vec<f64> = each.iter().map(get).collect();
+    let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
+    let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    (vals.iter().sum::<f64>() / vals.len() as f64, lo, hi)
+}

@@ -46,13 +46,6 @@ struct Run {
 
 const SEEDS: [u64; 8] = [0x_4A17, 1, 2, 3, 4, 5, 6, 7];
 
-fn span(each: &[Run], get: fn(&Run) -> f64) -> (f64, f64, f64) {
-    let vals: Vec<f64> = each.iter().map(get).collect();
-    let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
-    let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    (vals.iter().sum::<f64>() / vals.len() as f64, lo, hi)
-}
-
 fn measure(seed: u64) -> Run {
     let mut game = GameEngine::new(seed);
     game.set_speed(SimSpeed::X1);
@@ -155,7 +148,7 @@ fn main() {
 
     let each: Vec<Run> = SEEDS.iter().map(|&seed| measure(seed)).collect();
     let show = |name: &str, get: fn(&Run) -> f64, unit: &str| {
-        let (mean, lo, hi) = span(&each, get);
+        let (mean, lo, hi) = understory_core::harness::span(&each, get);
         println!(
             "{name:<32}{mean:>6.1}{unit}  (range {lo:.1}-{hi:.1} across {} seeds)",
             SEEDS.len()
@@ -186,7 +179,7 @@ fn main() {
     println!();
     println!(
         "1. **Queueing is {:.1}%, and the design rests on it.** `DESIGN.md` insight 1 is",
-        span(grid, |r| r.boarding).0
+        understory_core::harness::span(grid, |r| r.boarding).0
     );
     for line in [
         "   that transport is shared rather than dedicated, and a shaft's capacity is the",
@@ -199,7 +192,7 @@ fn main() {
     }
     println!(
         "2. **Crew are idle {:.1}% of the time.** They are saturated, so anything added",
-        span(grid, |r| r.idle).0
+        understory_core::harness::span(grid, |r| r.idle).0
     );
     for line in [
         "   to this tower is paid for out of something else it was already doing. That is",
@@ -211,9 +204,12 @@ fn main() {
     }
     println!(
         "3. **Walking costs about {:.1}x what climbing does**, {:.1}% of a day against {:.1}%.",
-        span(grid, |r| r.walking).0 / span(grid, |r| r.climbing).0.max(0.1),
-        span(grid, |r| r.walking).0,
-        span(grid, |r| r.climbing).0
+        understory_core::harness::span(grid, |r| r.walking).0
+            / understory_core::harness::span(grid, |r| r.climbing)
+                .0
+                .max(0.1),
+        understory_core::harness::span(grid, |r| r.walking).0,
+        understory_core::harness::span(grid, |r| r.climbing).0
     );
     for line in [
         "   `climb_ticks_per_floor` 30 is two and a half times `walk_ticks_per_slot` 12",

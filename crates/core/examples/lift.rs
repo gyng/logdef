@@ -165,6 +165,15 @@
 //! like: at `floor_slots` 7 *or* 6 there is no free column at all and a
 //! full-height lift cannot be built. Run with `UNDERSTORY_COLUMNS=1` to
 //! print what is free.
+//!
+//! **This instrument and `throughput.rs` disagree about the elevator.**
+//! The height sweep below puts a five-floor tower at +11%;
+//! `throughput.rs` measures +88% on a four-floor one, with
+//! non-overlapping seed ranges at both ends. Neither is noise and they
+//! are not the same tower — that one buys a canteen and a bunk and runs
+//! a fixed window, this one holds a room plan fixed and grows the hull.
+//! Which difference accounts for it is open. **Quote the tower, not the
+//! verb.**
 
 use std::sync::Arc;
 

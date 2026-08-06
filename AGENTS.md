@@ -170,7 +170,15 @@ sentence off its own grid now and prints UNRESOLVED when the curve is not monoto
 `haulcycle.rs` and `needs.rs` — the three that feed `BALANCE.md`'s Crew rows and
 `PLAYTEST.md` criterion 3. `needs.rs` sweeps eight now and prints ranges; it turned out
 stable, but the figures published from it were the *worst* seed of eight rather than the
-figure, and one run could not have told anybody that. **And a stable instrument is worth as much as a swept one, once you know which it is.**
+figure, and one run could not have told anybody that. **Two instruments disagree about the elevator and neither is wrong.** `throughput.rs` puts
+a four-floor tower at **+88%** hauls with a shaft; `lift.rs` puts a five-floor one at
+**+11%**. Both are eight-seed means with non-overlapping ranges, so neither is noise —
+they are measuring different towers (one buys a canteen and a bunk over a fixed window,
+the other holds a room plan fixed and grows the hull). Which difference accounts for it is
+open, and both headers say so. **Quote the tower, not the verb**, and do not put "what an
+elevator is worth" in a balance row until somebody has closed it.
+
+**And a stable instrument is worth as much as a swept one, once you know which it is.**
 `chain.rs` gives 6.7%/86.8% to the digit on five seeds because a three-day window covers
 34,000 paces and the terrain mix converges — so its figure needs no range. `haulcycle.rs`
 does not: its idle share runs **0.0% to 9.1%**, meaning saturation is a property of the

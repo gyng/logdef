@@ -9,6 +9,20 @@
 //! playing, but "does relieving the bottleneck actually do anything?"
 //! is a question you answer by measuring — and if the answer is no, no
 //! amount of playing will make it fun.
+//!
+//! **This instrument and `lift.rs` disagree about the elevator, and the
+//! disagreement is not resolved.** Here a four-floor tower hauls 121
+//! without a shaft and 228 with one — **+88%**, with non-overlapping
+//! seed ranges (114-129 against 201-278), so it is not noise. `lift.rs`
+//! sweeping height puts a five-floor tower at **+11%** (§6.34). Both are
+//! eight-seed means of the same verb.
+//!
+//! They are not measuring the same tower: this one buys a canteen and a
+//! bunk and runs 28,800 ticks after a warm-up; `lift.rs` holds a room
+//! plan fixed and grows the hull. One of those differences accounts for
+//! it and nobody has found out which. **Do not quote either figure as
+//! "what an elevator is worth" until somebody does** — quote the tower
+//! it was measured on.
 
 use understory_core::GameEngine;
 use understory_core::command::GameCommand;
@@ -41,10 +55,48 @@ struct Sample {
     /// What sleep costs, in the only unit that makes it comparable
     /// between two towers.
     asleep: u64,
+    /// The lowest and highest `hauls` across the sweep. The headline
+    /// column, and the one whose spread decides whether a delta quoted
+    /// off it means anything.
+    hauls_low: u64,
+    hauls_high: u64,
 }
 
+/// Every seed this averages over.
+///
+/// **It ran on one until 2026-08-07.** The elevator's haul delta came
+/// out at +137, +122 and +83 on three different seeds — the conclusion
+/// survives at every one of them, the *magnitude* does not, and seven
+/// `BALANCE.md` rows quote the magnitude.
+const SEEDS: [u64; 8] = [0xC0FFEE, 1, 2, 3, 4, 5, 6, 7];
+
+/// The mean of `SEEDS`, so a row is a figure rather than an anecdote.
 fn measure(label: &str, build_shaft: bool) -> Sample {
-    let mut game = GameEngine::new(0xC0FFEE);
+    let each: Vec<Sample> = SEEDS
+        .iter()
+        .map(|&seed| measure_seed(seed, label, build_shaft))
+        .collect();
+    let n = each.len() as u64;
+    Sample {
+        hauls: each.iter().map(|s| s.hauls).sum::<u64>() / n,
+        crafts: each.iter().map(|s| s.crafts).sum::<u64>() / n,
+        harvested: each.iter().map(|s| s.harvested).sum::<u64>() / n,
+        queued_ticks: (each.iter().map(|s| u64::from(s.queued_ticks)).sum::<u64>() / n) as u32,
+        peak_wait: (each.iter().map(|s| u64::from(s.peak_wait)).sum::<u64>() / n) as u32,
+        brownout_ticks: (each
+            .iter()
+            .map(|s| u64::from(s.brownout_ticks))
+            .sum::<u64>()
+            / n) as u32,
+        meals: each.iter().map(|s| s.meals).sum::<u64>() / n,
+        asleep: each.iter().map(|s| s.asleep).sum::<u64>() / n,
+        hauls_low: each.iter().map(|s| s.hauls).min().unwrap_or(0),
+        hauls_high: each.iter().map(|s| s.hauls).max().unwrap_or(0),
+    }
+}
+
+fn measure_seed(seed: u64, label: &str, build_shaft: bool) -> Sample {
+    let mut game = GameEngine::new(seed);
     // **The opening ladder first** (`SYSTEMS.md` §6.11). M6 cut the
     // starting tower to a Heartseed and a bed, so the chain this
     // instrument measures is one it now has to build.
@@ -176,6 +228,9 @@ fn measure(label: &str, build_shaft: bool) -> Sample {
         queued_ticks,
         peak_wait,
         brownout_ticks,
+        // A single seed has no spread; `measure` fills these in.
+        hauls_low: state.stats.hauls_completed - start.0,
+        hauls_high: state.stats.hauls_completed - start.0,
     }
 }
 
@@ -324,6 +379,17 @@ fn main() {
         "", "stairs only", "+ elevator", "delta"
     );
     row("hauls", stairs_only.hauls, with_elevator.hauls);
+    // **The spread beside the headline.** Three seeds gave the elevator
+    // +137, +122 and +83 hauls; the conclusion held every time and the
+    // magnitude did not. A delta quoted off a mean whose inputs span
+    // this much is a delta with a range attached whether it says so or
+    // not, so it says so.
+    println!(
+        "{:<18} {:>12} {:>12}",
+        "  (hauls range)",
+        format!("{}-{}", stairs_only.hauls_low, stairs_only.hauls_high),
+        format!("{}-{}", with_elevator.hauls_low, with_elevator.hauls_high),
+    );
     row("crafts", stairs_only.crafts, with_elevator.crafts);
     row("harvested", stairs_only.harvested, with_elevator.harvested);
     row(
