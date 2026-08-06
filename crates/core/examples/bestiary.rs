@@ -20,7 +20,6 @@
 use understory_core::GameEngine;
 use understory_core::command::GameCommand;
 use understory_core::state::SimSpeed;
-use understory_core::systems::siege::tower_integrity_permille;
 
 /// Long enough for the slowest thing in the pack to close, bite its way
 /// through a panel, and either be shot down or lose its grip.
@@ -38,7 +37,7 @@ fn main() {
 
     let content = understory_core::content::Content::load_embedded().expect("pack");
     println!(
-        "{:<16} {:>5} {:>7} {:>9} {:>9} {:>7} {:>6}",
+        "{:<16} {:>5} {:>7} {:>10} {:>8} {:>7} {:>6}",
         "creature", "hp", "threat", "undefended", "answered", "darts", "ended"
     );
 
@@ -51,11 +50,11 @@ fn main() {
     for (idx, def) in content.enemies.iter().enumerate() {
         let bare = fight(idx, false);
         let armed = fight(idx, true);
-        if bare.standing < 1000 {
+        if bare.standing > 0 {
             ever_hurt = true;
         }
         println!(
-            "{:<16} {:>5} {:>7} {:>8}‰ {:>8}‰ {:>7} {:>6}",
+            "{:<16} {:>5} {:>7} {:>10} {:>8} {:>7} {:>6}",
             def.name,
             def.hp,
             def.threat,
@@ -83,11 +82,18 @@ fn main() {
     }
 
     println!(
-        "\n  Read the two standing columns against each other rather than against 1000.\n\
-         The gap is what a battery is worth against that particular creature, and it\n\
-         is the only per-creature statement of that anywhere — the pressure table\n\
-         measures whole waves, so it can say a tower died at provocation 500 without\n\
-         saying what killed it."
+        "\n  Read the two columns against each other. They are hit points LOST, so lower\n\
+         is better and zero is untouched. The gap is what a battery is worth against\n\
+         that particular creature, and it is the only per-creature statement of that\n\
+         anywhere — the pressure table measures whole waves, so it can say a tower\n\
+         died at provocation 500 without saying what killed it.\n\
+         \n\
+         **Absolute, not a fraction.** The armed tower owns two rooms the bare one\n\
+         does not, so a permille would divide by a bigger number and flatter it.\n\
+         Extra rooms do not let a creature deal more damage — it works one target at\n\
+         a time — so only the fraction lies here. In `siege_run.rs` it is the other\n\
+         way round, and that file got it wrong five times: ask which of the numerator\n\
+         and the denominator the change you are testing actually moves."
     );
 }
 
@@ -198,7 +204,7 @@ fn fight(enemy: usize, armed: bool) -> Fight {
 
     let state = game.state();
     Fight {
-        standing: tower_integrity_permille(state),
+        standing: hp_lost(state),
         darts: darts_used,
         killed: state.siege.repelled > 0,
         gone: state.siege.enemies.is_empty(),
@@ -262,4 +268,35 @@ fn build_anywhere(game: &mut GameEngine, room: &str) -> bool {
         }
     }
     false
+}
+
+/// Hit points the tower has lost, in absolute terms.
+///
+/// **Not a permille, and the difference is the same trap that caught
+/// `siege_run.rs` five times.** `tower_integrity_permille` divides by
+/// the tower's total maximum, and the armed tower here owns two rooms
+/// the bare one does not — a thornwright and the battery itself — so its
+/// denominator is bigger and it reads healthier for the same damage.
+///
+/// An absolute is right *here* and would be wrong there, and the reason
+/// is worth keeping straight: plating raises the maximum of a panel a
+/// creature was going to chew anyway, so an absolute flatters the bare
+/// tower. Extra rooms do not let a creature deal more damage — it can
+/// only work one target at a time — so the numerator does not scale with
+/// them and only the fraction lies.
+///
+/// The rule underneath both: ask which of the numerator and the
+/// denominator the change you are testing actually moves.
+fn hp_lost(state: &understory_core::state::GameState) -> i64 {
+    let mut lost = 0;
+    for floor in &state.tower.floors {
+        lost += floor.panel.max - floor.panel.hp;
+        for room in &floor.rooms {
+            lost += room.health.max - room.health.hp;
+        }
+    }
+    for shaft in &state.tower.shafts {
+        lost += shaft.health.max - shaft.health.hp;
+    }
+    lost
 }

@@ -170,7 +170,16 @@ sentence off its own grid now and prints UNRESOLVED when the curve is not monoto
 `haulcycle.rs` and `needs.rs` — the three that feed `BALANCE.md`'s Crew rows and
 `PLAYTEST.md` criterion 3. `needs.rs` sweeps eight now and prints ranges; it turned out
 stable, but the figures published from it were the *worst* seed of eight rather than the
-figure, and one run could not have told anybody that. **A room built before the room that unlocks it is a bug four instruments had.** 
+figure, and one run could not have told anybody that. **Never compare two shapes on a quantity whose maximum the change moves — and the fix is
+not always "use a fraction".** One file got this wrong five times, and the sixth instance
+was in another file *with the opposite correct answer*. `reinforce` raises a panel's
+maximum, so an absolute flatters the bare tower and you want the fraction. Extra *rooms*
+raise the denominator without letting a creature deal more damage, so the fraction
+flatters the built tower and you want the absolute. **Ask which of the numerator and the
+denominator your change actually moves**, and label the column with which comparisons it
+is valid for — a rule attached to a column survives; one written in a doc has not.
+
+**A room built before the room that unlocks it is a bug four instruments had.** 
 `room.dart_battery` is `unlocked_by: room.thornwright`, and `bestiary.rs`, `siege_run.rs` 
 (twice) and `journey.rs` all listed the battery first. The two that *asserted* died loudly 
 and stayed dead for milestones; the two that retried degraded quietly and nobody noticed. 
