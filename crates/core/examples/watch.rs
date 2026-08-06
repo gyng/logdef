@@ -98,6 +98,7 @@ use understory_core::GameEngine;
 use understory_core::command::GameCommand;
 use understory_core::harness;
 use understory_core::state::SimSpeed;
+use understory_core::state::power::PowerUse;
 
 const TICKS_PER_DAY: u32 = 14_400;
 const DAYS: u32 = 3;
@@ -105,6 +106,11 @@ const SEEDS: u64 = 12;
 /// Held rather than earned, so the comparison is of the answer and not
 /// of how much attention each tower happened to draw.
 const LEVELS: [i64; 3] = [300, 600, 1000];
+/// Seeds for the charge question. Fewer than the siege's twelve because
+/// the rows come out **identical to the digit** — a spread of zero needs
+/// no sample to establish, and two tower shapes at twelve seeds each put
+/// this file over ten minutes.
+const CHARGE_SEEDS: u64 = 4;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Policy {
@@ -242,6 +248,8 @@ fn main() {
             println!();
         }
     }
+
+    charge_question();
 
     assert!(
         said_something,
@@ -513,4 +521,361 @@ fn stock_inner(engine: &mut GameEngine, insist: bool) -> i64 {
         }
     }
     reloaded
+}
+
+// ---------------------------------------------------------------------------
+// The second verb: what the bank pays for first
+// ---------------------------------------------------------------------------
+
+/// Does saying what the charge pays for first change anything?
+///
+/// **Asked because the first verb did not.** Focus turned out to move
+/// damage by under 1% and `defence.rs` explained why — it can only
+/// reorder among things a gun could already shoot. Charge priority is a
+/// different shape of verb entirely: the bank is a hard constraint, not
+/// a preference, and `PowerBank::draw` refuses a spender outright when
+/// taking its share would leave less than higher-ranked uses that have
+/// not spent yet are owed. So there is real room for it to matter, and
+/// the honest thing is to check rather than assume the milestone's other
+/// verb is fine because this one was not.
+///
+/// **The tower has to actually be short.** A tower that can pay for
+/// everything measures the same under every order by construction —
+/// that is trap 1 again, and it is why this asserts a brown-out happened
+/// before reporting anything.
+///
+/// ## What it says
+///
+/// **Five orders, two tower shapes, and every row identical to the
+/// digit.** A fourteen-floor tower walking, with a lift, two works rooms
+/// and one burner:
+///
+/// | shape | income | spent | brown-out ticks | paces | crafts |
+/// |---|---|---|---|---|---|
+/// | with a cell bank | 14,331 | 13,274 | 0 | 25,818 | 166 |
+/// | no cell bank | 8,116 | 8,809 | 13,478 of 43,200 | 19,142 | 143 |
+///
+/// Within each shape, all five orders produce the same paces, the same
+/// crafts, the same hauls, the same dark ticks and the same brown-outs.
+///
+/// **Three structural reasons, all readable in the code**, and they are
+/// the useful half:
+///
+/// 1. **`PowerBank::draw` refuses on `charge < amount` before it ever
+///    consults the reservation.** A flat-broke tower never reaches the
+///    ranking — everything is refused at the first check. A comfortable
+///    tower never reaches it either, because nothing is refused. The
+///    ranking can only bite in a middle band where there is enough for
+///    *this* spender but not enough to also cover higher-ranked uses
+///    that have not spent yet.
+/// 2. **`estimate_demand` reports zero for Lamps and Legs on 99 ticks
+///    out of 100**, and says so in its own comment: they buy in
+///    hundred-tick blocks, "so what they want on any given tick is
+///    either a whole block or nothing at all". `reserved_against` sums
+///    `demand`, so ranking either of them above anything reserves
+///    nothing almost all of the time.
+/// 3. **Capacity is income.** A burner idles unless the bank can take
+///    the whole burn (`BALANCE.md`'s burner row), so removing the cell
+///    bank to make the tower poor cut its income from 14,331 to 8,116.
+///    The tower does not pass through the middle band on the way down —
+///    it jumps from comfortable to broke.
+///
+/// ## What this does and does not establish
+///
+/// Measured: **no order changed any outcome in either shape.** Inferred
+/// from the code: *why*, and that the band where it could bite is narrow
+/// by construction. **Not established: that no tower can reach that
+/// band** — three shapes were tried and none did, which is evidence but
+/// not proof.
+///
+/// This is a question for the difficulty pass rather than a bug to fix
+/// here: the ranking is wired correctly end to end, and every piece of
+/// it does what its comments say. What has not been shown is a tower on
+/// which a player turning that dial would see anything happen.
+fn charge_question() {
+    println!(
+        "
+
+What does the bank pay for first?"
+    );
+    println!(
+        "  {DAYS} days a run, {CHARGE_SEEDS} seeds an order, fourteen floors of lamps against one
+           burner, walking. Only the order differs.
+"
+    );
+
+    let orders: [[PowerUse; 4]; 5] = [
+        [
+            PowerUse::Lifts,
+            PowerUse::Works,
+            PowerUse::Lamps,
+            PowerUse::Legs,
+        ],
+        [
+            PowerUse::Legs,
+            PowerUse::Lifts,
+            PowerUse::Works,
+            PowerUse::Lamps,
+        ],
+        [
+            PowerUse::Works,
+            PowerUse::Lifts,
+            PowerUse::Lamps,
+            PowerUse::Legs,
+        ],
+        [
+            PowerUse::Lamps,
+            PowerUse::Lifts,
+            PowerUse::Works,
+            PowerUse::Legs,
+        ],
+        [
+            PowerUse::Lifts,
+            PowerUse::Legs,
+            PowerUse::Lamps,
+            PowerUse::Works,
+        ],
+    ];
+
+    let mut browned = false;
+    for (banked, shape) in [(true, "with a cell bank"), (false, "no cell bank")] {
+        println!("  -- {shape} --");
+        println!(
+            "  {:<34} {:>8} {:>7} {:>6} {:>7} {:>10} {:>8} {:>8}",
+            "charge goes to", "paces", "crafts", "hauls", "dark", "brownouts", "income", "spent"
+        );
+        let mut rows = Vec::new();
+        for order in orders {
+            let (mut paces, mut crafts, mut hauls, mut lit, mut outs) =
+                (0i64, 0u64, 0u64, 0u64, 0u64);
+            let (mut income, mut spent) = (0i64, 0i64);
+            for seed in 1..=CHARGE_SEEDS {
+                let run = press_charge(banked, &order, seed);
+                paces += run.0;
+                crafts += run.1;
+                hauls += run.2;
+                lit += run.3;
+                outs += run.4;
+                income += run.5;
+                spent += run.6;
+            }
+            if outs > 0 {
+                browned = true;
+            }
+            let n = i64::try_from(CHARGE_SEEDS).unwrap_or(1);
+            let label = order
+                .iter()
+                .map(|use_| format!("{use_:?}"))
+                .collect::<Vec<_>>()
+                .join(" > ");
+            println!(
+                "  {:<34} {:>8} {:>7} {:>6} {:>7} {:>10} {:>8} {:>8}",
+                label,
+                paces / n,
+                crafts / CHARGE_SEEDS,
+                hauls / CHARGE_SEEDS,
+                lit / CHARGE_SEEDS,
+                outs / CHARGE_SEEDS,
+                income / n,
+                spent / n,
+            );
+            rows.push((label, paces / n, crafts / CHARGE_SEEDS));
+        }
+
+        // The spread across orders, which is the whole answer: a verb that
+        // does nothing produces five identical rows.
+        let (mut most_paces, mut least_paces) = (i64::MIN, i64::MAX);
+        let (mut most_crafts, mut least_crafts) = (u64::MIN, u64::MAX);
+        for (_, paces, crafts) in &rows {
+            most_paces = most_paces.max(*paces);
+            least_paces = least_paces.min(*paces);
+            most_crafts = most_crafts.max(*crafts);
+            least_crafts = least_crafts.min(*crafts);
+        }
+        println!(
+        "
+  Across the five orders: paces {least_paces}..{most_paces} ({:+.0}%), crafts          {least_crafts}..{most_crafts} ({:+.0}%).",
+        if least_paces == 0 {
+            0.0
+        } else {
+            ((most_paces - least_paces) * 100) as f64 / least_paces as f64
+        },
+        if least_crafts == 0 {
+            0.0
+        } else {
+            ((most_crafts - least_crafts) * 100) as f64 / least_crafts as f64
+        },
+    );
+
+        println!();
+    }
+
+    assert!(
+        browned,
+        "neither shape ever ran the bank dry, so every use was paid in full and the order could          not matter: this measured two rich towers, not a choice"
+    );
+}
+
+/// One run under one priority order.
+///
+/// Returns paces, crafts, hauls, dark ticks, brown-out ticks, income
+/// and spend — the last two because "the tower is rich" was the answer
+/// three times running and only income-against-spend said *by how
+/// much*, which is what turned a guessing game into a reading.
+fn press_charge(
+    banked: bool,
+    order: &[PowerUse; 4],
+    seed: u64,
+) -> (i64, u64, u64, u64, u64, i64, i64) {
+    let mut engine = GameEngine::new(seed);
+    engine.set_speed(SimSpeed::X1);
+    // **Tall on purpose, because lamps scale with height and income
+    // does not.** `light_charge_per_100_ticks_per_floor` is per floor,
+    // so a fourteen-floor tower's lamps cost 2,268 charge a day against
+    // a four-floor tower's 648 and one burner leaves it short
+    // (`AGENTS.md`, "growing taller has a real cost"). A four-floor
+    // tower was the first attempt here and it never once ran the bank
+    // dry — five identical rows and the assert at the end of
+    // `charge_question` catching it, which is that assert doing its job.
+    harness::chain_tower(&mut engine, 14);
+
+    // **And no cell bank.** `chain_tower` builds one, and 1,500 of
+    // capacity on top of the Heartseed's 800 is a buffer deep enough to
+    // ride out every night — measured: income 13,731 against 12,480
+    // spent over three days, a mean bank of 1,837, and not one
+    // brown-out at any height. A tower whose bank never empties cannot
+    // be asked what to pay for first. Capacity, not income, was what
+    // made this comfortable.
+    // **Which is a band, not a direction — and finding that was the
+    // whole difficulty here.** `PowerBank::draw` refuses on
+    // `charge < amount` *before* it ever consults the reservation, so a
+    // tower that is flat broke never invokes priority at all: everything
+    // is refused at the first check and the ranking is never reached. A
+    // comfortable tower never invokes it either, because nothing is
+    // refused. **Priority can only bite in the middle**, where there is
+    // enough for this spender but not enough to also cover higher-ranked
+    // uses that have not spent yet.
+    //
+    // Removing the cell bank overshoots straight past that band: income
+    // 8,248 against 8,908 spent, 32% of ticks browned out, and five
+    // orders identical to the digit. `UNDERSTORY_BANK=0` does that, for
+    // anyone who wants to see the far end.
+    if !banked {
+        let bank = engine
+            .content()
+            .room_idx("room.cell_bank")
+            .expect("the pack has a cell bank");
+        let found = engine.state().tower.floors.iter().find_map(|floor| {
+            floor
+                .rooms
+                .iter()
+                .find(|room| room.def == bank)
+                .map(|room| (floor.index, room.slot))
+        });
+        if let Some((floor, slot)) = found {
+            let _ = engine.try_send(GameCommand::RemoveRoom { floor, slot });
+        }
+    }
+
+    // And a shaft and a second works room, so there is more than one
+    // thing wanting the last of the bank.
+    assert!(
+        harness::place_anywhere(&mut engine, "room.cellwright"),
+        "no second works room: Works would have almost nothing to want"
+    );
+    let top = (engine.state().tower.floors.len() as u8).saturating_sub(1);
+    let slot = engine.state().tower.floors[0].slots.saturating_sub(3);
+    // Shelves first — the shaft costs rope this tower has never made.
+    for _ in 0..2 {
+        let _ = harness::place_anywhere(&mut engine, "room.storeroom");
+    }
+    stock_or_panic(&mut engine);
+    // **Asserted, because a missing shaft is a missing spender.** Lifts
+    // is the only use that draws on tick position 0, so without a shaft
+    // the whole of Lifts-versus-everything disappears from the
+    // comparison — and `let _ =` on a `BuildShaft` is exactly the silent
+    // `false` this repo has been bitten by more than any other.
+    engine
+        .try_send(GameCommand::BuildShaft {
+            shaft: "shaft.elevator".into(),
+            low: 0,
+            high: top,
+            slot,
+        })
+        .expect("the tower needs a lift, or Lifts never spends and the order cannot bite");
+    engine
+        .try_send(GameCommand::SetPowerPriority {
+            order: order.to_vec(),
+        })
+        .expect("the order is four legal uses");
+    assert_eq!(
+        engine.state().power.priority,
+        order.to_vec(),
+        "the order did not take: this would compare five identical towers"
+    );
+    let _ = engine.send(GameCommand::SetStriding { walking: true });
+
+    let mut lit = 0u64;
+    let mut outs = 0u64;
+    let (mut income, mut spent, mut charge_sum) = (0i64, 0i64, 0i64);
+    let start = engine.state().world.distance;
+    for tick in 0..DAYS * TICKS_PER_DAY {
+        // **Nothing is topped up here, and that is the point.** The
+        // first version handed the tower twelve bamboo every 120 ticks;
+        // a burner makes 800 charge from one stalk, so that is over a
+        // million charge a day against a twelve-floor tower's ~1,900 of
+        // lamps, and it never once ran short. Height was not the
+        // constraint — **fuel is** — and the tower has to earn its own
+        // for the burner and the mill to be competing for it at all.
+        // That competition is `charge_per_burn`'s whole design
+        // (`AGENTS.md`), and it is the condition under which an order
+        // is a choice.
+        // **Answer the fork or measure a parked tower.** Without this
+        // the tower walked into the first split and stood there for the
+        // rest of the run — 3,700 paces of a possible 25,000, the legs
+        // drawing nothing because `pay_for_stride` does not charge a
+        // tower that has nowhere to go, and therefore no contention at
+        // all. `SYSTEMS.md` §3.3, and the trap `AGENTS.md` names.
+        if tick % 300 == 0
+            && let Some(fork) = engine.state().world.fork
+            && fork.answer.is_none()
+        {
+            let _ = engine.try_send(GameCommand::TakeFork { branch: 0 });
+        }
+        engine.step(1);
+        let power = &engine.state().power;
+        // **Dark ticks, not lit ones.** `lighting` sets `lit` true and
+        // returns early in daylight, so counting lit ticks counted the
+        // sun — a flat 43,200 out of 43,200 in every cell, which is the
+        // same "a number that never varies is not a measurement" the
+        // shots column already taught this file.
+        if !power.lit {
+            lit += 1;
+        }
+        if power.brownout {
+            outs += 1;
+        }
+        income += power.income_last;
+        spent += power.spent_last;
+        charge_sum += power.charge;
+    }
+
+    let state = engine.state();
+    // **Say how rich it is, not just whether it browned out.** Three
+    // attempts at making this tower poor failed and the assert only
+    // said "rich" — which is true and useless. Income against spend
+    // says *by how much*, and it turned a guessing game into a reading.
+    let _ = charge_sum;
+    (
+        // Whole paces. `Paces` is Q8.8, so the raw difference reads as
+        // 947,200 where the tower walked 3,700 — a number nobody can
+        // sanity-check against the 0.6 paces a tick in `BALANCE.md`.
+        (state.world.distance - start) / i64::from(understory_core::fx::FX_ONE),
+        state.stats.crafts_completed,
+        state.stats.hauls_completed,
+        lit,
+        outs,
+        income,
+        spent,
+    )
 }

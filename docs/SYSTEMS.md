@@ -7809,6 +7809,49 @@ comparison — the same trap `siege_run.rs` sprang four times, in a milder form.
 
 **What it does not cover**: three days, one seed family, and provocation held rather than earned.
 
+#### The other wave verb — charge priority — did not move a number either
+
+`examples/watch.rs` grew a second question, because "focus does nothing" is not a reason to
+assume the milestone's other verb is fine. Charge priority is a different *shape* of verb: the
+bank is a hard constraint rather than a preference, and `PowerBank::draw` refuses a spender
+outright when taking its share would leave less than higher-ranked uses are owed.
+
+Five orders, two tower shapes, fourteen floors walking with a lift and two works rooms:
+
+| shape | income | spent | brown-out ticks | paces | crafts |
+|---|---|---|---|---|---|
+| with a cell bank | 14,331 | 13,274 | 0 | 25,818 | 166 |
+| no cell bank | 8,116 | 8,809 | 13,478 of 43,200 | 19,142 | 143 |
+
+**Within each shape every row is identical to the digit** — same paces, crafts, hauls, dark ticks
+and brown-outs under all five orders. Three structural reasons, all readable in the code:
+
+1. **`draw` refuses on `charge < amount` before it consults the reservation.** A flat-broke tower
+   never reaches the ranking; a comfortable one never reaches it either. It can only bite in a
+   middle band where there is enough for *this* spender but not enough to also cover
+   higher-ranked uses that have not spent yet.
+2. **`estimate_demand` reports zero for Lamps and Legs on 99 ticks in 100**, and says so itself:
+   they buy in hundred-tick blocks, "so what they want on any given tick is either a whole block
+   or nothing at all". `reserved_against` sums `demand`, so ranking either reserves nothing
+   almost always.
+3. **Capacity is income.** A burner idles unless the bank can take the whole burn, so removing
+   the cell bank to make the tower poor cut income from 14,331 to 8,116 — the tower jumps from
+   comfortable to broke without passing through the middle.
+
+**Measured**: no order changed any outcome in either shape. **Inferred from the code**: why, and
+that the band is narrow by construction. **Not established**: that no tower can reach that band —
+three shapes were tried and none did, which is evidence rather than proof. The ranking is wired
+correctly end to end and every piece does what its comments say; what has not been shown is a
+tower on which turning the dial does anything. That is a question for the difficulty pass.
+
+Getting there took four wrong tower shapes, and the asserts caught all four: a tower fed twelve
+bamboo every 120 ticks (over a million charge a day against ~1,900 of lamps — **height was never
+the constraint, fuel is**); a tower parked at an unanswered fork for the whole run, which is
+`AGENTS.md`'s named trap; a `lit` column that counted daylight and read a flat 43,200 in every
+cell; and **a shaft that was never built for want of 2 rope**, so `Lifts` — the only use that
+draws at tick position 0 — never spent at all. That last one was `let _ = try_send(BuildShaft)`,
+the silent `false` this repo has been bitten by more than any other.
+
 #### The ruins were the third invisible thing, and the rope chain closes the door to them
 
 The board's one useful trade is **4 scrap for 3 poles**, and scrap comes out of ruins. The whole

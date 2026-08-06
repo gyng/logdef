@@ -228,11 +228,13 @@ crates/
       lift.rs                     # M6's: does a shaft ever pay, swept over tower height.
                                   #   Reads its pack from UNDERSTORY_PACK when set, so a
                                   #   tuning pass costs seconds rather than a rebuild
-      watch.rs                    # do M6's wave verbs move the numbers? (focus does not,
-                                  #   by <=1%, on five policies and two tower shapes, and
-                                  #   defence.rs explains why). Carries the validity check
-                                  #   worth copying: one policy reproduces the engine's own
-                                  #   default and must match the control
+      watch.rs                    # do M6's wave verbs move the numbers? Focus does not
+                                  #   (<=1%, five policies, two tower shapes) and charge
+                                  #   priority does not either (five orders, identical to
+                                  #   the digit) — and in both cases the code says why.
+                                  #   Carries the validity check worth copying: one policy
+                                  #   reproduces the engine's own default and must match
+                                  #   the control
       glut.rs                     # does the rope chain pay for itself? (it costs 56% of
                                   #   the tower's poles). Written from a played run's
                                   #   ending, and it documents two harness traps it fell
