@@ -14,6 +14,20 @@ split) is archived on `main`. This is v2, in active development on the `v2` bran
 vocabulary (hero, weapons, companions, encounters, chapters) does not carry over; it
 describes a different game.
 
+## State
+
+A run is playable start to finish: from the first pace to an arrival at the Refugia, 31–36
+minutes at 1×. M0–M4 and M6 are shipped and M5 is most of the way there — `docs/SYSTEMS.md`
+is the exact, current boundary of what exists, so read the milestone section for a system
+before assuming it is live.
+
+What is missing is the difficulty pass. Every constant in `docs/BALANCE.md` is graded
+`MEASURED` — an instrument confirms the effect the constant exists to produce, and the limit
+of that measurement is written into the row — and **none is `PLAYTESTED`**, which that file
+defines as somebody having played with it *and with neighbouring values*. The distinction is
+load-bearing and the gap is a person's work rather than an agent's; `docs/PLAYTEST.md` is
+what to do and what to write down.
+
 ## Stack
 
 - **Simulation core:** Rust, compiled to WASM, deterministic — fixed 30 Hz tick, fixed-point
@@ -49,7 +63,16 @@ two of them disagree:
 3. `docs/v2-plan.md` — the locked whole-game plan: milestones, scope, what's coming and when
 4. `docs/DESIGN.md` — the design argument behind the plan; useful for *why*, not a spec
 
-`docs/BALANCE.md` grades every tuning constant `DESIGNED` or `PLAYTESTED`.
+Alongside them: `docs/BALANCE.md` grades every tuning constant `DESIGNED`, `MEASURED` or
+`PLAYTESTED` and records the limit of what each measurement showed; `docs/PLAYTEST.md` is
+the open criteria that need a person at the keyboard; `docs/ART.md` is the asset handoff;
+`docs/RENDERER.md` covers what is drawn procedurally, what was tried and reverted, and the
+measured frame budget.
+
+The measuring instruments live in `crates/core/examples` and answer the design questions the
+tests cannot. `make check` deliberately does not run them — `make instruments` does. Read
+their output rather than their exit code: an instrument measuring the wrong thing exits zero,
+and several have.
 
 ## Contributing
 
