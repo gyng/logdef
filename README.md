@@ -1,5 +1,9 @@
 # Understory
 
+**[Play it in a browser](https://gyng.github.io/logdef/)** — the `v2` branch, deployed to
+GitHub Pages by `.github/workflows/pages.yml` on every push. It is the same bundle
+`make release` zips for itch.io.
+
 A walking garden-tower roguelike: SimTower's cross-section, Factorio's production chains,
 and tower defence's waves, fused into one tower that walks through a solarpunk jungle. You
 build the supply chain that feeds and lights the tower and defend it in real time while that
