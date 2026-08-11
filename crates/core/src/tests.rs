@@ -5,6 +5,7 @@
 //! moment the internals move, and the internals are going to move a
 //! lot between here and M5.
 
+mod art_manifest;
 mod balance_doc;
 mod commands;
 mod determinism;

@@ -1,0 +1,341 @@
+{
+  "_readme": [
+    "Batch input for generating the game's art. THIS FILE IS THE SOURCE OF TRUTH for every",
+    "fact about an asset: its prompt, its sizes, its format and where the file goes.",
+    "docs/ART.md is the prose companion — it explains the reasoning and the house rules and",
+    "deliberately does NOT restate a size or a prompt body, because a fact kept in two places",
+    "drifts. (BALANCE.md's header records what that costs; it happened three times there.)",
+    "",
+    "To build one prompt, concatenate the fields named in `compose`, separated by blank lines,",
+    "in that order. `style` is stored ONCE and never edited per asset — a set that looks like",
+    "five different artists is almost always somebody tidying the style wording between images.",
+    "Assets with \"palette\": true get `palette` inserted where `compose` says.",
+    "",
+    "Generate at `generate`, downscale to `ship`, never upscale. Write the original to",
+    "`originalsDir` (outside web/public, gitignored) and the shipped file to `out`.",
+    "Alongside every original write <name>.json recording model, full prompt, seed and date —",
+    "you will want a matching asset in six months and will not remember."
+  ],
+
+  "version": 1,
+
+  "compose": ["style", "palette", "subject", "composition"],
+
+  "style": "Melancholic 1980s anime watercolour magazine illustration. Watercolour wash with visible paper grain, soft feathered edges, muted desaturated palette, subtle ink linework kept thin and broken. Low-key chiaroscuro firelight OR soft overcast daylight — one or the other, never both. Simplified background, selective detail: render one focal area crisply and let everything else dissolve into wash. Solarpunk, overgrown, quiet. No text, no logos, no watermark, no signature, no UI, no border or frame.",
+
+  "palette": "Palette anchors: deep teal sky #2b6f74, pale sage haze #b7cbb0, dark canopy green #12301f, bark brown #3a2f26, warm brass #a8834d, lamp gold #e0c07a, bone #ecdfba.",
+
+  "style_sprite": "Semi-chibi anime sprite in a melancholic 1980s anime watercolour magazine style. Watercolour wash with visible paper grain and a muted desaturated palette, but kept CRISP: a clean readable silhouette, edges that hold rather than feather away, thin broken ink linework, flat-on with no perspective and no ground shadow. Even soft light across the whole figure — no chiaroscuro, no single dramatic light source. Solarpunk, overgrown, quiet. No text, no logos, no watermark, no signature, no UI, no border or frame.",
+
+  "_style_note": [
+    "There are exactly TWO style blocks and there must never be a third.",
+    "",
+    "`style` is for illustrations — covers, backgrounds, title. It says 'render one focal area",
+    "crisply and let everything else dissolve into wash', which is right for a painting seen",
+    "at full screen.",
+    "",
+    "`style_sprite` is for anything cut out and drawn small: crew, creatures, props, item",
+    "icons. It exists because that one instruction is actively wrong for a sprite — an edge",
+    "that dissolves has no silhouette, and a silhouette is the entire readability budget of a",
+    "figure drawn 40 pixels tall. The chiaroscuro clause has to go too: a sprite lit from",
+    "low-left in the sheet will fight whatever light the scene puts it in.",
+    "",
+    "Assets select one with \"style_use\": \"sprite\". Textures (paper grain, wash, vignette) use",
+    "neither and set \"style_use\": \"none\" — an illustration style block pasted over a texture",
+    "prompt is how you get subject matter in your paper grain."
+  ],
+
+  "subject_canon": {
+    "_note": "Paste `tower` verbatim into any prompt showing the tower from outside. These are not stylistic preferences — they are what web/src/engine/scene.ts actually draws, and RENDERER.md records why. Getting them wrong is the one error that survives into every asset at once.",
+    "tower": "The tower walks on FOUR slender legs in a wave gait, each a quarter-cycle behind the one in front, so two feet are always planted and a ripple runs down the body. Each leg is a shallow inverted V: the joint rides ABOVE the hip, like a wading insect or a harvestman. Never a knee bending forward, never a bird's backward hock, never anything that reads as a human or animal leg. The outer pair splays widest. The legs are thin relative to the hull — four thick legs read as a pipe rack, which is wrong.",
+    "roof": "A row of low planters runs the full width of the roof: the tower's own garden, spilling greenery over the roof lip. NO sails, no canopy panels, no masts, no banners, no flags.",
+    "hull": "A long horizontal hull of bamboo and salvaged timber, open to the viewer in cross-section like a doll's house, its floors stacked as shallow horizontal bands of small lit rooms with tiny figures inside. A heavy base beam runs under the hull where the legs meet it.",
+
+    "crew": "The crew are drawn semi-chibi: roughly three and a half heads tall — softened and slightly large-headed for warmth and for readability at small size, but NOT full chibi and never a mascot. Simplified anime faces with small, few features; at sprite size an eye is one mark. Practical layered working clothes, jungle-worn, sleeves pushed up, soft earth and sage tones with one warmer accent each. Adults at work, of visibly different builds, ages and origins.",
+
+    "crew_tone": "Warmth, not comedy. This is a melancholy game and semi-chibi is here to make small figures legible and likeable, not to make them funny. No gag expressions, no sweat-drops, no speed lines, no exaggerated squash-and-stretch, no wide anime grins. Faces are calm, tired, absorbed in a task. Nobody poses, nobody salutes, nobody holds a weapon like a hero: DECISIONS.md §8 is defenders rather than soldiers, and it binds the art.",
+
+    "creature": "Creatures are ANIMALS defending their territory, not monsters and not a target gallery. Semi-chibi in the same register as the crew: rounded, slightly large-headed, softened proportions, readable silhouette first. Give each one a real animal's calm — a root borer is a beetle doing a beetle thing. No snarls, no bared fangs, no glowing eyes, no aggressive rearing poses, no armour plating, no spikes added for menace. They can be big and they can be unsettling; they must never look evil."
+  },
+
+  "defaults": {
+    "outDir": "web/public/art",
+    "originalsDir": "art-src",
+    "format": "webp",
+    "quality": 85,
+    "fit": "cover",
+    "upscale": false
+  },
+
+  "budget": {
+    "totalBytes": 5242880,
+    "_note": "3–5 MB of art total. An itch.io HTML5 game downloads in full before it starts, and the whole game is ~1.9 MB today (1.6 MB of that is the wasm). `make release` prints the size. If the set does not fit, cut assets rather than quality — a soft 630×500 cover is worse than no banner."
+  },
+
+  "assets": [
+    {
+      "id": "itch-cover",
+      "tier": 0,
+      "required": true,
+      "usedBy": "itch.io page — itch.io refuses the upload without it",
+      "palette": true,
+      "subject": "An enormous walking garden-tower of bamboo and salvaged timber, seen from the side and slightly below, striding through dense jungle. {hull} {tower} {roof} One foot planted, one lifting. Soft overcast light, mist between the trunks, the canopy closing over behind it.",
+      "composition": "Tower left of centre and small against a huge horizon. Leave the top third quiet — a title will sit there. Landscape 5:4.",
+      "generate": "1536x1024",
+      "ship": "630x500",
+      "format": "webp",
+      "out": "web/public/art/itch-cover.webp"
+    },
+    {
+      "id": "itch-banner",
+      "tier": 0,
+      "usedBy": "itch.io page banner",
+      "palette": true,
+      "subject": "The same walking garden-tower, far right of frame and walking away from the viewer, small. {tower} {roof} The rest is jungle canopy receding into pale haze, layer behind layer. Overcast, early morning, mist in the middle distance.",
+      "composition": "Wide letterbox, nothing at all in the centre — text will sit there. 3:1.",
+      "generate": "1536x512",
+      "ship": "1920x620",
+      "format": "webp",
+      "out": "web/public/art/itch-banner.webp",
+      "_note": "The only asset whose ship size exceeds a common generate size. Generate the widest your tool allows and accept the upscale here, or generate 3:1 in two halves and join — a banner is seen at a glance and forgives softness that a cover does not."
+    },
+    {
+      "id": "title",
+      "tier": 0,
+      "usedBy": "title screen background",
+      "palette": true,
+      "subject": "INTERIOR. One lamplit deck inside the walking tower at night, seen from the side in cross-section. Two crew sitting at a low table, small in frame, sharing a meal. {crew} {crew_tone} Bamboo racks, hanging tools, a cooking pot. Warm firelight from a single lamp; everything beyond its reach dissolves into dark wash. Through a gap in the timber, black jungle.",
+      "composition": "Lamp low-left, the dark two-thirds of the frame doing the work. 16:9.",
+      "generate": "1536x864",
+      "ship": "2560x1440",
+      "format": "webp",
+      "out": "web/public/art/title.webp",
+      "_note": "No tower exterior here, so no leg or roof canon needed. Ship size is above generate size deliberately: this sits behind a title at full screen and is the one place softness reads as atmosphere. If your tool does 2048 wide, use it."
+    },
+    {
+      "id": "arrival",
+      "tier": 0,
+      "usedBy": "behind the arrival card — the ending a run is trying to reach",
+      "palette": true,
+      "subject": "Dawn at the coast. The walking garden-tower stopped on a headland above pale flat water, still, its legs folded under it. {tower} {roof} Salt grass. First light on its flank. Nothing threatening, nothing ruined — the end of a very long walk.",
+      "composition": "Tower right of centre, low horizon, most of the frame given to sky. 16:9.",
+      "generate": "1536x864",
+      "ship": "2048x1152",
+      "format": "webp",
+      "out": "web/public/art/arrival.webp"
+    },
+    {
+      "id": "elegy",
+      "tier": 0,
+      "usedBy": "behind the loss card",
+      "palette": true,
+      "subject": "The same walking garden-tower, dark and motionless, being taken back by the jungle. Vines through its open flank, saplings on its roof, one leg buckled under it. {tower} {roof} Flat overcast light. No wreckage, no fire, no drama — just green closing over something that stopped.",
+      "composition": "Tower centred and small, canopy crowding in from every edge. 16:9.",
+      "generate": "1536x864",
+      "ship": "2048x1152",
+      "format": "webp",
+      "out": "web/public/art/elegy.webp"
+    },
+    {
+      "id": "favicon",
+      "tier": 0,
+      "usedBy": "browser tab. NOTE: web/index.html has no <link rel=icon> today, so this asset needs one line of HTML to do anything — the deployed site currently 404s /favicon.ico.",
+      "palette": false,
+      "subject": "A single bamboo leaf crossed with a small lit lamp. Flat, simple, high contrast, almost a woodcut. Very few shapes.",
+      "composition": "Centred, square, generous margin. MUST read at 16 pixels — squint at it; if the two shapes merge, simplify.",
+      "generate": "1024x1024",
+      "ship": "512x512",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/favicon.png"
+    },
+    {
+      "id": "og-image",
+      "tier": 0,
+      "usedBy": "link previews",
+      "derive": { "from": "itch-cover", "op": "crop" },
+      "ship": "1200x630",
+      "format": "webp",
+      "out": "web/public/art/og-image.webp",
+      "_note": "No generation. Crop itch-cover (or title) to a wide letterbox."
+    },
+
+    {
+      "id": "paper-grain",
+      "tier": 1,
+      "usedBy": "multiplied over the whole scene — this single asset does most of the work of making the game look painted",
+      "tileable": true,
+      "palette": false,
+      "style_use": "none",
+      "subject": "Seamless tileable cold-press watercolour paper texture. Greyscale only, no subject matter, no objects, no composition. Even fine tooth across the whole square, no dark blotches, no visible seam at any edge, no vignette, no lighting. A flat scan of blank paper.",
+      "composition": "",
+      "generate": "1024x1024",
+      "ship": "1024x1024",
+      "format": "png",
+      "greyscale": true,
+      "out": "web/public/art/paper-grain.png",
+      "_note": "style_use is \"none\" on purpose: the illustration style block would put subject matter into a texture. Verify tiling by laying it out 2×2 and looking for the seam before shipping."
+    },
+    {
+      "id": "wash-overlay",
+      "tier": 1,
+      "usedBy": "colour wash over the scene",
+      "palette": true,
+      "style_use": "none",
+      "subject": "Abstract watercolour wash, no subject matter and no recognisable objects. Muted sage green, deep teal and pale bone blooming into one another with hard wet edges where the colours meet. Large soft shapes only, no detail, no linework. Like the inside of a paint-water jar settling.",
+      "composition": "",
+      "generate": "1536x864",
+      "ship": "2048x1152",
+      "format": "webp",
+      "out": "web/public/art/wash-overlay.webp"
+    },
+    {
+      "id": "vignette",
+      "tier": 1,
+      "usedBy": "darkens the frame edges",
+      "palette": false,
+      "style_use": "none",
+      "subject": "Soft radial vignette. Pure black at the four corners fading to fully transparent by 45% of the radius from centre. Perfectly smooth, no banding, no colour, no subject matter.",
+      "composition": "",
+      "generate": "1024x576",
+      "ship": "1024x576",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/vignette.png",
+      "_note": "Generators are bad at smooth alpha ramps. If yours bands, make this one in an image editor with a radial gradient — it is thirty seconds and will look better."
+    },
+    {
+      "id": "sky-dawn",
+      "tier": 1,
+      "usedBy": "sky band, predawn/dawn daypart",
+      "palette": true,
+      "subject": "Vertical watercolour sky gradient only. Cold deep teal at the top, warming through pale sage to bone at the bottom. Soft wet-into-wet blending, paper grain visible.",
+      "composition": "Sky only. NO clouds with hard edges, no landscape, no horizon line, no sun disc, no birds.",
+      "generate": "1024x1024",
+      "ship": "512x512",
+      "format": "webp",
+      "out": "web/public/art/sky-dawn.webp"
+    },
+    {
+      "id": "sky-day",
+      "tier": 1,
+      "usedBy": "sky band, day daypart",
+      "palette": true,
+      "subject": "Vertical watercolour sky gradient only. Flat pale overcast: soft grey-sage at the top, near-white at the bottom. Very low contrast.",
+      "composition": "Sky only. NO clouds with hard edges, no landscape, no horizon line, no sun disc, no birds.",
+      "generate": "1024x1024",
+      "ship": "512x512",
+      "format": "webp",
+      "out": "web/public/art/sky-day.webp"
+    },
+    {
+      "id": "sky-dusk",
+      "tier": 1,
+      "usedBy": "sky band, dusk daypart",
+      "palette": true,
+      "subject": "Vertical watercolour sky gradient only. Deep teal at the top through warm brass to dusty rose at the bottom.",
+      "composition": "Sky only. NO clouds with hard edges, no landscape, no horizon line, no sun disc, no birds.",
+      "generate": "1024x1024",
+      "ship": "512x512",
+      "format": "webp",
+      "out": "web/public/art/sky-dusk.webp"
+    },
+    {
+      "id": "sky-night",
+      "tier": 1,
+      "usedBy": "sky band, night daypart",
+      "palette": true,
+      "subject": "Vertical watercolour sky gradient only. Near-black blue-teal at the top, a very faint pale wash at the bottom. A few stars as tiny points of UNPAINTED PAPER, not white dots.",
+      "composition": "Sky only. NO moon, no clouds, no landscape, no horizon line, no constellations.",
+      "generate": "1024x1024",
+      "ship": "512x512",
+      "format": "webp",
+      "out": "web/public/art/sky-night.webp"
+    },
+
+    {
+      "id": "scenery-sheet",
+      "tier": 2,
+      "usedBy": "terrain props, cut apart and packed into an atlas",
+      "sheet": {
+        "cells": ["tree", "fern", "rock", "vine", "ruin", "wreck", "driftwood", "salt-pan"],
+        "layout": "one row of 8",
+        "atlas": "2048x2048"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "A single row of eight separate side-on scenery props, evenly spaced, each isolated with clear empty space around it and its base sitting on a common baseline: a jungle tree, a fern, a mossy rock, a hanging vine, a ruined concrete pillar overgrown, a rusted vehicle wreck half-swallowed by growth, a piece of bleached driftwood, a cracked salt-pan crust. Each drawn flat-on from the side, no perspective, no ground shadow.",
+      "composition": "Eight props in one row on a FLAT MAGENTA #FF00FF background. Even spacing, nothing overlapping, nothing touching the image edges.",
+      "generate": "1536x512",
+      "ship": "2048x2048",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/scenery-atlas.png",
+      "_note": "One painting pass matches itself far better than eight separate ones — that is the whole reason this is a sheet. Cut apart and repack after keying out the magenta."
+    },
+    {
+      "id": "crew-sheet",
+      "tier": 3,
+      "usedBy": "the named people aboard. Crew are drawn procedurally today; this is the set that would replace them, and the first place the semi-chibi direction actually shows.",
+      "sheet": {
+        "cells": ["Wren", "Odile", "Bakri", "Sena", "Toma", "Ilay", "Rook", "Mira"],
+        "layout": "one row of 8",
+        "cellShip": "128x192"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "A single row of eight different standing characters, evenly spaced, each isolated with clear empty space around it and its feet on a common baseline, each drawn flat-on from the side in a neutral standing pose. {crew} {crew_tone} Eight distinct people: vary height, build, age, skin tone, hair and headwear so no two read alike at a glance. Working clothes only — no armour, no uniforms, nothing military, nothing matching.",
+      "composition": "Eight figures in one row on a FLAT MAGENTA #FF00FF background. Even spacing, nothing overlapping, nothing touching the image edges. Whole body in frame including feet.",
+      "generate": "1536x512",
+      "ship": "1024x384",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/crew-atlas.png",
+      "_note": "Eight because crew_cap is 8; assets/data/crew/names.ron carries 16 names and the first eight are the ones a run can actually field. That file's own comment is worth honouring here — the crew are 'people who came from somewhere, not a set matched to a palette', so resist making them tonally uniform. One sheet, one pass: eight separately-generated characters will not look like the same crew."
+    },
+    {
+      "id": "creature-sheet",
+      "tier": 3,
+      "usedBy": "the eight creatures. Read DECISIONS.md §8 before prompting this one — the tone rule is load-bearing and this is the asset most likely to break it.",
+      "sheet": {
+        "cells": ["skitter", "root_borer", "glean_crow", "canopy_leaper", "night_prowler", "mire_hulk", "thicket_mother", "feral_warden"],
+        "layout": "one row of 8, smallest to largest",
+        "cellShip": "128x128"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "A single row of eight different jungle animals, evenly spaced, each isolated with clear empty space around it and its feet on a common baseline, each drawn flat-on from the side in a calm neutral stance, ordered smallest to largest: a small scurrying ant-like forager; a fat armoured beetle grub; a scruffy dark corvid; a long-limbed tree-dwelling leaper; a lean nocturnal canid; a huge heavy swamp herbivore; a large patient orb-weaving spider; a big solitary scorpion-like guardian. {creature}",
+      "composition": "Eight animals in one row on a FLAT MAGENTA #FF00FF background, sized relative to one another so the row reads as a scale chart. Even spacing, nothing overlapping, nothing touching the image edges.",
+      "generate": "1536x512",
+      "ship": "1024x256",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/creature-atlas.png",
+      "_note": "The 8 cells must stay in sync with assets/data/enemies/*.ron — crates/core/src/tests/art_manifest.rs fails if they drift. Names in the pack are Skitter, Root Borer, Glean-crow, Canopy Leaper, Night Prowler, Mire-hulk, Thicket Mother, Feral Warden; the prompt describes them as animals rather than naming them, because a generator given 'Thicket Mother' will draw a monster."
+    },
+    {
+      "id": "item-icons",
+      "tier": 3,
+      "usedBy": "item icons in the UI — these are EMOJI today, which render differently on every machine. That is a real bug rather than a preference, and it is the one part of tier 3 worth doing on its own.",
+      "sheet": {
+        "cells": [
+          "alloy", "bamboo", "charge_cells", "darts", "fiber",
+          "hand_lamp", "meals", "mechanisms", "menders_kit", "poles",
+          "porters_harness", "produce", "rope", "scrap", "seed_bombs"
+        ],
+        "layout": "4x4 grid, 15 filled, last cell empty",
+        "cellShip": "128x128"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "A 4x4 grid of small painted still-life objects, each isolated in its own cell with clear space around it, painted flat-on with no perspective and no ground shadow: a scrap-metal alloy ingot; a bundle of cut green bamboo stalks; a stack of charge cells like small ceramic batteries; a handful of sharpened darts; a coil of plant fiber; a small lit hand lamp; a bowl of hot stew; an assortment of small brass mechanisms and gears; a mender's kit as an open toolroll; a bundle of finished bamboo poles; a porter's harness of woven straps; a bunch of harvested leafy produce; a coil of twisted rope; a pile of rusted salvaged scrap; a cluster of seed bombs like clay spheres packed with sprouting seeds.",
+      "composition": "4x4 grid on a FLAT MAGENTA #FF00FF background, 15 cells filled and the sixteenth left empty. Even spacing, nothing overlapping, nothing touching the image edges. Each object centred in its cell and readable at thumbnail size.",
+      "generate": "1024x1024",
+      "ship": "512x512",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/items-atlas.png",
+      "_note": "The 15 cells must stay in sync with assets/data/items/*.ron — crates/core/src/tests/art_manifest.rs fails if they drift. It listed 12 for a while and would have silently generated a set missing hand_lamp, menders_kit and porters_harness."
+    }
+  ]
+}
