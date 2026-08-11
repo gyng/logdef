@@ -8,6 +8,13 @@
       content="A walking garden-tower striding through the jungle that swallowed the old world."
     />
     <meta name="color-scheme" content="dark" />
+    <!--
+      Declaring any icon is what stops the browser probing /favicon.ico,
+      which it does by default and which 404s on every host we ship to.
+      Vite rewrites this to a relative path at build time because
+      `base` is "./" — see vite.config.ts for why that matters on itch.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Understory</title>
   </head>
   <body>

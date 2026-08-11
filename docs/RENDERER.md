@@ -36,7 +36,7 @@ that region's identity than any sprite.
 visual carries information: the legs report the halt state, a crew member's step cadence
 reports hunger, a stalled room goes quiet. Rain would be the first purely decorative system
 in it — the dust and the motes since added are both tied to something (a planted foot, the
-sun the sails are actually paid in), which is the line.
+sun the garden is actually paid in), which is the line.
 
 ### Planted feet and IK legs — done, and the fix was not in the legs
 
@@ -127,7 +127,7 @@ still water is the one thing that would look wrong.
 builds a burner, and its drowned-city stills depend on where a nondeterministic script happens
 to stop.
 
-### The wake, the sails and the arm — done, and all three came free with the feet
+### The wake, the garden crown and the arm — done, and all three came free with the feet
 
 **Splash and submersion.** A foot landing in the drowned street throws a ring and a little
 spray, and everything below the waterline is re-tinted after the legs draw so the tower wades
@@ -135,11 +135,19 @@ rather than skating on the surface. **None of this was possible before the feet 
 splash is an *event*, and a pendulum has no touchdown to hang one on. The foot solve is pulled
 out into `feet()` so the water can ask where they are and how long since they landed.
 
-**The sails fill and slacken with `exposure_pct`** — sun after terrain, which is the number
-they are actually paid in. A sail room in dense canopy at 15% and one in open clearing at 100%
-used to draw identically, so the tower's entire charge income was invisible on the one part of
-it that earns the income. Walk into shade now and the canvas goes slack *before* the bank
-starts falling, which is the §8 order: see it in the world first, read it off a gauge second.
+**The garden's leaves open and close with `exposure_pct`** — sun after terrain. Two canted
+panels at opposing angles, tall enough to be the thing you notice about the roof, reading as
+growth reaching for the light rather than as a lid. A garden in dense canopy at 15% and one in
+open clearing at 100% would otherwise draw identically, so what the route buys would be
+invisible on the one part of the tower it buys it for. Walk into shade and the leaves close
+*before* the crop count moves, which is the §8 order: see it in the world first, read it off a
+gauge second.
+
+**This was the canopy sails' crown until M6 cut them** (`SYSTEMS.md` §6.10), and the argument
+carried over unchanged to the room that inherited it — the garden is now the only room paid by
+the sky. Same geometry, read as leaves rather than canvas. Nothing in the renderer draws a sail
+any more; if you are looking for one because a document mentioned it, this is the paragraph it
+meant.
 
 **The cutter arm sweeps** while the tower is covering ground, and hangs still when it is not.
 Off `distance` rather than the clock, because terrain intake is paid per pace — a halted tower

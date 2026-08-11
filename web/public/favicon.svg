@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Understory">
+  <!--
+    A bamboo leaf and a hanging lit lamp — the subject
+    docs/art-manifest.json specifies for `favicon`, drawn rather than
+    generated.
+
+    Vector because the constraint on this asset is "must read at 16
+    pixels", and at 16 pixels a watercolour wash is mud. It is also
+    ~1 KB against a 3-5 MB art budget, and the game draws every other
+    pixel procedurally today, so a hand-built icon is the honest match
+    for what it is the icon of.
+
+    Two subjects at deliberately different sizes, because the manifest's
+    own instruction is to squint and simplify if anything merges: at tab
+    size this is one big leaf and one bright dot, which stay legible
+    against each other. The leaf is sized to crowd the tile — an earlier
+    pass left it small in a field of dark ground and it read as a speck.
+    The cord is the detail that survives being lost: it makes the dot a
+    hanging lamp at 64 px and simply vanishes at 16, which is the right
+    way round.
+
+    Palette anchors from the manifest: canopy #12301f, sage #b7cbb0,
+    lamp gold #e0c07a.
+  -->
+  <rect width="32" height="32" rx="7" fill="#12301f" />
+  <path d="M23.4 2.6C30.2 10 28.8 21.2 19.6 28.2C12.6 21.4 14.2 9.6 23.4 2.6Z" fill="#b7cbb0" />
+  <path d="M23.4 2.6 19.6 28.2" stroke="#12301f" stroke-width="1.2" stroke-linecap="round" opacity="0.4" />
+  <path d="M9.6 9.5V16.4" stroke="#b7cbb0" stroke-width="1.3" stroke-linecap="round" opacity="0.7" />
+  <circle cx="9.6" cy="21.4" r="5.1" fill="#e0c07a" />
+</svg>

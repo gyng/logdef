@@ -139,7 +139,8 @@
     {
       "id": "favicon",
       "tier": 0,
-      "usedBy": "browser tab. NOTE: web/index.html has no <link rel=icon> today, so this asset needs one line of HTML to do anything — the deployed site currently 404s /favicon.ico.",
+      "usedBy": "browser tab. ALREADY SHIPPED as a hand-drawn vector at web/public/favicon.svg, wired up in web/index.html — generating this is optional, and probably not worth it.",
+      "_note": "The one asset where the generator is the wrong tool. Its constraint is 'must read at 16 pixels', where a watercolour wash is mud, and an SVG is ~1 KB against a 3-5 MB budget and stays crisp at every size. Kept in the manifest so the subject is recorded in one place with everything else; if you do generate a raster version, it has to beat a vector that already works.",
       "palette": false,
       "subject": "A single bamboo leaf crossed with a small lit lamp. Flat, simple, high contrast, almost a woodcut. Very few shapes.",
       "composition": "Centred, square, generous margin. MUST read at 16 pixels — squint at it; if the two shapes merge, simplify.",
