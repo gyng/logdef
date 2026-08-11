@@ -1,30 +1,39 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Understory">
   <!--
-    A bamboo leaf and a hanging lit lamp — the subject
-    docs/art-manifest.json specifies for `favicon`, drawn rather than
-    generated.
+    A dead CRT with something growing out of it: the setting in two
+    shapes. Overgrown *tech*, not wilderness — a bamboo leaf on its own
+    described a primeval jungle this game is not set in.
 
     Vector because the constraint on this asset is "must read at 16
-    pixels", and at 16 pixels a watercolour wash is mud. It is also
-    ~1 KB against a 3-5 MB art budget, and the game draws every other
-    pixel procedurally today, so a hand-built icon is the honest match
-    for what it is the icon of.
+    pixels", where a watercolour wash is mud. It is also ~1 KB against a
+    3-5 MB art budget, and the game draws every other pixel procedurally
+    today, so a hand-built icon is the honest match for what it is the
+    icon of.
 
-    Two subjects at deliberately different sizes, because the manifest's
-    own instruction is to squint and simplify if anything merges: at tab
-    size this is one big leaf and one bright dot, which stay legible
-    against each other. The leaf is sized to crowd the tile — an earlier
-    pass left it small in a field of dark ground and it read as a speck.
-    The cord is the detail that survives being lost: it makes the dot a
-    hanging lamp at 64 px and simply vanishes at 16, which is the right
-    way round.
+    The screen is amber rather than phosphor green because the sprout has
+    to be the only green thing for the silhouette to split at tab size —
+    an amber CRT is period-correct either way, and `salvage` #d9a25a is
+    already the renderer's own colour for a ruin worth stripping.
+
+    Shapes are sized apart on purpose: one bright rectangle, one green
+    sprout above it. The stand and the scanline are detail that vanishes
+    by 16 px, which is the right way round.
 
     Palette anchors from the manifest: canopy #12301f, sage #b7cbb0,
-    lamp gold #e0c07a.
+    salvaged amber #d9a25a, dead plastic #33453e.
   -->
   <rect width="32" height="32" rx="7" fill="#12301f" />
-  <path d="M23.4 2.6C30.2 10 28.8 21.2 19.6 28.2C12.6 21.4 14.2 9.6 23.4 2.6Z" fill="#b7cbb0" />
-  <path d="M23.4 2.6 19.6 28.2" stroke="#12301f" stroke-width="1.2" stroke-linecap="round" opacity="0.4" />
-  <path d="M9.6 9.5V16.4" stroke="#b7cbb0" stroke-width="1.3" stroke-linecap="round" opacity="0.7" />
-  <circle cx="9.6" cy="21.4" r="5.1" fill="#e0c07a" />
+
+  <!-- sprout: two leaves and a stem, breaking the top edge of the case -->
+  <path d="M16 13.4V6.2" stroke="#b7cbb0" stroke-width="1.5" stroke-linecap="round" />
+  <path d="M15.7 8.2C13.3 8.4 11.4 7 10.7 4.8C13.3 4.1 15.3 5.5 15.7 8.2Z" fill="#b7cbb0" />
+  <path d="M16.4 10.2C18.4 9.6 19.6 7.9 19.5 5.6C17 6 15.9 7.7 16.4 10.2Z" fill="#b7cbb0" />
+
+  <!-- the case: a chunky 4:3 CRT on a stand, its screen still lit.
+       The stand and the deep even bezel are what stop this reading as
+       a planter box, which a squatter first pass did. -->
+  <rect x="13.2" y="26.4" width="5.6" height="2.4" rx="0.8" fill="#33453e" />
+  <rect x="6.4" y="12.8" width="19.2" height="14.4" rx="2.4" fill="#33453e" />
+  <rect x="9.1" y="15.3" width="13.8" height="9.4" rx="1.5" fill="#d9a25a" />
+  <path d="M10.5 21.6H21.5" stroke="#33453e" stroke-width="1" stroke-linecap="round" opacity="0.3" />
 </svg>

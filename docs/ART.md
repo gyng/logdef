@@ -26,6 +26,24 @@ the crew are named people, and the whole thing walks. It is solarpunk and melanc
 here is a war machine, the creatures are animals defending their territory, and a run ends
 with an arrival rather than a victory.
 
+**The jungle grew over a city, not over nothing.** This is post-apocalyptic solarpunk with a
+lot of salvaged late-20th-century computing in it: beige plastic gone yellow, CRT terminals,
+ribbon cable and patch leads, perforated steel racks, all scuffed and patched and half
+swallowed by growth. The tower is *built out of that* — bamboo and salvaged timber over
+scavenged panelling, with cable runs threaded between its floors.
+
+Keep it overgrown **tech**, not wilderness. The rule of thumb is in the manifest's `tech`
+canon: where you would otherwise draw a bare rock or a plain tree trunk, prefer a concrete
+edge, a dead server rack, or a bundle of cable under moss. The world content agrees with this
+and the early prompts did not — the regions a run actually crosses are the Drowned City, the
+Collapsed District, Ruin Field, Flooded Boulevard and Tide Road, and the renderer has named
+colours for `salvage`, `stripped`, `wreck` and `verdigris`. A primeval jungle would be a
+different game.
+
+A lit screen glows as a flat amber or phosphor-green rectangle with faint scanlines — never
+legible text and never a recognisable interface, which is also why the style block's "no text"
+negative survives contact with a room full of terminals.
+
 ### The canon, and why it is in the manifest rather than here
 
 `subject_canon` in the manifest holds the descriptions that must not vary between assets —

@@ -21,9 +21,9 @@
 
   "compose": ["style", "palette", "subject", "composition"],
 
-  "style": "Melancholic 1980s anime watercolour magazine illustration. Watercolour wash with visible paper grain, soft feathered edges, muted desaturated palette, subtle ink linework kept thin and broken. Low-key chiaroscuro firelight OR soft overcast daylight — one or the other, never both. Simplified background, selective detail: render one focal area crisply and let everything else dissolve into wash. Solarpunk, overgrown, quiet. No text, no logos, no watermark, no signature, no UI, no border or frame.",
+  "style": "Melancholic 1980s anime watercolour magazine illustration. Watercolour wash with visible paper grain, soft feathered edges, muted desaturated palette, subtle ink linework kept thin and broken. Low-key chiaroscuro firelight OR soft overcast daylight — one or the other, never both. Simplified background, selective detail: render one focal area crisply and let everything else dissolve into wash. Post-apocalyptic solarpunk: a built world of the recent past going green, never a primeval wilderness — weathered concrete, salvaged late-20th-century computer hardware, cable and steel tangled with vines. Overgrown, quiet, nobody in a hurry. No overlaid text, no logos, no watermark, no signature, no UI, no border or frame.",
 
-  "palette": "Palette anchors: deep teal sky #2b6f74, pale sage haze #b7cbb0, dark canopy green #12301f, bark brown #3a2f26, warm brass #a8834d, lamp gold #e0c07a, bone #ecdfba.",
+  "palette": "Palette anchors: deep teal sky #2b6f74, pale sage haze #b7cbb0, dark canopy green #12301f, bark brown #3a2f26, warm brass #a8834d, lamp gold #e0c07a, bone #ecdfba. Salvage and ruin, which should carry as much of the frame as the greenery does: oxidised verdigris #5f8f80, salvaged amber #d9a25a, weathered concrete #537066, dead plastic #33453e, charred wreck #241c17.",
 
   "style_sprite": "Semi-chibi anime sprite in a melancholic 1980s anime watercolour magazine style. Watercolour wash with visible paper grain and a muted desaturated palette, but kept CRISP: a clean readable silhouette, edges that hold rather than feather away, thin broken ink linework, flat-on with no perspective and no ground shadow. Even soft light across the whole figure — no chiaroscuro, no single dramatic light source. Solarpunk, overgrown, quiet. No text, no logos, no watermark, no signature, no UI, no border or frame.",
 
@@ -49,9 +49,11 @@
     "_note": "Paste `tower` verbatim into any prompt showing the tower from outside. These are not stylistic preferences — they are what web/src/engine/scene.ts actually draws, and RENDERER.md records why. Getting them wrong is the one error that survives into every asset at once.",
     "tower": "The tower walks on FOUR slender legs in a wave gait, each a quarter-cycle behind the one in front, so two feet are always planted and a ripple runs down the body. Each leg is a shallow inverted V: the joint rides ABOVE the hip, like a wading insect or a harvestman. Never a knee bending forward, never a bird's backward hock, never anything that reads as a human or animal leg. The outer pair splays widest. The legs are thin relative to the hull — four thick legs read as a pipe rack, which is wrong.",
     "roof": "A row of low planters runs the full width of the roof: the tower's own garden, spilling greenery over the roof lip. NO sails, no canopy panels, no masts, no banners, no flags.",
-    "hull": "A long horizontal hull of bamboo and salvaged timber, open to the viewer in cross-section like a doll's house, its floors stacked as shallow horizontal bands of small lit rooms with tiny figures inside. A heavy base beam runs under the hull where the legs meet it.",
+    "hull": "A long horizontal hull of bamboo, salvaged timber and scavenged panelling — yellowed beige computer casings, perforated rack steel, patched plastic — open to the viewer in cross-section like a doll's house, its floors stacked as shallow horizontal bands of small lit rooms with tiny figures inside. Cable runs and coloured patch leads thread between the floors. A heavy base beam runs under the hull where the legs meet it.",
 
-    "crew": "The crew are drawn semi-chibi: roughly three and a half heads tall — softened and slightly large-headed for warmth and for readability at small size, but NOT full chibi and never a mascot. Simplified anime faces with small, few features; at sprite size an eye is one mark. Practical layered working clothes, jungle-worn, sleeves pushed up, soft earth and sage tones with one warmer accent each. Adults at work, of visibly different builds, ages and origins.",
+    "tech": "The old world here is late-20th-century computing, salvaged and overgrown: beige and off-white moulded plastic gone yellow with age, CRT monitors and terminals, chunky keycaps, ribbon cable and coloured patch leads, exposed circuit boards, tape reels, perforated steel racks, small indicator lamps. A screen that is lit glows as a flat amber or phosphor-green rectangle with faint scanlines — never legible text, never a recognisable logo or interface. Everything is scuffed, sun-bleached, patched with bamboo and cord, and half-swallowed by growth. This is the point of the setting: where you would otherwise draw a bare rock or a plain tree trunk, prefer a concrete edge, a dead server rack, or a bundle of cable under moss. Overgrown TECH, not wilderness.",
+
+    "crew": "The crew are drawn semi-chibi: roughly three and a half heads tall — softened and slightly large-headed for warmth and for readability at small size, but NOT full chibi and never a mascot. Simplified anime faces with small, few features; at sprite size an eye is one mark. Practical layered working clothes, jungle-worn, sleeves pushed up, soft earth and sage tones with one warmer accent each. Scavenged kit rather than issued kit: a webbing harness, a hand lamp, a coil of patch lead at the belt, an old headset worn round the neck, plastic buckles gone chalky with age. Adults at work, of visibly different builds, ages and origins.",
 
     "crew_tone": "Warmth, not comedy. This is a melancholy game and semi-chibi is here to make small figures legible and likeable, not to make them funny. No gag expressions, no sweat-drops, no speed lines, no exaggerated squash-and-stretch, no wide anime grins. Faces are calm, tired, absorbed in a task. Nobody poses, nobody salutes, nobody holds a weapon like a hero: DECISIONS.md §8 is defenders rather than soldiers, and it binds the art.",
 
@@ -79,7 +81,7 @@
       "required": true,
       "usedBy": "itch.io page — itch.io refuses the upload without it",
       "palette": true,
-      "subject": "An enormous walking garden-tower of bamboo and salvaged timber, seen from the side and slightly below, striding through dense jungle. {hull} {tower} {roof} One foot planted, one lifting. Soft overcast light, mist between the trunks, the canopy closing over behind it.",
+      "subject": "An enormous walking garden-tower of bamboo and salvaged timber, seen from the side and slightly below, striding through the overgrown remains of a city. {hull} {tower} {roof} {tech} One foot planted, one lifting. Around and behind it: collapsed concrete storeys, a leaning pylon, dead signage gone blank, all going green. Soft overcast light, mist between the trunks and the ruins.",
       "composition": "Tower left of centre and small against a huge horizon. Leave the top third quiet — a title will sit there. Landscape 5:4.",
       "generate": "1536x1024",
       "ship": "630x500",
@@ -91,7 +93,7 @@
       "tier": 0,
       "usedBy": "itch.io page banner",
       "palette": true,
-      "subject": "The same walking garden-tower, far right of frame and walking away from the viewer, small. {tower} {roof} The rest is jungle canopy receding into pale haze, layer behind layer. Overcast, early morning, mist in the middle distance.",
+      "subject": "The same walking garden-tower, far right of frame and walking away from the viewer, small. {tower} {roof} {tech} The rest is overgrown city receding into pale haze, layer behind layer: canopy broken by the flat tops of drowned buildings, a collapsed overpass, a rusted lattice mast. Overcast, early morning, mist in the middle distance.",
       "composition": "Wide letterbox, nothing at all in the centre — text will sit there. 3:1.",
       "generate": "1536x512",
       "ship": "1920x620",
@@ -104,7 +106,7 @@
       "tier": 0,
       "usedBy": "title screen background",
       "palette": true,
-      "subject": "INTERIOR. One lamplit deck inside the walking tower at night, seen from the side in cross-section. Two crew sitting at a low table, small in frame, sharing a meal. {crew} {crew_tone} Bamboo racks, hanging tools, a cooking pot. Warm firelight from a single lamp; everything beyond its reach dissolves into dark wash. Through a gap in the timber, black jungle.",
+      "subject": "INTERIOR. One lamplit deck inside the walking tower at night, seen from the side in cross-section. Two crew sitting at a low table, small in frame, sharing a meal. {crew} {crew_tone} {tech} Bamboo racks and hanging tools beside a salvaged equipment rack: a dead CRT terminal used as a shelf, one small screen still lit amber in the corner, patch leads looped on a hook, a potted cutting on top of a beige casing. A cooking pot. Warm firelight from a single lamp; everything beyond its reach dissolves into dark wash. Through a gap in the timber, black jungle.",
       "composition": "Lamp low-left, the dark two-thirds of the frame doing the work. 16:9.",
       "generate": "1536x864",
       "ship": "2560x1440",
@@ -117,7 +119,7 @@
       "tier": 0,
       "usedBy": "behind the arrival card — the ending a run is trying to reach",
       "palette": true,
-      "subject": "Dawn at the coast. The walking garden-tower stopped on a headland above pale flat water, still, its legs folded under it. {tower} {roof} Salt grass. First light on its flank. Nothing threatening, nothing ruined — the end of a very long walk.",
+      "subject": "Dawn at the coast. The walking garden-tower stopped on a headland above pale flat water, still, its legs folded under it. {tower} {roof} {tech} Salt grass, and a few half-buried concrete stumps and a leaning aerial mast along the shoreline, softened by grass rather than dramatic. First light on its flank. Nothing threatening — the end of a very long walk.",
       "composition": "Tower right of centre, low horizon, most of the frame given to sky. 16:9.",
       "generate": "1536x864",
       "ship": "2048x1152",
@@ -129,7 +131,7 @@
       "tier": 0,
       "usedBy": "behind the loss card",
       "palette": true,
-      "subject": "The same walking garden-tower, dark and motionless, being taken back by the jungle. Vines through its open flank, saplings on its roof, one leg buckled under it. {tower} {roof} Flat overcast light. No wreckage, no fire, no drama — just green closing over something that stopped.",
+      "subject": "The same walking garden-tower, dark and motionless, being taken back by the jungle. Vines through its open flank, saplings on its roof, one leg buckled under it, its screens dead and its cable runs hanging loose and furred with moss. {tower} {roof} {tech} Flat overcast light. No fire, no drama — just green closing over something that stopped, the same way it closed over the city around it.",
       "composition": "Tower centred and small, canopy crowding in from every edge. 16:9.",
       "generate": "1536x864",
       "ship": "2048x1152",
@@ -259,20 +261,23 @@
       "tier": 2,
       "usedBy": "terrain props, cut apart and packed into an atlas",
       "sheet": {
-        "cells": ["tree", "fern", "rock", "vine", "ruin", "wreck", "driftwood", "salt-pan"],
-        "layout": "one row of 8",
+        "cells": [
+          "tree", "fern", "vine", "rock", "driftwood",
+          "salt-pan", "concrete-ruin", "server-rack", "crt-pile", "vehicle-wreck"
+        ],
+        "layout": "two rows of 5",
         "atlas": "2048x2048"
       },
       "palette": true,
       "style_use": "sprite",
-      "subject": "A single row of eight separate side-on scenery props, evenly spaced, each isolated with clear empty space around it and its base sitting on a common baseline: a jungle tree, a fern, a mossy rock, a hanging vine, a ruined concrete pillar overgrown, a rusted vehicle wreck half-swallowed by growth, a piece of bleached driftwood, a cracked salt-pan crust. Each drawn flat-on from the side, no perspective, no ground shadow.",
-      "composition": "Eight props in one row on a FLAT MAGENTA #FF00FF background. Even spacing, nothing overlapping, nothing touching the image edges.",
-      "generate": "1536x512",
+      "subject": "Ten separate side-on scenery props in a grid, evenly spaced, each isolated with clear empty space around it and its base sitting on a common baseline: a jungle tree; a fern; a hanging vine; a mossy chunk of broken concrete kerb; a piece of bleached driftwood; a cracked salt-pan crust; a ruined concrete pillar with rebar showing, overgrown; a toppled perforated-steel server rack with its beige machines still in it, ferns growing through the gaps; a heap of dead CRT monitors and terminals with yellowed plastic, screens blank and dusty, one with a sapling out of it; a rusted vehicle wreck half-swallowed by growth. {tech} Each drawn flat-on from the side, no perspective, no ground shadow.",
+      "composition": "Ten props in a 5x2 grid on a FLAT MAGENTA #FF00FF background. Even spacing, nothing overlapping, nothing touching the image edges.",
+      "generate": "1536x768",
       "ship": "2048x2048",
       "format": "png",
       "alpha": true,
       "out": "web/public/art/scenery-atlas.png",
-      "_note": "One painting pass matches itself far better than eight separate ones — that is the whole reason this is a sheet. Cut apart and repack after keying out the magenta."
+      "_note": "One painting pass matches itself far better than ten separate ones — that is the whole reason this is a sheet. Cut apart and repack after keying out the magenta. Six of the ten are salvage rather than greenery on purpose: the terrain the game actually generates is Drowned Street, Ruin Field, Collapsed District and Flooded Boulevard, so a prop set that is mostly trees and rocks would describe a different world from the one underfoot."
     },
     {
       "id": "crew-sheet",
@@ -329,7 +334,7 @@
       },
       "palette": true,
       "style_use": "sprite",
-      "subject": "A 4x4 grid of small painted still-life objects, each isolated in its own cell with clear space around it, painted flat-on with no perspective and no ground shadow: a scrap-metal alloy ingot; a bundle of cut green bamboo stalks; a stack of charge cells like small ceramic batteries; a handful of sharpened darts; a coil of plant fiber; a small lit hand lamp; a bowl of hot stew; an assortment of small brass mechanisms and gears; a mender's kit as an open toolroll; a bundle of finished bamboo poles; a porter's harness of woven straps; a bunch of harvested leafy produce; a coil of twisted rope; a pile of rusted salvaged scrap; a cluster of seed bombs like clay spheres packed with sprouting seeds.",
+      "subject": "A 4x4 grid of small painted still-life objects, each isolated in its own cell with clear space around it, painted flat-on with no perspective and no ground shadow: a scrap-metal alloy ingot; a bundle of cut green bamboo stalks; a stack of charge cells as chunky salvaged battery packs with faded printed labels; a handful of sharpened darts; a coil of plant fiber; a small lit hand lamp; a bowl of hot stew; an assortment of salvaged mechanisms — small gears, a stepper motor, a snapped-off circuit board with its components showing; a mender's kit as an open toolroll with a stripper and a spool of solder in it; a bundle of finished bamboo poles; a porter's harness of woven straps and chalky plastic buckles; a bunch of harvested leafy produce; a coil of twisted rope; a pile of salvaged scrap — bent perforated rack steel, a cracked yellowed plastic panel, a tangle of ribbon cable; a cluster of seed bombs like clay spheres packed with sprouting seeds. {tech}",
       "composition": "4x4 grid on a FLAT MAGENTA #FF00FF background, 15 cells filled and the sixteenth left empty. Even spacing, nothing overlapping, nothing touching the image edges. Each object centred in its cell and readable at thumbnail size.",
       "generate": "1024x1024",
       "ship": "512x512",
