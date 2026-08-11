@@ -181,8 +181,11 @@ that points at the wrong tick.
 ## §7 Balance provenance
 
 Every constant in `assets/data/balance.ron` is described in `BALANCE.md` with a reasoning
-note and a grade: `DESIGNED` (reasoned about, unproven) or `PLAYTESTED` (played against
-neighboring values and won). `crates/core/src/tests/balance_doc.rs` enforces this in both
+note and a grade: `DESIGNED` (reasoned about, unproven), `MEASURED` (an instrument confirms the
+effect the constant exists to produce, with the limit of that measurement written into the row;
+nobody has played with it) or `PLAYTESTED` (played against neighboring values and won).
+`MEASURED` is the grade every row in the doc actually carries, and this paragraph omitted it
+for long enough that `README.md` and three `BALANCE.md` rows all copied the omission. `crates/core/src/tests/balance_doc.rs` enforces this in both
 directions — `every_balance_field_is_documented_with_a_grade` fails if `balance.ron` gains a
 field the doc doesn't grade, and `the_doc_does_not_grade_constants_that_no_longer_exist`
 fails if the doc still grades a field that's gone. Content constants (room and item numbers
