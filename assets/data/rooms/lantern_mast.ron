@@ -31,6 +31,7 @@ RoomDef(
     // On the leading edge with every weapon (`SYSTEMS.md` §6.13), and
     // the deck reserved for them (§6.21).
     front_only: true,
+    top_floor_only: true,
     // Two slots, and the widest thing on the deck: a mast is a mast.
     // `front_slots` is sized against exactly this.
     width: 2,
@@ -58,8 +59,20 @@ RoomDef(
         // a cell every four seconds is what the chain behind it can
         // actually feed.
         reload_ticks: 120,
-        // Tall rather than far: the canopy overhangs the tower, so the
-        // range that matters is the one directly above it.
-        range_paces: 20,
+        // The light has to reach the launch branches, not only the hull.
+        // At 20 paces the mast first noticed leapers after the decision
+        // had already become contact; on a 70% canopy route the complete
+        // mast package lost 10-12 of 12 held-pressure runs. Sixty gives
+        // the repulsion effect room to be preventative rather than a
+        // late animation beside an occupied roof.
+        range_paces: 60,
+        // **The most electric thing on the list** — it fires charge
+        // cells and it is, fictionally, a light. Forty a shot against a
+        // 120-tick reload is 0.33 a tick, the same sustained load as the
+        // array and the ward; the lumpier bite is the point, since a
+        // mast firing is the single biggest instantaneous draw a tower
+        // has and it is what empties the bucket during a burst.
+        charge_per_shot: 40,
+        effect: Repel,
     ),
 )

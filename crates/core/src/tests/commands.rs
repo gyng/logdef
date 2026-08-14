@@ -162,6 +162,249 @@ fn unknown_room_is_rejected_by_name() {
 }
 
 #[test]
+fn a_shelf_filter_reserves_empty_capacity_without_discarding_stock() {
+    let mut game = engine(5005);
+    let poles = item(game.content(), "item.poles");
+    let bamboo = item(game.content(), "item.bamboo");
+    let storeroom = game.content().room_idx("room.storeroom").unwrap();
+    let room_id = {
+        let state = game.state_mut_for_test();
+        let room = state
+            .tower
+            .floors
+            .iter_mut()
+            .flat_map(|floor| floor.rooms.iter_mut())
+            .find(|room| room.def == storeroom)
+            .expect("fixture has storage");
+        for shelf in &mut room.shelves {
+            shelf.item = None;
+            shelf.count = 0;
+            shelf.filter = None;
+        }
+        room.id
+    };
+
+    game.try_send(GameCommand::SetShelfFilter {
+        room: room_id,
+        shelf: 0,
+        item: Some("item.poles".into()),
+    })
+    .expect("an empty shelf may be reserved");
+
+    let room = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .find(|room| room.id == room_id)
+        .expect("room still stands");
+    assert_eq!(room.shelves[0].filter, Some(poles));
+    assert_eq!(room.shelves[0].space_for(bamboo), 0);
+    assert_eq!(room.shelves[0].space_for(poles), room.shelves[0].max);
+
+    let view = game.view();
+    let rendered = view
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .find(|room| room.id == room_id.0)
+        .expect("filtered room is visible");
+    assert_eq!(rendered.shelves[0].filter, Some(poles.0));
+}
+
+#[test]
+fn changing_an_occupied_shelf_filter_is_a_rejected_noop() {
+    let mut game = engine(5006);
+    let poles = item(game.content(), "item.poles");
+    let storeroom = game.content().room_idx("room.storeroom").unwrap();
+    let room_id = {
+        let state = game.state_mut_for_test();
+        let room = state
+            .tower
+            .floors
+            .iter_mut()
+            .flat_map(|floor| floor.rooms.iter_mut())
+            .find(|room| room.def == storeroom)
+            .expect("fixture has storage");
+        room.shelves[0].item = Some(poles);
+        room.shelves[0].count = 1;
+        room.shelves[0].filter = None;
+        room.id
+    };
+    let before = game.state_hash();
+
+    let result = game.try_send(GameCommand::SetShelfFilter {
+        room: room_id,
+        shelf: 0,
+        item: Some("item.bamboo".into()),
+    });
+    assert!(matches!(result, Err(CommandError::ShelfOccupied { .. })));
+    assert_eq!(game.state_hash(), before, "a rejected filter mutated state");
+}
+
+#[test]
+fn only_a_dedicated_storeroom_accepts_shelf_filters() {
+    let mut game = engine(5007);
+    let heart = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .find(|room| game.content().room(room.def).category == crate::content::RoomCategory::Heart)
+        .expect("fixture has a Heartseed")
+        .id;
+    let before = game.state_hash();
+    assert!(matches!(
+        game.try_send(GameCommand::SetShelfFilter {
+            room: heart,
+            shelf: 0,
+            item: Some("item.poles".into()),
+        }),
+        Err(CommandError::NotAStoreroom { .. })
+    ));
+    assert_eq!(game.state_hash(), before);
+}
+
+#[test]
+fn an_empty_inactive_room_can_be_refitted_without_losing_identity() {
+    let mut game = engine(5008);
+    let storeroom = game.content().room_idx("room.storeroom").unwrap();
+    let room_id = {
+        let state = game.state_mut_for_test();
+        let room = state
+            .tower
+            .floors
+            .iter_mut()
+            .flat_map(|floor| floor.rooms.iter_mut())
+            .find(|room| room.def == storeroom)
+            .expect("fixture has a storeroom");
+        room.active = false;
+        for shelf in &mut room.shelves {
+            shelf.item = None;
+            shelf.count = 0;
+        }
+        // A refit moves the machine; it does not silently erase the
+        // work already inside its mechanism.
+        room.progress = 17;
+        room.work_acc = 23;
+        room.burn_acc = 29;
+        room.id
+    };
+    let (floor, slot) = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .find_map(|floor| {
+            (0..floor.slots.saturating_sub(2)).find_map(|slot| {
+                (!game.state().tower.slot_range_blocked(floor.index, slot, 2))
+                    .then_some((floor.index, slot))
+            })
+        })
+        .expect("fixture has a clear two-slot cell");
+    game.try_send(GameCommand::RelocateRoom {
+        room: room_id,
+        floor,
+        slot,
+    })
+    .expect("empty inactive room should refit");
+    let moved = game
+        .state()
+        .tower
+        .floor(floor)
+        .unwrap()
+        .rooms
+        .iter()
+        .find(|room| room.id == room_id)
+        .expect("same room identity remains");
+    assert_eq!(moved.slot, slot);
+    assert!(!moved.active);
+    assert_eq!(
+        (moved.progress, moved.work_acc, moved.burn_acc),
+        (17, 23, 29)
+    );
+}
+
+#[test]
+fn active_or_loaded_rooms_cannot_be_refitted() {
+    let mut game = engine(5009);
+    let storeroom = game.content().room_idx("room.storeroom").unwrap();
+    let room_id = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .find(|room| room.def == storeroom)
+        .unwrap()
+        .id;
+    assert!(matches!(
+        game.try_send(GameCommand::RelocateRoom {
+            room: room_id,
+            floor: 4,
+            slot: 5
+        }),
+        Err(CommandError::RoomStillActive { .. })
+    ));
+}
+
+#[test]
+fn an_inactive_loaded_front_defence_keeps_its_rack_when_refitted() {
+    let mut game = engine(5010);
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
+    crate::tests::stock_for(&mut game, "room.dart_battery", 2);
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.dart_battery".into(),
+        floor: 3,
+        slot: 9,
+    })
+    .expect("fixture can stand a front defence");
+    let darts = crate::tests::item(game.content(), "item.darts");
+    let (room_id, loaded) = {
+        let state = game.state_mut_for_test();
+        let room = state.tower.floors[3]
+            .rooms
+            .iter_mut()
+            .find(|room| room.slot == 9)
+            .expect("battery stands at the front");
+        room.active = false;
+        let rack = room
+            .inputs
+            .iter_mut()
+            .find(|stack| stack.item == darts)
+            .expect("battery has a dart rack");
+        rack.count = 5;
+        (room.id, rack.count)
+    };
+
+    game.try_send(GameCommand::RelocateRoom {
+        room: room_id,
+        floor: 2,
+        slot: 9,
+    })
+    .expect("a switched-off front defence can move with its rack loaded");
+
+    let moved = game.state().tower.floors[2]
+        .rooms
+        .iter()
+        .find(|room| room.id == room_id)
+        .expect("the same battery moved");
+    assert_eq!(
+        moved
+            .inputs
+            .iter()
+            .find(|stack| stack.item == darts)
+            .unwrap()
+            .count,
+        loaded,
+        "relocation discarded committed ammunition"
+    );
+}
+
+#[test]
 fn a_room_cannot_overlap_another_room() {
     let mut game = engine(6);
     // The starting mill sits on floor 2 at slot 3, two wide.
@@ -398,13 +641,13 @@ fn the_opening_tower_is_a_heartseed_and_a_bed() {
     // shelf and there is no storeroom to pay it from.
     let poles = item(&content, "item.poles");
     assert!(
-        state.stock_of(poles) >= 24,
+        state.stock_of(poles) >= 16,
         "the founding stores have to survive having no storeroom to sit in"
     );
 }
 
 #[test]
-fn the_first_turn_offers_one_card() {
+fn the_first_turn_offers_one_new_card() {
     // **The whole point of the gate.** Twenty of twenty-one rooms used
     // to be buildable on turn one. Exactly one is now, and every other
     // refusal has to be a `Locked` rather than a slot clash or a price
@@ -429,9 +672,16 @@ fn the_first_turn_offers_one_card() {
     }
     assert_eq!(
         open,
-        vec!["room.bunk", "room.garden", "room.thorn_gun"],
-        "turn one should offer the farm, the bed and the gun the tower already has"
+        vec!["room.bunk", "room.thorn_gun"],
+        "only already-owned rooms should be intrinsically ungated; the standing Heartseed opens the cutter"
     );
+
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.cutter_arm".into(),
+        floor: 1,
+        slot: 8,
+    })
+    .expect("the standing Heartseed should offer the cutter on turn one");
 
     // And the rule bites at the command boundary, not just in a menu.
     let refused = game
@@ -449,7 +699,8 @@ fn the_first_turn_offers_one_card() {
 
 #[test]
 fn the_ladder_opens_one_rung_at_a_time() {
-    // Farm, then cutter arm, then burner, and then everything.
+    // Heartseed, then cutter arm, then burner. The Garden is an
+    // optional branch after survival income exists.
     let mut game = crate::tests::opening(3);
     crate::tests::stock_item(&mut game, "item.poles", 60);
 
@@ -467,23 +718,16 @@ fn the_ladder_opens_one_rung_at_a_time() {
     // Slot 8 on floor 1: a cutter arm is `front_only` and two wide, so
     // the front is `floor_slots - width` (`SYSTEMS.md` §6.13), and
     // floor 0's front is where the tower's own gun stands.
-    assert!(blocked(&mut game, "room.cutter_arm", 1, 8));
-    game.try_send(GameCommand::PlaceRoom {
-        room: "room.garden".into(),
-        floor: 1,
-        slot: 3,
-    })
-    .expect("the farm is turn one's card");
-
     assert!(blocked(&mut game, "room.burner", 1, 5));
     game.try_send(GameCommand::PlaceRoom {
         room: "room.cutter_arm".into(),
         floor: 1,
         slot: 8,
     })
-    .expect("the farm opened the cutter arm");
+    .expect("the Heartseed opened the cutter arm");
 
     assert!(blocked(&mut game, "room.mill", 1, 5));
+    assert!(blocked(&mut game, "room.garden", 1, 3));
     game.try_send(GameCommand::PlaceRoom {
         room: "room.burner".into(),
         floor: 1,
@@ -491,7 +735,7 @@ fn the_ladder_opens_one_rung_at_a_time() {
     })
     .expect("the cutter arm opened the burner");
 
-    // And now the menu is open.
+    // And now the first branches are open.
     crate::tests::stock_item(&mut game, "item.poles", 60);
     game.try_send(GameCommand::BuildFloor).expect("affordable");
     game.try_send(GameCommand::PlaceRoom {
@@ -499,16 +743,64 @@ fn the_ladder_opens_one_rung_at_a_time() {
         floor: 2,
         slot: 1,
     })
-    .expect("the burner opened everything");
+    .expect("the burner opened the basic production branch");
 }
 
 #[test]
-fn a_farm_with_nobody_in_it_grows_nothing() {
-    // `crew_required` is a requirement rather than M6's bonus, and the
-    // farm is the only room in the pack that carries it. Two towers,
-    // same seed, same hour: one with people posted and one without.
+fn the_burner_opens_branches_instead_of_the_whole_catalog() {
     let content = content();
-    let produce = item(&content, "item.produce");
+    let burner = content.room_idx("room.burner").expect("burner exists");
+    let mut directly_opened: Vec<_> = content
+        .rooms
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| {
+            content
+                .room_rt(crate::ids::RoomIdx(*index as u16))
+                .unlocked_by
+                == Some(burner)
+        })
+        .map(|(_, room)| room.id.as_str())
+        .collect();
+    directly_opened.sort_unstable();
+
+    assert_eq!(
+        directly_opened,
+        [
+            "room.cell_bank",
+            "room.fiber_comb",
+            "room.garden",
+            "room.mill",
+            "room.salvage_rig",
+            "room.thornwright",
+        ],
+        "the first generator opened an undifferentiated future catalog"
+    );
+
+    for (room, prerequisite) in [
+        ("room.canteen", "room.mill"),
+        ("room.ropery", "room.fiber_comb"),
+        ("room.resonator_works", "room.garden"),
+        ("room.sun_forge", "room.salvage_rig"),
+        ("room.fitter", "room.sun_forge"),
+        ("room.cellwright", "room.sun_forge"),
+    ] {
+        let room = content.room_idx(room).expect("staged room exists");
+        let prerequisite = content
+            .room_idx(prerequisite)
+            .expect("staged prerequisite exists");
+        assert_eq!(content.room_rt(room).unlocked_by, Some(prerequisite));
+    }
+}
+
+#[test]
+fn the_garden_tends_itself_without_consuming_a_porter() {
+    // The Garden already commits roof space, sunlight, hauling and five
+    // poles. Its former permanent staffing requirement made resin-first
+    // lose the elevator on every measured seed, so it now grows without
+    // taking one of the opening's three porters out of circulation.
+    let content = content();
+    let produce = item(&content, "item.resin_feedstock");
     let noon = content.balance.clock.ticks_per_day / 2;
 
     let grown = |game: &crate::engine::GameEngine| -> i64 {
@@ -523,24 +815,16 @@ fn a_farm_with_nobody_in_it_grows_nothing() {
             .sum()
     };
 
-    let run = |posted: usize| {
-        let mut game = crate::tests::opening(4);
-        crate::tests::stock_item(&mut game, "item.poles", 60);
-        game.try_send(GameCommand::PlaceRoom {
-            room: "room.garden".into(),
-            floor: 1,
-            slot: 3,
-        })
-        .expect("the farm is turn one's card");
-        assert_eq!(crate::tests::staff(&mut game, 1, 3, posted), posted);
-        game.state_mut_for_test().clock.tick_of_day = noon;
-        game.step(2400);
-        grown(&game)
-    };
+    let garden = content
+        .room_idx("room.garden")
+        .map(|idx| content.room(idx))
+        .expect("the Garden exists");
+    assert_eq!(garden.crew_required, 0);
 
-    assert_eq!(run(0), 0, "a farm nobody is standing in grew a crop");
-    assert_eq!(run(1), 0, "one person ran a farm that asks for two");
-    assert!(run(2) > 0, "two people posted to a farm grew nothing");
+    let mut game = crate::tests::engine(40);
+    game.state_mut_for_test().clock.tick_of_day = noon;
+    game.step(2400);
+    assert!(grown(&game) > 0, "an unstaffed Garden grew nothing at noon");
 }
 
 // ---------------------------------------------------------------------------

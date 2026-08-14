@@ -28,6 +28,7 @@ RegionDef(
     ],
     // The baseline every other region's threat is read against.
     threat_pct: 100,
+    approaches: ApproachWeights(ground: 50, canopy: 40, burrow: 10),
     // Three forks across a midpoint-length region, about fourteen
     // minutes apart at 1x. Punctuation, not a metronome: the player
     // should learn the rhythm without having to watch for it.
@@ -57,6 +58,7 @@ RegionDef(
             ],
             // Deep shade, and quiet with it. Bamboo for charge.
             threat_pct: 80,
+            approaches: ApproachWeights(ground: 20, canopy: 70, burrow: 10),
         ),
         BranchDef(
             id: "branch.old_riverbed",
@@ -70,6 +72,7 @@ RegionDef(
             // Open sky, ordinary company. The neutral option a fork
             // needs so the choice is not always quiet-or-loud.
             threat_pct: 100,
+            approaches: ApproachWeights(ground: 65, canopy: 15, burrow: 20),
         ),
         BranchDef(
             id: "branch.overgrown_ruins",
@@ -83,6 +86,7 @@ RegionDef(
             // Sun and scrap, and something living in both. Loud, but
             // not punishing on its own.
             threat_pct: 130,
+            approaches: ApproachWeights(ground: 45, canopy: 25, burrow: 30),
         ),
     ],
     // **Somebody does live out here, and §5.6 asked for them.**
@@ -169,6 +173,17 @@ RegionDef(
                 give: CostEntryDef(item: "item.scrap", amount: 4),
                 take: CostEntryDef(item: "item.poles", amount: 3),
                 stock: 8,
+            ),
+            // The Garden's first reachable payoff. Ropewalk uses sticky
+            // canopy resin to weatherproof cord, so a tower may trade an
+            // optional roof slot and time in sunlight for the rope that
+            // advances transport or feeds a Tanglenet. Keeping the rate
+            // finite preserves the later cell/drum decision instead of
+            // turning the settlement into a resin sink without a ceiling.
+            OfferDef(
+                give: CostEntryDef(item: "item.resin_feedstock", amount: 3),
+                take: CostEntryDef(item: "item.rope", amount: 2),
+                stock: 2,
             ),
         ],
         // No shell work. That stays region-two only (§5.6) — it is the

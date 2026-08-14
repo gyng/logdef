@@ -66,6 +66,11 @@ impl Stack {
 /// to that item until it empties again.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Shelf {
+    /// An optional reservation. A filtered shelf stays committed to
+    /// this item even while empty, so a fast material cannot squat on
+    /// the capacity the player kept for something scarce.
+    #[serde(default)]
+    pub filter: Option<ItemIdx>,
     pub item: Option<ItemIdx>,
     pub count: i64,
     pub max: i64,
@@ -75,6 +80,7 @@ impl Shelf {
     #[must_use]
     pub const fn empty(max: i64) -> Self {
         Self {
+            filter: None,
             item: None,
             count: 0,
             max,
@@ -83,6 +89,11 @@ impl Shelf {
 
     #[must_use]
     pub const fn accepts(&self, item: ItemIdx) -> bool {
+        if let Some(filter) = self.filter
+            && filter.0 != item.0
+        {
+            return false;
+        }
         match self.item {
             None => true,
             Some(held) => held.0 == item.0 && self.count < self.max,
@@ -91,6 +102,11 @@ impl Shelf {
 
     #[must_use]
     pub const fn space_for(&self, item: ItemIdx) -> i64 {
+        if let Some(filter) = self.filter
+            && filter.0 != item.0
+        {
+            return 0;
+        }
         match self.item {
             None => self.max,
             Some(held) if held.0 == item.0 => self.max - self.count,
@@ -124,6 +140,31 @@ pub struct Room {
     pub shelves: Vec<Shelf>,
     /// Ticks accumulated toward the current craft.
     pub progress: u32,
+    /// Sub-tick craft progress, carried in per-mille (`SYSTEMS.md`
+    /// §6.39).
+    ///
+    /// **A half-powered mill turns at half speed rather than stopping.**
+    /// `progress` is a whole-tick counter, so a room served 600 per
+    /// mille accrues here and advances the counter every time it crosses
+    /// a full tick. Partial work survives a brown-out for the same
+    /// reason it survives a missing input: the room goes slow, not back
+    /// to the beginning.
+    #[serde(default)]
+    pub work_acc: i64,
+    /// Charge a burner has delivered but not yet paid a stalk for, in
+    /// the same charge-per-100-ticks units the rest of the power system
+    /// runs in (`SYSTEMS.md` §6.39).
+    ///
+    /// **Exact integers, not fixed point, and the difference was 22% of
+    /// the tower's fuel bill.** The first version accrued
+    /// `Fx::ratio(delivered, charge_per_burn * 100)` — about a hundredth
+    /// of a stalk a tick — and Q8.8 truncates that to 2/256 rather than
+    /// 2.56/256. The tower under-paid by a fifth and banked charge no
+    /// stalk had bought; `fuel_buys_exactly_the_charge_it_is_worth`
+    /// caught it at 6,301 banked against 5,040 paid for. Counting whole
+    /// charge and dividing once cannot round at all.
+    #[serde(default)]
+    pub burn_acc: i64,
     /// Sub-item intake accumulation, Q8.8. Partial work survives a
     /// stall, and — for a `Terrain` source — survives a stop: a tower
     /// that halts mid-stalk finishes it when it sets off again.
@@ -132,6 +173,18 @@ pub struct Room {
     /// be running right now" is a real decision every night — but any
     /// room can be shut down to stop it eating charge or inputs.
     pub active: bool,
+    /// This otherwise-ready room asked for charge and was refused on
+    /// the current tick. Presentation state, cleared before each tick.
+    #[serde(default)]
+    pub power_refused: bool,
+    /// The burner advanced (or completed) a burn on the current tick.
+    /// Smoke and machinery motion follow this rather than generic room
+    /// activity, so a burner waiting for bank headroom stays quiet.
+    #[serde(default)]
+    pub burning: bool,
+    /// This room wanted the shared flue and could not get enough capacity.
+    #[serde(default)]
+    pub exhaust_refused: bool,
     /// Damage. A hurt room works; a wrecked one does not.
     pub health: Health,
 }
@@ -182,7 +235,12 @@ impl Room {
             shelves,
             progress: 0,
             intake_acc: Fx::ZERO,
+            work_acc: 0,
+            burn_acc: 0,
             active: true,
+            power_refused: false,
+            burning: false,
+            exhaust_refused: false,
             health: Health::full(if room_def.category == RoomCategory::Heart {
                 content.balance.siege.heartseed_hp
             } else {
@@ -207,6 +265,15 @@ impl Room {
     #[must_use]
     pub const fn outbox_slot(&self) -> SlotIdx {
         (self.end_slot() - 1) as SlotIdx
+    }
+
+    /// Where inputs arrive: the room's left edge. Together with
+    /// [`Self::outbox_slot`] this makes every production room a
+    /// left-to-right machine, so two rooms packed edge-to-edge have
+    /// ports one slot apart rather than an invisible connection.
+    #[must_use]
+    pub const fn inbox_slot(&self) -> SlotIdx {
+        self.slot
     }
 
     /// Put items on the first shelf that will take them. Returns how
@@ -502,6 +569,7 @@ impl Shaft {
             // Stairs go everywhere they span; there is nothing to
             // program on a staircase.
             ShaftKind::Stairs => true,
+            ShaftKind::Busbar | ShaftKind::VentStack => false,
             _ => {
                 let program = self.program(daypart);
                 program.serves(from) && program.serves(to)

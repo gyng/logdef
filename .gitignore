@@ -13,12 +13,14 @@ Thumbs.db
 
 # Rust
 target/
+target-*/
 # cargo-mutants scratch output
 mutants.out/
 mutants.out.old/
 
 # Node/web
 node_modules/
+.pnpm-store/
 dist/
 build/
 .vite/
@@ -47,3 +49,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+__pycache__/
+# Full-resolution generated art sources and generation sidecars.
+art-src/

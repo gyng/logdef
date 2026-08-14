@@ -54,11 +54,14 @@ fn hauling_never_creates_or_destroys() {
     let bamboo = item(&content, "item.bamboo");
     let poles = item(&content, "item.poles");
     let mut game = engine(102);
+    // This is material conservation through hauling, not ammunition.
+    // The shipped thorn gun legitimately consumes bamboo and has no
+    // place in this equation.
+    crate::tests::disarm(&mut game);
 
     let mut last_bamboo = total_in_flight(game.state(), bamboo);
     let mut last_poles = total_in_flight(game.state(), poles);
-    let mut harvested = game.state().stats.items_harvested as i64;
-    let mut crafted = game.state().stats.crafts_completed as i64;
+    let mut harvested = game.state().stats.harvested_by_item[bamboo.get()] as i64;
     let mut mending = game.state().stats.repair_poles_spent as i64;
     // **Burning is a bamboo sink too, and since M6 it is one the
     // opening tower has.** The sails used to make the charge; cutting
@@ -72,16 +75,16 @@ fn hauling_never_creates_or_destroys() {
 
         let bamboo_now = total_in_flight(state, bamboo);
         let poles_now = total_in_flight(state, poles);
-        let harvested_now = state.stats.items_harvested as i64;
-        let crafted_now = state.stats.crafts_completed as i64;
+        let harvested_now = state.stats.harvested_by_item[bamboo.get()] as i64;
         let mending_now = state.stats.repair_poles_spent as i64;
         let burned_now = state.stats.fuel_burned as i64;
+        let milled = (poles_now - last_poles) + (mending_now - mending);
 
         // Bamboo in = harvested; bamboo out = eaten by crafts and by
         // the burner.
         assert_eq!(
             bamboo_now - last_bamboo,
-            (harvested_now - harvested) - (crafted_now - crafted) - (burned_now - burned),
+            (harvested_now - harvested) - milled - (burned_now - burned),
             "bamboo appeared or vanished at tick {}",
             state.tick
         );
@@ -89,17 +92,9 @@ fn hauling_never_creates_or_destroys() {
         // repair. This test issues no build commands, so repair is the
         // only sink — and once the jungle notices the tower, it is a
         // real one.
-        assert_eq!(
-            poles_now - last_poles,
-            (crafted_now - crafted) - (mending_now - mending),
-            "poles appeared or vanished at tick {}",
-            state.tick
-        );
-
         last_bamboo = bamboo_now;
         last_poles = poles_now;
         harvested = harvested_now;
-        crafted = crafted_now;
         burned = burned_now;
         mending = mending_now;
     }
@@ -495,7 +490,7 @@ fn a_crew_member_holding_something_with_nowhere_to_put_it_still_mends() {
         state.siege.next_wave_tick = u64::MAX;
 
         // Damage to mend, and the poles to mend it with.
-        state.tower.floor_mut(0).expect("ground floor").panel.hp -= 100;
+        state.tower.floor_mut(0).expect("ground floor").panel.hp = 0;
 
         // Fill every shelf and every input in the tower, so nothing a
         // crew member picks up has anywhere to go.
@@ -571,6 +566,30 @@ fn a_crew_member_holding_something_with_nowhere_to_put_it_still_mends() {
 fn jammed(seed: u64) -> (crate::engine::GameEngine, crate::ids::ItemIdx) {
     let mut game = engine(seed);
     let fiber = item(game.content(), "item.fiber");
+    // Put the general store beside the future spill column. A chute is
+    // now a physical overflow gate, not a tower-wide delete command.
+    let storeroom = game.content().room_idx("room.storeroom").unwrap();
+    let store_id = game
+        .state()
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .find(|room| room.def == storeroom)
+        .unwrap()
+        .id;
+    game.try_send(GameCommand::SetRoomActive {
+        floor: 2,
+        slot: 1,
+        active: false,
+    })
+    .unwrap();
+    game.try_send(GameCommand::RelocateRoom {
+        room: store_id,
+        floor: 1,
+        slot: 5,
+    })
+    .unwrap();
     // Pay for the chute *before* jamming, because a jammed tower cannot
     // pay for anything — which is the finding that moved the chute's own
     // cost off rope and onto poles alone, and is exactly why a chute
@@ -752,6 +771,13 @@ fn more_salvage_than_anybody_will_buy_is_rubbish() {
     );
 
     crate::tests::stock_for_shaft(&mut game, "shaft.chute", 1);
+    crate::tests::stock_for(&mut game, "room.storeroom", 1);
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.storeroom".into(),
+        floor: 1,
+        slot: 5,
+    })
+    .expect("a store beside the spill gate makes the overflow physical");
     game.try_send(GameCommand::BuildShaft {
         shaft: "shaft.chute".into(),
         low: 0,

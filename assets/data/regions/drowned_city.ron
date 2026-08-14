@@ -26,6 +26,7 @@ RegionDef(
     ],
     // Half again as dangerous as the jungle for the same provocation.
     threat_pct: 150,
+    approaches: ApproachWeights(ground: 50, canopy: 15, burrow: 35),
     // Same rhythm as region 1, so the beat the player learned there
     // still holds. A shorter region simply fits fewer of them: at the
     // low end of the length roll the second fork falls inside
@@ -50,6 +51,7 @@ RegionDef(
             // Open sky over broken ground: the best charge in the game
             // and almost nothing to cut, with company to match.
             threat_pct: 130,
+            approaches: ApproachWeights(ground: 35, canopy: 10, burrow: 55),
         ),
         BranchDef(
             id: "branch.flooded_boulevard",
@@ -63,6 +65,7 @@ RegionDef(
             // The city at its most itself. Ordinary danger, ruins
             // throughout.
             threat_pct: 100,
+            approaches: ApproachWeights(ground: 60, canopy: 15, burrow: 25),
         ),
         BranchDef(
             id: "branch.green_terraces",
@@ -76,6 +79,7 @@ RegionDef(
             // Where the jungle won. A stretch of the mill's own weather
             // in the middle of the city, and quieter for it.
             threat_pct: 80,
+            approaches: ApproachWeights(ground: 30, canopy: 55, burrow: 15),
         ),
     ],
     // A short way in rather than on the boundary. On the boundary the

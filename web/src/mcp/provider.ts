@@ -34,6 +34,7 @@ import type {
   ShaftInfo,
   ViewSnapshot,
 } from "../bridge/types";
+import { POWER_USES } from "../bridge/types";
 import { placementFits } from "../engine/scene";
 
 /**
@@ -59,9 +60,9 @@ function words(value: unknown): string[] {
  * 23`. That is a refusal rather than a crash, so it passed the
  * throw-check — but a model cannot correct itself against a serde error
  * about column 23 of a JSON document it never saw. Compare
- * `understory_set_charge_priority`, which says "give all four of Lifts,
- * Works, Lamps, Legs, most important first": one of those is a tool
- * teaching its caller and the other is a leak.
+ * `understory_set_charge_priority`, which names every circuit it wants
+ * and says which order they go in: one of those is a tool teaching its
+ * caller and the other is a leak.
  */
 function numbers(
   args: Record<string, unknown>,
@@ -170,7 +171,9 @@ function refusal(result: string | { Error: unknown }): string {
     // than out of the catalog so this stays a pure function of the
     // error: threading a catalog through fourteen call sites to
     // capitalise a word is a poor trade.
-    const bare = String(body["item"] ?? "?").replace("item.", "").replace(/_/g, " ");
+    const bare = String(body["item"] ?? "?")
+      .replace("item.", "")
+      .replace(/_/g, " ");
     const name = bare.charAt(0).toUpperCase() + bare.slice(1);
     return `you need ${String(body["needed"])} ${name} and hold ${String(body["available"])}.`;
   }
@@ -236,9 +239,7 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
       : member.tired
         ? "flagging, heading for a bed"
         : `about ${String(Math.max(1, Math.round(member.rested / 30 / 60)))} min of work left`;
-    lines.push(
-      `  ${member.name} — ${member.state}${member.stressed ? " (held up)" : ""}, ${rest}`,
-    );
+    lines.push(`  ${member.name} — ${member.state}${member.stressed ? " (held up)" : ""}, ${rest}`);
   }
   // Crew sleep when they are tired, not on a rota, so how many are down
   // at once is a fact the player has no control over and every reason
@@ -296,7 +297,9 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
     else beyond.push({ id: room.id, cost, short });
   }
   lines.push("");
-  lines.push(`Can build now: ${affordable.join("; ") || "nothing — the shelves cannot pay for anything"}`);
+  lines.push(
+    `Can build now: ${affordable.join("; ") || "nothing — the shelves cannot pay for anything"}`,
+  );
   if (beyond.length > 0) {
     let nearest = beyond[0]!;
     for (const one of beyond) if (one.short < nearest.short) nearest = one;
@@ -453,12 +456,15 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
     }
   }
 
-  if (view.recruit) {
-    const t = view.recruit.trait_at;
-    lines.push(
-      `Somebody wants to come aboard: ${view.recruit.name}` +
-        (t !== null ? ` — ${catalog.traits[t]?.blurb ?? ""}` : ""),
-    );
+  if (view.recruit.length > 0) {
+    lines.push("People willing to come aboard:");
+    for (const [candidate, recruit] of view.recruit.entries()) {
+      const t = recruit.trait_at;
+      lines.push(
+        `  ${String(candidate)} · ${recruit.name}` +
+          (t !== null ? ` — ${catalog.traits[t]?.blurb ?? ""}` : ""),
+      );
+    }
   }
   // **A wave is a situation, not a list of names.** This printed the
   // species and nothing else, which cannot tell an agent apart the two
@@ -475,10 +481,9 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
             const away = Math.round(Math.abs(e.at - view.world.distance));
             const where = e.state === "approach" ? `${String(away)} paces off` : "at the tower";
             const hurt = `${String(Math.round(e.hp_permille / 10))}% whole`;
-            const mark = view.siege.focus === e.id ? " ← every emplacement prefers this one" : "";
             return (
               `  ${String(e.id)} · ${catalog.enemies[e.def]?.name ?? "?"} · ` +
-              `${e.state}, ${where} · ${hurt}${mark}`
+              `${e.state}, ${where} · ${hurt}`
             );
           })
           .join("\n"),
@@ -501,9 +506,7 @@ function look(view: ViewSnapshot, catalog: CatalogSnapshot): string {
     for (const room of floor.rooms) {
       if (room.stall !== "backedup") continue;
       const info = catalog.rooms[room.def];
-      const made = room.outputs
-        .map((o) => `${String(o.count)} ${item(o.item)}`)
-        .join(" + ");
+      const made = room.outputs.map((o) => `${String(o.count)} ${item(o.item)}`).join(" + ");
       // **Which of the two it is, checked rather than asserted.** This
       // used to say "nothing is taking what it makes" about every
       // backed-up room, and a dogfood run caught it telling a player
@@ -590,6 +593,8 @@ function legalSpots(
     frontOnly: info.front_only,
     maxFloor: info.max_floor,
     minFloor: info.min_floor,
+    topFloorOnly: info.top_floor_only,
+    shaftAdjacent: info.shaft_adjacent,
     span: 1,
     hover: null,
   };
@@ -642,6 +647,8 @@ function legalSpans(
           frontOnly: false,
           maxFloor: null,
           minFloor: null,
+          topFloorOnly: false,
+          shaftAdjacent: false,
           span,
           hover: null,
         };
@@ -692,7 +699,7 @@ function interruption(view: ViewSnapshot, catalog: CatalogSnapshot): string | nu
   ) {
     return "a ruin with scrap in it is coming alongside — stopping is the only way to strip it";
   }
-  if (view.recruit) return `${view.recruit.name} wants to come aboard`;
+  if (view.recruit.length > 0) return "two people here would come aboard; choose one";
   if (view.siege.enemies.some((e) => e.state === "attack")) {
     return "something is at the tower";
   }
@@ -941,52 +948,33 @@ ${look(game.viewForTool(), game.getCatalog())}`,
       },
     },
     {
-      name: "understory_focus_creature",
-      description:
-        "Ask every emplacement to prefer one creature, by the id `look` gives it. This is " +
-        "the whole of it — nobody is ordered to fire, and a gun with a better shot in front " +
-        "of it still takes that shot. Pass no id to go back to no preference. Use it to " +
-        "finish something already hurt, or to pull fire onto whatever is chewing a room.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          creature: {
-            type: "number",
-            description: "Creature id from `look`. Omit to clear the preference.",
-          },
-        },
-      },
-      execute: (a) =>
-        report(
-          send({ FocusEnemy: { enemy: a.creature === undefined ? null : Number(a.creature) } }),
-          a.creature === undefined
-            ? "no creature is preferred now"
-            : "every emplacement has been told to prefer it",
-        ),
-    },
-    {
       name: "understory_set_charge_priority",
       description:
-        "Say what the bank pays for first when there is not enough for everything. Lifts, " +
-        "Works, Lamps and Legs in some arrangement — what comes first is served until the " +
+        "Say what the bank pays for first when there is not enough for everything. " +
+        `${POWER_USES.join(", ")} in some arrangement — what comes first is served until the ` +
         "charge runs out, and what comes last simply stops. This is the answer to a " +
-        "brown-out: decide what the tower gives up, rather than letting it decide.",
+        "brown-out: decide what the tower gives up, rather than letting it decide. Note " +
+        "that a brown-out is not always an empty bank: the tower also sheds when it cannot " +
+        "deliver charge fast enough, which another burner fixes and another cell bank does not.",
       inputSchema: {
         type: "object",
         properties: {
           order: {
             type: "array",
             items: { type: "string" },
-            description: 'All four of "Lifts", "Works", "Lamps", "Legs", most important first',
+            description: `All ${POWER_USES.length} of ${POWER_USES.map((use) => `"${use}"`).join(", ")}, most important first`,
           },
         },
         required: ["order"],
       },
       execute: (a) => {
         const want = words(a.order);
-        const legal = ["Lifts", "Works", "Lamps", "Legs"];
-        if (want.length !== 4 || !legal.every((use) => want.includes(use))) {
-          return fail(`give all four of ${legal.join(", ")}, most important first`);
+        // **Derived from `POWER_USES`, not spelled out.** This list was
+        // four hardcoded names, and adding the guns circuit turned every
+        // valid order into a refusal without changing a line here.
+        const legal = POWER_USES;
+        if (want.length !== legal.length || !legal.every((use) => want.includes(use))) {
+          return fail(`give all ${legal.length} of ${legal.join(", ")}, most important first`);
         }
         return report(
           send({ SetPowerPriority: { order: want as PowerUse[] } }),
@@ -1003,37 +991,6 @@ ${look(game.viewForTool(), game.getCatalog())}`,
         "expect to be chewed on — it cannot be bought in the middle of one.",
       inputSchema: { type: "object", properties: {} },
       execute: () => report(send("Reinforce"), "the crew are thickening the hull"),
-    },
-    {
-      name: "understory_set_work_order",
-      description:
-        "Rank the kinds of work the crew take on. An idle person goes down this list and " +
-        "takes the first job of a kind that has one waiting, so putting hauling last means " +
-        "doors and mending come first and the shelves fill more slowly. Use it when a wave " +
-        "is landing, and put it back afterwards.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          order: {
-            type: "array",
-            items: { type: "string" },
-            description: "Every job id, most important first",
-          },
-        },
-        required: ["order"],
-      },
-      execute: (a) => {
-        const catalog = game.getCatalog();
-        const want = words(a.order);
-        const known = catalog.jobs.map((job) => job.id);
-        if (want.length !== known.length || !known.every((job) => want.includes(job))) {
-          return fail(`give all of ${known.join(", ")}, most important first`);
-        }
-        return report(
-          send({ SetWorkOrder: { order: want } }),
-          `crew now prefer ${want.join(", ")}`,
-        );
-      },
     },
     {
       name: "understory_add_car",
@@ -1139,11 +1096,19 @@ ${look(game.viewForTool(), game.getCatalog())}`,
     },
     {
       name: "understory_recruit",
-      description:
-        "Take on the person the settlement is offering. `look` says who they are and what is " +
-        "true about them. Walking on spends the chance.",
-      inputSchema: { type: "object", properties: {} },
-      execute: () => report(send("Recruit"), "somebody came aboard"),
+      description: "Choose one of the two people the settlement is offering. `look` lists both.",
+      inputSchema: {
+        type: "object",
+        properties: { candidate: { type: "number", minimum: 0, maximum: 1 } },
+        required: ["candidate"],
+      },
+      execute: (args) =>
+        report(
+          send({
+            Recruit: { candidate: Number((args as { candidate?: unknown }).candidate) || 0 },
+          }),
+          "somebody came aboard",
+        ),
     },
     {
       name: "understory_set_striding",

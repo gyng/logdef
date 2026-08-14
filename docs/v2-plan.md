@@ -95,7 +95,7 @@ Full audit in §7. Headlines:
 
 ## 3. The four structural calls
 
-1. **No hero.** Emplacement tower defence: dart batteries and seed-bomb mortars, crewed and
+1. **No hero.** Emplacement tower defence: dart batteries and resonance arrays, crewed and
    ammo-fed by the chain. Player combat verbs: targeting priorities, 2–3 tower-level
    cooldown abilities (lurch, vent), and *logistics triage under fire*. Skill expression is
    infrastructural, not ballistic.
@@ -143,7 +143,7 @@ the cross-section at a glance, it's too deep.
 - **Raw (4):** `bamboo`, `fiber`, `produce`, `scrap`
 - **T1:** `poles` (bamboo→mill), `rope` (fiber→ropery), `meals` (produce→kitchen),
   `alloy` (scrap→sun-forge, charge-hungry), `darts` (poles→thornwright) — the ammo staple
-- **T2:** `mechanisms` (alloy+poles→fitter), `seed bombs` (produce+fiber→bombary),
+- **T2:** `mechanisms` (alloy+poles→fitter), `resonator drums` (resin feedstock+fiber→resonator works),
   `charge cells` (alloy→cellwright) — batteries are *built*, storage is infrastructure
 
 **Bamboo is the contested material** (v1's wood tension, reborn): it becomes poles
@@ -181,12 +181,12 @@ in the data model from day one). Cozy scale: 8–14 floors, one screen.
 
 - **Intake:** cutter arms (bamboo/fiber/produce from passing terrain; low floors only),
   salvage rig (scrap; works when berthed at a ruin)
-- **Production:** mill, ropery, sun-forge, thornwright, kitchen, fitter, bombary, cellwright
+- **Production:** mill, ropery, sun-forge, thornwright, kitchen, fitter, resonator works, cellwright
 - **Energy:** burner (**floor 2 and up**, so the chain has a direction and the tower has a
   reason to haul upward), cell banks. Growing taller still costs — lamps, poles and haul
   distance — but it is a slope rather than the cliff the sails made of it.
 - **Logistics:** storeroom, floor cache
-- **Defence:** dart battery (balcony), seed-bomb mortar (deck), repair workshop
+- **Defence:** dart battery (balcony), resonance array (deck), repair workshop
 - **Crew:** bunks, canteen
 - **Heart:** the Heartseed (unique, pre-placed; loss condition)
 
@@ -367,8 +367,8 @@ visibly fixes throughput. *Question: is elevator contention actually fun? Playte
 everything downstream assumes yes.*
 
 ### M2 — The Siege *(the load test)*
-**Scope:** skitters + leapers + root-borers on the terrain layer; dart battery + seed-bomb
-mortar with priority targeting; infrastructure damage (panels/rooms/shafts); repair chain
+**Scope:** skitters + leapers + root-borers on the terrain layer; dart battery + resonance
+array with priority targeting; infrastructure damage (panels/rooms/shafts); repair chain
 (poles+rope+crew); night predators + bank-or-burn (threat follows dayparts); provocation
 knob v1; build-under-fire (slow, exposed); loss via Heartseed.
 **Non-goals:** no wardens/ruins, no enclaves, no meta.
@@ -395,7 +395,7 @@ screenshot test (does one frame say "solarpunk home, not war machine"?).
 *Question: does it feel like a home reclaiming the world, or a spreadsheet with legs?*
 
 ### M5 — The Refugia *(depth within rules)*
-**Scope:** T2 chains (mechanisms, seed bombs, cells as built storage); chutes; full enemy
+**Scope:** T2 chains (mechanisms, resonator drums, cells as built storage); chutes; full enemy
 taxonomy + region 3 + the Refugia arrival; enclave economy; toolkit-widening unlocks +
 delivery design; difficulty tuning + balance telemetry; itch.io release cut.
 **Content gate (absolute):** nothing ships unless an existing system consumes it at runtime.

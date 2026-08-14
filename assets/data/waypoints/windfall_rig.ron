@@ -1,0 +1,14 @@
+// Raw bamboo is immediately useful to the mill, burner or canteen.
+// The recorder still waits for a storeroom before taking gifts, because
+// even useful stock can arrive at the wrong moment and claim a shelf.
+#![enable(implicit_some)]
+WaypointDef(
+    id: "waypoint.windfall_rig",
+    name: "Windfall Rig",
+    said: "Storm-felled bamboo hangs in an old loading rig, already bundled by its dead jaws.",
+    take: "Lower the bundle",
+    costs: [],
+    gives: [CostEntryDef(item: "item.bamboo", amount: 4)],
+    provocation: 15,
+    paces: -40,
+)

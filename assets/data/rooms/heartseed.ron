@@ -25,9 +25,9 @@ RoomDef(
     // shelf takes whichever item lands on it first and holds only that
     // kind, and by the time a storeroom is affordable the tower has
     // made exactly three materials: the poles it set out with, the
-    // bamboo the cutter arm strips, and the produce the farm grows.
+    // bamboo the cutter arm strips, and the resin feedstock the farm grows.
     // Two shelves deadlocked on that — measured on the golden
-    // recorder, 20 bamboo and 3 produce holding both shelves while the
+    // recorder, 20 bamboo and 3 resin feedstock holding both shelves while the
     // mill's poles had nowhere to land and the storeroom that would
     // have fixed it cost three of them.
     //

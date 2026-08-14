@@ -62,7 +62,6 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         &queues,
         daypart,
         poles,
-        &state.work,
     );
 
     state.crew = crew;
@@ -110,8 +109,22 @@ fn advance(
         // and a red tint on them would make the only bottleneck
         // instrument in the game lie. Leaving is the needs system's job
         // (hunger and the rota outrank a posting) or the player's.
-        CrewState::Manning { .. } => {
-            crew.wait_ticks = 0;
+        CrewState::Manning { room } => {
+            // A post is a preference, not a prison sentence. If its
+            // machine cannot use a hand this tick, release the person
+            // to the ordinary assignment ladder; the station remains
+            // recorded and they return when its bottleneck clears.
+            let useful = tower
+                .locate(room)
+                .and_then(|(floor, _)| tower.floor(floor))
+                .and_then(|floor| floor.rooms.iter().find(|candidate| candidate.id == room))
+                .is_some_and(|room| post_has_work(room, content));
+            if useful {
+                crew.wait_ticks = 0;
+            } else {
+                crew.errand = None;
+                crew.state = CrewState::Idle;
+            }
         }
 
         // **Standing between a thief and the outbox.** Counts down and
@@ -359,13 +372,22 @@ fn next_leg(
 
     if floor == target_floor {
         if slot == target_slot {
+            let handoff = adjacent_handoff(crew, tower);
             return if crew.is_carrying() {
                 CrewState::Unloading {
-                    ticks_left: balance.unload_ticks,
+                    ticks_left: handling_ticks(
+                        balance.unload_ticks,
+                        balance.adjacent_handoff_ticks,
+                        handoff,
+                    ),
                 }
             } else {
                 CrewState::Loading {
-                    ticks_left: balance.load_ticks,
+                    ticks_left: handling_ticks(
+                        balance.load_ticks,
+                        balance.adjacent_handoff_ticks,
+                        handoff,
+                    ),
                 }
             };
         }
@@ -388,6 +410,37 @@ fn next_leg(
         shaft,
         to_floor: target_floor,
     }
+}
+
+const fn handling_ticks(base: u32, benefit: u32, handoff: bool) -> u32 {
+    if handoff {
+        base.saturating_sub(benefit)
+    } else {
+        base
+    }
+}
+
+/// Is this delivery a handoff between facing room ports? It still uses
+/// a crew member and still pays the one-slot walk. Only the handling at
+/// the ends is quicker, which keeps adjacency useful without creating
+/// an implicit belt.
+fn adjacent_handoff(crew: &Crew, tower: &Tower) -> bool {
+    let Some(task) = &crew.task else {
+        return false;
+    };
+    let Some(pickup) = task.pickup else {
+        return false;
+    };
+    if pickup.floor != task.to_floor || pickup.slot.abs_diff(task.to_slot) != 1 {
+        return false;
+    }
+    let Some(source) = tower
+        .floor(pickup.floor)
+        .and_then(|floor| floor.rooms.iter().find(|room| room.id == pickup.room))
+    else {
+        return false;
+    };
+    source.outbox_slot() == pickup.slot && source.outbox_slot() < task.to_slot
 }
 
 /// Pick the shaft that gets this crew member up fastest.
@@ -414,7 +467,12 @@ fn best_shaft(
         .enumerate()
         // Nobody throws themselves down a chute, however fast it would
         // be.
-        .filter(|(_, shaft)| shaft.kind != ShaftKind::Chute)
+        .filter(|(_, shaft)| {
+            !matches!(
+                shaft.kind,
+                ShaftKind::Chute | ShaftKind::Busbar | ShaftKind::VentStack
+            )
+        })
         .filter(|(_, shaft)| shaft.serves_trip(from, to, daypart))
         .min_by_key(|(index, shaft)| {
             let queued = queues.get(*index).copied().unwrap_or(0);
@@ -626,7 +684,6 @@ fn assign_idle(
     queues: &[u32],
     daypart: DaypartIdx,
     poles: i64,
-    work: &[Job],
 ) {
     for i in 0..crew.len() {
         let tired = super::needs::wants_sleep(&crew[i], content);
@@ -699,7 +756,7 @@ fn assign_idle(
             && crew[i].carrying.is_some_and(|(item, held)| {
                 // A chute counts here: somebody holding something they
                 // can throw away is not stranded.
-                find_destination(tower, content, crew, i, item, held, false, true).is_none()
+                find_destination(tower, content, crew, i, item, held, false, None).is_none()
             });
         let free_to_choose = !crew[i].is_carrying() || stranded;
 
@@ -729,7 +786,7 @@ fn assign_idle(
             continue;
         }
 
-        // **The four jobs, in whatever order the player put them.**
+        // **The four jobs, in the tower's stable internal order.**
         // Everything above this line is fixed and always outranks them:
         // a trip already under way, the rota, and dinner. Those are not
         // jobs and are not offered as settings — see `Job`.
@@ -740,7 +797,7 @@ fn assign_idle(
         // preference about *what to start* rather than a licence to put
         // a crate down in a corridor.
         let mut chose = false;
-        for job in work {
+        for job in Job::ALL {
             match job {
                 // A crow in the outbox is taking something right now,
                 // which is the argument for it going first by default: a
@@ -805,7 +862,12 @@ fn assign_idle(
                 Job::Man => {
                     if free_to_choose && let Some(room) = crew[i].stationed {
                         match tower.locate(room) {
-                            Some((floor, slot)) => {
+                            Some((floor, slot))
+                                if tower
+                                    .floor(floor)
+                                    .and_then(|level| level.rooms.iter().find(|r| r.id == room))
+                                    .is_some_and(|room| post_has_work(room, content)) =>
+                            {
                                 let errand = Errand::Station { room, floor, slot };
                                 crew[i].errand = Some(errand);
                                 crew[i].wait_ticks = 0;
@@ -813,6 +875,7 @@ fn assign_idle(
                                     errand_leg(&crew[i], tower, content, queues, daypart, errand);
                                 chose = true;
                             }
+                            Some(_) => {}
                             None => crew[i].stationed = None,
                         }
                     }
@@ -827,7 +890,7 @@ fn assign_idle(
                         // destination — and so is a chute, which is the
                         // escape hatch for a carrier the tower has no
                         // room for.
-                        find_destination(tower, content, crew, i, item, held, false, true).map(
+                        find_destination(tower, content, crew, i, item, held, false, None).map(
                             |(destination, to_floor, to_slot, _)| HaulTask {
                                 item,
                                 amount: held,
@@ -864,6 +927,34 @@ fn assign_idle(
             crew[i].wait_ticks = 0;
         }
     }
+}
+
+/// Is there useful work for a posted person in this room right now?
+///
+/// A post is a standing preference, not a prison sentence. When its
+/// machine is off, wrecked, starved, backed up, unpowered or unvented,
+/// the person falls through to hauling and comes back automatically
+/// when the bottleneck clears. This merges the old permanent/temporary
+/// posting distinction into one legible order without making the player
+/// repeatedly unpost and repost somebody around routine stalls.
+fn post_has_work(room: &crate::state::tower::Room, content: &Content) -> bool {
+    if !room.active
+        || room.is_wrecked(content)
+        || room.power_refused
+        || room.exhaust_refused
+        || room.outputs.iter().any(crate::state::tower::Stack::is_full)
+    {
+        return false;
+    }
+    let rt = content.room_rt(room.def);
+    rt.recipe_inputs
+        .iter()
+        .enumerate()
+        .all(|(at, (_, amount, _))| {
+            room.inputs
+                .get(at)
+                .is_some_and(|stack| stack.count >= *amount)
+        })
 }
 
 /// Route a crew member to wherever their errand is, then set them to
@@ -1160,10 +1251,15 @@ fn pick_task(
                     pile_item,
                     available.min(capacity),
                     from_shelf,
-                    // Only what is already on a shelf may be thrown
-                    // away. A fresh pickup from an outbox never can, or
-                    // the room it came from never stalls.
-                    from_shelf,
+                    // Only this exact shelf may feed a chute. Passing
+                    // its pickup coordinates keeps adjacency physical:
+                    // a different shelf holding the same item cannot
+                    // make this one eligible from across the tower.
+                    from_shelf.then_some(HaulPickup {
+                        room: room.id,
+                        floor: floor.index,
+                        slot: room.outbox_slot(),
+                    }),
                 ) else {
                     continue;
                 };
@@ -1252,7 +1348,7 @@ fn find_destination(
     item: ItemIdx,
     amount: i64,
     inbox_only: bool,
-    may_spill: bool,
+    spill_source: Option<HaulPickup>,
 ) -> Option<(HaulDestination, FloorIdx, SlotIdx, i64)> {
     let mut best: Option<(i64, i64, HaulDestination, FloorIdx, SlotIdx)> = None;
 
@@ -1278,7 +1374,7 @@ fn find_destination(
                     space,
                     destination,
                     floor.index,
-                    room.slot,
+                    room.inbox_slot(),
                 );
             }
 
@@ -1297,7 +1393,7 @@ fn find_destination(
                         space,
                         destination,
                         floor.index,
-                        room.slot,
+                        room.inbox_slot(),
                     );
                 }
             }
@@ -1389,9 +1485,33 @@ fn find_destination(
         // inbox is already spoken for, and what is in a hand is the load
         // being decided about.
         || shelved(tower, item) <= content.settlements_take(item);
-    if best.is_none() && !wanted && may_spill {
+    if best.is_none()
+        && !wanted
+        && let Some(source) = spill_source
+    {
         for shaft in &tower.shafts {
-            if shaft.kind != ShaftKind::Chute {
+            if shaft.kind != ShaftKind::Chute || !shaft.spans(source.floor) {
+                continue;
+            }
+            // The chute is an automatic overflow beside a storeroom,
+            // not a tower-wide delete command. Validate the actual
+            // pickup room, rather than accepting any adjacent shelf
+            // elsewhere merely because it holds the same item.
+            let Some(source_room) = tower
+                .floor(source.floor)
+                .and_then(|floor| floor.rooms.iter().find(|room| room.id == source.room))
+            else {
+                continue;
+            };
+            let is_store =
+                content.room(source_room.def).category == crate::content::RoomCategory::Storage;
+            let holds = source_room
+                .shelves
+                .iter()
+                .any(|shelf| shelf.item == Some(item) && shelf.count > 0);
+            let touches = source_room.end_slot() == u16::from(shaft.slot)
+                || u16::from(shaft.slot) + 1 == u16::from(source_room.slot);
+            if !is_store || !holds || !touches {
                 continue;
             }
             let inbound =
@@ -1406,7 +1526,7 @@ fn find_destination(
                 PRIORITY_SPILL,
                 amount,
                 HaulDestination::Spill { shaft: shaft.id },
-                shaft.low,
+                source.floor,
                 shaft.slot,
             );
         }
@@ -1489,4 +1609,16 @@ fn committed_delivery(
         .filter(|task| task.item == item && task.destination == destination)
         .map(|task| task.amount)
         .sum()
+}
+
+#[cfg(test)]
+mod handoff_tests {
+    use super::handling_ticks;
+
+    #[test]
+    fn an_adjacent_handoff_reduces_handling_but_does_not_remove_it() {
+        assert_eq!(handling_ticks(15, 5, true), 10);
+        assert_eq!(handling_ticks(15, 5, false), 15);
+        assert_eq!(handling_ticks(3, 5, true), 0, "the benefit saturates");
+    }
 }

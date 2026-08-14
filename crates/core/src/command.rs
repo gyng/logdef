@@ -41,6 +41,23 @@ pub enum GameCommand {
         active: bool,
     },
 
+    /// Refit an empty, switched-off room into another clear cell.
+    RelocateRoom {
+        room: crate::ids::RoomId,
+        floor: FloorIdx,
+        slot: SlotIdx,
+    },
+
+    /// Reserve one storeroom shelf for an item, or make it general
+    /// storage again. Existing contents are never discarded: changing
+    /// a non-empty shelf to another item is rejected.
+    SetShelfFilter {
+        room: crate::ids::RoomId,
+        shelf: u8,
+        /// Authored item id. `None` clears the reservation.
+        item: Option<String>,
+    },
+
     /// Rank what keeps running when the bank runs short, best first.
     ///
     /// **The one piece of FTL's reactor the tower already had the wiring
@@ -58,24 +75,6 @@ pub enum GameCommand {
         /// four, each once: a partial order would leave the rest ranked
         /// by an accident of list position.
         order: Vec<crate::state::power::PowerUse>,
-    },
-
-    /// Ask every emplacement to prefer one creature, or clear the ask.
-    ///
-    /// **A battery still has no judgement.** `defence.rs` shoots the
-    /// nearest thing in range because the player's judgement went into
-    /// where they put it; this adds a second moment to supply it, live,
-    /// at the cost of attention during a wave. Nothing focused is the
-    /// normal case and the old behaviour exactly.
-    ///
-    /// A focus out of range does not stop an emplacement firing — it
-    /// falls back to nearest, because a battery sitting idle while
-    /// something chewed on the tower would be a trap rather than a
-    /// decision.
-    FocusEnemy {
-        /// `None` clears it. An unknown id is rejected rather than
-        /// stored, so the highlight can never point at nothing.
-        enemy: Option<crate::ids::EnemyId>,
     },
 
     /// Post somebody to a room, or call them back off it.
@@ -98,15 +97,6 @@ pub enum GameCommand {
     /// out of width can still buy its way out of a queue, and a tower
     /// that has width to spare gets to choose.
     AddCar { shaft: ShaftId },
-
-    /// Set the order idle crew reach for work in.
-    ///
-    /// **The whole order at once, and it must be a permutation.** A
-    /// command that raised one job would be easier to validate and
-    /// would let a save hold a work order with a job missing from it,
-    /// which is a state with no meaning — every job has to be somewhere
-    /// in the list, because every job still has to be *reachable*.
-    SetWorkOrder { order: Vec<crate::state::Job> },
 
     /// Widen the hull.
     ///
@@ -169,6 +159,9 @@ pub enum GameCommand {
         slot: SlotIdx,
     },
 
+    /// Extend an existing shaft upward without rebuilding its lower span.
+    ExtendShaft { shaft: ShaftId, high: FloorIdx },
+
     /// Tear out a shaft. The built-in stairs cannot go.
     RemoveShaft { id: ShaftId },
 
@@ -191,8 +184,8 @@ pub enum GameCommand {
     /// an enclave is somewhere a run passes through rather than a shop
     /// that restocks.
     Trade { offer: u8 },
-    /// Take somebody aboard, for poles.
-    Recruit,
+    /// Choose one of the two people standing at the enclave.
+    Recruit { candidate: u8 },
     /// Have the settlement plate the tower's shell, for scrap.
     Reinforce,
     /// Commit to one of the two branches the pending fork offers.
@@ -220,11 +213,22 @@ impl CommandResult {
 pub enum CommandError {
     /// The room is not on the menu yet: something has to be standing
     /// first. See `RoomDef::unlocked_by` and `SYSTEMS.md` §6.11.
-    Locked { room: String, needs: String },
+    Locked {
+        room: String,
+        needs: String,
+    },
     /// The content pack has no room with that ID.
-    UnknownRoom { room: String },
+    UnknownRoom {
+        room: String,
+    },
+    /// The content pack has no item with that ID.
+    UnknownItem {
+        item: String,
+    },
     /// Floor index past the top of the tower.
-    NoSuchFloor { floor: FloorIdx },
+    NoSuchFloor {
+        floor: FloorIdx,
+    },
     /// The slot range runs off the edge of the floor.
     SlotOutOfRange {
         slot: SlotIdx,
@@ -232,31 +236,57 @@ pub enum CommandError {
         floor_slots: u8,
     },
     /// A room or shaft column already occupies part of the range.
-    SlotOccupied { floor: FloorIdx, slot: SlotIdx },
+    SlotOccupied {
+        floor: FloorIdx,
+        slot: SlotIdx,
+    },
     /// This room may only be placed on lower floors.
-    FloorTooHigh { floor: FloorIdx, max_floor: u8 },
+    FloorTooHigh {
+        floor: FloorIdx,
+        max_floor: u8,
+    },
     /// This room may only be placed on higher floors.
-    FloorTooLow { floor: FloorIdx, min_floor: u8 },
+    FloorTooLow {
+        floor: FloorIdx,
+        min_floor: u8,
+    },
     /// A weapon, and not on the tower's leading edge.
-    NotAtTheFront { slot: SlotIdx, front: SlotIdx },
+    NotAtTheFront {
+        slot: SlotIdx,
+        front: SlotIdx,
+    },
     /// An ordinary room aimed at the weapons' deck.
-    OnTheWeaponsDeck { slot: SlotIdx, deck_from: SlotIdx },
+    OnTheWeaponsDeck {
+        slot: SlotIdx,
+        deck_from: SlotIdx,
+    },
+    /// Machinery that acts on vertical circulation must touch a shaft.
+    NotShaftAdjacent {
+        floor: FloorIdx,
+        slot: SlotIdx,
+    },
     /// Nothing within reach to take.
     NothingInReach,
-    /// A work order that is not a permutation of every job.
-    NotAWorkOrder,
     /// This shaft holds as many cars as it can.
-    FullOfCars { cars: u8 },
+    FullOfCars {
+        cars: u8,
+    },
     /// The hull is already as wide as it goes.
-    AlreadyWidest { slots: u8 },
+    AlreadyWidest {
+        slots: u8,
+    },
     /// Only one of these may exist in a tower.
-    AlreadyPlaced { room: String },
-    /// A charge ranking that was not all four uses, each exactly once.
-    BadPowerPriority { given: usize },
-    /// Asked to focus a creature that is not out there.
-    NoSuchEnemy { id: crate::ids::EnemyId },
+    AlreadyPlaced {
+        room: String,
+    },
+    /// A charge ranking that was not every use, each exactly once.
+    BadPowerPriority {
+        given: usize,
+    },
     /// That item exists but is not something a person can carry.
-    NotAKit { item: String },
+    NotAKit {
+        item: String,
+    },
     /// Not enough on the shelves. The chain pays for the tower.
     InsufficientStock {
         item: String,
@@ -264,33 +294,83 @@ pub enum CommandError {
         available: i64,
     },
     /// The tower is as tall as its legs will carry.
-    FloorLimit { max_floors: u8 },
+    FloorLimit {
+        max_floors: u8,
+    },
     /// Nothing occupies that slot.
-    NoRoomThere { floor: FloorIdx, slot: SlotIdx },
+    NoRoomThere {
+        floor: FloorIdx,
+        slot: SlotIdx,
+    },
+    /// No room with that runtime id is standing.
+    NoSuchRoom {
+        id: crate::ids::RoomId,
+    },
+    /// The room has no shelf at that index.
+    NoSuchShelf {
+        room: crate::ids::RoomId,
+        shelf: u8,
+    },
+    /// A non-empty shelf cannot be reserved for a different item.
+    ShelfOccupied {
+        room: crate::ids::RoomId,
+        shelf: u8,
+    },
+    /// Shelf reservations belong to dedicated storerooms, not every buffer.
+    NotAStoreroom {
+        room: crate::ids::RoomId,
+    },
+    /// A room must be switched off before its frame can be moved.
+    RoomStillActive {
+        room: crate::ids::RoomId,
+    },
+    /// A room with stock in its buffers cannot be moved. Partial
+    /// machine progress stays with an inactive room during a refit.
+    RoomNotEmpty {
+        room: crate::ids::RoomId,
+    },
     /// The Heartseed cannot be torn out.
-    Undemolishable { room: String },
+    Undemolishable {
+        room: String,
+    },
     /// The content pack has no shaft with that ID.
-    UnknownShaft { shaft: String },
+    UnknownShaft {
+        shaft: String,
+    },
     /// The route does not split here, or not yet.
     NoForkPending,
     /// A fork offers two ways. That was not one of them.
-    NoSuchBranch { branch: u8 },
+    NoSuchBranch {
+        branch: u8,
+    },
     /// The tower is not stopped at the enclave.
     NotBerthedAtAnEnclave,
     /// The enclave posts no such offer.
-    NoSuchOffer { offer: u8 },
+    NoSuchOffer {
+        offer: u8,
+    },
     /// That offer has been taken as often as it is going to be.
-    OfferExhausted { offer: u8 },
+    OfferExhausted {
+        offer: u8,
+    },
     /// Nobody else here is willing to come aboard.
     NobodyToRecruit,
     /// The tower has as many people as it can house.
-    CrewFull { cap: u8 },
+    CrewFull {
+        cap: u8,
+    },
+    /// Candidate indices are always 0 or 1 and only valid while berthed.
+    NoSuchRecruit {
+        candidate: u8,
+    },
     /// Nobody here does shell work.
     NoShellWorkHere,
     /// They have plated this tower as often as they are going to.
     NoShellWorkLeft,
     /// No shaft with that runtime ID is standing.
-    NoSuchShaft { id: ShaftId },
+    NoSuchShaft {
+        id: ShaftId,
+    },
     /// The span is inverted, too short, or too tall for this kind.
     BadSpan {
         low: FloorIdx,
@@ -298,21 +378,27 @@ pub enum CommandError {
         min_span: u8,
         max_span: u8,
     },
+    VentMustReachRoof {
+        high: FloorIdx,
+        roof: FloorIdx,
+    },
     /// The content pack has no daypart at that index.
-    NoSuchDaypart { daypart: u16 },
+    NoSuchDaypart {
+        daypart: u16,
+    },
     /// Nobody aboard has that id.
-    NoSuchCrew { crew: CrewId },
+    NoSuchCrew {
+        crew: CrewId,
+    },
 }
 
 impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CommandError::UnknownRoom { room } => write!(f, "no such room: {room}"),
+            CommandError::UnknownItem { item } => write!(f, "no such item: {item}"),
             CommandError::AlreadyWidest { slots } => {
                 write!(f, "the hull is already {slots} slots across")
-            }
-            CommandError::NotAWorkOrder => {
-                write!(f, "a work order has to list every job exactly once")
             }
             CommandError::FullOfCars { cars } => {
                 write!(f, "the shaft already runs {cars} car(s)")
@@ -321,6 +407,9 @@ impl std::fmt::Display for CommandError {
                 f,
                 "slot {slot} is on the weapons' deck, which starts at {deck_from}"
             ),
+            CommandError::NotShaftAdjacent { floor, slot } => {
+                write!(f, "floor {floor} slot {slot} must touch a shaft column")
+            }
             CommandError::NothingInReach => {
                 write!(f, "nothing the tower is passing is close enough to take")
             }
@@ -352,9 +441,12 @@ impl std::fmt::Display for CommandError {
             }
             CommandError::AlreadyPlaced { room } => write!(f, "{room} is already placed"),
             CommandError::BadPowerPriority { given } => {
-                write!(f, "a charge ranking must be all four uses, got {given}")
+                write!(
+                    f,
+                    "a charge ranking must be all {} uses, got {given}",
+                    crate::state::power::PowerUse::ALL.len()
+                )
             }
-            CommandError::NoSuchEnemy { id } => write!(f, "no creature {} out there", id.0),
             CommandError::NotAKit { item } => write!(f, "{item} is not something to carry"),
             CommandError::InsufficientStock {
                 item,
@@ -367,6 +459,22 @@ impl std::fmt::Display for CommandError {
             CommandError::NoRoomThere { floor, slot } => {
                 write!(f, "nothing at floor {floor} slot {slot}")
             }
+            CommandError::NoSuchRoom { id } => write!(f, "no room {}", id.0),
+            CommandError::NoSuchShelf { room, shelf } => {
+                write!(f, "room {} has no shelf {shelf}", room.0)
+            }
+            CommandError::ShelfOccupied { room, shelf } => {
+                write!(f, "room {} shelf {shelf} still holds another item", room.0)
+            }
+            CommandError::NotAStoreroom { room } => {
+                write!(f, "room {} is not a storeroom", room.0)
+            }
+            CommandError::RoomStillActive { room } => {
+                write!(f, "room {} must be switched off before it is moved", room.0)
+            }
+            CommandError::RoomNotEmpty { room } => {
+                write!(f, "room {} must be empty before it is moved", room.0)
+            }
             CommandError::Undemolishable { room } => write!(f, "{room} cannot be removed"),
             CommandError::UnknownShaft { shaft } => write!(f, "no such shaft: {shaft}"),
             CommandError::NoForkPending => write!(f, "the route does not split here"),
@@ -377,6 +485,9 @@ impl std::fmt::Display for CommandError {
             CommandError::OfferExhausted { offer } => write!(f, "offer {offer} is spent"),
             CommandError::NobodyToRecruit => write!(f, "nobody else here wants to come"),
             CommandError::CrewFull { cap } => write!(f, "the tower houses {cap} already"),
+            CommandError::NoSuchRecruit { candidate } => {
+                write!(f, "there is no recruit candidate {candidate}")
+            }
             CommandError::NoShellWorkHere => write!(f, "nobody here works on hulls"),
             CommandError::NoShellWorkLeft => {
                 write!(f, "they have plated this tower as often as they will")
@@ -385,6 +496,9 @@ impl std::fmt::Display for CommandError {
                 write!(f, "a fork offers two ways; {branch} was not one of them")
             }
             CommandError::NoSuchShaft { id } => write!(f, "no shaft {}", id.0),
+            CommandError::VentMustReachRoof { high, roof } => {
+                write!(f, "vent stack ends on floor {high}; roof is floor {roof}")
+            }
             CommandError::NoSuchCrew { crew } => write!(f, "nobody aboard is {}", crew.0),
             CommandError::BadSpan {
                 low,

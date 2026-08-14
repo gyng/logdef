@@ -9,6 +9,7 @@ mod art_manifest;
 mod balance_doc;
 mod commands;
 mod determinism;
+mod exhaust;
 mod haul;
 mod journey;
 mod needs;
@@ -69,10 +70,10 @@ pub(crate) fn engine(seed: u64) -> GameEngine {
         game.try_send(crate::command::GameCommand::BuildFloor)
             .expect("a paid-for floor should go up");
     }
-    // In ladder order, because the gate is real: the garden opens the
-    // cutter arm, the cutter arm opens the burner, and the burner opens
-    // everything else. A fixture that could skip that would not be
-    // exercising the rule the game ships.
+    // In ladder order, because the gate is real. The Burner now opens
+    // six branches rather than the entire catalog; late rooms are
+    // revealed by the machine that actually supplies them. A fixture
+    // that could skip that would not exercise the rule the game ships.
     // **Floor 1 is left entirely clear**, which is not tidiness: a
     // salvage rig is three wide and `max_floor` 1, and floor 0 has the
     // Heartseed across slots 1-3, so floor 1 is the only place in a
@@ -96,9 +97,9 @@ pub(crate) fn engine(seed: u64) -> GameEngine {
     // to take 3-4 and break the rig's gap. It goes on floor 2, and the
     // dumbwaiter tests span floor 0 to floor 2 to reach it.
     for (room, floor, slot) in [
-        ("room.garden", 4u8, 1u8),
-        ("room.cutter_arm", 1, 8),
+        ("room.cutter_arm", 1u8, 8u8),
         ("room.burner", 3, 5),
+        ("room.garden", 4, 1),
         ("room.mill", 2, 3),
         ("room.storeroom", 2, 1),
         ("room.cell_bank", 4, 3),
@@ -118,10 +119,9 @@ pub(crate) fn engine(seed: u64) -> GameEngine {
         assert!(placed.is_ok(), "{room} at {floor}.{slot}: {placed:?}");
     }
     // **Nobody is posted to the farm, so the farm does not run.** It
-    // is here because the gate needs it standing before a cutter arm
-    // can be built, not because this fixture wants produce — and
-    // posting two of three crew to it would quietly take two thirds of
-    // the tower's hands away from hauling, which is the thing most of
+    // is here so broad economy fixtures include the optional resin
+    // branch, not because the survival ladder needs it — and
+    // posting even one crew member changes hauling, which is the thing most of
     // these tests are actually measuring. A test that wants a working
     // garden stations somebody itself.
     game
@@ -304,10 +304,11 @@ pub(crate) fn stock_item(game: &mut GameEngine, id: &str, amount: i64) {
 
 /// Stock everything a shaft's build cost names, with slack.
 ///
-/// The elevator became a tier-two building at M5 — 18 poles, 6 rope and
-/// 2 mechanisms — so every test that builds one has to be handed parts
-/// it has no chain for.
+/// Shaft definitions have both a fixed frame and a per-boundary cost,
+/// so tests receive enough for the tallest legal build without baking
+/// one particular span into the fixture.
 pub(crate) fn stock_for_shaft(game: &mut GameEngine, shaft: &str, times: i64) {
+    let max_boundaries = i64::from(game.content().balance.tower.max_floors.saturating_sub(1));
     let costs: Vec<(String, i64)> = game
         .content()
         .shafts
@@ -317,6 +318,11 @@ pub(crate) fn stock_for_shaft(game: &mut GameEngine, shaft: &str, times: i64) {
             def.build_cost
                 .iter()
                 .map(|entry| (entry.item.clone(), entry.amount))
+                .chain(
+                    def.span_cost
+                        .iter()
+                        .map(|entry| (entry.item.clone(), entry.amount * max_boundaries)),
+                )
                 .collect()
         })
         .unwrap_or_default();

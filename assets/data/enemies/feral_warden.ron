@@ -41,5 +41,5 @@ EnemyDef(
     // it is excluded from the ordinary provocation-driven pool
     // explicitly rather than fenced off with an out-of-range
     // min_provocation, which would be a number pretending to be a rule.
-    wave_eligible: false,
+    encounter: RuinResident,
 )

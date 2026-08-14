@@ -13,6 +13,9 @@ RoomDef(
     // grows as the tower does. This is a fact about the tower, not the
     // player — the journal (§5.7) is the other kind of unlock and can
     // only filter a menu.
+    // Visible after the Burner as the power branch's long-term answer.
+    // Its cell + mechanism price keeps it aspirational without hiding
+    // the reason those materials matter from the build menu.
     unlocked_by: "room.burner",
     category: Energy,
     // One slot. A rack of cells stacks upward rather than outward.
@@ -24,11 +27,33 @@ RoomDef(
     // raising your charge ceiling costs charge. The first place in the
     // game where fixing a problem costs the resource the problem is
     // about (`SYSTEMS.md` §5.3).
-    build_cost: [CostEntryDef(item: "item.charge_cells", amount: 2)],
+    // Cells hold charge; a fitted switching mechanism makes them a
+    // usable local reserve. This gives precision infrastructure a
+    // durable mechanisms sink without making the emergency generator
+    // depend on late metalwork.
+    build_cost: [
+        // One fabricated cell establishes the late storage branch;
+        // additional cells remain a competing use for lantern masts.
+        CostEntryDef(item: "item.charge_cells", amount: 1),
+        CostEntryDef(item: "item.mechanisms", amount: 1),
+    ],
     bank: BankDef(
         // A full night's worst case (striding, lights, one continuous
         // thornwright, no sun) costs on the order of 6,000 charge —
         // about four of these. Real floor space for real security.
         capacity: 1500,
+        // **Half a burner's worth of pipe** (`SYSTEMS.md` §6.36). A
+        // burner supplies 8 a tick; this supplies 4, so a bank helps a
+        // tower spend harder without being a cheaper reactor than a
+        // reactor. That ordering is deliberate — FTL's backup battery
+        // is a stopgap for exactly the same reason, and if storage were
+        // the efficient way to buy supply nobody would ever build the
+        // second burner.
+        //
+        // It is also what makes "build another bank" a real answer to a
+        // brown-out. Before the rail, capacity bought endurance only,
+        // and a tower with a full bank that could not spend fast enough
+        // had nothing to do about it.
+        discharge_per_tick: 4,
     ),
 )

@@ -79,17 +79,12 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         mended += healed;
         sounds.push(SoundEvent::Repair);
 
-        // Keep going if it is still hurt, so a crew member sees a job
-        // through rather than re-deciding every shift.
-        if still_hurt(state, target) {
-            member.state = CrewState::Repairing {
-                target,
-                ticks_left: shift_ticks(content, per_shift),
-            };
-        } else {
-            member.state = CrewState::Idle;
-            member.errand = None;
-        }
+        // One shift brings a destroyed system back online, then releases
+        // the crew and poles to the live chain. The former Restore
+        // posture spent 48 extra poles, produced fewer crafts and
+        // prevented no additional wrecks in the measured fixture.
+        member.state = CrewState::Idle;
+        member.errand = None;
     }
 
     state.crew = crew;
@@ -122,27 +117,6 @@ fn mend(state: &mut GameState, target: DamageTarget, amount: i64) -> i64 {
             .map_or(0, |shaft| shaft.health.heal(amount)),
         // The Heartseed is repaired as the room it is.
         DamageTarget::Heart => 0,
-    }
-}
-
-fn still_hurt(state: &GameState, target: DamageTarget) -> bool {
-    match target {
-        DamageTarget::Panel { floor } => state
-            .tower
-            .floor(floor)
-            .is_some_and(|floor| floor.panel.is_hurt()),
-        DamageTarget::Room { floor, slot } => state.tower.floor(floor).is_some_and(|floor| {
-            floor
-                .rooms
-                .iter()
-                .find(|room| room.covers(slot))
-                .is_some_and(|room| room.health.is_hurt())
-        }),
-        DamageTarget::Shaft { id } => state
-            .tower
-            .shaft(id)
-            .is_some_and(|shaft| shaft.health.is_hurt()),
-        DamageTarget::Heart => false,
     }
 }
 
@@ -184,7 +158,10 @@ pub fn pick_repair(
     // could never bank the poles for an elevator. Below a shift's worth
     // of damage, the mark stays on the tower. That is the cross-section
     // doing its job as the health readout rather than a leak.
-    let worth_mending = |health: &crate::state::Health| health.max - health.hp >= per_shift;
+    let worth_mending = |health: &crate::state::Health| {
+        let damaged_enough = health.max - health.hp >= per_shift;
+        damaged_enough && health.hp == 0
+    };
 
     let taken = |target: DamageTarget| {
         crew.iter()
@@ -269,17 +246,18 @@ fn consider(
     }
 }
 
-/// Poles the tower still needs to put everything right. Presentation
-/// only — the player sees the bill before deciding what to triage.
+/// Poles committed by the automatic emergency-recovery queue.
+/// Presentation only: it must quote what crew will actually spend, not
+/// the much larger price of cosmetically restoring every scratch.
 #[must_use]
 pub fn outstanding_repair_cost(state: &GameState, content: &Content) -> i64 {
     // **Only the damage crew will actually mend.**
     //
-    // `pick_repair` will not start a shift on anything below
-    // `repair_hp_per_shift` — a shift costs its poles whether it mends
-    // twenty points or one, so chasing scratches is how a tower stops
-    // being able to afford an elevator. That threshold is deliberate and
-    // this figure used to ignore it, summing *every* missing hit point.
+    // `pick_repair` starts exactly one shift on zero-health machinery.
+    // Once that shift restarts the component, it returns to the economy;
+    // the former Restore doctrine was cut after spending twice the poles
+    // without preventing another wreck. Summing all missing hit points
+    // here would quietly preserve that removed policy in the readout.
     //
     // The result was a bill nobody could pay. A tower would sit at 98%
     // whole reporting "15 poles of mending outstanding" for the rest of
@@ -294,21 +272,18 @@ pub fn outstanding_repair_cost(state: &GameState, content: &Content) -> i64 {
     // the cross-section carries the mark, which `pick_repair`'s own note
     // calls the health readout doing its job.
     let per_shift = content.balance.siege.repair_hp_per_shift;
-    let worth = |health: &crate::state::Health| {
-        let missing = health.max - health.hp;
-        if missing >= per_shift { missing } else { 0 }
-    };
-    let mut missing = 0i64;
+    let worth = |health: &crate::state::Health| if health.hp == 0 { per_shift } else { 0 };
+    let mut queued_hp = 0i64;
     for floor in &state.tower.floors {
-        missing += worth(&floor.panel);
+        queued_hp += worth(&floor.panel);
         for room in &floor.rooms {
-            missing += worth(&room.health);
+            queued_hp += worth(&room.health);
         }
     }
     for shaft in &state.tower.shafts {
-        missing += worth(&shaft.health);
+        queued_hp += worth(&shaft.health);
     }
-    missing * content.balance.siege.repair_poles_per_10_hp / 10
+    queued_hp * content.balance.siege.repair_poles_per_10_hp / 10
 }
 
 /// The item repairs are paid in. Exposed so the UI can name it without

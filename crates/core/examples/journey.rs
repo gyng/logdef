@@ -496,7 +496,11 @@ fn whole_run(seed: u64) {
                         .is_ok()
                 })
                 .count();
-            recruited += usize::from(engine.try_send(GameCommand::Recruit).is_ok());
+            recruited += usize::from(
+                engine
+                    .try_send(GameCommand::Recruit { candidate: 0 })
+                    .is_ok(),
+            );
             let _ = engine.try_send(GameCommand::SetStriding { walking: true });
         }
 
@@ -904,7 +908,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
     if tower == Tower::Burning {
         list.push("room.burner");
     }
-    // **No bombary and no thrower**, deliberately. A thrower costs
+    // **No resonator works and no array**, deliberately. An array costs
     // mechanisms, mechanisms cost a fitter, a fitter costs a forge and a
     // rig — none of which a route-comparison tower has any business
     // building — so a list containing one simply *stops there*, and
@@ -997,7 +1001,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
         // the first thing it cannot afford, so anything behind a blocker
         // is never built at all — and the blocker is usually something
         // whose cost is *made by a room further down the same list*. It
-        // has cost three separate measurements now: a seed thrower
+        // has cost three separate measurements now: a resonance array
         // needing mechanisms hid the chute for a whole session and this
         // harness reported the route as flat; a dart battery needing two
         // rope sat in front of the ropery that makes rope, and the tower
@@ -1303,7 +1307,7 @@ fn play_tower(seed: u64, policy: Policy, tower: Tower, fixed_ticks: bool) -> Run
         mix: mix.iter().map(|n| n * 100 / walked).collect(),
         harvested: state.stats.items_harvested,
         bamboo: harvested_of(&content, state, "item.bamboo"),
-        produce: harvested_of(&content, state, "item.produce"),
+        produce: harvested_of(&content, state, "item.resin_feedstock"),
         meals: state.stats.meals_eaten,
         peak_provocation,
         exposure: exposure_total / i64::from(ticks.max(1)),

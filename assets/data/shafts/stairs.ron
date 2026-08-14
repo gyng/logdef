@@ -17,4 +17,8 @@ ShaftDef(
     // A full second a floor. Vertical is expensive on foot, which is
     // the pressure the dumbwaiter and elevator exist to relieve.
     ticks_per_floor: 30,
+    // Emergency wiring: enough for lamps, controls and a crawl out of a
+    // dry tower, not enough to run an industrial stack. The dedicated
+    // busbar is the primary vertical trunk.
+    power_capacity: 2,
 )

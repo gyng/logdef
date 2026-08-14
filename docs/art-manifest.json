@@ -21,11 +21,11 @@
 
   "compose": ["style", "palette", "subject", "composition"],
 
-  "style": "Melancholic 1980s anime watercolour magazine illustration. Watercolour wash with visible paper grain, soft feathered edges, muted desaturated palette, subtle ink linework kept thin and broken. Low-key chiaroscuro firelight OR soft overcast daylight — one or the other, never both. Simplified background, selective detail: render one focal area crisply and let everything else dissolve into wash. Post-apocalyptic solarpunk: a built world of the recent past going green, never a primeval wilderness — weathered concrete, salvaged late-20th-century computer hardware, cable and steel tangled with vines. Overgrown, quiet, nobody in a hurry. No overlaid text, no logos, no watermark, no signature, no UI, no border or frame.",
+  "style": "Melancholic 1980s anime watercolour magazine illustration. Watercolour wash with visible paper grain, soft feathered edges, muted desaturated palette, subtle ink linework kept thin and broken. Low-key chiaroscuro firelight OR soft overcast daylight — one or the other, never both. Simplified background, selective detail: render one focal area crisply and let everything else dissolve into wash. Post-apocalyptic solarpunk: a mechanically sophisticated built world of the recent past going green, never rustic fantasy and never a primeval wilderness — dense electromechanical equipment, weathered concrete, salvaged late-20th-century computer hardware, cable and steel tangled with vines. Overgrown, quiet, nobody in a hurry. No overlaid text, no logos, no watermark, no signature, no UI, no border or frame.",
 
   "palette": "Palette anchors: deep teal sky #2b6f74, pale sage haze #b7cbb0, dark canopy green #12301f, bark brown #3a2f26, warm brass #a8834d, lamp gold #e0c07a, bone #ecdfba. Salvage and ruin, which should carry as much of the frame as the greenery does: oxidised verdigris #5f8f80, salvaged amber #d9a25a, weathered concrete #537066, dead plastic #33453e, charred wreck #241c17.",
 
-  "style_sprite": "Semi-chibi anime sprite in a melancholic 1980s anime watercolour magazine style. Watercolour wash with visible paper grain and a muted desaturated palette, but kept CRISP: a clean readable silhouette, edges that hold rather than feather away, thin broken ink linework, flat-on with no perspective and no ground shadow. Even soft light across the whole figure — no chiaroscuro, no single dramatic light source. Solarpunk, overgrown, quiet. No text, no logos, no watermark, no signature, no UI, no border or frame.",
+  "style_sprite": "Semi-chibi anime sprite in a melancholic 1980s anime watercolour magazine style. Watercolour wash with visible paper grain and a muted desaturated palette, but kept CRISP: a clean readable silhouette, edges that hold rather than feather away, thin broken ink linework, flat-on with no perspective and no ground shadow. Even soft light across the whole figure — no chiaroscuro, no single dramatic light source. Mechanically sophisticated cassette-futurist solarpunk, overgrown and quiet — machinery first, bamboo and cord as repairs rather than the technology itself. No text, no logos, no watermark, no signature, no UI, no border or frame.",
 
   "_style_note": [
     "There are exactly TWO style blocks and there must never be a third.",
@@ -47,13 +47,13 @@
 
   "subject_canon": {
     "_note": "Paste `tower` verbatim into any prompt showing the tower from outside. These are not stylistic preferences — they are what web/src/engine/scene.ts actually draws, and RENDERER.md records why. Getting them wrong is the one error that survives into every asset at once.",
-    "tower": "The tower walks on FOUR slender legs in a wave gait, each a quarter-cycle behind the one in front, so two feet are always planted and a ripple runs down the body. Each leg is a shallow inverted V: the joint rides ABOVE the hip, like a wading insect or a harvestman. Never a knee bending forward, never a bird's backward hock, never anything that reads as a human or animal leg. The outer pair splays widest. The legs are thin relative to the hull — four thick legs read as a pipe rack, which is wrong.",
+    "tower": "The tower walks on SIX slender articulated legs arranged as three mechanical bogies, each with a near and rear limb. It uses an alternating tripod gait: three feet carry the hull while their partners advance, then the load swaps diagonally. Each leg is a broad two-link Z mechanism with a circular servo joint, never a human knee or bird's backward hock. Rear-plane legs sit slightly higher and darker; the outer bogies splay while the middle pair braces the hull. The legs are thin relative to the hull so the six-limbed silhouette reads as a walking machine, not a row of stilts or a pipe rack.",
     "roof": "A row of low planters runs the full width of the roof: the tower's own garden, spilling greenery over the roof lip. NO sails, no canopy panels, no masts, no banners, no flags.",
     "hull": "A long horizontal hull of bamboo, salvaged timber and scavenged panelling — yellowed beige computer casings, perforated rack steel, patched plastic — open to the viewer in cross-section like a doll's house, its floors stacked as shallow horizontal bands of small lit rooms with tiny figures inside. Cable runs and coloured patch leads thread between the floors. A heavy base beam runs under the hull where the legs meet it.",
 
-    "tech": "The old world here is late-20th-century computing, salvaged and overgrown: beige and off-white moulded plastic gone yellow with age, CRT monitors and terminals, chunky keycaps, ribbon cable and coloured patch leads, exposed circuit boards, tape reels, perforated steel racks, small indicator lamps. A screen that is lit glows as a flat amber or phosphor-green rectangle with faint scanlines — never legible text, never a recognisable logo or interface. Everything is scuffed, sun-bleached, patched with bamboo and cord, and half-swallowed by growth. This is the point of the setting: where you would otherwise draw a bare rock or a plain tree trunk, prefer a concrete edge, a dead server rack, or a bundle of cable under moss. Overgrown TECH, not wilderness.",
+    "tech": "The old world here is mechanically sophisticated late-20th-century cassette-futurism, salvaged and overgrown: dense banks of relays and servos, rotary drums, brass linkages, perforated metal housings, instrument clusters, beige and off-white moulded plastic gone yellow with age, CRT monitors and terminals, chunky keycaps, ribbon cable and coloured patch leads, exposed circuit boards, tape reels, steel racks and small indicator lamps. A screen that is lit glows as a flat amber or phosphor-green rectangle with faint scanlines — never legible text, never a recognisable logo or interface. Machinery is the first read; bamboo, timber and cord are structural repairs and human additions, not substitutes for technology. Everything is scuffed, sun-bleached and half-swallowed by growth, with vines threaded through grilles and moss on control cabinets. This is the point of the setting: where you would otherwise draw a bare rock, plain tree trunk or handmade wooden contraption, prefer a concrete edge, dead server rack, geared actuator or bundle of cable under moss. Overgrown MECHANICAL TECH, not wilderness, rustic fantasy, sleek biotech or glossy science fiction.",
 
-    "crew": "The crew are drawn semi-chibi: roughly three and a half heads tall — softened and slightly large-headed for warmth and for readability at small size, but NOT full chibi and never a mascot. Simplified anime faces with small, few features; at sprite size an eye is one mark. Practical layered working clothes, jungle-worn, sleeves pushed up, soft earth and sage tones with one warmer accent each. Scavenged kit rather than issued kit: a webbing harness, a hand lamp, a coil of patch lead at the belt, an old headset worn round the neck, plastic buckles gone chalky with age. Adults at work, of visibly different builds, ages and origins.",
+    "crew": "The crew are drawn compact semi-chibi: 2.5 to 2.75 heads tall from crown to sole, with heads and hair silhouettes about 35% larger than realistic anime proportions, shorter torsos, forearms, thighs and shins, and slightly oversized readable hands and boots. They are still unmistakably ADULT workers, never full chibi, children, dolls or mascots: retain adult builds, jawlines, necks and work-worn posture. Simplified anime faces with small, restrained features; at sprite size an eye is one mark. Practical layered working clothes, jungle-worn, sleeves pushed up, soft earth and sage tones with one warmer accent each. Scavenged kit rather than issued kit: one or two recognisable pieces per person such as a webbing harness, hand lamp, patch-lead coil or old headset; simplify secondary straps, pouches and circuitry into broad readable shapes. Adults at work, of visibly different builds, ages and origins.",
 
     "crew_tone": "Warmth, not comedy. This is a melancholy game and semi-chibi is here to make small figures legible and likeable, not to make them funny. No gag expressions, no sweat-drops, no speed lines, no exaggerated squash-and-stretch, no wide anime grins. Faces are calm, tired, absorbed in a task. Nobody poses, nobody salutes, nobody holds a weapon like a hero: DECISIONS.md §8 is defenders rather than soldiers, and it binds the art.",
 
@@ -70,8 +70,8 @@
   },
 
   "budget": {
-    "totalBytes": 5242880,
-    "_note": "3–5 MB of art total. An itch.io HTML5 game downloads in full before it starts, and the whole game is ~1.9 MB today (1.6 MB of that is the wasm). `make release` prints the size. If the set does not fit, cut assets rather than quality — a soft 630×500 cover is worse than no banner."
+    "totalBytes": 41943040,
+    "_note": "40 MiB hard ceiling for shipped art. This is headroom, not a target: keep opaque paintings as quality-tuned WebP, alpha sheets indexed and optimized, and never ship full-resolution sources. `make release` prints the size. Prefer a larger asset only when live comparison shows that the smaller derivative loses material readability."
   },
 
   "assets": [
@@ -81,7 +81,7 @@
       "required": true,
       "usedBy": "itch.io page — itch.io refuses the upload without it",
       "palette": true,
-      "subject": "An enormous walking garden-tower of bamboo and salvaged timber, seen from the side and slightly below, striding through the overgrown remains of a city. {hull} {tower} {roof} {tech} One foot planted, one lifting. Around and behind it: collapsed concrete storeys, a leaning pylon, dead signage gone blank, all going green. Soft overcast light, mist between the trunks and the ruins.",
+      "subject": "An enormous walking garden-tower of bamboo and salvaged timber, seen from the side and slightly below, striding through the overgrown remains of a city. {hull} {tower} {roof} {tech} Three feet planted in an alternating tripod stance while their three partners advance. Around and behind it: collapsed concrete storeys, a leaning pylon, dead signage gone blank, all going green. Soft overcast light, mist between the trunks and the ruins.",
       "composition": "Tower left of centre and small against a huge horizon. Leave the top third quiet — a title will sit there. Landscape 5:4.",
       "generate": "1536x1024",
       "ship": "630x500",
@@ -141,8 +141,8 @@
     {
       "id": "favicon",
       "tier": 0,
-      "usedBy": "browser tab. ALREADY SHIPPED as a hand-drawn vector at web/public/favicon.svg, wired up in web/index.html — generating this is optional, and probably not worth it.",
-      "_note": "The one asset where the generator is the wrong tool. Its constraint is 'must read at 16 pixels', where a watercolour wash is mud, and an SVG is ~1 KB against a 3-5 MB budget and stays crisp at every size. Kept in the manifest so the subject is recorded in one place with everything else; if you do generate a raster version, it has to beat a vector that already works.",
+      "usedBy": "raster companion to the hand-drawn vector browser icon, for platforms that cannot consume SVG favicons",
+      "_note": "The one asset where the generator is the wrong tool. Its constraint is 'must read at 16 pixels', where a watercolour wash is mud, and an SVG is ~1 KB and stays crisp at every size. Kept in the manifest so the subject is recorded in one place with everything else; if you do generate a raster version, it has to beat a vector that already works.",
       "palette": false,
       "subject": "A single bamboo leaf crossed with a small lit lamp. Flat, simple, high contrast, almost a woodcut. Very few shapes.",
       "composition": "Centred, square, generous margin. MUST read at 16 pixels — squint at it; if the two shapes merge, simplify.",
@@ -280,18 +280,327 @@
       "_note": "One painting pass matches itself far better than ten separate ones — that is the whole reason this is a sheet. Cut apart and repack after keying out the magenta. Six of the ten are salvage rather than greenery on purpose: the terrain the game actually generates is Drowned Street, Ruin Field, Collapsed District and Flooded Boulevard, so a prop set that is mostly trees and rocks would describe a different world from the one underfoot."
     },
     {
+      "id": "parallax-canopy",
+      "tier": 2,
+      "required": true,
+      "usedBy": "distant atmosphere behind terrain.canopy",
+      "palette": true,
+      "subject": "A deep post-collapse jungle interior in three quiet depth layers: pale mist and broken utility silhouettes far away, drowned concrete and relay cabinets in the middle distance, and low fern silhouettes below. Overgrown electromechanical remains, no walker, people, creatures, text or UI.",
+      "composition": "Wide side-on landscape, strongest forms in the lower half, abundant pale negative space above, soft finite edges suitable for cover cropping.",
+      "generate": "1983x793",
+      "ship": "1536x768",
+      "format": "webp",
+      "quality": 82,
+      "out": "web/public/art/parallax-canopy.webp"
+    },
+    {
+      "id": "parallax-clearing",
+      "tier": 2,
+      "required": true,
+      "usedBy": "distant atmosphere behind terrain.clearing",
+      "palette": true,
+      "subject": "A quiet jungle clearing with low scrub, buried CRT housings and a broken distant utility line, rendered as three soft depth layers. Overgrown electromechanical remains, no walker, people, creatures, text or UI.",
+      "composition": "Wide side-on landscape with a generous open middle and pale upper half; low silhouettes only, suitable for cover cropping.",
+      "generate": "1774x887",
+      "ship": "1536x768",
+      "format": "webp",
+      "quality": 82,
+      "out": "web/public/art/parallax-clearing.webp"
+    },
+    {
+      "id": "parallax-ruins",
+      "tier": 2,
+      "required": true,
+      "usedBy": "distant atmosphere behind terrain.ruin_field",
+      "palette": true,
+      "subject": "Layered collapsed concrete towers, rebar, relay cabinets and server ruins swallowed by canopy, quiet and uninhabited. No walker, people, creatures, text or UI.",
+      "composition": "Wide side-on landscape with distant, middle and foreground silhouettes concentrated below the horizon; soft finite edges for cover cropping.",
+      "generate": "1774x887",
+      "ship": "1536x768",
+      "format": "webp",
+      "quality": 82,
+      "out": "web/public/art/parallax-ruins.webp"
+    },
+    {
+      "id": "parallax-drowned",
+      "tier": 2,
+      "required": true,
+      "usedBy": "distant atmosphere behind terrain.drowned_street",
+      "palette": true,
+      "subject": "A calm flooded street with reflections, submerged barriers, leaning utility poles, CRT and server remnants and distant high-water concrete. No walker, people, creatures, text or UI.",
+      "composition": "Wide side-on landscape, low calm water plane and layered horizon, quiet pale upper space, soft finite edges for cover cropping.",
+      "generate": "1774x887",
+      "ship": "1536x768",
+      "format": "webp",
+      "quality": 82,
+      "out": "web/public/art/parallax-drowned.webp"
+    },
+    {
+      "id": "parallax-coast",
+      "tier": 2,
+      "required": true,
+      "usedBy": "distant atmosphere behind terrain.salt_flat and the coast approach",
+      "palette": true,
+      "subject": "Pale salt water and flats with drowned pylons, old road barriers and a distant overgrown headland, still and spacious. No walker, people, creatures, text or UI.",
+      "composition": "Wide panoramic side view dominated by open pale water and sky, low silhouettes and soft finite edges for cover cropping.",
+      "generate": "1942x809",
+      "ship": "1536x768",
+      "format": "webp",
+      "quality": 82,
+      "out": "web/public/art/parallax-coast.webp"
+    },
+    {
+      "id": "terrain-doodads",
+      "tier": 2,
+      "required": true,
+      "usedBy": "terrain props and intact/stripped salvage landmarks",
+      "sheet": {
+        "cells": [
+          "tree-a", "tree-b", "fern-terminal", "cable-vine",
+          "concrete-chunk", "driftwood-cable", "salt-marker", "rubble",
+          "ruin-intact", "ruin-stripped", "server-intact", "server-stripped",
+          "crt-intact", "crt-stripped", "vehicle-intact", "vehicle-stripped"
+        ],
+        "layout": "4 columns by 4 rows of equal cells",
+        "cellShip": "256x256",
+        "atlas": "1024x1024"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "Sixteen isolated overgrown environment props in exact row-major order: two trees; fern around a dead terminal; hanging cable-vines; broken concrete; cable-tangled driftwood; a salt-flat marker; rubble; then four unmistakable intact/stripped salvage pairs for concrete ruin, server rack, CRT pile and old vehicle. Dense late-20th-century electromechanical detail, restrained bamboo repairs, distinct silhouettes and small ochre, oxide red and faded cyan accents. No people, creatures, labels, UI or live glows.",
+      "composition": "A precise 4x4 grid on flat magenta #FF00FF. One upright side-on prop per cell on a shared baseline, generous gutters, nothing touching or crossing cell boundaries.",
+      "generate": "1254x1254",
+      "ship": "1024x1024",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/terrain-doodads-atlas.png",
+      "_note": "Intact and stripped cells are chosen from live FeatureView.salvage; the renderer retains salvage glints, berth state, water and journey-edge semantics."
+    },
+    {
+      "id": "room-interiors",
+      "tier": 3,
+      "required": true,
+      "usedBy": "static machinery and furnishings inside every procedural room silhouette; live active, idle, backed-up, damaged and destroyed state remains renderer-owned",
+      "sheet": {
+        "cells": [
+          "heartseed", "salvage_rig", "bunk", "burner", "canteen", "cellwright",
+          "cutter_arm", "fiber_comb", "fitter", "garden", "lantern_mast",
+          "mill", "resonance_array", "resonator_works", "ropery", "storeroom", "sun_forge",
+          "cell_bank", "dart_battery", "root_ward", "tanglenet", "thorn_gun", "thornwright"
+        ],
+        "sourceSheets": [
+          ["heartseed", "salvage_rig", "bunk", "burner", "canteen", "cellwright", "cutter_arm", "fiber_comb"],
+          ["fitter", "garden", "kitbench", "lantern_mast", "mill", "resonance_array", "resonator_works", "ropery"],
+          ["storeroom", "sun_forge", "cell_bank", "dart_battery", "root_ward", "tanglenet", "thorn_gun", "thornwright"]
+        ],
+        "sourceLayout": "three 4x2 source sheets, packed into one width-aware shipping atlas",
+        "atlas": "1024x768",
+        "slotShip": "128x128",
+        "packing": [
+          "row 0: heartseed 384x128 at x0; salvage_rig 384x128 at x384",
+          "row 1: bunk, burner, canteen, cellwright at x0/256/512/768, each 256x128",
+          "row 2: cutter_arm, fiber_comb, fitter, garden at x0/256/512/768, each 256x128",
+          "row 3: kitbench, lantern_mast, mill, resonance_array at x0/256/512/768, each 256x128",
+          "row 4: resonator_works, ropery, storeroom, sun_forge at x0/256/512/768, each 256x128",
+          "row 5: cell_bank, dart_battery, root_ward, tanglenet, thorn_gun, thornwright at x0/128/256/384/512/640, each 128x128"
+        ]
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "Twenty-four separate side-on cutaway room-interior dressings in the exact cell order given, all built from salvaged late-20th-century computing and dense electromechanical machinery. {tech} Draw only furnishings and machinery, never the room shell, floor plate, roof, exterior crown, exterior weapon barrel, people, labels or UI. The rooms are: a purely electromechanical amber capacitor-heart in a perforated server chassis, with relay banks, flywheel and braided root-like cable bundles but NO seed, pod, fruit, flower, bulb or organic core; a salvage rig with sorting gantry, magnetic grab, rack-steel bins and CRT inspection station; a bunk background with lockers, folded blankets, headset hooks and patched bags, leaving hammock space clear; a burner with refractory firebox housing, heat exchanger and duct controls, no flame or smoke; a canteen with counter, communal pot, shelves and terminal, leaving the hearth clear; a cellwright bench assembling chunky battery packs beside a charger rack; a cutter-arm winch room with cable drums, hydraulic pump and controls, no exterior arm; a fiber comb with toothed drums, rollers and skeins; a fitter bench with stepper motors, gears, circuit boards and tools; an instrumented hydroponic garden with resin vessels, irrigation manifold and sensor terminals; a kitbench with toolrolls, harness webbing, lamps and buckles; a lantern-mast switch room with cable reels, ceramic switches and spare lamps, no exterior mast; a bamboo mill with feed rollers, guarded splitting wheel and finished-pole rack; a resonance-array room with flywheel, tuned resonator drums, striker bank and an abstract-trace CRT, no ordnance cues; a resonator works with compact lathe, diaphragm jig, laminating press and drum cores, no seed imagery; a ropery with twisting wheels, hooks and coils; a storeroom with four open shelf bays holding rack steel, yellowed plastic and cable; a sun-forge with shielded crucible, induction coils and dark control CRT; a cell-bank rack with bus bars and empty cell slots; a dart-battery breech with crank and dart magazine but no exterior barrel; a root-ward cabinet with downward spike driver, grounded copper coils and four-spike rack; a tanglenet room with folded net canister, reel and tensioner; a thorn-gun breech with bamboo feed wheel but no exterior barrel; a thornwright bench with drill press, sharpening wheel and unfinished-dart trays. Keep every screen blank or abstract and every lamp unlit so live state can be drawn over it. Distinct readable silhouettes and negative spaces, but one coherent tower assembled by the same people.",
+      "composition": "Three precise 4x2 source grids on perfectly FLAT MAGENTA #FF00FF backgrounds, eight rooms per source sheet in sourceSheets order. Every cell equal with strong empty gutters, one dressing centred in each cell on a shared baseline, below 82% of cell height. Nothing crosses a boundary or touches an edge. Flat side view, no perspective, no ground shadow.",
+      "generate": "1536x1024 each source sheet",
+      "ship": "1024x768",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/rooms-atlas.png",
+      "_note": "The three source sheets keep a 24-room prompt legible to the generator; process_art.py keys and packs them into one texture. This is interior dressing, not replacement state art: the renderer draws active motion and warmth, idle dimming, backed-up stock, damage, and a deterministic broken composite for destroyed rooms above or from the same cell. The room cell set is enforced against assets/data/rooms/*.ron."
+    },
+    {
+      "id": "room-wrecks",
+      "tier": 3,
+      "required": false,
+      "usedBy": "authored-pixel collapsed furnishings for destroyed rooms; the procedural torn shell, debris, damage and repair state remain renderer-owned",
+      "derive": { "from": "room-interiors", "op": "stable collapse, rotation and soot tint in process_art.py" },
+      "sheet": {
+        "cells": [
+          "heartseed", "salvage_rig", "bunk", "burner", "canteen", "cellwright",
+          "cutter_arm", "fiber_comb", "fitter", "garden", "lantern_mast",
+          "mill", "resonance_array", "resonator_works", "ropery", "storeroom", "sun_forge",
+          "cell_bank", "dart_battery", "root_ward", "tanglenet", "thorn_gun", "thornwright"
+        ],
+        "layout": "exact rooms-atlas UV layout",
+        "atlas": "1024x768",
+        "slotShip": "128x128"
+      },
+      "ship": "1024x768",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/room-wrecks-atlas.png",
+      "_note": "Deterministically derived from the authored room-interiors pixels by process_art.py. Each room keeps its machinery identity in a fixed collapsed composition; the renderer uses this atlas only when RoomView.wrecked is true and retains the procedural fallback when it is absent."
+    },
+    {
+      "id": "room-shells",
+      "tier": 3,
+      "required": false,
+      "usedBy": "optional room-specific full-cell architectural backings beneath rooms-atlas furnishings; each backing replaces the generic category shell while all live room state remains renderer-owned",
+      "sheet": {
+        "cells": [
+          "heartseed", "salvage_rig", "bunk", "burner", "canteen", "cellwright",
+          "cutter_arm", "fiber_comb", "fitter", "garden", "lantern_mast",
+          "mill", "resonance_array", "resonator_works", "ropery", "storeroom", "sun_forge",
+          "cell_bank", "dart_battery", "root_ward", "tanglenet", "thorn_gun", "thornwright"
+        ],
+        "sourceSheets": [
+          ["bunk", "burner", "canteen", "cellwright", "cutter_arm", "fiber_comb", "fitter", "garden"],
+          ["kitbench", "lantern_mast", "mill", "resonance_array", "resonator_works", "ropery", "storeroom", "sun_forge"],
+          ["heartseed", "salvage_rig", "cell_bank", "dart_battery", "root_ward", "tanglenet", "thorn_gun", "thornwright"]
+        ],
+        "sourceLayout": "three portrait 2x4 source sheets in row-major order, packed into the exact rooms-atlas UV layout",
+        "atlas": "1024x768",
+        "slotShip": "128x128",
+        "packing": [
+          "row 0: heartseed 384x128 at x0; salvage_rig 384x128 at x384",
+          "row 1: bunk, burner, canteen, cellwright at x0/256/512/768, each 256x128",
+          "row 2: cutter_arm, fiber_comb, fitter, garden at x0/256/512/768, each 256x128",
+          "row 3: kitbench, lantern_mast, mill, resonance_array at x0/256/512/768, each 256x128",
+          "row 4: resonator_works, ropery, storeroom, sun_forge at x0/256/512/768, each 256x128",
+          "row 5: cell_bank, dart_battery, root_ward, tanglenet, thorn_gun, thornwright at x0/128/256/384/512/640, each 128x128"
+        ]
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "Twenty-four distinct full-cell architectural backings for the tower's rooms, built as one coherent family from salvaged late-20th-century computing, rack steel, ceramic electrical hardware and overgrown mechanical infrastructure. {tech} These are ROOM SHELLS ONLY: every cell must be a single connected opaque cutaway interior skin comprising its ceiling liner, full back wall, both side jambs and floor or deck surface. Fill the whole room footprint and reserve the middle foreground for the separate furnishing atlas. Give every named room a memorable architectural identity rather than changing only its colour: bunk has quilted acoustic insulation, personal hooks and rounded sleeping-car ribs; burner has soot-dark refractory brick, broad heat shielding and fat duct collars; canteen has scrubbed enamel wall panels, tiled splashback and a warm copper flue chase; cellwright has insulated battery alcoves, ceramic bus channels and acid-resistant green enamel; cutter arm has massive diagonal recoil braces, hose trunks and a reinforced exterior mounting bulkhead; fiber comb has long lint screens, toothed guard motifs and thread-guide rails; fitter has a precise pegboard-like tool wall, articulated task-light rails and dense service sockets; garden has wet glazed panels, irrigation channels, hanging root trays and restrained living moss; kitbench has compact locker bays, harness rails and rounded field-case panels; lantern mast has a tall switchboard spine, porcelain knife-switch silhouettes and vertical cable risers; mill has heavy ribbed guards, a wide feed-mouth frame and amber sawdust extraction channels; resonance array has concentric acoustic baffles, tuned radial braces and waveform-like abstract panel geometry with no text; resonator works has circular diaphragm racks, copper-lined isolation panels and a compact clean-machine bay; ropery has sweeping tension-rail arcs, hook rows and a long horizontal twisting corridor; storeroom has deep numbered-shape bays with no legible writing, tie-down grids and a broad loading sill; sun forge has black ceramic heat tiles, a shielded crucible recess and pale refractory ribs; Heartseed has a rounded amber capacitor vault, braided trunk conduits and an unusually monumental central frame, with NO seed, pod, fruit, flower, bulb or organic core; salvage rig has scarred industrial plating, a broad ground-access hatch, magnetic-rail braces and mismatched recovered panels; cell bank has a disciplined wall of empty dark battery vaults and thick insulated bus trunks; dart battery has a compact armoured embrasure, recoil rails and protected ammunition channels but no weapon barrel; root ward has downward-pointing copper grounding geometry, spike guide channels and a reinforced lower deck; tanglenet has a broad circular reel recess, tension-web ribs and orange safety patches; thorn gun has a rugged feed-channel bulkhead, compact recoil cradle and violet cable accents but no barrel; thornwright has a dense drilling-bay frame, narrow sharpening guards and ordered material channels. Category colours are restrained splashes, never flat washes. No two rooms may share the same large silhouette or wall-panel rhythm. All screens and state lamps remain blank and dark.",
+      "composition": "Three precise PORTRAIT 2-column by 4-row source grids on perfectly FLAT MAGENTA #FF00FF backgrounds, eight named shells per source sheet in sourceSheets row-major order. Every grid cell is equal and contains exactly one orthographic side-on landscape room backing as a single connected rectangular silhouette. The painted shell itself must fill at least 94% of its usable width and 82% of its usable height, with an even magenta isolation gutter outside it; within the shell there are NO magenta holes, transparent bare-wall gaps, floating boxes, detached lines or empty bands. Architecture runs cleanly to all four shell edges so it can be resized to the exact runtime room rectangle. Architecture only: no benches, work machines, loose items, people, labels, UI, stock, exterior crowns, weapons, fire, smoke, damage, glows or active lights. Flat side view, no perspective and no cast ground shadow.",
+      "generate": "1024x1536 each source sheet",
+      "ship": "1024x768",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/room-shells-atlas.png",
+      "_note": "Optional specificity layer with the exact rooms-atlas UV rectangles. process_art.py removes each keyed source-cell gutter and registers the connected backing across its complete destination rectangle, so no generic wall shows through behind furnishings. Painted art owns room-specific material, silhouette, exact accent colours and architectural character; renderer state may multiply brightness but must not replace or flatten those authored hues. The renderer owns furnishings, activity, progress, charge, inventory, occupancy, lamps, damage, destruction, fire and smoke. Absence of this optional atlas must retain the category-shell fallback."
+    },
+    {
+      "id": "room-architecture",
+      "tier": 3,
+      "required": true,
+      "usedBy": "full-cell painted room shells beneath the transparent furnishing atlas, plus painted exterior crowns replacing abstract category bars",
+      "sheet": {
+        "cells": [
+          "heart-shell", "intake-shell", "production-shell", "storage-shell",
+          "energy-shell", "defence-shell", "quarters-shell", "fallback-shell",
+          "heart-cap", "garden-trellis", "cell-rack", "burner-stack",
+          "workshop-vent", "cutter-boom", "defence-barrel", "spare"
+        ],
+        "layout": "4 columns by 4 rows of exact equal cells, row-major",
+        "rows": [
+          ["heart-shell", "intake-shell", "production-shell", "storage-shell"],
+          ["energy-shell", "defence-shell", "quarters-shell", "fallback-shell"],
+          ["heart-cap", "garden-trellis", "cell-rack", "burner-stack"],
+          ["workshop-vent", "cutter-boom", "defence-barrel", "spare"]
+        ],
+        "cellShip": "256x256",
+        "atlas": "1024x1024"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "A modular architecture kit for the tower's complete room cells and exterior machinery, built from the same salvaged late-20th-century cassette-futurist materials as the room furnishings. {tech} The FIRST TWO ROWS are eight full rectangular side-on cutaway ROOM SHELL BACKINGS in this exact order: Heart, Intake, Production, Storage; Energy, Defence, Quarters, fallback. Each is a complete inhabited architectural cell with an opaque painted ceiling liner, back wall, floor or deck skin, side jambs, mounting rails, cable and pipe runs, vents, brackets and restrained category-colour patches. Heart is a rounded capacitor vault with braided trunk conduits; Intake has hydraulic feeds, dirt guards and intake ducting; Production has heavy machine mounts, tool power and workshop extraction; Storage has shelf rails, tie-downs and abstract inventory-plate shapes with no legible marks; Energy has ceramic busbars, insulators and shielded cable channels; Defence has compact armour, recoil bracing and protected service runs; Quarters has fabric insulation, lockers, hooks and softer rounded framing; fallback is neutral rack steel and patch panels. Keep the middle and lower furnishing zone lower-contrast so the separate room-specific machinery remains readable above it. The LAST TWO ROWS are isolated transparent exterior crown components in this exact order: a compact electromechanical Heart capacitor cap with no seed or organic core; a narrow hydroponic sensor trellis; an EMPTY cell-bank rack with dark glass housings; a burner's broad twin heat-exchanger stack; a single workshop extraction vent; a long jointed cutter boom only, with no interior winch room; a compact mechanical defence barrel and receiver; and one completely empty spare cell. All screens and lamps are blank and dark. Never draw a whole tower, walker, room furnishing or person.",
+      "composition": "One precise 4x4 grid on a perfectly FLAT uniform MAGENTA #FF00FF chroma-key background. Every grid cell is exactly equal and nothing crosses a boundary. In rows 1 and 2, each shell is a coherent opaque rectangular cutaway panel that fills about 94% of its cell width and height, leaving only a narrow even magenta isolation gutter; there must be NO magenta holes, transparent bare-wall gaps, detached floating boxes or empty bands inside a shell. Ceiling, side walls, back wall and deck all connect into one full-cell silhouette. Shells are architecture only: no benches, loose items, room-specific machines, people, labels, UI, damage, active lights, glow, fire or smoke. In rows 3 and 4, each crown is isolated, centred, side-on and fills 78-88% of the cell with generous magenta around its silhouette; no floor, wall, room body or cast shadow. Cutter boom and defence barrel are horizontal with their mounting end on the left. Cell rack is visibly empty so live charge can fill it. Cell 16 stays entirely flat magenta. Orthographic side view, no perspective, neutral unlit sprite lighting.",
+      "generate": "1536x1536",
+      "ship": "1024x1024",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/room-architecture-atlas.png",
+      "_note": "The shell backings are registered architectural surfaces, so process_art.py preserves their fixed grid coordinates and never alpha-bbox-crops them. Painted art owns material, silhouette and category identity; the simulation owns activity, motion, charge fill, inventory, lamps, damage, destruction, fire and smoke. Crown motion and live state remain renderer-driven, and every painted element retains a procedural fallback if this optional texture fails to load."
+    },
+    {
+      "id": "walker-frame",
+      "tier": 3,
+      "required": true,
+      "usedBy": "modular painted structure over the live walker geometry: roof, walls, decks, ribs, underside, stairs, six articulated legs, joints and feet",
+      "sheet": {
+        "cells": [
+          "roof-lip", "flank-wall", "deck-plate", "hull-rib",
+          "underside-beam", "stair-frame", "leg-strut", "leg-joint",
+          "leg-foot", "planter-box", "plating-strip", "moss-vine-ledge"
+        ],
+        "layout": "4 columns by 3 rows of equal cells",
+        "cellShip": "128x128",
+        "atlas": "512x384"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "Twelve isolated structural components for the same high-tech overgrown walking garden-tower, in exact cell order: a rack-steel roof lip; a computer-casing flank wall; a grounded perforated deck plate; a bolted hull rib; a trussed underside beam; a stair-frame backing without treads; a horizontal electromechanical leg strut; a circular servo leg joint; a broad articulated foot; a metal planter box; a bolted plating strip; and a moss-and-vine ledge. {tech} Dense salvaged electromechanical hardware dominates. Bamboo, timber, cord and growth appear only as restrained repair and habitation language. Neutral unlit materials: blank screens and dark indicators, because the renderer owns live room light, damage, gait, shaft state and contact effects.",
+      "composition": "One precise 4x3 grid on a perfectly FLAT MAGENTA #FF00FF background, ordered left-to-right then top-to-bottom. Every component isolated with generous gutters, no overlap or cast shadow. Flat orthographic side view. Horizontal pieces span their cells; the leg strut is perfectly horizontal for live rotation. No whole tower, people, rooms, labels, text, UI, sails, baked damage or glow.",
+      "generate": "1450x1085",
+      "ship": "512x384",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/walker-frame-atlas.png",
+      "_note": "A component kit, never a fixed walker silhouette. The renderer repeats structure to the current hull dimensions and rotates leg pieces along the authoritative six-leg gait. Panel damage, missing stair treads, water contact, overgrowth placement and all state lighting remain procedural."
+    },
+    {
+      "id": "roof-flora",
+      "tier": 3,
+      "required": false,
+      "usedBy": "modular painted roof-garden growth repeated across the live walker width; the existing planter boxes, roof lip, hull dimensions and all gameplay state remain renderer-owned",
+      "sheet": {
+        "cells": [
+          "long-grass", "fern-and-herbs", "small-flowering-herb", "trailing-vine",
+          "low-shrub", "seedlings-and-sensor-stakes", "groundcover", "dry-and-fresh-shoots"
+        ],
+        "layout": "4 columns by 2 rows of exact equal cells, row-major",
+        "cellShip": "128x128",
+        "atlas": "512x256"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "Eight isolated roof-garden plant components from the same overgrown high-tech walking tower, in exact cell order: dense long weather-bent grass; a fern and broadleaf herb clump; a small flowering herb with restrained faded amber accents; a trailing vine curtain; a low broadleaf shrub; young seedlings among two small blank sensor stakes; low mossy groundcover; and a mixed tuft of dry and fresh shoots. These are tended but unruly plants growing from salvaged electromechanical planter boxes, close to the key art's soft layered roof silhouette. Crisp readable masses at small scale, with selective leaf detail and quiet watercolor texture. Plants only apart from the two sensor stakes: no planter boxes, roof, people, animals, labels, sails or scenery.",
+      "composition": "One precise 4x2 grid on a perfectly FLAT uniform MAGENTA #FF00FF chroma-key background, ordered left-to-right then top-to-bottom. Every cell is exactly equal and nothing crosses a boundary. Each plant is isolated and centred with a generous clean magenta gutter, no cast shadow and no detached flecks. Every cell except cell 4 grows upward from a narrow level baseline near its bottom. Cell 4 attaches near the top and trails downward, clearly different from the upright plants. Flat orthographic side view, even neutral overcast sprite lighting. No text, UI, border, ground plane or whole tower.",
+      "generate": "1400x1154",
+      "ship": "512x256",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/roof-flora-atlas.png",
+      "_note": "Optional specificity layer. process_art.py removes each keyed source-cell gutter and packs it into stable 128px cells. The renderer repeats upright and trailing silhouettes deterministically over any roof width and keeps the procedural planter tufts as the independent fallback when this atlas is absent. Growth is intentionally static; wind or damage animation would be renderer-owned."
+    },
+    {
+      "id": "shaft-components",
+      "tier": 3,
+      "required": true,
+      "usedBy": "painted per-floor stair and elevator machinery; live queueing, damage, severance, car motion, doors, load and freight remain renderer-owned",
+      "sheet": {
+        "cells": [
+          "stairs-bay", "stairs-tread", "elevator-rail-bay",
+          "elevator-car", "elevator-head", "counterweight"
+        ],
+        "layout": "3 columns by 2 rows of equal cells",
+        "cellShip": "256x256",
+        "atlas": "768x512"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "Six isolated shaft components for the same high-tech overgrown walking garden-tower, in exact cell order: a one-floor stair backing with perforated uprights, relays, cable guides and no treads; one broad perforated stair tread and landing module; a one-floor elevator guide-rail bay with cables and sensor boxes; an open-front industrial elevator car with separable sliding doors; an overhead pulley, motor and brake housing; and a dense guided counterweight. {tech} Dense salvaged electromechanical hardware dominates. Growth is restrained. Every screen and indicator is dark because live state is renderer-owned.",
+      "composition": "One precise 3x2 grid on a perfectly FLAT MAGENTA #FF00FF background, ordered left-to-right then top-to-bottom. Every component isolated with generous gutters and nothing crossing a cell boundary. Flat orthographic side view, no perspective, people, cargo, labels, text, UI, damage, glow, smoke, whole tower, room interior, leg part or sail. The stair backing has no treads.",
+      "generate": "1448x1086",
+      "ship": "768x512",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/shaft-components-atlas.png",
+      "_note": "Repeated per floor rather than stretched through the tower. Painted bays and car shells sit below authoritative missing treads, busy glow, severance masks, moving doors, load pips, freight and crew."
+    },
+    {
       "id": "crew-sheet",
       "tier": 3,
       "usedBy": "the named people aboard. Crew are drawn procedurally today; this is the set that would replace them, and the first place the semi-chibi direction actually shows.",
       "sheet": {
         "cells": ["Wren", "Odile", "Bakri", "Sena", "Toma", "Ilay", "Rook", "Mira"],
         "layout": "one row of 8",
-        "cellShip": "128x192"
+        "cellShip": "128x384"
       },
       "palette": true,
       "style_use": "sprite",
       "subject": "A single row of eight different standing characters, evenly spaced, each isolated with clear empty space around it and its feet on a common baseline, each drawn flat-on from the side in a neutral standing pose. {crew} {crew_tone} Eight distinct people: vary height, build, age, skin tone, hair and headwear so no two read alike at a glance. Working clothes only — no armour, no uniforms, nothing military, nothing matching.",
-      "composition": "Eight figures in one row on a FLAT MAGENTA #FF00FF background. Even spacing, nothing overlapping, nothing touching the image edges. Whole body in frame including feet.",
+      "composition": "Eight figures in one row on a FLAT MAGENTA #FF00FF background. Eight equal columns, even spacing, common foot baseline, nothing overlapping or touching an image edge. Each figure fills 82–88% of its cell height and no more than 82% of its cell width, with whole body and feet visible. Silhouettes must remain readable at 45–65 pixels tall.",
       "generate": "1536x512",
       "ship": "1024x384",
       "format": "png",
@@ -300,24 +609,180 @@
       "_note": "Eight because crew_cap is 8; assets/data/crew/names.ron carries 16 names and the first eight are the ones a run can actually field. That file's own comment is worth honouring here — the crew are 'people who came from somewhere, not a set matched to a palette', so resist making them tonally uniform. One sheet, one pass: eight separately-generated characters will not look like the same crew."
     },
     {
+      "id": "crew-motion",
+      "tier": 2,
+      "required": false,
+      "usedBy": "animated gameplay-scale named crew, including derived identity-preserving eating and sleeping poses; crew-sheet and procedural poses remain fallbacks",
+      "sheet": {
+        "cells": ["Wren", "Odile", "Bakri", "Sena", "Toma", "Ilay", "Rook", "Mira"],
+        "frames": ["idle-a", "idle-b", "walk-a", "walk-b", "work-a", "work-b", "carry-a", "carry-b", "eat-a", "eat-b", "sleep-a", "sleep-b"],
+        "sourceSheets": ["wren", "odile", "bakri", "sena", "toma", "ilay", "rook", "mira"],
+        "sourceLayout": "eight 4x2 identity sheets in exact frame order, packed as identities across columns and poses down rows",
+        "layout": "8 identity columns by 12 pose rows",
+        "cellShip": "128x192",
+        "atlas": "1024x2304"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "An animation sheet for one named adult worker, generated once for each person in exact identity order: Wren, Odile, Bakri, Sena, Toma, Ilay, Rook and Mira. {crew} {crew_tone} Keep that person's face, hair or headwear, body shape, clothes, colours and personal kit identical in every frame. Eight full-body side-view poses in exact order: two restrained breathing idle frames; two opposite walk contacts; two quiet hands-busy work frames; and two laden poses leaning slightly back under an unseen high carried load. Hands in carry frames support empty space for a renderer-owned item; work frames use empty hands. No generated cargo, tools, effects or status cues.",
+      "composition": "Generate EIGHT separate precise 4x2 grids in art-src/crew-motion, one named person per source sheet, on perfectly FLAT uniform MAGENTA #FF00FF backgrounds. Exact row-major order: idle-a, idle-b, walk-a, walk-b, work-a, work-b, carry-a, carry-b. Equal cells, common foot baseline, identical character scale, full body and feet visible, nothing crossing a boundary or touching an edge. Each figure fills 82–88% of cell height and no more than 82% of cell width. Side view with movement facing right. Frame-to-frame motion is restrained: no squash-and-stretch, motion lines, camera movement, scenery, cast shadows, text, UI or cell dividers.",
+      "generate": "1536x768 each identity sheet",
+      "ship": "1024x2304",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/crew-motion-atlas.png",
+      "_note": "The columns are the replay-sensitive first eight names in assets/data/crew/names.ron; pose row order is a fixed renderer UV contract. The first eight rows are authored. process_art.py derives eat from the same person's hands-busy frames and sleep from their neutral silhouette, so identity survives those needs without pretending separately generated art exists. The procedural canteen table, hammock, cargo item, stress tint, queue glow, mend pole and light, selection and all other live state remain renderer-owned. Missing motion art must retain crew-sheet and procedural eat/sleep as independent fallbacks."
+    },
+    {
+      "id": "crew-portraits",
+      "tier": 2,
+      "required": true,
+      "usedBy": "named crew cards and other close UI surfaces; gameplay-scale bodies remain crew-sheet sprites",
+      "sheet": {
+        "cells": ["Wren", "Odile", "Bakri", "Sena", "Toma", "Ilay", "Rook", "Mira"],
+        "layout": "4 columns by 2 rows of equal square cells, row-major",
+        "cellShip": "128x128",
+        "atlas": "512x256"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "Eight distinct head-and-shoulders portraits of the named adults aboard, in exact row-major order: Wren, Odile, Bakri, Sena, Toma, Ilay, Rook and Mira. {crew} {crew_tone} Preserve the diversity and recognisable personal kit of the matching full-body crew sheet while giving each person an unmistakable face, hair or headwear silhouette, age, build and one restrained warm accent. Every person faces three-quarters toward the viewer with a calm neutral expression. Practical work clothes only; no armour, uniforms, weapons, heroic poses or matching outfits.",
+      "composition": "One precise 4x2 grid on a perfectly FLAT uniform MAGENTA #FF00FF background, ordered left-to-right then top-to-bottom. Every cell is equal and contains exactly one isolated head-and-shoulders portrait, centred at the same scale with the full hair silhouette, neck and upper shoulders visible. Generous clean gutters, nothing crossing a cell boundary or touching an image edge. No cell dividers, cast shadows, props outside the silhouette, scenery, labels, text, UI, badges or live status effects.",
+      "generate": "1536x768",
+      "ship": "512x256",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/crew-portraits-atlas.png",
+      "_note": "The row-major order is the first eight names in assets/data/crew/names.ron and is replay-sensitive. Portrait identity should match crew-sheet where practical, but this dedicated square atlas exists so UI cards never crop a tiny full-body sprite. The UI owns selection, stress, hunger, fatigue, posting, borders, badges and all other live state."
+    },
+    {
+      "id": "weapon-components",
+      "tier": 2,
+      "required": false,
+      "usedBy": "distinct exterior machinery for the six defensive emplacements; live aim, firing, reload, power, stock, damage and room state remain renderer-owned",
+      "sheet": {
+        "cells": ["thorn_gun", "dart_battery", "lantern_mast", "root_ward", "tanglenet", "resonance_array"],
+        "layout": "3 columns by 2 rows of exact equal cells, row-major",
+        "cellShip": "256x256",
+        "atlas": "768x512"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "Six isolated side-on exterior emplacement mechanisms in exact row-major order: a compact thorn gun with a bamboo-feed wheel and twin thorn jaws; a standoff dart battery with a visible rack of finned darts and a long restrained barrel; a lantern mast with three caged amber lamp housings on an electromechanical lifting truss; a root ward with grounded copper coils, a downward spike driver and three cable feet; a tanglenet launcher with a folded rope-net canister held in broad mechanical jaws; and a resonance array with paired broad acoustic horns, tuned drum housings and a flywheel. {tech} These are protective tower tools built by the same people as the rooms, not military turrets. Neutral resting mechanisms only: no muzzle flashes, projectiles, pulses, deployed net, light beams, targets, damage, labels or UI.",
+      "composition": "One precise 3x2 grid on a perfectly FLAT uniform MAGENTA #FF00FF background, exact row-major order from sheet.cells. Equal cells with generous isolation gutters, one complete orthographic side-on mechanism per cell, all resting on a common mounting baseline. Nothing crosses a boundary or touches an image edge. No cell dividers, scenery, cast shadows, people, creatures, text, UI or live effects.",
+      "generate": "1536x1024",
+      "ship": "768x512",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/weapon-components-atlas.png",
+      "_note": "The six row-major cells are a fixed renderer UV contract keyed by full room id after adding the room. prefix. Art owns emplacement identity and material only; simulation and renderer own target, aim, shot timing, reload, stock, power refusal, damage and destruction. The existing defence crown remains the independent fallback until runtime consumption is wired."
+    },
+    {
+      "id": "combat-fx",
+      "tier": 2,
+      "required": false,
+      "usedBy": "small authored marks for projectile, pulse, impact, breach, severance, mechanical-puff and creature-fade effect families; event placement and timing remain renderer-owned",
+      "sheet": {
+        "cells": ["thorn_projectile", "dart_projectile", "tanglenet_cast", "lantern_pulse", "root_ward_pulse", "resonance_wave", "creature_impact", "hull_impact", "room_breach", "shaft_sever", "mechanical_puff", "creature_fade"],
+        "layout": "4 columns by 3 rows of exact equal cells, row-major",
+        "cellShip": "256x256",
+        "atlas": "1024x768"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "Twelve isolated restrained combat-effect marks in exact row-major order: a flying barbed bamboo thorn with a short leaf-and-fiber wake; a small finned dart in flight; an opening rope-and-vine tanglenet bundle; a warm lantern pulse as broad soft wave arcs; a root-ward ground pulse with roots, soil and a pale grounded spark; a resonance pressure wave as concentric ochre rings; a small pale creature impact wash with leaves and dust; a bright impact against a bolted hull panel with tiny sparks and leaf fragments; a room breach with cracked panel, torn cable and debris; a shaft sever with snapped conduit, loose fastener and restrained electrical threads; a small grey mechanical exhaust or dry-fire puff from a valve; and a pale creature fade wash dissolving into leaves and mist. Watercolour marks, not explosions; no blood, gore, fireballs, bullets, crosshairs, text, numbers or UI.",
+      "composition": "One precise 4x3 grid on a perfectly FLAT uniform MAGENTA #FF00FF background, exact row-major order from sheet.cells. Equal square cells, one centred complete effect per cell with generous clear gutters. Directional projectiles point right; radial effects remain centred and unobstructed. Nothing overlaps, crosses a boundary or touches an image edge. No cell dividers, scenery, weapons, complete rooms, people, creatures, labels or cast shadows.",
+      "generate": "1536x1024",
+      "ship": "1024x768",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/combat-fx-atlas.png",
+      "_note": "The twelve row-major cells are effect families, not autonomous animation or event truth. A future renderer maps simulation events to these cells and owns origin, target, trajectory, duration, tint, scale and repetition. mechanical_puff covers dry fire, reload or venting only when the event contract distinguishes them; it must not invent a failure from room state. Existing procedural particles remain the independent fallback."
+    },
+    {
       "id": "creature-sheet",
       "tier": 3,
       "usedBy": "the eight creatures. Read DECISIONS.md §8 before prompting this one — the tone rule is load-bearing and this is the asset most likely to break it.",
       "sheet": {
         "cells": ["skitter", "root_borer", "glean_crow", "canopy_leaper", "night_prowler", "mire_hulk", "thicket_mother", "feral_warden"],
-        "layout": "one row of 8, smallest to largest",
-        "cellShip": "128x128"
+        "sourceSheets": [
+          ["skitter", "root_borer", "glean_crow", "canopy_leaper"],
+          ["night_prowler", "mire_hulk", "thicket_mother", "feral_warden"]
+        ],
+        "sourceLayout": "two 4x1 source sheets in exact row-major order, packed into one shipping atlas",
+        "layout": "one row of 8 exact 128x256 cells, smallest to largest",
+        "cellShip": "128x256",
+        "atlas": "1024x256",
+        "occupiedWidthPct": [34, 52, 55, 75, 64, 91, 84, 91]
       },
       "palette": true,
       "style_use": "sprite",
-      "subject": "A single row of eight different jungle animals, evenly spaced, each isolated with clear empty space around it and its feet on a common baseline, each drawn flat-on from the side in a calm neutral stance, ordered smallest to largest: a small scurrying ant-like forager; a fat armoured beetle grub; a scruffy dark corvid; a long-limbed tree-dwelling leaper; a lean nocturnal canid; a huge heavy swamp herbivore; a large patient orb-weaving spider; a big solitary scorpion-like guardian. {creature}",
-      "composition": "Eight animals in one row on a FLAT MAGENTA #FF00FF background, sized relative to one another so the row reads as a scale chart. Even spacing, nothing overlapping, nothing touching the image edges.",
-      "generate": "1536x512",
+      "subject": "Eight different jungle animals across two source sheets, in exact sourceSheets order: a small scurrying ant-like forager; a fat armoured beetle grub; a scruffy dark corvid; a long-limbed tree-dwelling leaper; then a lean nocturnal canid; a huge heavy swamp herbivore; a large patient orb-weaving spider; and a big solitary scorpion-like guardian. Each is drawn flat-on from the side in a calm neutral stance. {creature}",
+      "composition": "Generate as TWO separate precise 4x1 source grids on perfectly FLAT uniform MAGENTA #FF00FF backgrounds, using sourceSheets in order. Each sheet contains exactly four animals, evenly spaced with clear empty gutters and their feet on one common baseline. Preserve relative scale within each sheet. Nothing overlapping, crossing a cell boundary or touching an image edge; no cell dividers, scenery, labels, text, UI or cast ground shadows.",
+      "generate": "1536x768 each source sheet",
       "ship": "1024x256",
       "format": "png",
       "alpha": true,
       "out": "web/public/art/creature-atlas.png",
-      "_note": "The 8 cells must stay in sync with assets/data/enemies/*.ron — crates/core/src/tests/art_manifest.rs fails if they drift. Names in the pack are Skitter, Root Borer, Glean-crow, Canopy Leaper, Night Prowler, Mire-hulk, Thicket Mother, Feral Warden; the prompt describes them as animals rather than naming them, because a generator given 'Thicket Mother' will draw a monster."
+      "_note": "The 8 cells and flattened sourceSheets must stay in sync with assets/data/enemies/*.ron — crates/core/src/tests/art_manifest.rs fails if they drift. occupiedWidthPct preserves their gameplay scale progression inside equal renderer cells instead of enlarging every animal to the same width. The two generated sources are art-src/creatures-a.png and creatures-b.png; process_art.py isolates the keyed silhouettes and packs them into the renderer's fixed 8x1 atlas contract. Names in the pack are Skitter, Root Borer, Glean-crow, Canopy Leaper, Night Prowler, Mire-hulk, Thicket Mother, Feral Warden; the prompt describes them as animals rather than naming them, because a generator given 'Thicket Mother' will draw a monster."
+    },
+    {
+      "id": "creature-motion",
+      "tier": 2,
+      "required": false,
+      "usedBy": "animated gameplay-scale creatures; creature-sheet remains the intact static fallback and procedural silhouettes carry transitions when this optional atlas is absent",
+      "sheet": {
+        "cells": ["skitter", "root_borer", "glean_crow", "canopy_leaper", "night_prowler", "mire_hulk", "thicket_mother", "feral_warden"],
+        "frames": ["idle-approach-a", "idle-approach-b", "attack-a", "attack-b", "hurt", "dying", "leaving-a", "leaving-b"],
+        "sourceSheets": ["skitter", "root_borer", "glean_crow", "canopy_leaper", "night_prowler", "mire_hulk", "thicket_mother", "feral_warden"],
+        "sourceLayout": "eight 4x2 species sheets in exact frame order, packed as species across columns and states down rows",
+        "layout": "8 species columns by 8 state rows",
+        "cellShip": "128x256",
+        "atlas": "1024x2048",
+        "occupiedWidthPct": [34, 52, 55, 75, 64, 91, 84, 91]
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "An animation sheet generated once for each of the eight jungle animals in the creature-sheet's exact species order. {creature} Preserve that animal's anatomy, markings, proportions, colours and relative scale in every frame. Eight full-body side-view poses in exact order: two restrained idle-or-approach contacts; two territorial attack or work-at-the-tower poses directed toward an unseen surface; one low weakened hurt posture; one quiet dying slump; and two leaving contacts turning away without panic. The attack is an animal biting, scraping, grappling or pushing at an intrusion, never a heroic combat move. No generated projectiles, wounds, blood, targets, tower parts, impact effects or status cues.",
+      "composition": "Generate EIGHT separate precise 4x2 grids in art-src/creature-motion, one species per source sheet, on perfectly FLAT uniform MAGENTA #FF00FF backgrounds. Exact row-major order: idle-approach-a, idle-approach-b, attack-a, attack-b, hurt, dying, leaving-a, leaving-b. Equal cells, common ground baseline, identical animal scale, complete silhouette visible, nothing crossing a boundary or touching an edge. Side view, with approach and attack facing left and leaving visibly turning away. Frame-to-frame motion is restrained: no squash-and-stretch, motion lines, camera movement, scenery, cast shadows, text, UI or cell dividers.",
+      "generate": "1536x768 each species sheet",
+      "ship": "1024x2048",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/creature-motion-atlas.png",
+      "_note": "Species columns share creature-sheet's stable content-id order and occupied-width scale; state rows are a fixed renderer UV contract. Simulation state selects approach, attack, dying and leaving; hp_permille selects the weakened hurt posture, and simulation tick plus enemy id selects paired frames so animation freezes with the simulation and never advances in lockstep. Focus, health fade, approach-specific position and scale, ground disturbance, tower impacts and all other live state remain renderer-owned. Missing motion art must retain creature-sheet and the procedural dying/leaving treatment as independent fallbacks."
+    },
+    {
+      "id": "waypoint-art",
+      "tier": 2,
+      "required": true,
+      "usedBy": "small painted route beats in the terrain and, optionally, the matching waypoint card; distance, takeability, labels, lighting and outcomes remain renderer-owned",
+      "sheet": {
+        "cells": [
+          "broken_funicular", "cloud_cistern", "fallen_carrier", "field_kitchen",
+          "lantern_post", "relay_orchard", "seep_pool", "signal_bridge",
+          "snare_thicket", "tool_cradle", "windfall_rig", "wire_tangle"
+        ],
+        "sourceSheets": [
+          ["broken_funicular", "cloud_cistern", "fallen_carrier", "field_kitchen"],
+          ["lantern_post", "relay_orchard", "seep_pool", "signal_bridge"],
+          ["snare_thicket", "tool_cradle", "windfall_rig", "wire_tangle"]
+        ],
+        "sourceLayout": "three 2x2 source sheets in exact row-major order, packed into one shipping atlas",
+        "layout": "4 columns by 3 rows of exact equal cells, row-major",
+        "cellShip": "256x192",
+        "atlas": "1024x576"
+      },
+      "palette": true,
+      "style_use": "sprite",
+      "subject": "Twelve separate side-on environmental route vignettes in exact row-major order: a toppled cable-rail funicular carriage beside its exposed geared drive drum, tangled in vines; an elevated cracked concrete rain cistern with electromechanical valves, clean drips and moss; another six-legged walking carrier fallen on its side, still and empty, its rack-steel hull and broken linkages being overgrown; an abandoned fold-out cassette-tech field kitchen under a patched awning, with enamel bowls and a cold steam hood; a dead utility relay post with a caged lamp and open access cabinet; a small grove growing through relay cabinets and ceramic insulators, with one intact actuator; a still clean seep pool beneath roots and old conduit; a collapsed maintenance bridge with one powered mechanical actuator holding a narrow shortcut; a tall obstructing thicket of thorn and old wire grown together; an open roadside service cradle and tool cabinet with drawers and hand tools; storm-felled bamboo caught in an old geared loading rig; and heavy old cable coiled through roots and low brass junction hardware. {tech} Every vignette must have a distinct silhouette readable at small scale. Art owns only material and silhouette: no reward objects arranged as icons, costs, quantities, labels, people, creatures, UI, live glow or outcome state.",
+      "composition": "Generate as THREE separate precise 2x2 source grids on perfectly FLAT uniform MAGENTA #FF00FF backgrounds, using sourceSheets in order. Every cell is equal and contains exactly one isolated orthographic side-on landscape vignette on a shared level baseline near the bottom. Generous clean gutters, no overlap, no cast ground shadow, nothing crossing a boundary or touching an image edge. Neutral soft overcast sprite lighting; all screens and lamps blank and dark.",
+      "generate": "1536x1024 each source sheet",
+      "ship": "1024x576",
+      "format": "png",
+      "alpha": true,
+      "out": "web/public/art/waypoint-atlas.png",
+      "_note": "The cells match every assets/data/waypoints definition and their alphabetical content-id order. The renderer maps by full waypoint id, never by content index. Missing art or an unknown id retains the procedural silhouette fallback; the snapshot owns approach distance, alongside state, interaction, labels, time-of-day tint and mechanical outcome. Taken/depleted variants are intentionally not fabricated from affordability: the current snapshot removes a waypoint immediately after either taking or passing it, so a truthful aftermath variant first requires a retained presentation state."
     },
     {
       "id": "item-icons",
@@ -327,14 +792,14 @@
         "cells": [
           "alloy", "bamboo", "charge_cells", "darts", "fiber",
           "hand_lamp", "meals", "mechanisms", "menders_kit", "poles",
-          "porters_harness", "produce", "rope", "scrap", "seed_bombs"
+          "porters_harness", "resin_feedstock", "rope", "scrap", "resonator_drums"
         ],
         "layout": "4x4 grid, 15 filled, last cell empty",
         "cellShip": "128x128"
       },
       "palette": true,
       "style_use": "sprite",
-      "subject": "A 4x4 grid of small painted still-life objects, each isolated in its own cell with clear space around it, painted flat-on with no perspective and no ground shadow: a scrap-metal alloy ingot; a bundle of cut green bamboo stalks; a stack of charge cells as chunky salvaged battery packs with faded printed labels; a handful of sharpened darts; a coil of plant fiber; a small lit hand lamp; a bowl of hot stew; an assortment of salvaged mechanisms — small gears, a stepper motor, a snapped-off circuit board with its components showing; a mender's kit as an open toolroll with a stripper and a spool of solder in it; a bundle of finished bamboo poles; a porter's harness of woven straps and chalky plastic buckles; a bunch of harvested leafy produce; a coil of twisted rope; a pile of salvaged scrap — bent perforated rack steel, a cracked yellowed plastic panel, a tangle of ribbon cable; a cluster of seed bombs like clay spheres packed with sprouting seeds. {tech}",
+      "subject": "A 4x4 grid of small painted still-life objects, each isolated in its own cell with clear space around it, painted flat-on with no perspective and no ground shadow: a machined scrap-alloy ingot with stamped channels; a bundle of cut green bamboo stalks tagged with a salvaged sensor clip; a stack of charge cells as chunky mechanical battery modules with cooling fins, blank faded labels and brass contacts; a handful of finned bamboo darts with machined collars; a coil of plant fiber on a geared winding spool; a compact caged hand lamp with a rotary switch; a bowl of hot stew beside a tiny warming plate; an assortment of salvaged mechanisms — small gears, a stepper motor, relays and a snapped-off circuit board with its components showing; a mender's kit as an open toolroll with a stripper, test probe and a spool of solder; a bundle of finished bamboo poles with metal coupling collars; a porter's harness of woven straps, sprung load braces and chalky plastic buckles; resin feedstock as amber sap-rich garden material sealed in a perforated instrument canister with an analog dial; a coil of twisted rope on a mechanical reel; a pile of salvaged scrap — bent perforated rack steel, a cracked yellowed plastic control panel, relays and ribbon cable; three RESONATOR DRUMS — compact tuned brass-and-verdigris mechanical cylinders with laminated fiber diaphragms, flywheel teeth, contact pins and one tiny amber timing lamp, clearly acoustic machinery with no seed, pod, sprout or explosive cues. {tech}",
       "composition": "4x4 grid on a FLAT MAGENTA #FF00FF background, 15 cells filled and the sixteenth left empty. Even spacing, nothing overlapping, nothing touching the image edges. Each object centred in its cell and readable at thumbnail size.",
       "generate": "1024x1024",
       "ship": "512x512",

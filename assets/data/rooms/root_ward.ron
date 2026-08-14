@@ -28,7 +28,11 @@ RoomDef(
     // offers it once the tower can make alloy, which is a fact about
     // the tower rather than about the player.
     unlocked_by: "room.sun_forge",
-    front_only: true,
+    // This one points inward/down rather than out of the leading edge.
+    // Its scarcity is the shaft column it must touch.
+    front_only: false,
+    max_floor: 1,
+    shaft_adjacent: true,
     width: 1,
     build_cost: [
         CostEntryDef(item: "item.poles", amount: 5),
@@ -53,5 +57,13 @@ RoomDef(
         // Short, because a burrower is not somewhere you can see it
         // coming from. This answers what is already at the legs.
         range_paces: 10,
+        // Twenty-five against a 75-tick reload: 0.33 a tick, matched to
+        // the mast and the array.
+        charge_per_shot: 25,
+        effect: RootWard,
+        // Interrupts a borer already working on a shaft and pins it
+        // below the hull before it can resume.
+        control_ticks: 120,
+        control_speed_pct: 0,
     ),
 )

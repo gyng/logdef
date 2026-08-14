@@ -1,0 +1,13 @@
+// A route-level shortcut into personal kit. It still asks for the
+// tower's contested construction stock, and walking past is free.
+#![enable(implicit_some)]
+WaypointDef(
+    id: "waypoint.lantern_post",
+    name: "Lantern Post",
+    said: "A service lamp hangs intact above an open relay cabinet. Rebrace the post and take it down?",
+    take: "Brace the post",
+    costs: [CostEntryDef(item: "item.poles", amount: 4)],
+    gives: [CostEntryDef(item: "item.hand_lamp", amount: 1)],
+    provocation: 10,
+    paces: -90,
+)

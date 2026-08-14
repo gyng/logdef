@@ -69,38 +69,27 @@ problem, it is a units problem.** Foot reach, stride length and scroll rate are 
 and if any two are chosen independently the third is wrong. `STRIDE_SLOTS` in `scene.ts` now
 derives the cadence from the other two so it cannot drift again.
 
-### Four legs, and the joint that would not go where it was told
+### Six legs, three bogies, and an alternating tripod
 
-The tower walked on two, which is a silhouette that reads as a *person* however it is drawn.
-It now walks on four in a wave gait — each a quarter cycle behind the one in front, so the
-ripple runs down the body and two feet are always planted.
+The tower walked on two, which read as a person, then four evenly spaced legs, which read as
+stilts in strict side view. It now walks on six: three longitudinal bogies, each carrying a
+near-plane and rear-plane limb. The two depth lanes bow to opposite sides of each bogie and
+the rear lane is slightly higher, slimmer and darker, so all six remain legible without
+turning the underside into a pipe rack.
 
 | | before | after |
 |---|---|---|
-| `LEGS` | 2, half a cycle apart | **4**, quarter-cycle wave |
-| `FOOT_DROP` | 0.62 of the foreground | **0.78** — a quarter longer |
+| `LEGS` | 2, then 4 | **6**, three near/rear bogies |
+| Foot depth | one shared plane | **rear 0.78 / near 1.52** — lower third of near limbs leaves frame |
 | `STRIDE_SLOTS` | 1.8 | **2.6** — same units equation, longer legs, fewer steps |
-| Splay | none; feet hung under their hips | **±2.2 slots**, outer pair widest |
-| Leg thickness | `slotW * 0.24` | **`slotW * 0.17`** — four thick legs are a pipe rack |
+| Splay | none; feet hung under their hips | **three braced stations**, outer bogies widest |
+| Leg thickness | `slotW * 0.24` | **near/rear painted lanes at 0.72/0.62 slot cells** |
 
-**The inverted V took three tries, and the obstacle was the hull rather than the maths.**
-
-Exact two-bone IK cannot produce it. A 2D chain's elbow has exactly two solutions, both
-perpendicular to the hip-foot chord — and when a foot is more or less below its hip that chord
-is vertical, so both solutions are *sideways*. The joint came out below the hip every time,
-which is a knee, which is the one thing this must not look like.
-
-Placing the joint explicitly above the hip failed differently: the hip sat at the hull's
-underside, so "above" was *behind the hull*, and the leg rendered as two collinear sticks.
-
-**The fix was to drop the hip out of the hull**, exactly as the cadence fix was in `layout.ts`
-rather than in the legs. With the anchor in open air at `groundY + reach * 0.14` the joint has
-somewhere to be, and it rides at `hipY - span * 0.16` — scaled off the chord, so it climbs and
-falls with the leg it belongs to and the two bones stay in proportion through a stride. That
-proportionality is what the exact IK was protecting, and it is the only part of it worth
-keeping.
-
-It costs a visible gap between hull and leg, which the base beam covers.
+The former above-hip joint produced a short decorative hook followed by a long vertical stalk.
+The current joint sits 42% down the hip-foot chord and is pushed laterally by 18% of its span,
+forming a broad mechanical Z with similarly weighted links. Paired limbs bend in opposite
+directions. Gait phases are `[0, .5, .5, 0, 0, .5]`, so one tripod carries the tower while the
+other advances. The base beam still covers the suspension links between hull and hip.
 
 ### Smoke and water — done
 

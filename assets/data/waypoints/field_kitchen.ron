@@ -1,0 +1,14 @@
+// A small conversion for a tower whose mill and canteen are competing
+// for the same bamboo. Meals are consumed continuously, so this gift
+// has a natural sink rather than becoming permanent shelf clutter.
+#![enable(implicit_some)]
+WaypointDef(
+    id: "waypoint.field_kitchen",
+    name: "Field Kitchen",
+    said: "A folding cookstation stands under a patched awning. Trade fresh stalks for what is still warm?",
+    take: "Share the stove",
+    costs: [CostEntryDef(item: "item.bamboo", amount: 3)],
+    gives: [CostEntryDef(item: "item.meals", amount: 2)],
+    provocation: -5,
+    paces: -70,
+)

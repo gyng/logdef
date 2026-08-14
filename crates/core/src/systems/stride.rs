@@ -33,11 +33,21 @@ fn tend_the_offer(state: &mut GameState, content: &Content) {
                 .unwrap_or(0)
                 > 0 =>
         {
-            if state.recruit_offer.is_none() {
-                state.recruit_offer = state.roll_trait(content);
+            let at = region.get();
+            if state.recruit_offers.get(at).is_some_and(Option::is_none) {
+                let first = state.roll_trait(content);
+                let second = state.roll_trait(content);
+                if let (Some(first), Some(mut second)) = (first, second) {
+                    if second == first && content.traits.len() > 1 {
+                        second = crate::ids::TraitIdx(
+                            ((usize::from(second.0) + 1) % content.traits.len()) as u16,
+                        );
+                    }
+                    state.recruit_offers[at] = Some([first, second]);
+                }
             }
         }
-        _ => state.recruit_offer = None,
+        _ => {}
     }
 }
 
@@ -49,8 +59,12 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         .map(|band| band.kind);
 
     let from = state.world.distance;
-    state.strode = power::pay_for_stride(state, content);
-    if state.strode {
+    // **Per-mille of a full stride, not a yes or no** (`SYSTEMS.md`
+    // §6.39). A tower one joule short walks slower rather than stopping
+    // dead, which is the same multiplication `drag_pct` already does for
+    // a mire-hulk hanging off a leg.
+    let power_pct = power::stride_pct(state, content);
+    if power_pct > 0 {
         // **Slowed by whatever is holding on.** A mire-hulk takes a leg
         // and the tower walks at a fraction of its pace while it does —
         // which means it also sheds the hulk later, because `cling_ticks`
@@ -63,7 +77,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
         // the same to walk and gets less for it, which is the right way
         // round. Being slowed should cost you the ground, not the power.
         let drag = super::siege::drag_pct(state, content);
-        let step = paces_from_fx(stride_per_tick(content)) * drag / 100;
+        let step = paces_from_fx(stride_per_tick(content)) * drag / 100 * power_pct / 1000;
         // Never step over a block. Landing exactly on it is what makes
         // `is_blocked` true next tick, which is how the halt begins.
         state.world.distance = match state.world.blocked_at() {
@@ -82,6 +96,10 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     // (`SYSTEMS.md` §3.6) — see `GameState::paces_last` for why intake
     // reads it a tick late instead of stride running earlier.
     state.paces_last = state.world.distance - from;
+    // `strode` means motion, not powered intent. In particular, a tower
+    // parked at an unanswered fork must not berth, shed a clinging creature,
+    // or push against a restraint merely because the leg circuit is live.
+    state.strode = state.paces_last > 0;
 
     // Terrain keeps streaming whether or not the legs are running: the
     // horizon has to already exist when the tower starts moving again.

@@ -138,6 +138,14 @@ pub struct IoEntryDef {
 pub struct RecipeDef {
     /// Ticks of uninterrupted work per craft.
     pub craft_ticks: u32,
+    /// Optional tower-wide target for the first output. Production
+    /// pauses while that many units already exist anywhere in rooms or
+    /// crew hands, then resumes when construction or another consumer
+    /// draws the stock down. This is an authored kanban, not decay or
+    /// upkeep: finite construction materials need a stopping rule that
+    /// does not ask the player to babysit a power switch.
+    #[serde(default)]
+    pub output_stock_target: Option<i64>,
     /// At most two, by the legibility rule in `v2-plan.md` §6.1.
     pub inputs: Vec<IoEntryDef>,
     pub outputs: Vec<IoEntryDef>,
@@ -202,6 +210,9 @@ pub struct BurnerDef {
     pub fuel_per_burn: i64,
     pub charge_per_burn: i64,
     pub burn_ticks: u32,
+    /// Provocation retained when this burner has enough exhaust, in percent.
+    #[serde(default = "hundred")]
+    pub vented_provocation_pct: i64,
 }
 
 /// A cell bank. Storage is infrastructure: capacity is something you
@@ -210,6 +221,15 @@ pub struct BurnerDef {
 #[serde(deny_unknown_fields)]
 pub struct BankDef {
     pub capacity: i64,
+    /// How fast this bank can give charge back, per tick.
+    ///
+    /// **Capacity answers *how long*; this answers *how hard***
+    /// (`SYSTEMS.md` §6.36). Before the rail existed a cell bank bought
+    /// only endurance, and a tower with one enormous bank could spend at
+    /// any rate it liked. Now a second bank widens the pipe as well as
+    /// deepening the reservoir, which is what makes "build another bank"
+    /// an answer to a brown-out that a full bank did not already give.
+    pub discharge_per_tick: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -252,6 +272,9 @@ pub struct RoomDef {
     /// Charge drawn per tick while this room is working.
     #[serde(default)]
     pub power_draw: i64,
+    /// Smoke units this room must send up the shared exhaust while it works.
+    #[serde(default)]
+    pub exhaust_draw: i64,
     #[serde(default)]
     pub recipe: Option<RecipeDef>,
     #[serde(default)]
@@ -283,6 +306,10 @@ pub struct RoomDef {
     /// somewhere specific.
     #[serde(default)]
     pub front_only: bool,
+    /// Must touch a shaft column on this floor. Used by machinery whose
+    /// whole purpose is acting on the tower's vertical circulation.
+    #[serde(default)]
+    pub shaft_adjacent: bool,
     /// Damage this room deals to anything clinging within its reach,
     /// per tick of work.
     ///
@@ -356,6 +383,11 @@ pub enum ShaftKind {
     /// has claimed every shelf can be thrown away, visibly, by a piece
     /// of infrastructure the player chose to build.
     Chute,
+    /// A dedicated electrical riser. It carries no crew or stock; its
+    /// whole job is to move charge between the automatic floor buses.
+    Busbar,
+    /// A passive flue. It carries no crew or stock, only smoke.
+    VentStack,
 }
 
 /// A kind of vertical transport, as authored. Making these content
@@ -370,6 +402,11 @@ pub struct ShaftDef {
     pub kind: ShaftKind,
     #[serde(default)]
     pub build_cost: Vec<CostEntryDef>,
+    /// Material paid for each boundary between two served floors.
+    /// Kept separate from installation so a short shaft is genuinely
+    /// cheaper and extending one floor never repays the machinery.
+    #[serde(default)]
+    pub span_cost: Vec<CostEntryDef>,
     /// Floors spanned, inclusive of both ends. `max_span` of 0 means
     /// "as tall as the tower".
     pub min_span: u8,
@@ -398,6 +435,13 @@ pub struct ShaftDef {
     /// Items a dumbwaiter moves per trip.
     #[serde(default)]
     pub batch: i64,
+    /// Charge per tick this column can carry between adjacent floors.
+    /// Zero means the shaft is not part of the electrical network.
+    #[serde(default)]
+    pub power_capacity: i64,
+    /// Smoke units this intact stack can carry at once.
+    #[serde(default)]
+    pub exhaust_capacity: i64,
 }
 
 /// Something true about one person, drawn when they come aboard.
@@ -450,13 +494,6 @@ pub struct TraitDef {
     /// for a trait to be about.
     #[serde(default = "hundred")]
     pub climb_pct: i64,
-    /// Scales `stress_ticks`: how long they are blocked before the
-    /// cross-section tints them red. Presentation only in effect, but a
-    /// real one — `wait_ticks` is the game's whole bottleneck
-    /// instrument (`DECISIONS.md` §8), and somebody who shows it sooner
-    /// is somebody whose queue you notice.
-    #[serde(default = "hundred")]
-    pub stress_pct: i64,
     /// Hit points put back per repair shift, in percent. The same field
     /// a mender's kit carries, so a kit and a knack stack.
     #[serde(default = "hundred")]
@@ -515,7 +552,6 @@ impl TraitDef {
             || self.rested_max_pct != 100
             || self.walk_pct != 100
             || self.climb_pct != 100
-            || self.stress_pct != 100
             || self.mend_pct != 100
             || self.carry_bonus != 0
             || self.sees_in_the_dark
@@ -570,13 +606,11 @@ pub struct EnemyDef {
     /// Whether ordinary provocation-driven waves may draw this
     /// creature. Defaults to yes, because opting out is the exception.
     ///
-    /// A feral warden is not summoned by attention — it is summoned by
-    /// berthing at the ruin it guards (`SYSTEMS.md` §3.4) — so it says
-    /// so here rather than being fenced off with an out-of-range
-    /// `min_provocation`, which would be a number pretending to be a
-    /// rule.
-    #[serde(default = "wave_eligible_default")]
-    pub wave_eligible: bool,
+    /// What can bring this creature into the run. A resident is not an
+    /// unusually rare ordinary wave: its place and one-time resolution
+    /// are part of the encounter contract.
+    #[serde(default)]
+    pub encounter: EnemyEncounter,
     /// Earliest region this creature appears in, by `order`.
     ///
     /// A second gate alongside `min_provocation`, and a different kind
@@ -618,8 +652,12 @@ pub struct EnemyDef {
     pub drag_pct: i64,
 }
 
-const fn wave_eligible_default() -> bool {
-    true
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EnemyEncounter {
+    #[default]
+    Ordinary,
+    RuinResident,
+    LandmarkResident,
 }
 
 /// An emplacement: dart batteries and the like.
@@ -653,6 +691,50 @@ pub struct DefenceDef {
     pub reload_ticks: u32,
     /// How far out it can reach, in whole paces.
     pub range_paces: i64,
+    /// Charge a shot costs, drawn on `PowerUse::Guns` (`SYSTEMS.md`
+    /// §6.36).
+    ///
+    /// **Nothing used to make a wave cost charge**, which is half of why
+    /// `examples/watch.rs` measured the priority ranking as identical to
+    /// the digit: the moment the player was most attentive was the
+    /// moment the charge system was most idle. `power_draw` was read in
+    /// exactly one place — `production.rs` — so it belonged to crafting
+    /// rooms and no emplacement had one.
+    ///
+    /// A refused shot **holds fire** rather than losing its dart or its
+    /// reload. Nothing this game hands the player ever vanishes, and
+    /// ammunition burned into a brown-out would be exactly that.
+    #[serde(default)]
+    pub charge_per_shot: i64,
+    /// What happens when the shot lands. Damage remains a shared part
+    /// of every emplacement; this is the qualitative role that keeps
+    /// the weapon set from becoming a ladder of damage numbers.
+    #[serde(default)]
+    pub effect: DefenceEffect,
+    /// Duration of control applied by Tangle, Resonance and RootWard.
+    #[serde(default)]
+    pub control_ticks: u32,
+    /// Remaining approach speed in percent while controlled. Zero is a
+    /// complete, temporary anchor.
+    #[serde(default = "full_pct")]
+    pub control_speed_pct: i64,
+    /// Radius around the primary target hit by a Resonance pulse.
+    #[serde(default)]
+    pub pulse_radius_paces: i64,
+}
+
+const fn full_pct() -> i64 {
+    100
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefenceEffect {
+    #[default]
+    Direct,
+    Tangle,
+    Resonance,
+    Repel,
+    RootWard,
 }
 
 /// A named stretch of the day. The simulation only uses the index; the
@@ -722,6 +804,45 @@ pub struct TerrainWeight {
     pub weight: i64,
 }
 
+/// Relative likelihood of each way a wave approaches.
+///
+/// This is authored on regions and branches rather than inferred from
+/// terrain names. A drowned street may visually contain both trees and
+/// broken ground; ecology is the gameplay promise the route card makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApproachWeights {
+    pub ground: i64,
+    pub canopy: i64,
+    pub burrow: i64,
+}
+
+impl Default for ApproachWeights {
+    fn default() -> Self {
+        Self {
+            ground: 1,
+            canopy: 1,
+            burrow: 1,
+        }
+    }
+}
+
+impl ApproachWeights {
+    #[must_use]
+    pub const fn for_approach(self, approach: Approach) -> i64 {
+        match approach {
+            Approach::Ground => self.ground,
+            Approach::Canopy => self.canopy,
+            Approach::Burrow => self.burrow,
+        }
+    }
+
+    #[must_use]
+    pub const fn as_array(self) -> [i64; 3] {
+        [self.ground, self.canopy, self.burrow]
+    }
+}
+
 /// One of the archetypes a route fork may offer.
 ///
 /// **A branch is a palette override, not a detour** (`SYSTEMS.md` §3.3):
@@ -738,6 +859,9 @@ pub struct BranchDef {
     pub palette: Vec<TerrainWeight>,
     /// Multiplier on the owning region's own `threat_pct`.
     pub threat_pct: i64,
+    /// Which specialists this stretch tends to bring.
+    #[serde(default)]
+    pub approaches: ApproachWeights,
 }
 
 /// One posted exchange at an enclave. Finite `stock`, so a waystation is
@@ -818,6 +942,19 @@ pub struct WaypointDef {
     /// stopping to do something is the walking you did not do — which
     /// is the currency the whole journey layer is denominated in.
     pub paces: i64,
+    /// A one-per-run landmark fixed inside this region rather than
+    /// scattered with ordinary route beats.
+    #[serde(default)]
+    pub landmark_region: Option<String>,
+    /// Position through the owning region, in permille. Zero for an
+    /// ordinary waypoint; landmark content must author 1..=999.
+    #[serde(default)]
+    pub landmark_permille: i64,
+    /// Creature roused when this landmark is taken. Ignoring the
+    /// waypoint remains the free detour; taking it starts a crisis that
+    /// the tower may outrun or stand and answer.
+    #[serde(default)]
+    pub resident: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -856,6 +993,9 @@ pub struct EnemyRuntime {
 pub struct WaypointRuntime {
     pub costs: Vec<(ItemIdx, i64)>,
     pub gives: Vec<(ItemIdx, i64)>,
+    pub landmark_region: Option<RegionIdx>,
+    pub landmark_permille: i64,
+    pub resident: Option<EnemyIdx>,
 }
 
 /// A stretch of the journey with one character.
@@ -890,6 +1030,9 @@ pub struct RegionDef {
     pub palette: Vec<TerrainWeight>,
     /// Multiplier on a wave's provocation-scaled threat budget.
     pub threat_pct: i64,
+    /// Baseline specialist mix outside a fork branch.
+    #[serde(default)]
+    pub approaches: ApproachWeights,
     /// Distance between route forks. 0 for a region with no forks.
     pub fork_interval_paces: i64,
     /// The archetypes this region's forks draw their two options from.
@@ -1050,6 +1193,44 @@ pub struct PowerBalance {
     pub stride_charge_per_100_ticks: i64,
     /// Lamps, per floor, per 100 ticks, after dark.
     pub light_charge_per_100_ticks_per_floor: i64,
+    /// **The floor under the *pipe*, and it exists for exactly the same
+    /// reason `heartseed_charge_per_100_ticks` does** (`SYSTEMS.md`
+    /// §6.36).
+    ///
+    /// The rail is summed from burners and cell banks, so a tower whose
+    /// burners are out of fuel and whose banks are wrecked supplies
+    /// nothing at all — and would then be unable to spend the trickle it
+    /// is still accruing. That is the M6 deadlock rebuilt out of new
+    /// parts: an income that requires an output of that income.
+    /// `tests/power.rs::a_tower_that_runs_completely_dry_can_still_crawl_out`
+    /// is the property, and this constant is what keeps it true.
+    pub heartseed_rail_per_tick: i64,
+    /// How many ticks of supply the rail's bucket may hold.
+    ///
+    /// **Not a tuning dial so much as the unit fix.** `buy_block` pays
+    /// for a hundred ticks of striding on one tick, so a rail with no
+    /// burst allowance would refuse a 20-charge lump against an 8/tick
+    /// supply and make walking impossible for a tower running a surplus.
+    /// Big enough to swallow the lumpiest purchase, small enough that
+    /// sustained over-demand still sheds within a second or two.
+    pub rail_burst_ticks: i64,
+    /// The smallest the burst bucket is ever allowed to be
+    /// (`SYSTEMS.md` §6.38).
+    ///
+    /// **A requirement rather than a dial, and leaving it implicit is
+    /// what forced the bucket to be too big for everybody.** `buy_block`
+    /// asks for a hundred ticks of striding in a single lump, so a
+    /// bucket that cannot hold the largest lump the game can ask for
+    /// makes that purchase *arithmetically unpayable* — the tower simply
+    /// stops walking. With only `rail_burst_ticks` to work with, the
+    /// only way to cover the opening tower's 2-a-tick rail was a
+    /// multiplier so generous that a developed tower carried four
+    /// hundred charge of slack and no spike could ever bite it.
+    ///
+    /// Stating the floor separately lets the multiplier be sized for the
+    /// towers that have supply, while low-rail towers keep exactly the
+    /// headroom the block purchases need.
+    pub rail_burst_floor: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1080,6 +1261,10 @@ pub struct WorldBalance {
     pub band_max_paces: i64,
     /// Terrain kept generated ahead of the tower.
     pub stream_ahead_paces: i64,
+    /// How soon a unique territorial landmark begins foreshadowing.
+    /// This may exceed the ordinary scenery stream: the landmark is a
+    /// strategic warning, not another prop popping onto the horizon.
+    pub landmark_warning_paces: i64,
     /// Terrain kept behind the tower before it is pruned.
     pub stream_behind_paces: i64,
 }
@@ -1117,6 +1302,10 @@ pub struct TowerBalance {
     #[serde(default)]
     pub front_slots: u8,
     pub stairs_capacity: u8,
+    /// Fail-forward hand gathering when every bamboo arm is wrecked.
+    /// One stalk per this many ticks, and only while the tower contains
+    /// no bamboo at all. Zero is invalid in a loaded content pack.
+    pub emergency_bamboo_ticks: u32,
     /// Items placed on the starting storeroom's shelves so the first
     /// floor is buildable before the mill has ever run.
     pub starting_stock: Vec<CostEntryDef>,
@@ -1155,6 +1344,12 @@ pub struct CrewBalance {
     pub climb_ticks_per_item: u32,
     pub load_ticks: u32,
     pub unload_ticks: u32,
+    /// Ticks removed from loading and unloading when an outbox is
+    /// immediately beside the destination inbox on the same floor.
+    /// The walk still happens; this is a hand-across-the-gap benefit,
+    /// not an automatic conveyor.
+    #[serde(default)]
+    pub adjacent_handoff_ticks: u32,
     /// Items a crew member carries in one trip.
     pub carry_capacity: i64,
     /// Ticks blocked before the cross-section tints a crew member red.
@@ -1266,6 +1461,7 @@ pub struct RoomRuntime {
     pub recipe_inputs: Vec<(ItemIdx, i64, i64)>,
     pub recipe_outputs: Vec<(ItemIdx, i64, i64)>,
     pub craft_ticks: u32,
+    pub output_stock_target: Option<(ItemIdx, i64)>,
     pub intake_item: Option<ItemIdx>,
     /// Where the room draws from, verbatim from the definition. `None`
     /// for a room that harvests nothing.
@@ -1341,6 +1537,7 @@ pub struct OfferRuntime {
 #[derive(Debug, Clone)]
 pub struct ShaftRuntime {
     pub build_cost: Vec<(ItemIdx, i64)>,
+    pub span_cost: Vec<(ItemIdx, i64)>,
     /// What one more car costs, resolved.
     pub car_cost: Vec<(ItemIdx, i64)>,
 }
@@ -1829,22 +2026,29 @@ impl Content {
                 .map(|c| (lookup(&c.item, "build_cost"), c.amount))
                 .collect();
 
-            let (recipe_inputs, recipe_outputs, craft_ticks) = match &room.recipe {
-                Some(recipe) => (
-                    recipe
-                        .inputs
-                        .iter()
-                        .map(|io| (lookup(&io.item, "recipe input"), io.amount, io.buffer_max))
-                        .collect(),
-                    recipe
-                        .outputs
-                        .iter()
-                        .map(|io| (lookup(&io.item, "recipe output"), io.amount, io.buffer_max))
-                        .collect(),
-                    recipe.craft_ticks,
-                ),
-                None => (Vec::new(), Vec::new(), 0),
-            };
+            let (recipe_inputs, recipe_outputs, craft_ticks, output_stock_target) =
+                match &room.recipe {
+                    Some(recipe) => (
+                        recipe
+                            .inputs
+                            .iter()
+                            .map(|io| (lookup(&io.item, "recipe input"), io.amount, io.buffer_max))
+                            .collect(),
+                        recipe
+                            .outputs
+                            .iter()
+                            .map(|io| (lookup(&io.item, "recipe output"), io.amount, io.buffer_max))
+                            .collect(),
+                        recipe.craft_ticks,
+                        recipe.output_stock_target.and_then(|target| {
+                            recipe
+                                .outputs
+                                .first()
+                                .map(|output| (lookup(&output.item, "recipe stock target"), target))
+                        }),
+                    ),
+                    None => (Vec::new(), Vec::new(), 0, None),
+                };
 
             let (intake_item, intake_source, intake_buffer_max) = match &room.intake {
                 Some(intake) => (
@@ -1878,6 +2082,7 @@ impl Content {
                 recipe_inputs,
                 recipe_outputs,
                 craft_ticks,
+                output_stock_target,
                 intake_item,
                 intake_source,
                 intake_buffer_max,
@@ -1913,9 +2118,11 @@ impl Content {
                     .collect()
             };
             let build_cost = resolve(&shaft.build_cost, "build_cost");
+            let span_cost = resolve(&shaft.span_cost, "span_cost");
             let car_cost = resolve(&shaft.car_cost, "car_cost");
             shaft_runtime.push(ShaftRuntime {
                 build_cost,
+                span_cost,
                 car_cost,
             });
         }
@@ -1987,6 +2194,25 @@ impl Content {
             waypoint_runtime.push(WaypointRuntime {
                 costs: intern(&waypoint.costs, errors),
                 gives: intern(&waypoint.gives, errors),
+                landmark_region: waypoint.landmark_region.as_deref().and_then(|region| {
+                    self.region_idx(region).or_else(|| {
+                        errors.push(LoadError {
+                            path: format!("waypoints/{}", waypoint.id),
+                            message: format!("unknown landmark region {region}"),
+                        });
+                        None
+                    })
+                }),
+                landmark_permille: waypoint.landmark_permille,
+                resident: waypoint.resident.as_deref().and_then(|enemy| {
+                    self.enemy_idx(enemy).or_else(|| {
+                        errors.push(LoadError {
+                            path: format!("waypoints/{}", waypoint.id),
+                            message: format!("unknown resident {enemy}"),
+                        });
+                        None
+                    })
+                }),
             });
         }
         self.waypoint_runtime = waypoint_runtime;
@@ -2161,6 +2387,12 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
                 errors.push(LoadError {
                     path: path.clone(),
                     message: "recipe produces nothing".into(),
+                });
+            }
+            if recipe.output_stock_target.is_some_and(|target| target <= 0) {
+                errors.push(LoadError {
+                    path: path.clone(),
+                    message: "output_stock_target must be positive".into(),
                 });
             }
             for io in recipe.inputs.iter().chain(&recipe.outputs) {
@@ -2358,6 +2590,12 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
             message: "starting_floors exceeds max_floors".into(),
         });
     }
+    if content.balance.tower.emergency_bamboo_ticks == 0 {
+        errors.push(LoadError {
+            path: "balance.ron".into(),
+            message: "emergency_bamboo_ticks must be positive".into(),
+        });
+    }
     // A floor range that cannot contain a floor is a room nobody can
     // ever build, and it would present as a build card that refuses
     // every slot rather than as a broken pack. `AGENTS.md` §IV: an
@@ -2403,6 +2641,14 @@ fn validate(content: &Content, errors: &mut Vec<LoadError>) {
             message: "crew movement rates must be positive".into(),
         });
     }
+    if content.balance.crew.adjacent_handoff_ticks > content.balance.crew.load_ticks
+        || content.balance.crew.adjacent_handoff_ticks > content.balance.crew.unload_ticks
+    {
+        errors.push(LoadError {
+            path: "balance.ron".into(),
+            message: "adjacent_handoff_ticks exceeds handling time".into(),
+        });
+    }
     if content.balance.crew.crew_cap < content.balance.crew.starting_crew {
         errors.push(LoadError {
             path: "balance.ron".into(),
@@ -2440,34 +2686,82 @@ pub(crate) fn validate_buffers_for_test(content: &Content, errors: &mut Vec<Load
 }
 
 fn validate_buffers(content: &Content, errors: &mut Vec<LoadError>) {
+    fn complain(errors: &mut Vec<LoadError>, room: &RoomDef, what: &str, item: &str) {
+        errors.push(LoadError {
+            path: format!("rooms/{}", room.id),
+            message: format!("{what} buffer for {item} is zero, so nothing can ever go in it"),
+        });
+    }
+
     for room in &content.rooms {
-        let mut complain = |what: &str, item: &str| {
+        if room.exhaust_draw < 0 {
             errors.push(LoadError {
                 path: format!("rooms/{}", room.id),
-                message: format!("{what} buffer for {item} is zero, so nothing can ever go in it"),
+                message: "exhaust_draw cannot be negative".into(),
             });
-        };
+        }
+        if let Some(burner) = room.burner.as_ref()
+            && !(0..=100).contains(&burner.vented_provocation_pct)
+        {
+            errors.push(LoadError {
+                path: format!("rooms/{}", room.id),
+                message: "vented_provocation_pct must be between 0 and 100".into(),
+            });
+        }
         if let Some(recipe) = room.recipe.as_ref() {
             for entry in &recipe.inputs {
                 if entry.buffer_max <= 0 {
-                    complain("input", &entry.item);
+                    complain(errors, room, "input", &entry.item);
                 }
             }
             for entry in &recipe.outputs {
                 if entry.buffer_max <= 0 {
-                    complain("output", &entry.item);
+                    complain(errors, room, "output", &entry.item);
                 }
             }
         }
         if let Some(intake) = room.intake.as_ref()
             && intake.buffer_max <= 0
         {
-            complain("intake", &intake.item);
+            complain(errors, room, "intake", &intake.item);
         }
         if let Some(defence) = room.defence.as_ref()
             && defence.buffer_max <= 0
         {
-            complain("ammo", &defence.ammo);
+            complain(errors, room, "ammo", &defence.ammo);
+        }
+        if let Some(defence) = room.defence.as_ref() {
+            let path = format!("rooms/{}", room.id);
+            if !(0..=100).contains(&defence.control_speed_pct) {
+                errors.push(LoadError {
+                    path: path.clone(),
+                    message: "control_speed_pct must be between 0 and 100".into(),
+                });
+            }
+            match defence.effect {
+                DefenceEffect::Direct | DefenceEffect::Repel => {}
+                DefenceEffect::Tangle | DefenceEffect::RootWard if defence.control_ticks == 0 => {
+                    errors.push(LoadError {
+                        path: path.clone(),
+                        message: "a control effect needs positive control_ticks".into(),
+                    });
+                }
+                DefenceEffect::Resonance
+                    if defence.control_ticks == 0 || defence.pulse_radius_paces <= 0 =>
+                {
+                    errors.push(LoadError {
+                        path: path.clone(),
+                        message: "resonance needs positive control_ticks and pulse radius".into(),
+                    });
+                }
+                _ => {}
+            }
+            if defence.effect != DefenceEffect::Resonance && defence.pulse_radius_paces != 0 {
+                errors.push(LoadError {
+                    path,
+                    message: "only resonance may define a pulse radius".into(),
+                });
+            }
         }
         // A burner's rack is derived rather than authored — six burns
         // of runway — so the way to get a zero here is a zero
@@ -2476,7 +2770,7 @@ fn validate_buffers(content: &Content, errors: &mut Vec<LoadError>) {
         if let Some(burner) = room.burner.as_ref()
             && burner.fuel_per_burn <= 0
         {
-            complain("fuel", &burner.fuel);
+            complain(errors, room, "fuel", &burner.fuel);
         }
     }
 }
@@ -2508,6 +2802,56 @@ fn validate_journey(content: &Content, errors: &mut Vec<LoadError>) {
             message: "pack defines no regions; a run has nowhere to walk".into(),
         });
         return;
+    }
+
+    for waypoint in &content.waypoints {
+        let path = format!("waypoints/{}", waypoint.id);
+        if waypoint.landmark_region.is_some() != waypoint.resident.is_some() {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "a resident landmark needs both landmark_region and resident".into(),
+            });
+        }
+        if waypoint.landmark_region.is_some() {
+            if !(1..=999).contains(&waypoint.landmark_permille) {
+                errors.push(LoadError {
+                    path: path.clone(),
+                    message: "landmark_permille must be between 1 and 999".into(),
+                });
+            }
+        } else if waypoint.landmark_permille != 0 {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "an ordinary waypoint cannot set landmark_permille".into(),
+            });
+        }
+        if let Some(resident) = waypoint
+            .resident
+            .as_deref()
+            .and_then(|id| content.enemy_idx(id))
+            && content.enemy(resident).encounter != EnemyEncounter::LandmarkResident
+        {
+            errors.push(LoadError {
+                path,
+                message: "a waypoint resident must use LandmarkResident encounter kind".into(),
+            });
+        }
+    }
+    for enemy in &content.enemies {
+        if enemy.encounter != EnemyEncounter::LandmarkResident {
+            continue;
+        }
+        let owners = content
+            .waypoints
+            .iter()
+            .filter(|waypoint| waypoint.resident.as_deref() == Some(enemy.id.as_str()))
+            .count();
+        if owners != 1 {
+            errors.push(LoadError {
+                path: format!("enemies/{}", enemy.id),
+                message: format!("a landmark resident needs exactly one landmark, found {owners}"),
+            });
+        }
     }
 
     // The journey is a sequence, and `RegionIdx` claims to be a
@@ -2562,6 +2906,7 @@ fn validate_journey(content: &Content, errors: &mut Vec<LoadError>) {
                 message: "threat_pct must be positive".into(),
             });
         }
+        validate_approaches(&path, region.approaches, errors);
         if region.fork_interval_paces < 0 {
             errors.push(LoadError {
                 path: path.clone(),
@@ -2612,6 +2957,7 @@ fn validate_journey(content: &Content, errors: &mut Vec<LoadError>) {
                     message: "threat_pct must be positive".into(),
                 });
             }
+            validate_approaches(&branch.id, branch.approaches, errors);
             validate_palette(&branch.id, &content.branch_rt(idx).palette, errors);
         }
 
@@ -2673,6 +3019,22 @@ fn validate_journey(content: &Content, errors: &mut Vec<LoadError>) {
     }
 }
 
+fn validate_approaches(owner: &str, weights: ApproachWeights, errors: &mut Vec<LoadError>) {
+    let values = weights.as_array();
+    if values.iter().any(|weight| *weight < 0) {
+        errors.push(LoadError {
+            path: owner.into(),
+            message: "approach weights cannot be negative".into(),
+        });
+    }
+    if values.iter().all(|weight| *weight == 0) {
+        errors.push(LoadError {
+            path: owner.into(),
+            message: "at least one approach weight must be positive".into(),
+        });
+    }
+}
+
 /// A palette needs at least three kinds with positive weight.
 ///
 /// `pick_band_kind` never repeats the previous band's kind, so with two
@@ -2722,7 +3084,8 @@ fn validate_shafts(content: &Content, errors: &mut Vec<LoadError>) {
 
     for shaft in &content.shafts {
         let path = shaft.id.clone();
-        if shaft.ticks_per_floor == 0 {
+        let transports = matches!(shaft.kind, ShaftKind::Stairs | ShaftKind::Elevator);
+        if transports && shaft.ticks_per_floor == 0 {
             errors.push(LoadError {
                 path: path.clone(),
                 message: "ticks_per_floor must be positive".into(),
@@ -2740,10 +3103,21 @@ fn validate_shafts(content: &Content, errors: &mut Vec<LoadError>) {
                 message: "max_span is below min_span".into(),
             });
         }
-        if shaft.capacity == 0 {
+        if transports && shaft.capacity == 0 {
             errors.push(LoadError {
                 path: path.clone(),
                 message: "capacity must be positive".into(),
+            });
+        }
+        if shaft
+            .build_cost
+            .iter()
+            .chain(&shaft.span_cost)
+            .any(|cost| cost.amount <= 0)
+        {
+            errors.push(LoadError {
+                path: path.clone(),
+                message: "shaft build and span costs must be positive".into(),
             });
         }
         match shaft.kind {
@@ -2757,6 +3131,14 @@ fn validate_shafts(content: &Content, errors: &mut Vec<LoadError>) {
             ShaftKind::Elevator if shaft.batch <= 0 => errors.push(LoadError {
                 path,
                 message: "a lift needs a batch size: it moves stock when nobody is riding".into(),
+            }),
+            ShaftKind::VentStack if shaft.exhaust_capacity <= 0 => errors.push(LoadError {
+                path,
+                message: "a vent stack needs positive exhaust capacity".into(),
+            }),
+            ShaftKind::Busbar if shaft.power_capacity <= 0 => errors.push(LoadError {
+                path,
+                message: "a busbar needs positive power capacity".into(),
             }),
             _ => {}
         }

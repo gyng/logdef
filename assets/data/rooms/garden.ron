@@ -1,4 +1,4 @@
-// Grows produce in the light, and keeps growing while the tower stands
+// Grows resin feedstock in the light, and keeps growing while the tower stands
 // still.
 //
 // **The first intake that does not measure ground covered**, and that is
@@ -18,17 +18,15 @@ RoomDef(
     id: "room.garden",
     name: "Garden",
     short: "GRD",
-    // **Two people, and it is the first thing the game teaches.**
-    //
-    // Every other room merely *benefits* from being staffed — M6's
-    // `manned_work_pct` is a 150% bonus for a posted crew member. A
-    // farm does not run at all without two, which makes the opening's
-    // first decision a decision about *people* rather than about
-    // floor space: three crew, and two of them are now farmers.
-    //
-    // It is also the honest shape of the fiction. A cutter arm is a
-    // machine bolted to the hull; a garden is somebody's work.
-    crew_required: 2,
+    // Optional after the survival chain is live: resin opens local
+    // storage and resonator choices, but no longer blocks bamboo.
+    unlocked_by: "room.burner",
+    // The roof bed tends itself at the simulation scale: irrigation,
+    // exposure and harvest are already paid in footprint, sunlight and
+    // crew hauling. Requiring a permanent gardener made the resin-first
+    // branch lose its elevator on all eight measured seeds, so the
+    // apparent choice was a labour trap rather than a viable diversion.
+    crew_required: 0,
     category: Intake,
     width: 2,
     build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
@@ -40,7 +38,7 @@ RoomDef(
     // choose between the two (`v2-plan.md` §6.3).
     top_floor_only: true,
     intake: IntakeDef(
-        item: "item.produce",
+        item: "item.resin_feedstock",
         // 260 ticks at full sun — about 8.7 seconds a crop — falling to
         // nearly nothing under dense canopy. Scaled by exposure, which
         // is sun *after* terrain: since the sails were cut this is the

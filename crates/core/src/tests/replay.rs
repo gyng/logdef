@@ -206,11 +206,30 @@ fn every_command_survives_the_replay_format() {
             slot: 2,
             active: false,
         },
+        C::RelocateRoom {
+            room: crate::ids::RoomId(1),
+            floor: 2,
+            slot: 3,
+        },
+        C::SetShelfFilter {
+            room: crate::ids::RoomId(1),
+            shelf: 0,
+            item: Some("item.poles".into()),
+        },
+        C::SetShelfFilter {
+            room: crate::ids::RoomId(1),
+            shelf: 0,
+            item: Some("item.poles".into()),
+        },
         C::BuildShaft {
             shaft: "shaft.elevator".into(),
             low: 0,
             high: 3,
             slot: 7,
+        },
+        C::ExtendShaft {
+            shaft: crate::ids::ShaftId(1),
+            high: 4,
         },
         C::RemoveShaft {
             id: crate::ids::ShaftId(1),
@@ -224,7 +243,7 @@ fn every_command_survives_the_replay_format() {
         C::SetStriding { walking: false },
         C::TakeFork { branch: 1 },
         C::Trade { offer: 2 },
-        C::Recruit,
+        C::Recruit { candidate: 1 },
         C::Reinforce,
         C::SetPowerPriority {
             order: vec![
@@ -233,9 +252,6 @@ fn every_command_survives_the_replay_format() {
                 crate::state::power::PowerUse::Works,
                 crate::state::power::PowerUse::Lifts,
             ],
-        },
-        C::FocusEnemy {
-            enemy: Some(crate::ids::EnemyId(1)),
         },
         C::StationCrew {
             crew: crate::ids::CrewId(1),
@@ -259,9 +275,6 @@ fn every_command_survives_the_replay_format() {
         C::AddCar {
             shaft: crate::ids::ShaftId(1),
         },
-        C::SetWorkOrder {
-            order: crate::state::Job::ALL.to_vec(),
-        },
     ];
 
     // Exhaustiveness: if a variant is added and not listed above, this
@@ -273,20 +286,21 @@ fn every_command_survives_the_replay_format() {
             | C::PlaceRoom { .. }
             | C::RemoveRoom { .. }
             | C::SetRoomActive { .. }
+            | C::RelocateRoom { .. }
+            | C::SetShelfFilter { .. }
             | C::BuildShaft { .. }
+            | C::ExtendShaft { .. }
             | C::RemoveShaft { .. }
             | C::SetShaftProgram { .. }
             | C::TakeWaypoint
             | C::WidenTower
             | C::AddCar { .. }
-            | C::SetWorkOrder { .. }
             | C::SetStriding { .. }
             | C::TakeFork { .. }
             | C::Trade { .. }
-            | C::Recruit
+            | C::Recruit { .. }
             | C::Reinforce
             | C::SetPowerPriority { .. }
-            | C::FocusEnemy { .. }
             | C::StationCrew { .. }
             | C::EquipCrew { .. } => {}
         }

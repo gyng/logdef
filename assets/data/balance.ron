@@ -17,6 +17,7 @@ Balance(
         band_min_paces: 300,
         band_max_paces: 900,
         stream_ahead_paces: 900,
+        landmark_warning_paces: 1800,
         stream_behind_paces: 300,
     ),
     tower: TowerBalance(
@@ -98,6 +99,11 @@ Balance(
         // One body on the stairs at a time. Two crew is already a
         // queue, which is the whole thesis in miniature.
         stairs_capacity: 1,
+        // One stalk a minute. Four stalks can become the four poles a
+        // replacement cutter arm costs, but a working arm harvests
+        // orders of magnitude faster. This is a way out of a terminal
+        // loss, never a production plan.
+        emergency_bamboo_ticks: 1800,
         // **Sixteen, raised from ten when the sails were cut.**
         //
         // Ten was sized against a tower whose charge arrived free from
@@ -119,22 +125,15 @@ Balance(
         // buys the opening the slack the sails used to provide, and
         // does not touch any rate.
         //
-        // **Twenty-four from M6's opening ladder, and the number is
-        // arithmetic rather than taste.** The tower now builds its own
-        // chain, and until a mill exists it cannot make a single pole —
-        // so the founding stores have to cover the whole ladder and the
-        // first mill, or the opening is a dead end that looks like a
-        // difficulty spike. Farm 5, cutter arm 4, burner 5, the floor
-        // the mill has to stand on 6, mill 4: **24 exactly**. Measured
-        // on the golden recorder at 16, which is the ladder alone: two
-        // poles left, twenty produce banked, and no floor ever
-        // affordable in 63,000 ticks.
-        //
-        // There is deliberately nothing spare in it. A player who
-        // spends this on something else has made a mistake they can
-        // walk out of — the cutter arm still cuts and the mill can wait
-        // — but they will feel it, which is the right amount of rope.
-        starting_stock: [CostEntryDef(item: "item.poles", amount: 24)],
+        // **Sixteen again, after the Garden stopped being a toll.** The
+        // founding stock must cover the survival loop before a mill can
+        // make another pole: cutter arm 4 + burner 5 + mill 4 = 13.
+        // Three poles remain, enough for a storeroom or almost enough
+        // for the optional comb/Garden branches, so the first branch is
+        // a choice and not six free rooms queued at tick zero. The old
+        // 24 was arithmetic only while Garden + another floor were
+        // mandatory before the mill; both premises are now gone.
+        starting_stock: [CostEntryDef(item: "item.poles", amount: 16)],
         // **The opening tower, and it is deliberately almost nothing.**
         //
         // Two floors, three people, a bed and a shelf. Everything else
@@ -212,6 +211,11 @@ Balance(
         climb_ticks_per_item: 15,
         load_ticks: 15,
         unload_ticks: 15,
+        // Edge-to-edge rooms still need a porter, but passing a crate
+        // between facing ports costs a third less handling at each end.
+        // Five ticks is intentionally modest: placement matters without
+        // turning adjacency into a belt or bypassing the shared stairs.
+        adjacent_handoff_ticks: 5,
         carry_capacity: 3,
         // Two seconds blocked and the cross-section tints them red.
         stress_ticks: 60,
@@ -332,10 +336,6 @@ Balance(
         // to spare, but nowhere near enough to also run a thornwright
         // unattended.
         //
-        // Since the sails were cut this is also the whole of the
-        // opening budget: a tower with no burner has 800 charge and no
-        // way to make more, so the first burner is a deadline rather
-        // than an upgrade.
         starting_charge: 800,
         // Continuous striding costs 2,880 charge across a full day —
         // against one burner's 28,800, so a single burner walks the
@@ -348,6 +348,56 @@ Balance(
         // that a brown-out reads as "the tower outgrew what it can
         // light."
         light_charge_per_100_ticks_per_floor: 2,
+        // **The floor under the pipe, and it is the trickle's twin.**
+        // The rail is summed from burners and cell banks, so a tower
+        // out of fuel with wrecked banks supplies nothing and could not
+        // spend the trickle it is still accruing — the M6 deadlock
+        // rebuilt out of new parts.
+        //
+        // Two per tick against the opening tower's ~0.24 of draw
+        // (striding 0.2, two floors of lamps 0.04): comfortably above,
+        // deliberately, because rail must never be what stops a dry
+        // tower crawling out. Income is the constraint there and should
+        // stay the constraint. Against a burner's 8 it is still a limp.
+        heartseed_rail_per_tick: 2,
+        // One second at 30 Hz. `buy_block` pays for a hundred ticks of
+        // striding on a single tick, so without a burst allowance a
+        // 20-charge lump would be refused by an 8/tick supply and
+        // walking would be impossible for a tower running a surplus.
+        // Big enough to swallow the lumpiest purchase, small enough
+        // that sustained over-demand sheds within a second.
+        // **Six, cut from thirty once the bucket was measured rather
+        // than reasoned about.** Thirty was chosen to cover a 20-charge
+        // stride block on the opening tower's 2-a-tick rail, and it
+        // bought that at the cost of handing a developed tower a
+        // 420-charge cushion — enough that no spike in the game could
+        // ever drain it, which is why every allocation verb built on the
+        // rail measured inert on a comfortable tower.
+        //
+        // The lump requirement is `rail_burst_floor` now, so this is
+        // free to be sized for towers that have supply: at a rail of 14
+        // it is 84, which a volley of three dart batteries (60) plus a
+        // stride block (20) very nearly empties.
+        rail_burst_ticks: 6,
+        // **Forty-eight, and the number is derived rather than
+        // chosen.** The bucket must hold the largest single lump the
+        // game can ask for, or that purchase is arithmetically unpayable
+        // however healthy the tower's supply. The lumps are: a stride
+        // block (20), a fourteen-floor light block (28) and a lantern
+        // mast's shot (**40**, the largest).
+        //
+        // It was 30 for one test run, chosen against the stride block
+        // alone — and `a_mast_looks_up_and_a_ward_looks_down` died
+        // immediately, because a mast on a tower whose burner had run
+        // dry could never fire at all. That is the failure mode this
+        // constant exists to prevent, caught by a test that was not
+        // about charge.
+        //
+        // `the_burst_floor_covers_the_largest_lump_in_the_pack` computes
+        // the requirement from the pack and fails if this drops below
+        // it, so adding a hungrier weapon cannot silently make it
+        // unfirable.
+        rail_burst_floor: 48,
     ),
     transport: TransportBalance(
         // A third of a second of doors-and-landing overhead before

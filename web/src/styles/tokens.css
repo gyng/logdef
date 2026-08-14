@@ -1,9 +1,9 @@
 /*
  * Design tokens.
  *
- * The palette is solarpunk-tropical: verdigris and deep jungle green
- * with warm brass and lamplight for anything the tower makes. Nothing
- * here is gunmetal — the tower is a home, not a war machine
+ * The palette is a salvaged 1990s field workstation: dark olive steel
+ * housings, warm beige console inserts, deep green CRT glass and brass
+ * hardware. It stays domestic and repairable rather than military-clean
  * (DECISIONS.md §8).
  *
  * The renderer keeps its own copy of the scene colours in
@@ -12,22 +12,30 @@
  */
 
 :root {
-  /* Surfaces — dark, warm, slightly green. Interior at dusk. */
-  --bg-base: #101a15;
-  --bg-panel: rgb(18 32 26 / 88%);
-  --bg-raised: rgb(30 48 39 / 92%);
-  --bg-sunken: rgb(9 16 13 / 70%);
+  /* Surfaces — olive structure outside, old console plastic within. */
+  --bg-base: #10150f;
+  --bg-panel: rgb(31 38 29 / 94%);
+  --bg-raised: rgb(49 58 43 / 96%);
+  --bg-sunken: rgb(7 17 13 / 88%);
+  --console-face: #b8ad8d;
+  --console-face-light: #d0c5a2;
+  --console-face-shadow: #756d56;
+  --console-ink: #20271f;
+  --crt-glass: #071611;
+  --crt-glow: #b8cb86;
+  --hardware-brass: #aa7b34;
+  --hardware-dark: #171c16;
 
   /* Text */
-  --text-primary: #e9f0e2;
-  --text-secondary: #9db39c;
-  --text-muted: #6a8073;
+  --text-primary: #e6e6cf;
+  --text-secondary: #bdc2aa;
+  --text-muted: #949d84;
   --text-inverse: #0d1712;
 
   /* Accents */
-  --accent-brass: #d9ad5e;
-  --accent-leaf: #8fc46a;
-  --accent-verdigris: #59b6a3;
+  --accent-brass: #ddb35f;
+  --accent-leaf: #a8c56f;
+  --accent-verdigris: #70b6a0;
   --accent-heart: #d97a9a;
 
   /* Status — used sparingly; the cross-section carries most of this. */
@@ -37,9 +45,9 @@
   --status-quiet: #55705f;
 
   /* Borders */
-  --border-subtle: rgb(143 196 106 / 12%);
-  --border-default: rgb(143 196 106 / 22%);
-  --border-strong: rgb(217 173 94 / 45%);
+  --border-subtle: rgb(184 173 141 / 18%);
+  --border-default: rgb(184 173 141 / 34%);
+  --border-strong: rgb(221 179 95 / 58%);
 
   /* Spacing, 4px base */
   --space-1: 4px;
@@ -74,13 +82,13 @@
 
   /* Radii */
   --radius-sm: 3px;
-  --radius-md: 6px;
-  --radius-lg: 12px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
   --radius-full: 9999px;
 
   /* Shadows */
-  --shadow-panel: 0 12px 32px rgb(0 0 0 / 45%);
-  --shadow-raised: 0 2px 8px rgb(0 0 0 / 35%);
+  --shadow-panel: 0 12px 32px rgb(0 0 0 / 48%);
+  --shadow-raised: 0 3px 7px rgb(0 0 0 / 40%);
 
   /* Motion */
   --duration-fast: 110ms;

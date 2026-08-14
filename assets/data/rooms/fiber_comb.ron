@@ -30,10 +30,12 @@ RoomDef(
     max_floor: 1,
     intake: IntakeDef(
         item: "item.fiber",
-        // 90 paces against the arm's 78 — a shade slower, because fiber
-        // is the *second* thing a band gives up rather than the first.
-        // At 0.6 paces a tick that is 150 ticks on neutral ground.
-        source: Terrain(paces_per_item: 90),
+        // 180 paces against the arm's 78. The old 90-pace comb flooded
+        // a three-person tower with a second stream of crates: the rope
+        // chain cut measured pole output by more than half before rope
+        // had anything useful to answer. This slower intake makes rope
+        // a deliberate secondary line instead of a duplicate main line.
+        source: Terrain(paces_per_item: 180),
         buffer_max: 8,
     ),
 )

@@ -37,6 +37,7 @@ use crate::state::GameState;
 use super::SoundEvent;
 
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
+    emergency_bamboo(state, content, sounds);
     let yield_pct = state.world.current_yield_pct(content);
     // Sun after terrain. Since M6 cut the sails this is the only thing
     // in the game the sky still pays for, and it pays in food.
@@ -90,10 +91,10 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             if !room.is_working(content, tick) {
                 continue;
             }
-            // And an unstaffed farm strips nothing at all: the garden
-            // is the one room in the pack with `crew_required`, and it
-            // is where the opening teaches that rooms are run by people
-            // (`SYSTEMS.md` §6.11).
+            // Authored staffing requirements still gate an intake, but
+            // the shipped Garden deliberately has none: its commitment
+            // is roof space, sunlight, hauling and five poles rather
+            // than permanently removing a porter from the opening.
             if !super::staffed(content, room, &manned) {
                 continue;
             }
@@ -205,6 +206,135 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
     let noise = harvested * balance.provocation_per_100_harvested
         + salvaged * balance.provocation_per_100_salvaged;
     super::siege::provoke_hundredths(state, content, noise);
+}
+
+/// A tower whose last cutter arm is wrecked must still be able to crawl
+/// back into its bamboo → poles → replacement-arm chain.
+///
+/// This deliberately has no accumulator: the global tick is the clock,
+/// so save/load and replay need no new state. It only fires when there is
+/// no working terrain intake for bamboo and no bamboo in rooms or hands.
+/// A single stalk is placed directly in the pole mill when one is
+/// intact. This is the only special routing in the chain: without it,
+/// the recovery stalk can be hauled into the burner or thorn gun and a
+/// nominal four-minute escape takes arbitrarily long. If no mill is
+/// available it falls back to an ordinary shelf so the item is never
+/// conjured into a nonexistent machine.
+fn emergency_bamboo(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
+    let interval = u64::from(content.balance.tower.emergency_bamboo_ticks.max(1));
+    if state.tick == 0 || !state.tick.is_multiple_of(interval) {
+        return;
+    }
+    // Resolve the recovery material from the dual-use cutter arm's
+    // already-interned intake, never by comparing authored strings in a
+    // tick (`DECISIONS.md` §6).
+    let Some((bamboo, arm_material)) =
+        content.rooms.iter().enumerate().find_map(|(index, room)| {
+            let runtime = &content.room_runtime[index];
+            (room.melee_damage > 0
+                && matches!(runtime.intake_source, Some(IntakeSource::Terrain { .. })))
+            .then(|| {
+                Some((
+                    runtime.intake_item?,
+                    runtime.build_cost.first().map(|(item, _)| *item)?,
+                ))
+            })
+            .flatten()
+        })
+    else {
+        return;
+    };
+    let tick = state.tick;
+    let has_working_arm = state
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| &floor.rooms)
+        .any(|room| {
+            content.room_rt(room.def).intake_item == Some(bamboo)
+                && matches!(
+                    content.room_rt(room.def).intake_source,
+                    Some(IntakeSource::Terrain { .. })
+                )
+                && room.is_working(content, tick)
+        });
+    if has_working_arm {
+        return;
+    }
+    let held_in_rooms = state
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| &floor.rooms)
+        .any(|room| {
+            room.inputs
+                .iter()
+                .chain(&room.outputs)
+                .any(|stack| stack.item == bamboo && stack.count > 0)
+                || room
+                    .shelves
+                    .iter()
+                    .any(|shelf| shelf.item == Some(bamboo) && shelf.count > 0)
+        });
+    let carried = state.crew.iter().any(|crew| {
+        crew.carrying
+            .is_some_and(|(item, count)| item == bamboo && count > 0)
+    });
+    if held_in_rooms || carried {
+        return;
+    }
+
+    // The recovery route is deliberately narrower than ordinary
+    // hauling: bamboo goes to the machine that can recreate the arm's
+    // construction material. Once an arm works again, this entire path
+    // disappears and the normal shared logistics problem returns.
+    for room in state
+        .tower
+        .floors
+        .iter_mut()
+        .flat_map(|floor| &mut floor.rooms)
+    {
+        let runtime = content.room_rt(room.def);
+        if room.is_wrecked(content)
+            || !runtime
+                .recipe_outputs
+                .iter()
+                .any(|(item, _, _)| *item == arm_material)
+        {
+            continue;
+        }
+        let Some((index, _)) = runtime
+            .recipe_inputs
+            .iter()
+            .enumerate()
+            .find(|(_, (item, _, _))| *item == bamboo)
+        else {
+            continue;
+        };
+        if room
+            .inputs
+            .get_mut(index)
+            .is_some_and(|stack| stack.deposit(1) == 1)
+        {
+            state.stats.items_harvested += 1;
+            credit(&mut state.stats, bamboo);
+            sounds.push(SoundEvent::Harvest);
+            return;
+        }
+    }
+    for room in state
+        .tower
+        .floors
+        .iter_mut()
+        .flat_map(|floor| &mut floor.rooms)
+    {
+        if room.shelve(bamboo, 1) == 1 {
+            state.stats.items_harvested += 1;
+            credit(&mut state.stats, bamboo);
+            sounds.push(SoundEvent::Harvest);
+            break;
+        }
+    }
 }
 
 /// Ground one item costs in a band of this yield, in Q8.8 paces.

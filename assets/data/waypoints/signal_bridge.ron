@@ -1,0 +1,13 @@
+// Speed against attention, like the thicket, but as old machinery
+// briefly doing its intended job instead of the tower forcing a path.
+#![enable(implicit_some)]
+WaypointDef(
+    id: "waypoint.signal_bridge",
+    name: "Signal Bridge",
+    said: "A maintenance bridge is folded across the old cut. Wake its geared span and cross before it settles?",
+    take: "Wake the bridge",
+    costs: [],
+    gives: [],
+    provocation: 50,
+    paces: 360,
+)

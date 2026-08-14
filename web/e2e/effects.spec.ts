@@ -1,11 +1,12 @@
-import { test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 /**
  * Not a test — a harness for looking at the two effects nothing else can
  * reach.
  *
  * `npx playwright test effects` writes `capture/fx-smoke.png`,
- * `capture/fx-water.png`, and a pair of `capture/fx-bank-*.png`.
+ * `capture/fx-water.png`, `capture/fx-room-states.png`, and a pair of
+ * `capture/fx-bank-*.png`.
  *
  * `capture.spec.ts` cannot photograph either. It never builds a burner,
  * so it has never drawn smoke; and its drowned-city stills land wherever
@@ -35,17 +36,26 @@ test("smoke", async ({ page }) => {
   });
   const built = await page.evaluate(() => {
     const h = window.__understory!;
-    h.send({ SetStriding: { walking: true } });
-    for (let i = 0; i < 40; i += 1) h.step(600);
-    let placed = "no";
-    for (let floor = 0; floor < 4 && placed === "no"; floor += 1) {
-      for (let slot = 0; slot < 8; slot += 1) {
-        if (h.send({ PlaceRoom: { room: "room.burner", floor, slot } }) === "Ok") {
-          placed = `floor ${floor} slot ${slot}`;
-          break;
+    h.grant("item.poles", 100);
+    h.grant("item.bamboo", 100);
+    const place = (room: string): string => {
+      const cat = h.catalog();
+      const info = cat.rooms.find((candidate) => candidate.id === room);
+      if (!info) return "missing definition";
+      for (const floor of h.view().tower.floors) {
+        for (let slot = 0; slot + info.width <= floor.slots; slot += 1) {
+          if (h.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") {
+            return `floor ${String(floor.index)} slot ${String(slot)}`;
+          }
         }
       }
-    }
+      return "not placed";
+    };
+    // The shipped opening is a ladder now; skipping its first two rungs
+    // asks the command layer for a locked burner and photographs no room.
+    place("room.garden");
+    place("room.cutter_arm");
+    const placed = place("room.burner");
     const burner = () => {
       const cat = h.catalog();
       for (const f of h.view().tower.floors) {
@@ -60,7 +70,7 @@ test("smoke", async ({ page }) => {
       const fork = h.view().journey.fork;
       if (fork && fork.answer === null) h.send({ TakeFork: { branch: 0 } });
       h.send({ SetStriding: { walking: true } });
-      h.step(120);
+      h.step(60);
       const b = burner();
       if (b.fuel > 0 && !b.stalled) break;
     }
@@ -70,6 +80,138 @@ test("smoke", async ({ page }) => {
   console.log(`burner: ${built}`);
   await page.waitForTimeout(400);
   await page.screenshot({ path: "capture/fx-smoke.png" });
+});
+
+test("walker mechanical gait", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/?seed=4242");
+  await page.waitForFunction(() => window.__understory?.slotPoint !== undefined, null, {
+    timeout: 20_000,
+  });
+
+  // This is a silhouette sheet rather than a UI still. The normal smoke
+  // checkpoint above keeps the chrome in place; these three frames remove
+  // it so the secondary rams, pinned joints and changing load paths can be
+  // compared without the sidebars covering the outer bogies.
+  await page.addStyleTag({
+    content: ".chrome, .stage-labels { display: none !important; }",
+  });
+
+  const advance = async (): Promise<{ distance: number; halt: string }> => {
+    const at = await page.evaluate(() => {
+      const h = window.__understory!;
+      h.send({ SetStriding: { walking: true } });
+      h.step(450);
+      const view = h.view();
+      return { distance: view.world.distance, halt: view.journey.halt };
+    });
+    // Let the renderer consume the exact stepped snapshot. Two frames avoid
+    // depending on whether this callback or Game's callback was queued first.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    return at;
+  };
+
+  // Hold real-time simulation still between captures. `debug_step` still
+  // advances exact ticks, so every image is reproducible while the browser's
+  // requestAnimationFrame loop cannot drift it into a different gait phase.
+  await page.evaluate(() => {
+    const h = window.__understory!;
+    h.send({ SetSpeed: { speed: "Paused" } });
+    h.send({ SetStriding: { walking: true } });
+    h.zoomIn();
+  });
+
+  const poses: { distance: number; halt: string }[] = [];
+  for (const name of ["a", "b", "c"] as const) {
+    poses.push(await advance());
+    await page.screenshot({ path: `capture/fx-walker-gait-${name}.png` });
+  }
+
+  expect(poses.map((pose) => pose.halt)).toEqual(["walking", "walking", "walking"]);
+  expect(poses[1]!.distance).toBeGreaterThan(poses[0]!.distance);
+  expect(poses[2]!.distance).toBeGreaterThan(poses[1]!.distance);
+});
+
+test("room active idle destroyed states", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/?seed=4242");
+  await page.waitForFunction(() => window.__understory?.slotPoint !== undefined, null, {
+    timeout: 20_000,
+  });
+
+  const states = await page.evaluate(() => {
+    const h = window.__understory!;
+    h.grant("item.poles", 100);
+    h.grant("item.bamboo", 100);
+    const place = (room: string): { floor: number; slot: number } => {
+      const def = h.catalog().rooms.find((candidate) => candidate.id === room);
+      if (!def) throw new Error(`missing room definition ${room}`);
+      for (const floor of h.view().tower.floors) {
+        for (let slot = 0; slot + def.width <= floor.slots; slot += 1) {
+          if (h.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") {
+            return { floor: floor.index, slot };
+          }
+        }
+      }
+      throw new Error(`could not place ${room}`);
+    };
+
+    // Build the validated opening ladder. These three adjacent machines
+    // are deliberately distinct enough that their state treatment can
+    // be judged without relying on labels.
+    const activeAt = place("room.garden");
+    const idleAt = place("room.cutter_arm");
+    const destroyedAt = place("room.burner");
+    // Photograph the state language in honest daylight. Predawn makes
+    // every room appropriately subdued, but is a poor contrast test.
+    for (let i = 0; i < 600 && h.view().clock.sun_pct < 75; i += 1) {
+      const fork = h.view().journey.fork;
+      if (fork && fork.answer === null) h.send({ TakeFork: { branch: 0 } });
+      h.send({ SetStriding: { walking: true } });
+      h.step(60);
+    }
+    h.send({ SetSpeed: { speed: "Paused" } });
+    h.send({ SetRoomActive: { floor: idleAt.floor, slot: idleAt.slot, active: false } });
+    if (!h.wreck(destroyedAt.floor, destroyedAt.slot)) {
+      throw new Error("wreck hook did not find the burner");
+    }
+
+    const catalog = h.catalog();
+    const report = (at: { floor: number; slot: number }) => {
+      const room = h
+        .view()
+        .tower.floors[at.floor]!.rooms.find((candidate) => candidate.slot === at.slot)!;
+      return {
+        id: catalog.rooms[room.def]!.id,
+        active: room.active,
+        wrecked: room.wrecked,
+        health: room.health_permille,
+      };
+    };
+    return {
+      active: report(activeAt),
+      idle: report(idleAt),
+      destroyed: report(destroyedAt),
+    };
+  });
+
+  console.log(`room states: ${JSON.stringify(states)}`);
+  expect(states.active).toMatchObject({ active: true, wrecked: false, health: 1000 });
+  expect(states.idle).toMatchObject({ active: false, wrecked: false, health: 1000 });
+  expect(states.destroyed).toMatchObject({ wrecked: true, health: 0 });
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: "capture/fx-room-states.png" });
+  // Identity must survive without the room abbreviations. This second
+  // still is the art gate: Heartseed cap/core, garden trellis, cutter
+  // boom, burner stack remnant, bunk hammocks and gun barrel must be
+  // distinguishable from their own silhouettes and interiors.
+  await page.addStyleTag({ content: ".stage-labels { display: none !important; }" });
+  await page.screenshot({ path: "capture/fx-room-states-unlabelled.png" });
 });
 
 test("water", async ({ page }) => {
@@ -108,45 +250,51 @@ test("bank", async ({ page }) => {
     timeout: 20_000,
   });
 
-  // **The rack is the heartseed's, and it has always been there.** Two
-  // wrong turns got here. First this probe tried to place a cell bank at
-  // minute zero — refused, because one costs two charge cells and those
-  // are the end of the tier-two chain — and photographed a tower with no
-  // rack on it, which looks exactly like a rack that does not draw.
-  // Then it bought the whole chain to earn one, and arrived at 17,000
-  // paces with more load than sail and a bank pinned at 4‰: a real
-  // failure state, and a useless picture, because a flat bank has no
-  // swing in it to photograph.
-  //
-  // So: sails and one mill, which is the smallest tower with both an
-  // income and an appetite, and let the day do the rest.
+  // Build the actual rack. The starting tower no longer carries one,
+  // and the opening is a validated garden -> cutter -> burner ladder;
+  // asking for a bank at minute zero is a locked command, not setup.
   const built = await page.evaluate(() => {
     const h = window.__understory!;
+    for (const [item, amount] of [
+      ["item.poles", 100],
+      ["item.bamboo", 100],
+    ] as const) {
+      h.grant(item, amount);
+    }
+    const place = (room: string): boolean => {
+      const cat = h.catalog();
+      const info = cat.rooms.find((candidate) => candidate.id === room);
+      if (!info) return false;
+      for (const floor of h.view().tower.floors) {
+        for (let slot = 0; slot + info.width <= floor.slots; slot += 1) {
+          if (h.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+    const unbuilt = ["room.garden", "room.cutter_arm", "room.burner", "room.storeroom"].filter(
+      (room) => !place(room),
+    );
+    // `debug_grant` fills real shelves. The storeroom has to exist
+    // before the two cells can be granted, just as it would in play.
+    if (h.grant("item.charge_cells", 10) < 2 || !place("room.cell_bank")) {
+      unbuilt.push("room.cell_bank");
+    }
+    if (!place("room.mill")) unbuilt.push("room.mill");
     const cat = h.catalog();
     const racks = h
       .view()
       .tower.floors.flatMap((f) => f.rooms)
       .filter((r) => (cat.rooms[r.def]?.bank_capacity ?? 0) > 0).length;
-    const list = ["room.burner", "room.mill"];
-    for (let i = 0; i < 400 && list.length > 0; i += 1) {
+    for (let i = 0; i < 300; i += 1) {
       const fork = h.view().journey.fork;
       if (fork && fork.answer === null) h.send({ TakeFork: { branch: 0 } });
       h.send({ SetStriding: { walking: true } });
-      for (let at = list.length - 1; at >= 0; at -= 1) {
-        let done = false;
-        for (let floor = 0; floor < 6 && !done; floor += 1) {
-          for (let slot = 0; slot < 8; slot += 1) {
-            if (h.send({ PlaceRoom: { room: list[at]!, floor, slot } }) === "Ok") {
-              done = true;
-              break;
-            }
-          }
-        }
-        if (done) list.splice(at, 1);
-      }
-      h.step(120);
+      h.step(60);
     }
-    return `${racks} rack(s) on the starting tower; unbought: ${list.join(" ") || "nothing"}`;
+    return `${String(racks)} rack(s) built; unbought: ${unbuilt.join(" ") || "nothing"}`;
   });
   console.log(`bank: ${built}`);
 
@@ -266,4 +414,98 @@ test("stairs", async ({ page }) => {
   console.log(`stairs: ${built}`);
   await page.waitForTimeout(400);
   await page.screenshot({ path: "capture/fx-stairs.png" });
+});
+
+/** Close, deterministic art checkpoint for a moving painted lift. */
+test("elevator art", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 760 });
+  await page.goto("/?seed=4242");
+  await page.waitForFunction(() => window.__understory?.slotPoint !== undefined, null, {
+    timeout: 20_000,
+  });
+
+  const result = await page.evaluate(() => {
+    const h = window.__understory!;
+    h.grant("item.rope", 40);
+    h.grant("item.poles", 200);
+    while (h.view().tower.floors.length < 5) {
+      if (h.send("BuildFloor") !== "Ok") return "could not build five floors";
+    }
+    const high = h.view().tower.floors.length - 1;
+    const built = h.send({
+      BuildShaft: { shaft: "shaft.elevator", low: 0, high, slot: 7 },
+    });
+    if (built !== "Ok") return `elevator: ${JSON.stringify(built)}`;
+    const lift = h.view().tower.shafts.find((shaft) => shaft.kind === "Elevator");
+    if (!lift) return "elevator missing after Ok";
+    if (lift.cars.length === 0) h.send({ AddCar: { shaft: lift.id } });
+    h.step(900);
+    const car = h
+      .view()
+      .tower.shafts.find((shaft) => shaft.id === lift.id)
+      ?.cars.at(0);
+    return `elevator id ${String(lift.id)}, car floor ${String(car?.floor ?? "missing")}, state ${car?.state ?? "missing"}`;
+  });
+
+  expect(result).toContain("elevator id");
+  console.log(result);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: "capture/fx-elevator.png" });
+});
+
+/** Spatial utility columns: electricity and exhaust are visible machinery. */
+test("utility shafts", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await page.goto("/?seed=4242");
+  await page.waitForFunction(() => window.__understory?.slotPoint !== undefined, null, {
+    timeout: 20_000,
+  });
+
+  const result = await page.evaluate(() => {
+    const h = window.__understory!;
+    h.grant("item.poles", 200);
+    while (h.view().tower.floors.length < 5) {
+      if (h.send("BuildFloor") !== "Ok") {
+        return { error: "could not build five floors", busbar: null, vent: null, kinds: [] };
+      }
+    }
+    const place = (room: string): boolean => {
+      const info = h.catalog().rooms.find((candidate) => candidate.id === room);
+      if (!info) return false;
+      for (const floor of h.view().tower.floors) {
+        for (let slot = 0; slot + info.width <= floor.slots; slot += 1) {
+          if (slot <= 7 && slot + info.width > 6) continue;
+          if (h.send({ PlaceRoom: { room, floor: floor.index, slot } }) === "Ok") return true;
+        }
+      }
+      return false;
+    };
+    h.grant("item.bamboo", 100);
+    for (const room of ["room.garden", "room.cutter_arm", "room.burner", "room.storeroom"]) {
+      if (!place(room))
+        return { error: `could not place ${room}`, busbar: null, vent: null, kinds: [] };
+    }
+    h.grant("item.rope", 40);
+    const high = h.view().tower.floors.length - 1;
+    const busbar = h.send({
+      BuildShaft: { shaft: "shaft.busbar", low: 0, high, slot: 6 },
+    });
+    const vent = h.send({
+      BuildShaft: { shaft: "shaft.vent_stack", low: 0, high, slot: 7 },
+    });
+    return {
+      error: null,
+      busbar,
+      vent,
+      kinds: h.view().tower.shafts.map((shaft) => shaft.kind),
+    };
+  });
+
+  expect(result.error).toBeNull();
+  expect(result.busbar).toBe("Ok");
+  expect(result.vent).toBe("Ok");
+  expect(result.kinds).toContain("Busbar");
+  expect(result.kinds).toContain("VentStack");
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: "capture/fx-utility-shafts.png" });
 });

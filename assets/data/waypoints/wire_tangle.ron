@@ -1,10 +1,8 @@
 // Old cable, worth taking if you have something to cut it with.
 //
 // **The one with a price**, and the price is the material every chain
-// in the game competes for. Trading poles for mechanisms is the only
-// way to get mechanisms without a fitter, which makes this the
-// waypoint a tower without that chain actually wants — and the one a
-// tower that has built it can walk past.
+// in the game competes for. It yields one emergency actuator, enough
+// to bypass one precision build but not enough to replace a fitter.
 #![enable(implicit_some)]
 WaypointDef(
     id: "waypoint.wire_tangle",
@@ -12,7 +10,7 @@ WaypointDef(
     said: "Cable, coiled in the roots. Worth cutting free, if you can spare the bracing.",
     take: "Cut it free",
     costs: [CostEntryDef(item: "item.poles", amount: 4)],
-    gives: [CostEntryDef(item: "item.mechanisms", amount: 2)],
+    gives: [CostEntryDef(item: "item.mechanisms", amount: 1)],
     provocation: 10,
     paces: -110,
 )

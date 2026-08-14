@@ -22,6 +22,7 @@ import { commandFailed } from "../bridge";
 import { POWER_USES } from "../bridge/types";
 import type {
   CatalogSnapshot,
+  CombatEvent,
   CommandResult,
   CostInfo,
   CrewView,
@@ -32,12 +33,14 @@ import type {
   PowerUse,
   HaltView,
   RoomInfo,
+  RoomView,
   ShaftInfo,
   ShaftPriority,
   ShaftView,
   SimSpeed,
   StoreView,
   ViewSnapshot,
+  WaypointAheadView,
   WaypointView,
 } from "../bridge/types";
 
@@ -95,8 +98,6 @@ export interface UiState {
   /** Every shaft, so the roster can carry their schedules. */
   shafts: ShaftView[];
   selected: SelectedRoom | null;
-  /** Whether the selected room is switched on. */
-  selectedActive: boolean;
   placing: string | null;
   /** The player's lens over the fitted layout. 1 is the fit. */
   zoom: number;
@@ -106,6 +107,8 @@ export interface UiState {
   picked: number[];
   /** The beat alongside right now, if any. */
   waypoint: WaypointView | null;
+  /** Unique territorial landmark still ahead. */
+  landmarkAhead: WaypointAheadView | null;
   /**
    * Everything the tower can point at something, with what is on its
    * rack.
@@ -131,12 +134,21 @@ export interface UiState {
   chargeIncome: number;
   chargeSpend: number;
   brownout: boolean;
+  /** Circuits whose requested draw was shed, aligned with `POWER_USES`. */
+  powerRefused: boolean[];
+  /** Requested draw per circuit, aligned with `POWER_USES`. */
+  powerDemand: number[];
+  /**
+   * Generation capacity — the most the tower could deliver this tick.
+   * The bank gauge answers *how long*; this answers *how hard*.
+   */
+  powerRail: number;
+  /** How well each circuit was served, per-mille, aligned with `POWER_USES`. */
+  powerSatisfaction: number[];
   /** Who this settlement is offering, if the tower is standing at one. */
   recruit: ViewSnapshot["recruit"];
   /** Charge ranking, best first. */
   powerPriority: PowerUse[];
-  /** Work ranking, best first, as indices into `catalog.jobs`. */
-  workOrder: number[];
   walking: boolean;
   /** How much attention the tower has drawn, against its ceiling. */
   provocation: number;
@@ -187,6 +199,7 @@ export interface SelectedRoom {
   slot: number;
   id: number;
   info: RoomInfo;
+  room: RoomView;
   removable: boolean;
 }
 
@@ -236,7 +249,9 @@ export class Game {
   constructor(canvas: HTMLCanvasElement, labelRoot: HTMLElement, bridge: Bridge) {
     this.bridge = bridge;
     this.catalog = bridge.catalog();
-    this.renderer = new Renderer(canvas, labelRoot);
+    this.renderer = new Renderer(canvas, labelRoot, (floor, slot, active) =>
+      this.setRoomActive(floor, slot, active),
+    );
     this.exposeTestHooks();
   }
 
@@ -273,6 +288,10 @@ export class Game {
       // during — `this.latest` there is thousands of paces stale.
       (hooks as Record<string, unknown>).featurePoint = (feature: FeatureView, distance: number) =>
         this.renderer.featureCenter(distance, feature);
+      // Deterministic stepping consumes frame events before the RAF loop can
+      // see them. Let visual specs hand those real events to the renderer.
+      (hooks as Record<string, unknown>).presentCombat = (combat: CombatEvent[]) =>
+        this.renderer.presentCombat(combat, this.catalog);
     }
   }
 
@@ -325,20 +344,6 @@ export class Game {
    */
   setPowerPriority(order: PowerUse[]): void {
     this.send({ SetPowerPriority: { order } });
-  }
-
-  /**
-   * Rank the kinds of work idle crew reach for.
-   *
-   * Takes catalog indices and posts the names the simulation knows,
-   * because the wire format is the `Job` enum and the panel thinks in
-   * list positions. Sent whole for the same reason the charge order is:
-   * anything that is not every job exactly once is refused, and a
-   * partial order would leave the rest ranked by an accident.
-   */
-  setWorkOrder(order: number[]): void {
-    const named = order.map((at) => this.catalog.jobs[at]?.id).filter((id) => id !== undefined);
-    this.send({ SetWorkOrder: { order: named } });
   }
 
   /**
@@ -535,6 +540,8 @@ export class Game {
       frontOnly: info.front_only,
       maxFloor: info.max_floor,
       minFloor: info.min_floor,
+      topFloorOnly: info.top_floor_only,
+      shaftAdjacent: info.shaft_adjacent,
       span: 1,
       hover: null,
     };
@@ -567,6 +574,8 @@ export class Game {
       frontOnly: false,
       maxFloor: null,
       minFloor: null,
+      topFloorOnly: false,
+      shaftAdjacent: false,
       span: Math.max(info.min_span, Math.min(ceiling, floors)),
       hover: null,
     };
@@ -596,8 +605,8 @@ export class Game {
   }
 
   /** Take somebody aboard, for poles. */
-  recruit(): void {
-    this.send("Recruit");
+  recruit(candidate: number): void {
+    this.send({ Recruit: { candidate } });
   }
 
   /** Have the settlement plate the tower's shell, for scrap. */
@@ -605,17 +614,41 @@ export class Game {
     this.send("Reinforce");
   }
 
-  /** Switch the selected room off or on. */
-  toggleSelectedRoom(): void {
+  /** Throw the breaker mounted on a specific room in the cross-section. */
+  setRoomActive(floor: number, slot: number, active: boolean): void {
+    this.send({ SetRoomActive: { floor, slot, active } });
+  }
+
+  /** Reserve one physical storeroom shelf for an item, or clear it. */
+  setShelfFilter(room: number, shelf: number, item: string | null): void {
+    this.send({ SetShelfFilter: { room, shelf, item } });
+  }
+
+  /** Pick up an empty, switched-off room and aim its refit footprint. */
+  beginRelocatingSelected(): void {
     const selected = this.selected;
     if (!selected) return;
-    const room = this.latest?.tower.floors[selected.floor]?.rooms.find(
-      (candidate) => candidate.id === selected.id,
-    );
-    if (!room) return;
-    this.send({
-      SetRoomActive: { floor: selected.floor, slot: selected.slot, active: !room.active },
-    });
+    const info = selected.info;
+    this.placeMode = {
+      kind: "room",
+      id: info.id,
+      relocateRoom: selected.id,
+      width: info.width,
+      frontOnly: info.front_only,
+      maxFloor: info.max_floor,
+      minFloor: info.min_floor,
+      topFloorOnly: info.top_floor_only,
+      shaftAdjacent: info.shaft_adjacent,
+      span: 1,
+      hover: null,
+    };
+    this.selected = null;
+    this.lastError = null;
+    this.publish(true);
+  }
+
+  extendShaft(shaft: number, high: number): void {
+    this.send({ ExtendShaft: { shaft, high } });
   }
 
   handlePointerMove(clientX: number, clientY: number): void {
@@ -661,6 +694,7 @@ export class Game {
    */
   /** Take the beat the tower is passing. */
   takeWaypoint(): void {
+    this.renderer.markWaypointTaken();
     this.send("TakeWaypoint");
   }
 
@@ -786,21 +820,6 @@ export class Game {
       }
     }
 
-    // **A creature first, and only while not placing.** Naming one is a
-    // live order given during a wave, and it has to beat selecting the
-    // room behind it — a creature is on top of the tower's face, which
-    // is exactly where the rooms are. Placing still wins over both,
-    // because a player mid-placement is not aiming at anything.
-    if (!this.placeMode) {
-      const named = this.renderer.pickEnemy(clientX, clientY, this.getCatalog());
-      if (named !== null) {
-        // Clicking the creature already named clears the order, so the
-        // same gesture takes it back.
-        const already = this.latest?.siege.focus ?? null;
-        this.send({ FocusEnemy: { enemy: already === named ? null : named } });
-        return;
-      }
-    }
     const hit = this.renderer.pick(clientX, clientY);
     if (!hit) {
       this.selected = null;
@@ -814,7 +833,13 @@ export class Game {
     const placing = this.placeMode;
     if (placing) {
       if (placing.kind === "room") {
-        this.send({ PlaceRoom: { room: placing.id, floor: hit.floor, slot: hit.slot } });
+        if (placing.relocateRoom !== undefined) {
+          this.send({
+            RelocateRoom: { room: placing.relocateRoom, floor: hit.floor, slot: hit.slot },
+          });
+        } else {
+          this.send({ PlaceRoom: { room: placing.id, floor: hit.floor, slot: hit.slot } });
+        }
       } else {
         this.send({
           BuildShaft: {
@@ -856,8 +881,29 @@ export class Game {
     return view.tower.floors.some((floor) => {
       if (info.max_floor !== null && floor.index > info.max_floor) return false;
       if (info.min_floor !== null && floor.index < info.min_floor) return false;
+      if (info.top_floor_only && floor.index !== view.tower.floors.length - 1) return false;
       for (let slot = 0; slot + info.width <= floor.slots; slot += 1) {
-        if (slotRangeFree(view, floor.index, slot, info.width)) return true;
+        if (info.front_only) {
+          if (slot !== floor.slots - info.width) continue;
+        } else if (
+          this.catalog.front_slots > 0 &&
+          slot + info.width > floor.slots - this.catalog.front_slots
+        ) {
+          continue;
+        }
+        if (!slotRangeFree(view, floor.index, slot, info.width)) continue;
+        if (info.shaft_adjacent) {
+          const left = slot - 1;
+          const right = slot + info.width;
+          const touches = view.tower.shafts.some(
+            (shaft) =>
+              shaft.low <= floor.index &&
+              shaft.high >= floor.index &&
+              (shaft.slot === left || shaft.slot === right),
+          );
+          if (!touches) continue;
+        }
+        return true;
       }
       return false;
     });
@@ -880,11 +926,11 @@ export class Game {
     // is punctuation — things that *happened* — and the snapshot below
     // is what the continuous beds read, because a starved mill going
     // quiet is not an event at all, it is the absence of a loop.
-    const sounds = this.bridge.frame(Math.round(deltaMs * 1000));
+    const events = this.bridge.frame(Math.round(deltaMs * 1000));
 
     const view = this.bridge.view();
     this.latest = view;
-    this.audio.update(view, sounds, deltaMs);
+    this.audio.update(view, events.sounds, deltaMs);
     this.noteRun(view);
 
     // A demolished or newly built room can invalidate the selection.
@@ -899,6 +945,7 @@ export class Game {
       placeMode: this.placeMode,
       picked: this.picked,
       clock: (now - this.startedMs) / 1000,
+      combat: events.combat,
     });
 
     if (now - this.lastUiMs >= UI_INTERVAL_MS) {
@@ -936,13 +983,13 @@ export class Game {
       learned: this.learned,
       shafts: view?.tower.shafts ?? [],
       selected: this.selected,
-      selectedActive: this.selectedRoomActive(),
       placing: this.placeMode?.id ?? null,
       zoom: this.renderer.getZoom(),
       slots: view?.tower.floors[0]?.slots ?? this.catalog.floor_slots,
       picked: this.picked,
       marquee: this.marquee,
       waypoint: view?.journey.waypoint ?? null,
+      landmarkAhead: view?.journey.landmark_ahead ?? null,
       weapons: (view?.tower.floors ?? []).flatMap((floor) =>
         floor.rooms
           .map((room) => ({ room, info: this.catalog.rooms[room.def] }))
@@ -966,9 +1013,12 @@ export class Game {
       chargeIncome: view?.power.income_last ?? 0,
       chargeSpend: view?.power.spent_last ?? 0,
       brownout: view?.power.brownout ?? false,
-      recruit: view?.recruit ?? null,
+      powerRefused: view?.power.refused ?? POWER_USES.map(() => false),
+      powerDemand: view?.power.demand ?? POWER_USES.map(() => 0),
+      powerRail: view?.power.rail ?? 0,
+      powerSatisfaction: view?.power.satisfaction ?? POWER_USES.map(() => 1000),
+      recruit: view?.recruit ?? [],
       powerPriority: view?.power.priority ?? POWER_USES,
-      workOrder: view?.work ?? this.catalog.jobs.map((_, at) => at),
       walking: view?.power.walking ?? true,
       provocation: view?.siege.provocation ?? 0,
       provocationMax: view?.siege.provocation_max ?? 0,
@@ -1001,7 +1051,30 @@ export class Game {
 
   /** Can the player afford this shaft, and is there anywhere to put it? */
   canAffordShaft(info: ShaftInfo): boolean {
-    return info.build_cost.every((cost) => this.stockOf(cost.item) >= cost.amount);
+    return this.shaftBuildCost(info).every((cost) => this.stockOf(cost.item) >= cost.amount);
+  }
+
+  /** The default shaft preview spans as much of the current tower as its definition allows. */
+  shaftBuildSpan(info: ShaftInfo): number {
+    const floors = this.latest?.tower.floors.length ?? 1;
+    const ceiling = info.max_span === 0 ? floors : info.max_span;
+    return Math.max(info.min_span, Math.min(ceiling, floors));
+  }
+
+  /** Installation plus one authored span line for every crossed deck boundary. */
+  shaftBuildCost(info: ShaftInfo): CostInfo[] {
+    return mergeCosts(info.build_cost, scaledCosts(info.span_cost, this.shaftBuildSpan(info) - 1));
+  }
+
+  /** Extensions have no second installation fee: only the newly crossed boundaries are paid. */
+  shaftExtensionCost(info: ShaftInfo, addedBoundaries: number): CostInfo[] {
+    return scaledCosts(info.span_cost, addedBoundaries);
+  }
+
+  canAffordShaftExtension(info: ShaftInfo, addedBoundaries: number): boolean {
+    return this.shaftExtensionCost(info, addedBoundaries).every(
+      (cost) => this.stockOf(cost.item) >= cost.amount,
+    );
   }
 
   /**
@@ -1016,15 +1089,6 @@ export class Game {
     const branch = this.latest?.journey.branch;
     if (branch === null || branch === undefined) return null;
     return this.catalog.branches[branch]?.name ?? null;
-  }
-
-  private selectedRoomActive(): boolean {
-    const selected = this.selected;
-    if (!selected) return true;
-    return (
-      this.latest?.tower.floors[selected.floor]?.rooms.find((room) => room.id === selected.id)
-        ?.active ?? true
-    );
   }
 
   private stockOf(item: number): number {
@@ -1044,6 +1108,7 @@ export class Game {
       slot: room.slot,
       id: room.id,
       info,
+      room,
       removable: info.category !== "Heart",
     };
   }
@@ -1052,6 +1117,23 @@ export class Game {
   shape(): { slots: number; floors: number } {
     return this.latest ? towerShape(this.latest) : { slots: 8, floors: 0 };
   }
+}
+
+function scaledCosts(costs: CostInfo[], multiplier: number): CostInfo[] {
+  return costs
+    .map((cost) => ({ ...cost, amount: cost.amount * Math.max(0, multiplier) }))
+    .filter((cost) => cost.amount > 0);
+}
+
+/** Merge matching item lines exactly as command validation does in Rust. */
+function mergeCosts(...groups: CostInfo[][]): CostInfo[] {
+  const merged: CostInfo[] = [];
+  for (const cost of groups.flat()) {
+    const existing = merged.find((entry) => entry.item === cost.item);
+    if (existing) existing.amount += cost.amount;
+    else if (cost.amount > 0) merged.push({ ...cost });
+  }
+  return merged;
 }
 
 /** Unit variants of `CommandError` cross as a bare string. */

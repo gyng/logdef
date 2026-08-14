@@ -26,6 +26,41 @@ fn the_catalog_describes_the_whole_pack() {
 }
 
 #[test]
+fn the_landmark_foreshadow_uses_its_longer_strategic_warning() {
+    let mut game = engine(0xB055_1001);
+    let thicket = game
+        .content()
+        .waypoints
+        .iter()
+        .position(|waypoint| waypoint.id == "waypoint.snare_thicket")
+        .expect("the pack has its landmark") as u16;
+    let at = game
+        .state()
+        .world
+        .waypoints
+        .iter()
+        .find(|waypoint| waypoint.def == thicket)
+        .expect("the landmark was not placed")
+        .at;
+    let horizon = game.content().balance.world.landmark_warning_paces;
+
+    game.state_mut_for_test().world.distance = at - crate::fx::paces_from_int(horizon + 1);
+    assert!(
+        game.view().journey.landmark_ahead.is_none(),
+        "the resident was foreshadowed before its strategic warning range"
+    );
+
+    game.state_mut_for_test().world.distance = at - crate::fx::paces_from_int(horizon);
+    let warning = game
+        .view()
+        .journey
+        .landmark_ahead
+        .expect("the landmark did not enter the approach window");
+    assert_eq!(warning.def, thicket);
+    assert_eq!(warning.ahead, horizon as f32);
+}
+
+#[test]
 fn every_room_category_is_represented() {
     let catalog = engine(401).catalog();
     for category in [

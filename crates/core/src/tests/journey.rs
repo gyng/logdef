@@ -9,8 +9,11 @@
 
 use std::borrow::Cow;
 
-use crate::content::{Content, DataSource, EmbeddedSource, IntakeSource, LoadError, RoomCategory};
+use crate::content::{
+    Content, DataSource, EmbeddedSource, EnemyEncounter, IntakeSource, LoadError, RoomCategory,
+};
 use crate::ids::{BranchIdx, EnemyIdx, RegionIdx};
+use crate::state::world::ActiveBranch;
 use crate::tests::{content, engine};
 
 // ---------------------------------------------------------------------------
@@ -24,6 +27,43 @@ use crate::tests::{content, engine};
 struct Patched {
     path: String,
     bytes: Vec<u8>,
+}
+
+#[test]
+fn route_threat_is_region_pressure_modified_by_the_live_branch() {
+    let content = content();
+    let mut game = engine(0x7a11);
+    let region = game.state().world.region;
+    let baseline = content.region(region).threat_pct;
+    assert_eq!(game.state().world.current_threat_pct(&content), baseline);
+
+    let branch = content
+        .region(region)
+        .branches
+        .iter()
+        .find(|branch| branch.threat_pct != 100)
+        .and_then(|branch| content.branch_idx(&branch.id))
+        .expect("the opening region has a route whose danger is not neutral");
+    let active = ActiveBranch {
+        def: branch,
+        from: game.state().world.distance,
+        to: game.state().world.distance + crate::fx::paces_from_int(100),
+    };
+    game.state_mut_for_test().world.branch = Some(active);
+
+    assert_eq!(
+        game.state().world.current_threat_pct(&content),
+        baseline * content.branch(branch).threat_pct / 100,
+        "the route card's danger did not reach the simulation"
+    );
+    game.state_mut_for_test().siege.provocation = 400;
+    assert_eq!(
+        crate::systems::siege::scaled_wave_threat(game.state(), &content),
+        400 * content.balance.siege.threat_per_100_provocation / 100 * baseline / 100
+            * content.branch(branch).threat_pct
+            / 100,
+        "the wave allocator ignored the active route pressure"
+    );
 }
 
 impl Patched {
@@ -382,19 +422,36 @@ fn only_ruin_bearing_terrain_holds_salvage() {
 fn a_warden_is_not_something_an_ordinary_wave_can_draw() {
     let content = content();
     let warden = content.enemy_idx("enemy.feral_warden").expect("the warden");
-    assert!(!content.enemy(warden).wave_eligible);
+    let mother = content
+        .enemy_idx("enemy.thicket_mother")
+        .expect("the landmark resident");
+    assert_eq!(
+        content.enemy(warden).encounter,
+        EnemyEncounter::RuinResident
+    );
+    assert_eq!(
+        content.enemy(mother).encounter,
+        EnemyEncounter::LandmarkResident
+    );
     for (i, def) in content.enemies.iter().enumerate() {
+        let idx = EnemyIdx(i as u16);
+        let expected = if idx == warden {
+            EnemyEncounter::RuinResident
+        } else if idx == mother {
+            EnemyEncounter::LandmarkResident
+        } else {
+            EnemyEncounter::Ordinary
+        };
         assert_eq!(
-            def.wave_eligible,
-            EnemyIdx(i as u16) != warden,
-            "{} disagrees about wave eligibility",
+            def.encounter, expected,
+            "{} has the wrong encounter source",
             def.id
         );
     }
 }
 
 #[test]
-fn a_loud_tower_never_meets_a_warden_by_accident() {
+fn a_loud_tower_never_meets_a_resident_by_accident() {
     // The content flag is only worth having if the wave path reads it.
     // Pin provocation at the ceiling and let the jungle come.
     let mut game = engine(3100);
@@ -402,6 +459,10 @@ fn a_loud_tower_never_meets_a_warden_by_accident() {
         .content()
         .enemy_idx("enemy.feral_warden")
         .expect("the warden");
+    let mother = game
+        .content()
+        .enemy_idx("enemy.thicket_mother")
+        .expect("the landmark resident");
     let max = game.content().balance.siege.provocation_max;
 
     let mut anything_came = false;
@@ -411,8 +472,10 @@ fn a_loud_tower_never_meets_a_warden_by_accident() {
         let creatures = &game.state().siege.enemies;
         anything_came |= !creatures.is_empty();
         assert!(
-            creatures.iter().all(|enemy| enemy.def != warden),
-            "a warden turned up in an ordinary wave"
+            creatures
+                .iter()
+                .all(|enemy| enemy.def != warden && enemy.def != mother),
+            "a resident turned up in an ordinary wave"
         );
     }
     assert!(
@@ -1025,22 +1088,22 @@ fn standing_at_a_fork_costs_nothing_to_run_the_legs() {
         "this test is about a tower that still intends to walk"
     );
 
-    // Measured on the stride credit rather than on the bank, because
-    // the bank is not a statement about the legs. `buy_block` tops the
-    // credit up to 99 only when the legs actually pay for a block, so a
-    // credit that never moves is the legs never buying — and unlike the
-    // charge total it cannot be confounded by lamps, which the tower is
-    // quite entitled to be spending on while it stands there thinking.
-    // The bank version of this assertion passed for three milestones by
-    // accident of what time of day seed 11 happened to reach its fork,
-    // and M4 moved the start of the run (`Clock::new`) out from under
-    // it.
-    let credit = game.state().power.stride_credit;
+    // **Measured on what the legs asked for, not on the bank**, because
+    // the bank is not a statement about the legs: it cannot be
+    // confounded by lamps, which the tower is quite entitled to be
+    // spending on while it stands there thinking. The bank version of
+    // this assertion passed for three milestones by accident of what
+    // time of day seed 11 happened to reach its fork, and M4 moved the
+    // start of the run (`Clock::new`) out from under it.
+    //
+    // It read the stride credit until §6.39 retired block purchases;
+    // `demand` is the same fact stated per tick.
+    use crate::state::power::PowerUse;
     game.step(300);
     assert_eq!(
-        game.state().power.stride_credit,
-        credit,
-        "a tower standing at a fork bought charge for its legs"
+        game.state().power.demand[PowerUse::Legs.index()],
+        0,
+        "a tower standing at a fork asked for charge for its legs"
     );
     assert!(
         !game.state().strode,
@@ -1063,7 +1126,7 @@ use crate::command::GameCommand;
 use crate::engine::GameEngine;
 use crate::fx::Paces;
 use crate::state::{EnemyState, Feature};
-use crate::tests::{item, step_quietly, stock_poles, total_in_flight};
+use crate::tests::{item, step_quietly, stock_item, stock_poles, total_in_flight};
 
 /// Build the one rig the pack ships.
 ///
@@ -1377,6 +1440,7 @@ fn a_wardens_grip_only_runs_out_once_the_tower_walks_away() {
     // away is what ends the salvage. No new mechanic produces this.
     let mut game = engine(9010);
     build_rig(&mut game);
+    crate::tests::disarm(&mut game);
     halt(&mut game);
     plant_ruin(&mut game, 60);
 
@@ -1543,8 +1607,9 @@ fn a_trade_the_tower_cannot_pay_for_changes_nothing() {
 fn nobody_is_recruited_twice_and_nobody_for_free() {
     let mut game = engine(3003);
     berth_at_the_enclave(&mut game);
+    game.step(1);
 
-    // **Emptied first.** M6 raised `starting_stock` to 24 poles so the
+    // **Emptied first.** The founding stock covers the survival loop, so the
     // opening ladder is affordable end to end (`SYSTEMS.md` §6.11), and
     // a tower with money in it cannot demonstrate that recruiting costs
     // any.
@@ -1560,18 +1625,18 @@ fn nobody_is_recruited_twice_and_nobody_for_free() {
         }
     }
     let broke = game
-        .try_send(GameCommand::Recruit)
+        .try_send(GameCommand::Recruit { candidate: 0 })
         .expect_err("recruiting is not free");
     assert!(matches!(broke, CommandError::InsufficientStock { .. }));
 
     crate::tests::stock_poles(&mut game, 200);
     let before = game.state().crew.len();
-    game.try_send(GameCommand::Recruit)
+    game.try_send(GameCommand::Recruit { candidate: 0 })
         .expect("somebody here will come");
     assert_eq!(game.state().crew.len(), before + 1);
 
     let again = game
-        .try_send(GameCommand::Recruit)
+        .try_send(GameCommand::Recruit { candidate: 0 })
         .expect_err("only so many people live here");
     assert!(matches!(again, CommandError::NobodyToRecruit));
 }
@@ -1582,8 +1647,10 @@ fn a_recruit_is_the_same_kind_of_person_as_the_starting_crew() {
     // different sort of thing from one the tower set out with.
     let mut game = engine(3004);
     berth_at_the_enclave(&mut game);
+    game.step(1);
     crate::tests::stock_poles(&mut game, 200);
-    game.try_send(GameCommand::Recruit).expect("affordable");
+    game.try_send(GameCommand::Recruit { candidate: 0 })
+        .expect("affordable");
 
     let newcomer = game.state().crew.last().expect("just recruited");
     assert!(!newcomer.name.is_empty(), "a nameless crew member");
@@ -1675,14 +1742,29 @@ fn the_snapshot_says_which_kind_of_standing_still_this_is() {
                 .retain(|room| content.room(room.def).burner.is_none());
         }
     }
-    // Long enough for the prepaid stride block to run out: charge is
-    // bought a hundred ticks at a time, so a tower that has just paid
-    // keeps walking on credit for the rest of the block.
-    game.step(150);
-    assert_eq!(
-        game.view().journey.halt,
-        HaltView::Brownout,
-        "a tower that asked for its legs and did not get them is not merely stopped"
+    // **At night, so the legs get nothing rather than a little**
+    // (`SYSTEMS.md` §6.39). Charge is served as a fraction now: on the
+    // Heartseed's trickle alone a tower crawls rather than stopping, and
+    // a crawling tower is walking, not halted. After dark the lamps
+    // outrank the legs and take the whole trickle, which is the priority
+    // order doing exactly what it says — and *then* the tower is stopped.
+    //
+    // It used to step 150 ticks to outlast a prepaid stride block; block
+    // purchases are gone with the rest of them.
+    game.state_mut_for_test().clock.tick_of_day = 0;
+    // **Sampled over a window, not on one tick** (`SYSTEMS.md` §6.39).
+    // The bank stores whole charge, so a tower living on a 0.06-a-tick
+    // trickle is served in bursts — full one tick, nothing the next —
+    // and any single tick may catch either. What is durable is that the
+    // brown-out happens; which tick it lands on is not.
+    let mut browned = false;
+    for _ in 0..150 {
+        game.step(1);
+        browned |= game.view().journey.halt == HaltView::Brownout;
+    }
+    assert!(
+        browned,
+        "a tower that asked for its legs and got nothing never reported a brown-out"
     );
 
     let mut game = engine(3007);
@@ -2458,8 +2540,12 @@ fn the_route_scatters_beats_across_every_seed() {
             }
         }
 
+        // The fixed resident warning now occupies one ordinary-beat
+        // exclusion window so the player never receives two decision
+        // cards at once. Seven is the measured worst seed after that
+        // deliberate displacement, not a lower scatter cadence.
         assert!(
-            seen >= 8,
+            seen >= 7,
             "seed {seed} walked 30,000 ticks and met {seen} beats — the journey is scenery again"
         );
     }
@@ -2498,6 +2584,267 @@ fn a_beat_out_of_reach_cannot_be_taken() {
         matches!(refused, CommandError::NothingInReach),
         "refused for the wrong reason: {refused:?}"
     );
+}
+
+#[test]
+fn the_thicket_is_one_region_bound_landmark_not_a_repeatable_beat() {
+    let game = engine(0xB055_0001);
+    let content = game.content();
+    let thicket = content
+        .waypoints
+        .iter()
+        .position(|waypoint| waypoint.id == "waypoint.snare_thicket")
+        .expect("the pack has the thicket") as u16;
+    let jungle = content
+        .region_idx("region.deep_jungle")
+        .expect("the pack has the jungle");
+    let start = game.state().world.region_start_of(jungle);
+    let end = game.state().world.journey[jungle.get()].end;
+    let landmarks: Vec<_> = game
+        .state()
+        .world
+        .waypoints
+        .iter()
+        .filter(|waypoint| waypoint.def == thicket)
+        .collect();
+    assert_eq!(landmarks.len(), 1, "the resident landmark was repeated");
+    let runtime = &content.waypoint_runtime[thicket as usize];
+    assert_eq!(
+        landmarks[0].at,
+        start + (end - start) * runtime.landmark_permille / 1000,
+        "the landmark ignored its authored position"
+    );
+}
+
+#[test]
+fn cutting_through_rouses_one_mother_and_going_around_rouses_none() {
+    let setup = |seed| {
+        let mut game = engine(seed);
+        let thicket = game
+            .content()
+            .waypoints
+            .iter()
+            .position(|waypoint| waypoint.id == "waypoint.snare_thicket")
+            .expect("the pack has the thicket") as u16;
+        let at = game
+            .state()
+            .world
+            .waypoints
+            .iter()
+            .find(|waypoint| waypoint.def == thicket)
+            .expect("the unique thicket was not generated")
+            .at;
+        game.state_mut_for_test().world.distance = at;
+        (game, thicket)
+    };
+
+    let (mut taken, _) = setup(0xB055_0002);
+    let mother = taken
+        .content()
+        .enemy_idx("enemy.thicket_mother")
+        .expect("the pack has the mother");
+    taken
+        .try_send(GameCommand::TakeWaypoint)
+        .expect("the landmark should be takeable alongside");
+    assert_eq!(
+        taken
+            .state()
+            .siege
+            .enemies
+            .iter()
+            .filter(|enemy| enemy.def == mother)
+            .count(),
+        1,
+        "cutting through did not rouse exactly one resident"
+    );
+    assert!(
+        taken.try_send(GameCommand::TakeWaypoint).is_err(),
+        "the landmark could be taken twice"
+    );
+
+    let (mut ignored, thicket) = setup(0xB055_0003);
+    let resident_at = ignored
+        .state()
+        .world
+        .waypoints
+        .iter()
+        .find(|waypoint| waypoint.def == thicket)
+        .expect("the unique thicket was not generated")
+        .at;
+    ignored.state_mut_for_test().world.distance = resident_at + crate::fx::paces_from_int(500);
+    ignored.step(1);
+    assert!(
+        ignored
+            .state()
+            .siege
+            .enemies
+            .iter()
+            .all(|enemy| enemy.def != mother),
+        "going around roused the resident"
+    );
+}
+
+#[test]
+fn an_untouched_opening_can_prepare_a_hold_ground_package_before_the_landmark() {
+    // The resident has three advertised answers. The prepared one is
+    // only honest if the ordinary economy can assemble it before the
+    // unique thicket arrives; `bestiary.rs` grants that loadout and
+    // therefore cannot answer this progression question.
+    let mut game = crate::tests::opening(0xB055_0004);
+    let content = game.content().clone();
+    let thicket = content
+        .waypoints
+        .iter()
+        .position(|waypoint| waypoint.id == "waypoint.snare_thicket")
+        .expect("the pack has the thicket") as u16;
+    let at = game
+        .state()
+        .world
+        .waypoints
+        .iter()
+        .find(|waypoint| waypoint.def == thicket)
+        .expect("the unique thicket was not generated")
+        .at;
+    // This is one coherent answer, not a checklist: the starting thorn
+    // gun supplies damage while a Tanglenet supplies control. A battery
+    // is the competing damage-heavy purchase, not another prerequisite.
+    let plan = [
+        "room.cutter_arm",
+        "room.burner",
+        "room.mill",
+        "room.fiber_comb",
+        "room.ropery",
+        "room.tanglenet",
+    ];
+    let mut next = 0usize;
+    let mut rope_trades = 0u8;
+
+    while game.state().world.distance < at && next < plan.len() {
+        if game
+            .state()
+            .world
+            .fork
+            .is_some_and(|fork| fork.answer.is_none())
+        {
+            let _ = game.try_send(GameCommand::TakeFork { branch: 0 });
+        }
+        game.step(30);
+
+        // Ropewalk is part of the natural first-region economy, not a
+        // grant. A tower choosing the resident package may buy around a
+        // thin fiber roll at the explicit price of twelve poles.
+        let journey = game.view().journey;
+        if journey.enclave_ahead.is_some_and(|ahead| ahead <= 80.0) {
+            let _ = game.try_send(GameCommand::SetStriding { walking: false });
+        }
+        if journey.at_enclave && rope_trades < 1 {
+            if game.try_send(GameCommand::Trade { offer: 0 }).is_ok() {
+                rope_trades += 1;
+            } else {
+                let _ = game.try_send(GameCommand::SetStriding { walking: true });
+            }
+        } else if journey.at_enclave {
+            let _ = game.try_send(GameCommand::SetStriding { walking: true });
+        }
+
+        let room = plan[next];
+        if crate::harness::place_anywhere(&mut game, room) {
+            next += 1;
+            continue;
+        }
+        let room_idx = content.room_idx(room).expect("planned room exists");
+        let affordable = content
+            .room_rt(room_idx)
+            .build_cost
+            .iter()
+            .all(|(item, amount)| game.state().stock_of(*item) >= *amount);
+        if affordable {
+            // A paid-for room with nowhere to stand needs layout, not
+            // more waiting. Width helps low intake; height creates a new
+            // leading edge for another emplacement.
+            let def = content.room(room_idx);
+            if def.max_floor.is_some() {
+                let _ = game.try_send(GameCommand::WidenTower);
+            } else {
+                let _ = game.try_send(GameCommand::BuildFloor);
+            }
+        }
+    }
+
+    let poles = content
+        .item_idx("item.poles")
+        .map_or(0, |item| game.state().stock_of(item));
+    let rope = content
+        .item_idx("item.rope")
+        .map_or(0, |item| game.state().stock_of(item));
+    assert_eq!(
+        next,
+        plan.len(),
+        "the hold-ground posture was advertised before a natural tower could build it: stopped at {} of {} ({}), tick {}, poles {}, rope {}, floors {}",
+        next,
+        plan.len(),
+        plan[next.min(plan.len() - 1)],
+        game.state().tick,
+        poles,
+        rope,
+        game.state().tower.floors.len(),
+    );
+}
+
+#[test]
+fn a_natural_garden_has_a_visible_first_region_payoff() {
+    // Resin used to become useful only beyond salvage, alloy and the
+    // Forge. Ropewalk now makes the optional roof commitment pay inside
+    // the region where it is introduced, without replacing its deeper
+    // cell and resonator uses.
+    let mut game = crate::tests::opening(0xB055_0005);
+    let content = game.content().clone();
+    for room in ["room.cutter_arm", "room.burner", "room.garden"] {
+        while !crate::harness::place_anywhere(&mut game, room) {
+            if game
+                .state()
+                .world
+                .fork
+                .is_some_and(|fork| fork.answer.is_none())
+            {
+                let _ = game.try_send(GameCommand::TakeFork { branch: 0 });
+            }
+            game.step(30);
+        }
+    }
+
+    let resin = content
+        .item_idx("item.resin_feedstock")
+        .expect("the pack has resin");
+    let rope = content.item_idx("item.rope").expect("the pack has rope");
+    while !game.view().journey.at_enclave {
+        if game
+            .state()
+            .world
+            .fork
+            .is_some_and(|fork| fork.answer.is_none())
+        {
+            let _ = game.try_send(GameCommand::TakeFork { branch: 0 });
+        }
+        if game
+            .view()
+            .journey
+            .enclave_ahead
+            .is_some_and(|ahead| ahead <= 80.0)
+        {
+            let _ = game.try_send(GameCommand::SetStriding { walking: false });
+        }
+        game.step(30);
+    }
+
+    assert!(
+        game.state().stock_of(resin) >= 3,
+        "the first resin buyer arrived before a natural Garden could supply it"
+    );
+    let before = game.state().stock_of(rope);
+    game.try_send(GameCommand::Trade { offer: 3 })
+        .expect("Ropewalk should buy the Garden's resin");
+    assert_eq!(game.state().stock_of(rope), before + 2);
 }
 
 #[test]
@@ -2590,6 +2937,210 @@ fn a_quiet_beat_lowers_attention_and_a_loud_one_raises_it() {
 }
 
 #[test]
+fn the_new_beats_apply_their_authored_exchange_attention_and_ground_exactly() {
+    // Content tests that derive their expected answer from the content
+    // only prove that the command can read a struct. This table is an
+    // independent pin on the eight authored decisions: if a number or
+    // item changes, the test asks for that change to be deliberate.
+    struct Expected {
+        id: &'static str,
+        cost: Option<(&'static str, i64)>,
+        gift: Option<(&'static str, i64)>,
+        provocation: i64,
+        paces: i64,
+    }
+
+    let expected = [
+        Expected {
+            id: "waypoint.broken_funicular",
+            cost: None,
+            gift: Some(("item.poles", 4)),
+            provocation: 15,
+            paces: -100,
+        },
+        Expected {
+            id: "waypoint.cloud_cistern",
+            cost: None,
+            gift: None,
+            provocation: -30,
+            paces: -120,
+        },
+        Expected {
+            id: "waypoint.field_kitchen",
+            cost: Some(("item.bamboo", 3)),
+            gift: Some(("item.meals", 2)),
+            provocation: -5,
+            paces: -70,
+        },
+        Expected {
+            id: "waypoint.lantern_post",
+            cost: Some(("item.poles", 4)),
+            gift: Some(("item.hand_lamp", 1)),
+            provocation: 10,
+            paces: -90,
+        },
+        Expected {
+            id: "waypoint.relay_orchard",
+            cost: None,
+            gift: Some(("item.mechanisms", 1)),
+            provocation: 20,
+            paces: -120,
+        },
+        Expected {
+            id: "waypoint.signal_bridge",
+            cost: None,
+            gift: None,
+            provocation: 50,
+            paces: 360,
+        },
+        Expected {
+            id: "waypoint.tool_cradle",
+            cost: None,
+            gift: Some(("item.poles", 6)),
+            provocation: 10,
+            paces: -60,
+        },
+        Expected {
+            id: "waypoint.windfall_rig",
+            cost: None,
+            gift: Some(("item.bamboo", 4)),
+            provocation: 15,
+            paces: -40,
+        },
+    ];
+
+    let pack = content();
+    for (case, beat) in expected.iter().enumerate() {
+        let def = pack
+            .waypoints
+            .iter()
+            .position(|waypoint| waypoint.id == beat.id)
+            .unwrap_or_else(|| panic!("the pack is missing {}", beat.id));
+        let mut game = engine(4500 + case as u64);
+
+        // Start with empty general storage. One exact payment goes in,
+        // then spending it frees that shelf for a differently typed
+        // gift — the smallest tower shape that can settle every case.
+        for floor in &mut game.state_mut_for_test().tower.floors {
+            for room in &mut floor.rooms {
+                for shelf in &mut room.shelves {
+                    shelf.item = None;
+                    shelf.count = 0;
+                }
+            }
+        }
+        if let Some((cost, amount)) = beat.cost {
+            stock_item(&mut game, cost, amount);
+            assert_eq!(game.state().stock_of(item(&pack, cost)), amount);
+        }
+
+        let start_paces = 1_000;
+        let start_attention = 200;
+        {
+            let state = game.state_mut_for_test();
+            state.world.distance = crate::fx::paces_from_int(start_paces);
+            state.siege.provocation = start_attention;
+            state.siege.provocation_acc = 0;
+            state.world.waypoints.clear();
+            state.world.waypoints.push(crate::state::world::Waypoint {
+                at: state.world.distance,
+                def: def as u16,
+                taken: false,
+            });
+        }
+
+        game.try_send(GameCommand::TakeWaypoint)
+            .unwrap_or_else(|error| panic!("{} was refused: {error:?}", beat.id));
+
+        if let Some((cost, _)) = beat.cost {
+            assert_eq!(
+                game.state().stock_of(item(&pack, cost)),
+                0,
+                "{} did not take its exact cost",
+                beat.id
+            );
+        }
+        if let Some((gift, amount)) = beat.gift {
+            assert_eq!(
+                game.state().stock_of(item(&pack, gift)),
+                amount,
+                "{} did not shelve its exact gift",
+                beat.id
+            );
+        }
+        assert_eq!(
+            game.state().siege.provocation,
+            start_attention + beat.provocation,
+            "{} changed attention by the wrong amount",
+            beat.id
+        );
+        assert_eq!(
+            game.state().world.distance,
+            crate::fx::paces_from_int(start_paces + beat.paces),
+            "{} changed ground by the wrong amount",
+            beat.id
+        );
+        assert!(
+            game.state().world.waypoints[0].taken,
+            "{} remained untaken",
+            beat.id
+        );
+        assert!(
+            matches!(
+                game.try_send(GameCommand::TakeWaypoint),
+                Err(CommandError::NothingInReach)
+            ),
+            "{} could be taken twice",
+            beat.id
+        );
+    }
+}
+
+#[test]
+fn the_ordinary_beat_set_keeps_its_economy_separate_from_the_landmark() {
+    // The landmark is authored in the same catalog for presentation and
+    // command handling, but it is not in the uniform scatter draw. Keep
+    // its large pace/attention stakes out of the ordinary-beat budget.
+    let pack = content();
+    assert_eq!(pack.waypoints.len(), 12);
+
+    let free: Vec<usize> = pack
+        .waypoints
+        .iter()
+        .enumerate()
+        .filter_map(|(index, beat)| {
+            (beat.landmark_region.is_none() && beat.costs.is_empty()).then_some(index)
+        })
+        .collect();
+    assert_eq!(free.len(), 8, "the ordinary free-beat set changed");
+
+    let poles = item(&pack, "item.poles");
+    let pole_gifts: i64 = pack
+        .waypoint_runtime
+        .iter()
+        .filter(|beat| beat.landmark_region.is_none())
+        .flat_map(|beat| beat.gives.iter())
+        .filter(|(gift, _)| *gift == poles)
+        .map(|(_, amount)| amount)
+        .sum();
+    assert_eq!(pole_gifts, 15, "ordinary pole income changed");
+
+    let attention: i64 = pack
+        .waypoints
+        .iter()
+        .filter(|beat| beat.landmark_region.is_none())
+        .map(|beat| beat.provocation)
+        .sum();
+    assert_eq!(attention, 65, "the ordinary attention budget changed");
+
+    let free_ground: i64 = free.iter().map(|index| pack.waypoints[*index].paces).sum();
+    assert_eq!(
+        free_ground, -310,
+        "free beats became a hidden journey-scale change"
+    );
+}
+
+#[test]
 fn a_settlement_offers_somebody_in_particular() {
     // **A recruit is a person, not a purchase** (`SYSTEMS.md` §6.29).
     // Forty traits existed and a player never chose between them,
@@ -2598,7 +3149,7 @@ fn a_settlement_offers_somebody_in_particular() {
     let content = content();
     let mut game = engine(2100);
     assert!(
-        game.state().recruit_offer.is_none(),
+        game.state().recruit_offers.iter().all(Option::is_none),
         "a tower on the road is being offered somebody"
     );
 
@@ -2617,33 +3168,49 @@ fn a_settlement_offers_somebody_in_particular() {
     }
     game.step(4);
 
-    let offered = game.state().recruit_offer;
+    let region = game.state().world.region.get();
+    let offered = game.state().recruit_offers[region];
     assert!(offered.is_some(), "a berthed tower was offered nobody");
 
     // **Held, not rerolled.** Drawing every tick would let a player
     // watch the names cycle until a rare one came up.
     game.step(600);
     assert_eq!(
-        game.state().recruit_offer,
+        game.state().recruit_offers[region],
         offered,
         "the offer changed while the tower stood still"
     );
+
+    // Leaving and coming back is not a reroll either.
+    {
+        let state = game.state_mut_for_test();
+        state.world.distance = at + crate::fx::paces_from_int(500);
+        state.strode = false;
+    }
+    game.step(2);
+    {
+        let state = game.state_mut_for_test();
+        state.world.distance = at;
+        state.strode = false;
+    }
+    game.step(2);
+    assert_eq!(game.state().recruit_offers[region], offered);
 
     // And taking it hands over *that* person.
     let name = game.state().next_crew_name(&content);
     crate::tests::stock_poles(&mut game, 60);
     let before = game.state().crew.len();
-    game.try_send(GameCommand::Recruit)
+    game.try_send(GameCommand::Recruit { candidate: 0 })
         .expect("a paid-for recruit should come aboard");
     let joined = &game.state().crew[before];
     assert_eq!(joined.name, name, "somebody else came aboard");
     assert_eq!(
         joined.traits.first().copied(),
-        offered,
+        Some(offered.expect("the pair exists")[0]),
         "the person who joined is not the person the board showed"
     );
     assert!(
-        game.state().recruit_offer.is_none(),
+        game.state().recruit_offers[region].is_none(),
         "the settlement is still offering somebody it has already sent"
     );
 }
@@ -2681,7 +3248,6 @@ fn a_tower_that_wants_a_shaft_can_have_one() {
     // the mill unlock together and cost the same, so the trap is live
     // for a player too.
     let want = [
-        "room.garden",
         "room.cutter_arm",
         "room.burner",
         "room.mill",
@@ -2712,7 +3278,7 @@ fn a_tower_that_wants_a_shaft_can_have_one() {
         }
 
         // **The chain before the height, and that ordering is the
-        // whole point.** Growing first spends the opening's 24 poles on
+        // whole point.** Growing first spends the opening stock on
         // three floors, leaves nothing for a cutter arm, and a tower
         // with no arm never earns another pole — measured: one room
         // built in a thousand minutes. A floor is only bought when
@@ -2746,7 +3312,19 @@ fn a_tower_that_wants_a_shaft_can_have_one() {
             continue;
         }
 
-        // And the shaft, the moment the chain has made rope for one.
+        // A two-floor lift is affordable but not useful: doors dominate
+        // travel on a short tower and the stairs already serve it. Grow
+        // to the first height where vertical freight is the problem the
+        // purchase claims to solve before calling it a lift decision.
+        if built.len() == want.len() && floors < 4 {
+            if game.try_send(GameCommand::BuildFloor).is_ok() {
+                floors += 1;
+            }
+            continue;
+        }
+
+        // And the shaft, once the chain has made rope and the tower has
+        // enough height for it to perform useful work.
         if built.len() == want.len() && lift_at.is_none() {
             let top = (game.state().tower.floors.len() as u8).saturating_sub(1);
             if game
@@ -2807,6 +3385,14 @@ fn a_tower_that_wants_a_shaft_can_have_one() {
             })
             .collect();
         println!("    stock {}", stock.join(" "));
+        println!(
+            "    stats fuel={} crafts={} hauls={} repair_poles={} provocation={}",
+            state.stats.fuel_burned,
+            state.stats.crafts_completed,
+            state.stats.hauls_completed,
+            state.stats.repair_poles_spent,
+            state.siege.provocation
+        );
     }
     let minutes = |ticks: u64| ticks as f64 / 30.0 / 60.0;
     match lift_at {
@@ -2830,30 +3416,20 @@ fn a_tower_that_wants_a_shaft_can_have_one() {
         "the chain did not go up: {built:?}"
     );
     let at = lift_at.expect("a chain-first tower should reach a shaft inside a run");
-    // **A run is 31-36 minutes (§6.19), and this now lands inside it
-    // rather than comfortably ahead of it.**
-    //
-    // The bar was 30 — the *target* run length — and the tower cleared
-    // it at 26. Cutting the rota (§6.32) moved it to 32: need-driven
-    // sleep makes the tower quicker at everything (hauls +19%, crafts
-    // +25%, harvest +18% on a five-floor chain), and a quicker tower
-    // runs its rope chain harder, which `glut.rs` prices at 56% of its
-    // poles. The twelve-seed walker floor is unchanged at 31-36
-    // minutes, so what moved is shaft affordability specifically.
-    //
-    // **Widened to the run rather than to 32**, and said out loud
-    // rather than quietly: asserting a hair above the measurement is
-    // how a criterion gets closed by redefining a word, which
-    // `AGENTS.md` §I names as the failure this repo watches for. What
-    // is true is that the lift is reachable inside a run and is no
-    // longer comfortable, and that gap is §6.19's open balance
-    // question — the largest in the project — not this test's to hide.
+    // A lift is the first-height infrastructure decision, not another
+    // opening card. Requiring a four-floor use case plus its per-deck
+    // frame puts the measured chain-first purchase at seven minutes:
+    // after the survival loop is established, before the first third of
+    // a 31–36 minute run is over. Both bounds matter. The old test had
+    // only `< 36`, so a regression to three minutes passed while every
+    // planned room and the lift collapsed into the opening.
     assert!(
-        minutes(at) < 36.0,
-        "the lift arrived at {:.0} minutes, past the length of a run",
+        (5.0..=15.0).contains(&minutes(at)),
+        "the useful four-floor lift arrived at {:.1} minutes, outside the measured 5–15 minute progression window",
         minutes(at)
     );
-    // **Seven of seven, and a lift at 26 minutes** — and the way it gets
+    // **Six of six, then a lift after the opening rather than on
+    // turn one** — and the way it gets
     // there is the finding. The tower widens to fourteen slots rather
     // than growing tall, and fits its whole chain on two floors.
     //

@@ -57,9 +57,7 @@ impl Job {
         }
     }
 
-    /// What this variant serialises as — the spelling a `SetWorkOrder`
-    /// has to use. Shipped in the catalog beside the display name so the
-    /// frontend never keeps its own list of enum spellings to drift.
+    /// Stable spelling shipped beside the practice label.
     #[must_use]
     pub const fn id(self) -> &'static str {
         match self {

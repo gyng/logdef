@@ -39,6 +39,7 @@ RegionDef(
     // it hurt is the mire-hulk, which lives only here and attacks the
     // one thing nothing else does.
     threat_pct: 180,
+    approaches: ApproachWeights(ground: 55, canopy: 5, burrow: 40),
     // The same rhythm the player has been learning since region 1. A
     // longer region simply fits more of them — three at the top of the
     // length roll, the most decisions a single region asks.
@@ -67,6 +68,7 @@ RegionDef(
             // and nothing to cut. The best charge in the game, and a
             // stretch a tower without a garden simply endures.
             threat_pct: 90,
+            approaches: ApproachWeights(ground: 70, canopy: 5, burrow: 25),
         ),
         BranchDef(
             id: "branch.driftwood_shelf",
@@ -80,6 +82,7 @@ RegionDef(
             // Where the wrecks pile up. The last chance to feed a forge,
             // and the company that comes with taking it.
             threat_pct: 140,
+            approaches: ApproachWeights(ground: 35, canopy: 10, burrow: 55),
         ),
         BranchDef(
             id: "branch.last_green",
@@ -95,6 +98,7 @@ RegionDef(
             // low on poles or rope takes to put itself right before the
             // arrival.
             threat_pct: 80,
+            approaches: ApproachWeights(ground: 50, canopy: 35, burrow: 15),
         ),
     ],
     // **The last enclave, and the one that sells people.**
@@ -154,7 +158,7 @@ RegionDef(
             // And a way out for the surplus a coastal tower actually
             // has: light is free here, so produce is what piles up.
             OfferDef(
-                give: CostEntryDef(item: "item.produce", amount: 8),
+                give: CostEntryDef(item: "item.resin_feedstock", amount: 8),
                 take: CostEntryDef(item: "item.poles", amount: 4),
                 stock: 12,
             ),

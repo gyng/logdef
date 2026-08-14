@@ -21,6 +21,90 @@ use crate::tests::content;
 
 const MANIFEST: &str = include_str!("../../../../docs/art-manifest.json");
 
+/// Row-major UV order in the required 4x3 walker-frame atlas.
+///
+/// Unlike the content-backed sheets, this cannot be derived from a RON
+/// pack. The order is the contract between the generated sheet and the
+/// renderer's UV table, so set equality is not enough: swapping two
+/// complete cells would still put a foot where a deck plate belongs.
+const WALKER_FRAME_CELLS: [&str; 12] = [
+    "roof-lip",
+    "flank-wall",
+    "deck-plate",
+    "hull-rib",
+    "underside-beam",
+    "stair-frame",
+    "leg-strut",
+    "leg-joint",
+    "leg-foot",
+    "planter-box",
+    "plating-strip",
+    "moss-vine-ledge",
+];
+
+/// Row-major UV order in the room architecture atlas.
+///
+/// The first half supplies full-cell shell backings; the second supplies
+/// exterior crowns. Both are selected by renderer UV rather than content id,
+/// so order is part of the asset interface.
+const ROOM_ARCHITECTURE_CELLS: [&str; 16] = [
+    "heart-shell",
+    "intake-shell",
+    "production-shell",
+    "storage-shell",
+    "energy-shell",
+    "defence-shell",
+    "quarters-shell",
+    "fallback-shell",
+    "heart-cap",
+    "garden-trellis",
+    "cell-rack",
+    "burner-stack",
+    "workshop-vent",
+    "cutter-boom",
+    "defence-barrel",
+    "spare",
+];
+
+const WAYPOINT_ART_CELLS: [&str; 12] = [
+    "broken_funicular",
+    "cloud_cistern",
+    "fallen_carrier",
+    "field_kitchen",
+    "lantern_post",
+    "relay_orchard",
+    "seep_pool",
+    "signal_bridge",
+    "snare_thicket",
+    "tool_cradle",
+    "windfall_rig",
+    "wire_tangle",
+];
+
+const WEAPON_COMPONENT_CELLS: [&str; 6] = [
+    "thorn_gun",
+    "dart_battery",
+    "lantern_mast",
+    "root_ward",
+    "tanglenet",
+    "resonance_array",
+];
+
+const COMBAT_FX_CELLS: [&str; 12] = [
+    "thorn_projectile",
+    "dart_projectile",
+    "tanglenet_cast",
+    "lantern_pulse",
+    "root_ward_pulse",
+    "resonance_wave",
+    "creature_impact",
+    "hull_impact",
+    "room_breach",
+    "shaft_sever",
+    "mechanical_puff",
+    "creature_fade",
+];
+
 /// The manifest parses, and every asset carries the fields the batch
 /// runner dereferences.
 #[test]
@@ -51,7 +135,7 @@ fn the_manifest_is_well_formed() {
 /// Every `{placeholder}` in a prompt resolves against `subject_canon`.
 ///
 /// An unresolved one ships the literal text `{tower}` to an image
-/// generator, which is the failure that loses the four-legged
+/// generator, which is the failure that loses the six-legged
 /// silhouette in every asset at once.
 #[test]
 fn every_prompt_placeholder_resolves() {
@@ -94,6 +178,402 @@ fn the_creature_sheet_lists_every_enemy_in_the_pack() {
         .collect();
 
     assert_cells_match("creature-sheet", &expected);
+
+    let manifest = parse();
+    let creature = manifest["assets"]
+        .as_array()
+        .expect("assets")
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("creature-sheet"))
+        .expect("docs/art-manifest.json has no creature-sheet asset");
+    let flattened: Vec<&str> = creature["sheet"]["sourceSheets"]
+        .as_array()
+        .expect("creature-sheet has no sourceSheets")
+        .iter()
+        .flat_map(|sheet| sheet.as_array().expect("creature source sheet").iter())
+        .map(|cell| cell.as_str().expect("creature source cell"))
+        .collect();
+    let atlas_cells: Vec<&str> = creature["sheet"]["cells"]
+        .as_array()
+        .expect("creature-sheet cells")
+        .iter()
+        .map(|cell| cell.as_str().expect("creature atlas cell"))
+        .collect();
+    assert_eq!(
+        flattened, atlas_cells,
+        "creature source sheet order drifted"
+    );
+    assert_eq!(creature["sheet"]["cellShip"].as_str(), Some("128x256"));
+    assert_eq!(creature["sheet"]["atlas"].as_str(), Some("1024x256"));
+    assert_eq!(
+        creature["sheet"]["occupiedWidthPct"]
+            .as_array()
+            .expect("creature occupied widths")
+            .len(),
+        atlas_cells.len(),
+        "each creature needs a declared shipping scale"
+    );
+}
+
+#[test]
+fn the_optional_creature_motion_sheet_matches_species_and_renderer_rows() {
+    let expected: Vec<String> = content()
+        .enemies
+        .iter()
+        .map(|enemy| strip_prefix(&enemy.id))
+        .collect();
+    assert_cells_match("creature-motion", &expected);
+
+    let manifest = parse();
+    let assets = manifest["assets"].as_array().expect("assets");
+    let standing = assets
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("creature-sheet"))
+        .expect("docs/art-manifest.json has no creature-sheet asset");
+    let motion = assets
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("creature-motion"))
+        .expect("docs/art-manifest.json has no creature-motion asset");
+
+    assert_eq!(motion["required"].as_bool(), Some(false));
+    assert_eq!(motion["sheet"]["cells"], standing["sheet"]["cells"]);
+    assert_eq!(
+        motion["sheet"]["occupiedWidthPct"], standing["sheet"]["occupiedWidthPct"],
+        "motion poses must preserve the standing atlas' species scale"
+    );
+    assert_eq!(motion["sheet"]["cellShip"].as_str(), Some("128x256"));
+    assert_eq!(motion["sheet"]["atlas"].as_str(), Some("1024x2048"));
+
+    let frames: Vec<&str> = motion["sheet"]["frames"]
+        .as_array()
+        .expect("creature-motion has no frames")
+        .iter()
+        .map(|frame| {
+            frame
+                .as_str()
+                .expect("creature-motion frame is not a string")
+        })
+        .collect();
+    assert_eq!(
+        frames,
+        [
+            "idle-approach-a",
+            "idle-approach-b",
+            "attack-a",
+            "attack-b",
+            "hurt",
+            "dying",
+            "leaving-a",
+            "leaving-b",
+        ]
+    );
+    assert_eq!(motion["sheet"]["sourceSheets"], motion["sheet"]["cells"]);
+
+    let note = motion["_note"]
+        .as_str()
+        .expect("creature-motion has no _note");
+    for contract in [
+        "simulation tick plus enemy id",
+        "renderer-owned",
+        "independent fallbacks",
+    ] {
+        assert!(
+            note.contains(contract),
+            "creature-motion no longer records its ownership contract: {contract:?}"
+        );
+    }
+}
+
+#[test]
+fn weapon_and_combat_effect_atlases_have_stable_uv_contracts() {
+    let manifest = parse();
+    let assets = manifest["assets"].as_array().expect("assets");
+    for (asset_id, expected, atlas, layout) in [
+        (
+            "weapon-components",
+            WEAPON_COMPONENT_CELLS.as_slice(),
+            "768x512",
+            "3 columns by 2 rows of exact equal cells, row-major",
+        ),
+        (
+            "combat-fx",
+            COMBAT_FX_CELLS.as_slice(),
+            "1024x768",
+            "4 columns by 3 rows of exact equal cells, row-major",
+        ),
+    ] {
+        let asset = assets
+            .iter()
+            .find(|asset| asset["id"].as_str() == Some(asset_id))
+            .unwrap_or_else(|| panic!("docs/art-manifest.json has no {asset_id} asset"));
+        let cells: Vec<&str> = asset["sheet"]["cells"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{asset_id} has no cells"))
+            .iter()
+            .map(|cell| cell.as_str().expect("atlas cell is not a string"))
+            .collect();
+        assert_eq!(cells, expected, "{asset_id} UV order changed");
+        assert_eq!(asset["required"].as_bool(), Some(false));
+        assert_eq!(asset["sheet"]["cellShip"].as_str(), Some("256x256"));
+        assert_eq!(asset["sheet"]["atlas"].as_str(), Some(atlas));
+        assert_eq!(asset["sheet"]["layout"].as_str(), Some(layout));
+        assert!(
+            asset["_note"]
+                .as_str()
+                .is_some_and(|note| note.contains("independent fallback")),
+            "{asset_id} must record its fallback ownership"
+        );
+    }
+}
+
+#[test]
+fn the_room_interior_sheet_lists_every_room_in_the_pack() {
+    let expected: Vec<String> = content()
+        .rooms
+        .iter()
+        .map(|room| strip_prefix(&room.id))
+        .collect();
+
+    assert_cells_match("room-interiors", &expected);
+}
+
+#[test]
+fn the_room_shell_sheet_matches_rooms_and_their_uv_layout() {
+    let expected: Vec<String> = content()
+        .rooms
+        .iter()
+        .map(|room| strip_prefix(&room.id))
+        .collect();
+    assert_cells_match("room-shells", &expected);
+
+    let manifest = parse();
+    let assets = manifest["assets"].as_array().expect("assets");
+    let shells = assets
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("room-shells"))
+        .expect("docs/art-manifest.json has no room-shells asset");
+    let interiors = assets
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("room-interiors"))
+        .expect("docs/art-manifest.json has no room-interiors asset");
+
+    assert_eq!(
+        shells["required"].as_bool(),
+        Some(false),
+        "room-shells is an optional specificity layer"
+    );
+    assert_eq!(shells["sheet"]["atlas"].as_str(), Some("1024x768"));
+    assert_eq!(
+        shells["sheet"]["sourceLayout"].as_str(),
+        Some(
+            "three portrait 2x4 source sheets in row-major order, packed into the exact rooms-atlas UV layout"
+        )
+    );
+    assert_eq!(
+        shells["sheet"]["cells"], interiors["sheet"]["cells"],
+        "room-shells must use the same room IDs and UV order as rooms-atlas"
+    );
+    assert_eq!(
+        shells["sheet"]["packing"], interiors["sheet"]["packing"],
+        "room-shells must use the exact rooms-atlas destination rectangles"
+    );
+
+    let source_sheets = shells["sheet"]["sourceSheets"]
+        .as_array()
+        .expect("room-shells has no sourceSheets");
+    assert_eq!(source_sheets.len(), 3);
+    assert!(source_sheets.iter().all(|sheet| {
+        sheet
+            .as_array()
+            .is_some_and(|source_cells| source_cells.len() == 8)
+    }));
+
+    let note = shells["_note"].as_str().expect("room-shells has no _note");
+    for contract in [
+        "exact rooms-atlas UV rectangles",
+        "no generic wall shows through",
+        "renderer owns",
+        "category-shell fallback",
+    ] {
+        assert!(
+            note.contains(contract),
+            "room-shells no longer records its ownership contract: {contract:?}"
+        );
+    }
+}
+
+#[test]
+fn room_wrecks_derive_from_every_authored_room_without_changing_uvs() {
+    let expected: Vec<String> = content()
+        .rooms
+        .iter()
+        .map(|room| strip_prefix(&room.id))
+        .collect();
+    assert_cells_match("room-wrecks", &expected);
+
+    let manifest = parse();
+    let assets = manifest["assets"].as_array().expect("assets");
+    let wrecks = assets
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("room-wrecks"))
+        .expect("docs/art-manifest.json has no room-wrecks derived asset");
+    assert_eq!(wrecks["derive"]["from"].as_str(), Some("room-interiors"));
+    assert_eq!(
+        wrecks["sheet"]["layout"].as_str(),
+        Some("exact rooms-atlas UV layout")
+    );
+    assert_eq!(wrecks["sheet"]["atlas"].as_str(), Some("1024x768"));
+}
+
+/// The frame is a kit the renderer composes, not a painting of one
+/// particular tower at one instant of its walk cycle.
+///
+/// These prose clauses are load-bearing generation constraints. If they
+/// disappear, a batch can quite reasonably produce a whole fixed walker,
+/// bake a pose into its legs, or paint over state the renderer owns.
+#[test]
+fn the_walker_frame_is_an_ordered_component_kit() {
+    let manifest = parse();
+    let asset = manifest["assets"]
+        .as_array()
+        .expect("assets")
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("walker-frame"))
+        .expect("docs/art-manifest.json has no required walker-frame asset");
+
+    assert_eq!(
+        asset["required"].as_bool(),
+        Some(true),
+        "walker-frame must remain a required shipping asset"
+    );
+
+    let cells: Vec<&str> = asset["sheet"]["cells"]
+        .as_array()
+        .expect("walker-frame has no sheet.cells")
+        .iter()
+        .map(|cell| cell.as_str().expect("walker-frame has a non-string cell"))
+        .collect();
+    assert_eq!(
+        cells, WALKER_FRAME_CELLS,
+        "walker-frame cells or their row-major UV order changed"
+    );
+
+    let composition = asset["composition"]
+        .as_str()
+        .expect("walker-frame has no composition");
+    assert!(
+        composition.contains("No whole tower"),
+        "walker-frame must forbid generating a fixed walker silhouette"
+    );
+
+    let note = asset["_note"].as_str().expect("walker-frame has no _note");
+    for contract in [
+        "component kit, never a fixed walker silhouette",
+        "renderer repeats structure",
+        "authoritative six-leg gait",
+        "remain procedural",
+    ] {
+        assert!(
+            note.contains(contract),
+            "walker-frame no longer records its ownership contract: {contract:?}"
+        );
+    }
+}
+
+#[test]
+fn the_room_architecture_sheet_has_stable_registered_cells() {
+    let manifest = parse();
+    let asset = manifest["assets"]
+        .as_array()
+        .expect("assets")
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("room-architecture"))
+        .expect("docs/art-manifest.json has no required room-architecture asset");
+
+    assert_eq!(
+        asset["required"].as_bool(),
+        Some(true),
+        "room-architecture must remain a required shipping asset"
+    );
+    let cells: Vec<&str> = asset["sheet"]["cells"]
+        .as_array()
+        .expect("room-architecture has no sheet.cells")
+        .iter()
+        .map(|cell| {
+            cell.as_str()
+                .expect("room-architecture has a non-string cell")
+        })
+        .collect();
+    assert_eq!(
+        cells, ROOM_ARCHITECTURE_CELLS,
+        "room-architecture cells or their row-major UV order changed"
+    );
+    assert_eq!(asset["sheet"]["atlas"].as_str(), Some("1024x1024"));
+    assert_eq!(asset["sheet"]["cellShip"].as_str(), Some("256x256"));
+
+    let note = asset["_note"]
+        .as_str()
+        .expect("room-architecture has no _note");
+    for contract in [
+        "fixed grid coordinates",
+        "simulation owns",
+        "procedural fallback",
+    ] {
+        assert!(
+            note.contains(contract),
+            "room-architecture no longer records its ownership contract: {contract:?}"
+        );
+    }
+}
+
+#[test]
+fn the_waypoint_art_sheet_matches_every_beat_in_stable_id_order() {
+    let expected: Vec<String> = content()
+        .waypoints
+        .iter()
+        .map(|waypoint| strip_prefix(&waypoint.id))
+        .collect();
+    assert_eq!(
+        expected,
+        WAYPOINT_ART_CELLS
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        "the authored waypoint pack changed without updating the atlas UV contract"
+    );
+
+    let manifest = parse();
+    let asset = manifest["assets"]
+        .as_array()
+        .expect("assets")
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("waypoint-art"))
+        .expect("docs/art-manifest.json has no required waypoint-art asset");
+    assert_eq!(asset["required"].as_bool(), Some(true));
+    assert_eq!(asset["sheet"]["atlas"].as_str(), Some("1024x576"));
+    assert_eq!(asset["sheet"]["cellShip"].as_str(), Some("256x192"));
+
+    let cells: Vec<&str> = asset["sheet"]["cells"]
+        .as_array()
+        .expect("waypoint-art has no sheet.cells")
+        .iter()
+        .map(|cell| cell.as_str().expect("waypoint-art has a non-string cell"))
+        .collect();
+    assert_eq!(cells, WAYPOINT_ART_CELLS);
+
+    let flattened: Vec<&str> = asset["sheet"]["sourceSheets"]
+        .as_array()
+        .expect("waypoint-art has no sourceSheets")
+        .iter()
+        .flat_map(|sheet| {
+            sheet
+                .as_array()
+                .expect("waypoint source sheet is not an array")
+                .iter()
+                .map(|cell| cell.as_str().expect("waypoint source cell is not a string"))
+        })
+        .collect();
+    assert_eq!(flattened, WAYPOINT_ART_CELLS);
 }
 
 /// The crew sheet draws the people a run can actually field: the first
@@ -113,6 +593,50 @@ fn the_crew_sheet_lists_the_crew_a_run_can_field() {
 
     let expected: Vec<String> = content.crew_names.iter().take(cap).cloned().collect();
     assert_cells_match("crew-sheet", &expected);
+    assert_cells_match("crew-motion", &expected);
+    assert_cells_match("crew-portraits", &expected);
+
+    let manifest = parse();
+    let portraits = manifest["assets"]
+        .as_array()
+        .expect("assets")
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("crew-portraits"))
+        .expect("docs/art-manifest.json has no required crew-portraits asset");
+    assert_eq!(portraits["required"].as_bool(), Some(true));
+    assert_eq!(
+        portraits["sheet"]["layout"].as_str(),
+        Some("4 columns by 2 rows of equal square cells, row-major")
+    );
+    assert_eq!(portraits["sheet"]["cellShip"].as_str(), Some("128x128"));
+    assert_eq!(portraits["sheet"]["atlas"].as_str(), Some("512x256"));
+
+    let crew_motion = manifest["assets"]
+        .as_array()
+        .expect("assets")
+        .iter()
+        .find(|asset| asset["id"].as_str() == Some("crew-motion"))
+        .expect("docs/art-manifest.json has no crew-motion asset");
+    let expected_frames = [
+        "idle-a", "idle-b", "walk-a", "walk-b", "work-a", "work-b", "carry-a", "carry-b", "eat-a",
+        "eat-b", "sleep-a", "sleep-b",
+    ];
+    let frames: Vec<&str> = crew_motion["sheet"]["frames"]
+        .as_array()
+        .expect("crew-motion has no frames")
+        .iter()
+        .map(|frame| frame.as_str().expect("crew-motion has a non-string frame"))
+        .collect();
+    assert_eq!(frames, expected_frames);
+    assert_eq!(crew_motion["sheet"]["cellShip"].as_str(), Some("128x192"));
+    assert_eq!(crew_motion["sheet"]["atlas"].as_str(), Some("1024x2304"));
+    assert_eq!(
+        crew_motion["sheet"]["sourceSheets"]
+            .as_array()
+            .expect("crew-motion has no sourceSheets")
+            .len(),
+        cap
+    );
 }
 
 // ---------------------------------------------------------------------------

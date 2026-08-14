@@ -2,6 +2,12 @@
 
 Everything needed to generate the game's art.
 
+For a compact inventory of every source, prompt sidecar, shipped derivative,
+atlas cell order and live visual checkpoint, see
+[`GENERATED-ART.md`](GENERATED-ART.md). It is generated from the manifest,
+pipeline constants and files on disk; regenerate it with
+`python scripts/generate_art_index.py` rather than editing it by hand.
+
 **The prompts are not in this file.** They live in `docs/art-manifest.json`, which is the
 source of truth for every fact about an asset: its prompt, its sizes, its format and where the
 file goes. This file is the prose companion — why the art looks like this, and the house rules
@@ -53,15 +59,13 @@ the tower, its roof, its hull, the crew, the creatures. Prompts reference them a
 They are there because **an error in the canon is an error in every asset at once**, and this
 file got two of them wrong for a whole milestone:
 
-- **The tower has four legs, not two.** This document used to say "two legs, not six … it is
-  the silhouette the whole game reads by", which is the opposite of what the game draws.
-  `scene.ts` has `const LEGS = 4`, and `RENDERER.md`'s section is titled "Four legs, and the
-  joint that would not go where it was told". The reason matters for the art: two legs "reads
-  as a *person* however it is drawn", so the change was made to stop it doing that.
-- **The joint is not a knee.** It is a shallow inverted V riding *above* the hip — a wading
-  insect, not a bird. RENDERER.md spent three attempts on this and says a knee "is the one
-  thing this must not look like". The old prompt asked for "backward-bending knees like a
-  bird's", which is the failure mode named in the renderer's own notes.
+- **The tower has six legs, not two or four.** They form three mechanical bogies, each with a
+  near and rear limb, and carry the hull in an alternating tripod gait. Two reads as a person;
+  four evenly spaced legs read as stilts in strict side view. Six produces the low, redundant
+  walking-machine silhouette the live renderer now draws.
+- **The joint is a mechanical linkage, not an animal knee.** Each limb forms a broad two-link
+  Z with a visible circular servo. Rear-plane limbs sit slightly higher and darker. Never ask
+  for a human knee or a bird's backward hock.
 - **There are no sails.** M6 cut the canopy sails out of the game entirely (`SYSTEMS.md`
   §6.10) and the roof carries a row of planters now — a garden. Every mention of a sail in the
   code is a comment about their removal. The old cover prompt asked for "sail panels on the
@@ -69,9 +73,10 @@ file got two of them wrong for a whole milestone:
 
 ### The character direction
 
-**Semi-chibi anime sprites, inside the same 1980s watercolour magazine style.** Roughly three
-and a half heads tall — softened and slightly large-headed so a figure forty pixels tall is
-still a person, but not full chibi and not a mascot.
+**Compact semi-chibi anime sprites, inside the same 1980s watercolour magazine style.** Roughly
+2.5 to 2.75 heads tall, with shortened limbs and slightly larger hands and boots so a figure forty
+pixels tall is still readable. Adult builds, jawlines and work-worn posture keep them from
+becoming full chibi, children or mascots.
 
 The thing to hold onto is that **semi-chibi is doing a readability job, not a comedy one.**
 This is a melancholy game. The crew are adults at work: calm, tired, absorbed in a task. No
@@ -81,19 +86,64 @@ borer is a beetle doing a beetle thing, not a monster.
 
 `crew_tone` and `creature` in the canon say this in prompt form; paste them, don't paraphrase.
 
-### The game has no art at all today
+### How the art enters the game
 
-Every pixel is drawn procedurally — coloured shapes, no images anywhere, and `web/public/` is
-empty. So this is a manifest for *new* art, and **generating a picture is the cheap half**;
-the expensive half is wiring it in. The manifest is ordered so the early assets need almost no
-code and the later ones need progressively more.
+The first version of this document described a wholly procedural renderer. The art pass layers
+painted skies, scenery, people, creatures, room interiors and a modular walker frame over that
+deterministic geometry. **Generating a picture is still the cheap half**; the expensive half is
+wiring it in without erasing the state the procedural layer communicates.
 
 | Tier | Where it goes | Code needed |
 |---|---|---|
 | **0** | itch.io page, title screen, arrival card | none — a CSS background |
 | **1** | Paper grain, wash, sky strips, over the game itself | one textured quad |
 | **2** | Scenery props — trees, ferns, ruins | a texture atlas |
-| **3** | Crew, creatures, item icons | a different renderer — **read §5 first** |
+| **3** | Walker-frame and shaft components, room interiors, crew, creatures, item icons | a different renderer — **read §5 first** |
+
+### Terrain paintings are atmosphere, not world state
+
+Tier 2 now has one parallax painting for each authored terrain character: canopy, clearing,
+ruin field, drowned street and the salt-flat coast. These are **finite paintings**, not
+seamless wallpaper. The renderer cover-crops the appropriate painting into the available
+terrain area; it must never hard-repeat it across the screen. A repeated ruin, pylon or tree
+at a fixed interval turns a landscape into a texture strip, and a generated watercolour edge
+is not reliably seamless even when a prompt asks for one.
+
+The paintings provide distant atmosphere only. They may establish deep canopy, open clearing,
+collapsed skyline, flooded concrete or pale coast, but they do not decide what is physically
+present at a particular pace. The live terrain bands still choose the painting, and the
+renderer still places the feature layer, ground plane and gameplay landmarks over it. Cover
+cropping may discard either horizontal edge, so no unique or load-bearing subject belongs near
+an edge and no painting may depend on its whole width being visible.
+
+This boundary is especially strict around water and the journey ahead. Drowned-street water,
+its surface motion and contact effects remain renderer-owned. So do the unresolved-fork mist,
+the finite journey edge and arrival light, branch tracks and their selected state, enclave
+approach and berth lighting, waypoint availability, labels and every other signal derived from
+the snapshot. A painting can support those signals with atmosphere; it must not contain a
+second baked fork, edge, settlement, path choice or interactive salvage site that can disagree
+with them.
+
+### The terrain-doodad atlas carries identity; the snapshot carries value
+
+The replacement terrain-doodad sheet is a **4 by 4 atlas**. Its first half contains ordinary
+terrain props; its second half contains four adjacent intact/stripped pairs for the salvageable
+ruin families. The manifest owns the exact row-major cell names and order. Keep each prop
+isolated, unlit and on the common baseline so the renderer can place, scale, tint and haze it
+in any of the three live parallax layers.
+
+Intact and stripped are semantic variants, not cosmetic randomisation. `FeatureView.salvage`
+selects the member of the pair: a salvageable feature with value remaining uses its intact
+cell, and the same feature at zero uses its stripped cell. The feature's terrain definition
+still decides whether it is a ruin at all; zero does not turn an ordinary prop into a stripped
+ruin. Seeded variation may choose a ruin family, but it must not override the intact/stripped
+choice.
+
+Do not paint a fixed salvage heap, glint, number, glow or berth marker into either cell. The
+renderer draws the live quantity and interaction cues over the selected shell, which is how a
+rich ruin, a lean ruin and the same place after extraction remain visibly different. The
+painted cell owns material and silhouette; `FeatureView.salvage` and the procedural overlay own
+the economic fact.
 
 ---
 
@@ -120,10 +170,11 @@ and composing is what makes that impossible rather than merely discouraged.
 AI images have at 100% and tightens the watercolour edges. Two assets ship larger than they
 generate and say so in their own notes; everything else downscales.
 
-**Do sheets, and do not split them.** Where the manifest gives a `sheet`, generate all its
-cells in one image and cut them apart. One painting pass matches itself far better than eight
-separate ones, and the crew sheet is the clearest case — eight separately-generated characters
-will not look like the same crew.
+**Do sheets, and do not split a coherent set into individual objects.** Where the manifest gives
+a `sheet`, generate its cells together and cut them apart. One painting pass matches itself far
+better than eight separate ones. The 24-room set is the documented exception: three eight-cell
+source sheets keep the prompt legible to the generator, then pack into one shipping atlas. All
+three use the same references, style block and session.
 
 **Write a sidecar.** Beside every original, a `<name>.json` with the model, the full composed
 prompt, the seed and the date. You will want a matching asset in six months and will not
@@ -151,10 +202,11 @@ watercolour edges are semi-transparent and white fringing will follow you foreve
 Keep the full-size originals *outside* `web/public/` so you can re-derive a different size
 later without regenerating.
 
-**Budget: 3–5 MB of art, total.** The shipped bundle is ~1.9 MB today, 1.6 MB of which is the
-wasm, and an itch.io HTML5 game downloads *in full* before it starts. Past 5 MB the first
-thing a stranger experiences is a wait. `make release` prints the size. If the set does not
-fit, cut assets rather than quality.
+**Budget: 40 MiB hard ceiling; stay lean by default.** An itch.io HTML5 game downloads in full
+before it starts, so the higher ceiling is headroom for art that proves its value in live
+comparison, not a target. Keep opaque paintings as quality-tuned WebP, alpha sheets indexed
+and optimized, and full-resolution sources outside `web/public/`. `make release` prints the
+size; only ship a larger derivative when the smaller one visibly loses material readability.
 
 **Screenshots for the itch page are free** — `cd web && npx playwright test capture` writes
 real stills to `web/capture/`. Use those rather than generating fake ones.
@@ -171,8 +223,9 @@ with "match the style, palette and linework of the attached image".
 
 **On the prompts themselves:**
 
-- **Be concrete about the subject, vague about the art.** "Four legs in a wave gait, two
-  always planted" is useful. "Beautiful, highly detailed, 8k, masterpiece" is noise, and
+- **Be concrete about the subject, vague about the art.** "Six legs in an alternating tripod
+  gait, three always carrying the hull" is useful. "Beautiful, highly detailed, 8k,
+  masterpiece" is noise, and
   actively pushes toward the glossy digital-painting look you are trying to avoid.
 - **Pick one light per image and say which.** The illustration block offers firelight *or*
   overcast. Asking for both gets you neither.
@@ -194,10 +247,46 @@ If you want the watercolour look *inside* the tower, **tier 1 gets you most of t
 paper grain and a wash multiplied over the existing shapes reads as painted and costs one
 quad. Try that before commissioning a full sprite set.
 
-The exception worth doing on its own is the **item icons**, because those are emoji today and
-emoji render differently on every machine — a real bug rather than a preference. The crew
-sheet is the next most valuable, since it is where the semi-chibi direction actually becomes
-visible; but it is also the one that needs the most renderer work behind it.
+Room art is **interior dressing, not replacement room state**. The atlas provides the machinery
+and furniture that makes a mill unlike a ropery and a Root Ward unlike a Thorn Gun. The renderer
+still owns active motion and warmth, idle dimming, backed-up stock, buffer fills, damage, the
+destroyed silhouette, hammocks, hearth fire, smoke and exterior crowns. That split is what lets
+the rooms stop looking like labelled blocks without turning a live factory into 24 static cards.
+
+The walker frame follows the same rule more strictly: it is **a component kit, never a fixed
+walker silhouette**. Its twelve cells are ordered and load-bearing: `roof-lip`, `flank-wall`,
+`deck-plate`, `hull-rib`, `underside-beam`, `stair-frame`, `leg-strut`, `leg-joint`, `leg-foot`,
+`planter-box`, `plating-strip`, `moss-vine-ledge`. The renderer repeats those components to the
+current number of slots and floors and composes the strut, joint and foot into the authoritative
+six-leg gait. A whole painted tower would only match one tower height and one instant of that
+gait, which makes it the wrong asset however attractive the still image is.
+
+The art owns material — perforated rack steel, patched computer casings, brass linkages, cable,
+verdigris and the human repairs over them. The renderer still owns structure and state: hull
+dimensions, six leg positions and rotations, planted feet, panel damage and breaches, missing
+stair treads, plating amount, planter and overgrowth placement, room and deck light, water
+contact and every other live effect. In particular, `leg-strut` is generated horizontal so the
+renderer can rotate it; `stair-frame` has no treads so damage can take the procedural ones out;
+and none of the twelve cells may bake in a glow, break, contact splash or fixed pose.
+
+The roof garden has its own optional eight-cell `roof-flora` kit rather than asking the tiny
+frame-atlas planter cell to carry the whole silhouette. Six upright grasses, ferns, herbs and a
+sapling repeat behind the roof lip; two trailing vine and sedge cells spill over it. The selection
+is derived from hull dimensions and slot number, so it remains stable while the walker moves and
+works at every live width. The frame still owns the metal planter boxes and roof lip. If the flora
+sheet is absent, the procedural planter tufts return independently.
+
+Stairs and elevators use their own six-cell shaft kit rather than stretching the frame's old
+generic `stair-frame` through every transport type. One-floor stair and elevator bays repeat up
+the live span; a separate tread, lift cage, overhead drive and counterweight give each mechanism
+a distinct silhouette. The renderer still chooses which damaged treads are missing, masks a
+severed gap, moves the car, opens its doors at a stop, and draws queue glow, load, freight and
+crew above the paintings. A missing shaft atlas therefore falls back independently without
+disabling room or walker-frame art.
+
+The item icons are also worth doing on their own because platform emoji render differently on
+every machine. Crew and creature sheets supply the small readable silhouettes while procedural
+poses and state overlays remain authoritative.
 
 `docs/RENDERER.md` lists what the renderer already draws and animates by itself — smoke,
 water, legs planting, loads coloured by what they are — which is more than most people expect,

@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::content::Content;
+use crate::content::{ApproachWeights, Content};
 use crate::fx::{Paces, paces_from_int};
 use crate::ids::{BranchIdx, RegionIdx, TerrainIdx};
 use crate::rng::Rng;
@@ -178,11 +178,36 @@ impl World {
             });
         }
 
+        // Landmarks are placed once from the rolled journey rather than
+        // drawn from the repeating beat stream. Their position is a
+        // deterministic fraction of their owning region, so they can be
+        // previewed, ignored, taken and then pruned without ever being
+        // generated again.
+        let mut waypoints = Vec::new();
+        for (def, runtime) in content.waypoint_runtime.iter().enumerate() {
+            let Some(region) = runtime.landmark_region else {
+                continue;
+            };
+            let start = match region.get().checked_sub(1) {
+                Some(previous) => journey.get(previous).map_or(0, |roll| roll.end),
+                None => 0,
+            };
+            let Some(end) = journey.get(region.get()).map(|roll| roll.end) else {
+                continue;
+            };
+            let at = start + (end - start) * runtime.landmark_permille / 1000;
+            waypoints.push(Waypoint {
+                at,
+                def: u16::try_from(def).unwrap_or(u16::MAX),
+                taken: false,
+            });
+        }
+
         let mut world = Self {
             distance: 0,
             bands: Vec::new(),
             features: Vec::new(),
-            waypoints: Vec::new(),
+            waypoints,
             // The first beat falls a short way in rather than at pace
             // zero: the opening five minutes are busy enough
             // (`SYSTEMS.md` §6.11) without a prompt in them.
@@ -455,6 +480,30 @@ impl World {
         })
     }
 
+    /// Threat pressure of the ground the tower has committed to.
+    ///
+    /// Regions establish the baseline and a live fork branch modifies it.
+    /// Keeping the multiplication here gives simulation and presentation one
+    /// authoritative answer instead of leaving the fork's advertised danger as
+    /// decorative copy.
+    #[must_use]
+    pub fn current_threat_pct(&self, content: &Content) -> i64 {
+        let region = content.region(self.region).threat_pct;
+        let branch = self
+            .branch
+            .map_or(100, |active| content.branch(active.def).threat_pct);
+        region * branch / 100
+    }
+
+    /// The authored specialist mix at the tower's current position.
+    #[must_use]
+    pub fn current_approaches(&self, content: &Content) -> ApproachWeights {
+        self.branch
+            .map_or(content.region(self.region).approaches, |active| {
+                content.branch(active.def).approaches
+            })
+    }
+
     /// Extend the terrain until it reaches `stream_ahead_paces` past
     /// the tower. Called every tick; usually a no-op.
     pub fn generate_ahead(&mut self, rng: &mut Rng, content: &Content) {
@@ -609,7 +658,14 @@ impl World {
     /// stream is explicitly the one that may be perturbed by adding or
     /// editing content.
     fn scatter_waypoints(&mut self, rng: &mut Rng, content: &Content) {
-        if content.waypoints.is_empty() {
+        let ordinary: Vec<u16> = content
+            .waypoint_runtime
+            .iter()
+            .enumerate()
+            .filter(|(_, runtime)| runtime.landmark_region.is_none())
+            .filter_map(|(index, _)| u16::try_from(index).ok())
+            .collect();
+        if ordinary.is_empty() {
             return;
         }
         while self.next_waypoint_at <= self.generated_to {
@@ -635,9 +691,25 @@ impl World {
             if let Some(fork) = self.fork
                 && (fork.at - at).abs() < paces_from_int(MIN_WAYPOINT_INTERVAL_PACES)
             {
+                // Retry just past the exclusion zone rather than silently
+                // deleting a beat from this region's cadence.
+                self.next_waypoint_at = at + paces_from_int(MIN_WAYPOINT_INTERVAL_PACES);
                 continue;
             }
-            let def = rng.range(0, content.waypoints.len() as i64 - 1) as u16;
+            // The fixed landmark was placed before streaming began.
+            // Give it the same breathing room as any other beat so its
+            // warning and choice never arrive as the second card in a
+            // prompt queue.
+            if self.waypoints.iter().any(|waypoint| {
+                (waypoint.at - at).abs() < paces_from_int(MIN_WAYPOINT_INTERVAL_PACES)
+            }) {
+                self.next_waypoint_at = at + paces_from_int(MIN_WAYPOINT_INTERVAL_PACES);
+                continue;
+            }
+            let Some(pick) = rng.index(ordinary.len()) else {
+                break;
+            };
+            let def = ordinary[pick];
             self.waypoints.push(Waypoint {
                 at,
                 def,

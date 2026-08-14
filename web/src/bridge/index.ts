@@ -14,8 +14,8 @@ import type {
   CatalogSnapshot,
   CommandResult,
   GameCommand,
+  FrameEvents,
   ReplayReport,
-  SoundEvent,
   ViewSnapshot,
 } from "./types";
 
@@ -34,12 +34,14 @@ interface WasmModule {
   verify_golden_replay(): string;
   debug_step(ticks: number): string;
   debug_grant(item: string, amount: bigint): bigint;
+  debug_wreck_room(floor: number, slot: number): boolean;
+  debug_stage_enemies(): number;
 }
 
 export interface Bridge {
   send(cmd: GameCommand): CommandResult;
-  /** Advance by wall-clock microseconds. Returns sounds produced. */
-  frame(elapsedUs: number): SoundEvent[];
+  /** Advance by wall-clock microseconds. Returns transient frame events. */
+  frame(elapsedUs: number): FrameEvents;
   view(): ViewSnapshot;
   catalog(): CatalogSnapshot;
   stateHash(): string;
@@ -57,7 +59,7 @@ export interface Bridge {
    * audio harness could not exist. Returning them costs nothing and is
    * the whole of what it needed.
    */
-  debugStep(ticks: number): SoundEvent[];
+  debugStep(ticks: number): FrameEvents;
   /**
    * Put items straight onto the shelves. **Tests only.**
    *
@@ -66,6 +68,10 @@ export interface Bridge {
    * actually shelved.
    */
   debugGrant(item: string, amount: number): number;
+  /** Force one room into its wrecked presentation. **Tests only.** */
+  debugWreckRoom(floor: number, slot: number): boolean;
+  /** Stage every creature definition for a renderer checkpoint. **Tests only.** */
+  debugStageEnemies(): number;
 }
 
 let bridge: Bridge | null = null;
@@ -84,7 +90,7 @@ export async function initBridge(seed: number): Promise<Bridge> {
 
   bridge = {
     send: (cmd) => JSON.parse(wasm.send_command(JSON.stringify(cmd))) as CommandResult,
-    frame: (elapsedUs) => JSON.parse(wasm.frame(elapsedUs)) as SoundEvent[],
+    frame: (elapsedUs) => JSON.parse(wasm.frame(elapsedUs)) as FrameEvents,
     view: () => JSON.parse(wasm.view()) as ViewSnapshot,
     catalog: () => JSON.parse(wasm.catalog()) as CatalogSnapshot,
     stateHash: () => wasm.state_hash(),
@@ -95,8 +101,10 @@ export async function initBridge(seed: number): Promise<Bridge> {
     exportReplay: () => wasm.export_replay(),
     verifyReplay: (json) => JSON.parse(wasm.verify_replay(json)) as ReplayReport,
     verifyGoldenReplay: () => JSON.parse(wasm.verify_golden_replay()) as ReplayReport,
-    debugStep: (ticks) => JSON.parse(wasm.debug_step(ticks)) as SoundEvent[],
+    debugStep: (ticks) => JSON.parse(wasm.debug_step(ticks)) as FrameEvents,
     debugGrant: (item, amount) => Number(wasm.debug_grant(item, BigInt(amount))),
+    debugWreckRoom: (floor, slot) => wasm.debug_wreck_room(floor, slot),
+    debugStageEnemies: () => wasm.debug_stage_enemies(),
   };
 
   wasmView = () => wasm.view();
@@ -124,8 +132,13 @@ function installTestHooks(active: Bridge): void {
     // need a command channel for exactly that.
     send: (cmd: GameCommand) => active.send(cmd),
     stateHash: () => active.stateHash(),
-    step: (ticks: number) => active.debugStep(ticks),
+    // Preserve the long-standing harness contract for audio and smoke
+    // specs; spatial consumers can use `stepEvents`.
+    step: (ticks: number) => active.debugStep(ticks).sounds,
+    stepEvents: (ticks: number) => active.debugStep(ticks),
     grant: (item: string, amount: number) => active.debugGrant(item, amount),
+    wreck: (floor: number, slot: number) => active.debugWreckRoom(floor, slot),
+    stageEnemies: () => active.debugStageEnemies(),
     verifyGolden: () => active.verifyGoldenReplay(),
     exportReplay: () => active.exportReplay(),
   };

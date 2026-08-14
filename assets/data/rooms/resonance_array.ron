@@ -1,0 +1,68 @@
+// The second emplacement, and deliberately not a better one.
+//
+// A dart battery kills one creature at a time and is the right answer to
+// a root-borer at a shaft column. A resonance array rolls a low pulse across a band and
+// is the right answer to four skitters on a panel. **Neither is an
+// upgrade of the other**, which is the only way a second anything is
+// allowed to exist here — two emplacements with different failure modes
+// is what makes "what do I build" a question rather than a purchase
+// order (`SYSTEMS.md` §5.3).
+//
+// It is also the fourth kind of work, which §4.9 said role priorities
+// would need before they were worth a screen. §5.10 records that the
+// answer is still no.
+#![enable(implicit_some)]
+RoomDef(
+    id: "room.resonance_array",
+    name: "Resonance Array",
+    short: "RAY",
+    // **Opens once the burner is lit**, which is where the opening
+    // ends. `SYSTEMS.md` §6.11: a first-turn menu with twenty cards on
+    // it is the loudest thing in the game and says nothing, so the menu
+    // grows as the tower does. This is a fact about the tower, not the
+    // player — the journal (§5.7) is the other kind of unlock and can
+    // only filter a menu.
+    // **Unlocked by the room that feeds it** (`SYSTEMS.md` §6.27). A
+    // weapon you cannot supply is a weapon that never fires, and this
+    // one costs 6 poles and 3 rope — cheap enough to buy by accident. The menu
+    // offers it once the tower can make resonator drums, which is a fact about
+    // the tower rather than about the player.
+    unlocked_by: "room.resonator_works",
+    front_only: true,
+    category: Defence,
+    width: 2,
+    // Twice a dart battery's width and dearer, so it is a commitment
+    // rather than an opening move.
+    //
+    // **One tuned mechanism, not the former two.** The array is a
+    // valuable precision-infrastructure sink, while its real depth is
+    // still the optional resin → drums supply chain. The Garden no
+    // longer blocks bamboo, so this commitment cannot tax every opening.
+    build_cost: [
+        CostEntryDef(item: "item.poles", amount: 6),
+        CostEntryDef(item: "item.rope", amount: 3),
+        CostEntryDef(item: "item.mechanisms", amount: 1),
+    ],
+    defence: DefenceDef(
+        targets: [Ground, Canopy],
+        ammo: "item.resonator_drums",
+        ammo_per_shot: 1,
+        buffer_max: 8,
+        // Half a dart's 15. A thrower does not put anything down on its
+        // own; it wears a wave while the battery picks off what matters.
+        damage: 8,
+        // Slower than a battery's 40, because the flywheel has to spin back up.
+        reload_ticks: 90,
+        // Half the battery's 60. A thrower answers what is already close
+        // rather than what is still coming.
+        range_paces: 30,
+        // Thirty against a 90-tick reload: 0.33 a tick, matched to the
+        // mast and the ward so the choice between them stays about
+        // approach and range rather than about the switchboard.
+        charge_per_shot: 30,
+        effect: Resonance,
+        control_ticks: 45,
+        control_speed_pct: 0,
+        pulse_radius_paces: 14,
+    ),
+)

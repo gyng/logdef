@@ -1,12 +1,10 @@
-// The tier-two item that gates the elevator.
+// The tier-two precision component for power and transport infrastructure.
 //
 // The sharpest single expression of "depth within rules". Until M5 the
-// elevator was 18 poles and a decision about *when*; now it is 18 poles,
-// 6 rope and 2 mechanisms and a decision about whether the route you
-// took can build one at all. A tower that walked the shaded branches
-// every time has bamboo and no scrap, so no alloy, so no mechanisms —
-// so it climbs its stairs. Route choice reaching into the transport
-// layer is where this game's thesis lives (`SYSTEMS.md` §5.3).
+// Alloy and poles become switches, bearings and governors: cell-bank
+// racks, busbars and lift upgrades consume them. The basic elevator
+// remains rope-gated so transport can exist inside one run; mechanisms
+// deepen and harden infrastructure rather than hiding the first shaft.
 #![enable(implicit_some)]
 ItemDef(
     id: "item.mechanisms",

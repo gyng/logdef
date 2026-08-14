@@ -100,9 +100,7 @@ test("a whole run can be played through the tools alone", async ({ page }) => {
       enclave_ahead: v.journey.enclave_ahead,
       at_enclave: v.journey.at_enclave,
       remaining: v.journey.remaining,
-      focus: v.siege.focus,
       priority: v.power.priority,
-      work: v.work,
     };
   });
   for (const [field, value] of Object.entries(shape)) {

@@ -11,9 +11,9 @@
 //! Runs before `defence`, so emplacements shoot at creatures that have
 //! already moved this tick rather than at where they used to be.
 
-use crate::content::{Approach, Content};
+use crate::content::{Approach, Content, EnemyEncounter};
 use crate::fx::{Fx, Paces, paces_from_fx, paces_from_int, paces_to_int};
-use crate::ids::{EnemyIdx, FloorIdx, SlotIdx};
+use crate::ids::{EnemyId, EnemyIdx, FloorIdx, SlotIdx};
 use crate::state::siege::{DamageTarget, Enemy, EnemyState};
 use crate::state::{GameState, Health};
 
@@ -117,7 +117,7 @@ fn maybe_spawn_wave(state: &mut GameState, content: &Content, sounds: &mut Vec<S
         // by berthing at the ruin it guards (`SYSTEMS.md` §3.4) — so it
         // is excluded from the ordinary pool explicitly rather than
         // fenced off with an out-of-range `min_provocation`.
-        .filter(|(_, def)| def.wave_eligible)
+        .filter(|(_, def)| def.encounter == EnemyEncounter::Ordinary)
         .filter(|(_, def)| def.min_provocation <= state.siege.provocation)
         .filter(|(_, def)| !def.night_only || night)
         // Where you are, as well as how loud you have been. The
@@ -140,7 +140,7 @@ fn maybe_spawn_wave(state: &mut GameState, content: &Content, sounds: &mut Vec<S
     // Applying `base_threat` as an unconditional floor meant the first
     // point of provocation bought a full opening wave, which turned a
     // tower that had barely started harvesting into one under siege.
-    let scaled = state.siege.provocation * balance.threat_per_100_provocation / 100;
+    let scaled = scaled_wave_threat(state, content);
     let cheapest = eligible
         .iter()
         .map(|idx| content.enemy(*idx).threat)
@@ -152,9 +152,20 @@ fn maybe_spawn_wave(state: &mut GameState, content: &Content, sounds: &mut Vec<S
     // Past that point a wave is never a token single creature.
     let budget = scaled.max(balance.base_threat);
 
-    if fill_budget(state, content, &eligible, budget, None) > 0 {
+    let approaches = state.world.current_approaches(content);
+    if fill_budget(state, content, &eligible, budget, None, Some(approaches)) > 0 {
         sounds.push(SoundEvent::WaveArrives);
     }
+}
+
+/// Provocation translated through the route's current pressure.
+/// Kept as one named seam so tests can prove the route card and wave
+/// allocator use the same multiplication.
+#[must_use]
+pub(crate) fn scaled_wave_threat(state: &GameState, content: &Content) -> i64 {
+    state.siege.provocation * content.balance.siege.threat_per_100_provocation / 100
+        * state.world.current_threat_pct(content)
+        / 100
 }
 
 /// Something went down. Put what it was carrying on the shelves.
@@ -220,7 +231,7 @@ pub fn rouse_wardens(
         .enemies
         .iter()
         .enumerate()
-        .filter(|(_, def)| !def.wave_eligible && def.threat > 0)
+        .filter(|(_, def)| def.encounter == EnemyEncounter::RuinResident && def.threat > 0)
         .map(|(i, _)| EnemyIdx(i as u16))
         .collect();
     let Some(cheapest) = wardens.iter().map(|idx| content.enemy(*idx).threat).min() else {
@@ -240,7 +251,7 @@ pub fn rouse_wardens(
     let wake = paces_from_int(balance.warden_wake_paces);
     let from = (at + wake).max(state.world.distance + wake);
 
-    if fill_budget(state, content, &wardens, budget, Some(from)) > 0 {
+    if fill_budget(state, content, &wardens, budget, Some(from), None) > 0 {
         sounds.push(SoundEvent::WaveArrives);
     }
 }
@@ -258,6 +269,7 @@ fn fill_budget(
     pool: &[EnemyIdx],
     budget: i64,
     at: Option<Paces>,
+    approaches: Option<crate::content::ApproachWeights>,
 ) -> u32 {
     let mut remaining = budget;
     let mut spawned = 0;
@@ -270,10 +282,36 @@ fn fill_budget(
         if affordable.is_empty() {
             break;
         }
-        let Some(pick) = state.rng.sim.index(affordable.len()) else {
-            break;
+        let weighted_total = approaches.map_or(0, |weights| {
+            affordable
+                .iter()
+                .map(|idx| weights.for_approach(content.enemy(*idx).approach))
+                .sum()
+        });
+        let def = if weighted_total > 0 {
+            let mut draw = state.rng.sim.range(1, weighted_total);
+            let mut picked = affordable[0];
+            for candidate in &affordable {
+                let weight = approaches
+                    .expect("positive weighted total has approach weights")
+                    .for_approach(content.enemy(*candidate).approach);
+                if draw <= weight {
+                    picked = *candidate;
+                    break;
+                }
+                draw -= weight;
+            }
+            picked
+        } else {
+            // Wardens have their own authored encounter, and a heavily
+            // specialised route can temporarily have no matching
+            // affordable creature. Both use the old deterministic
+            // uniform fallback rather than silently cancelling a wave.
+            let Some(pick) = state.rng.sim.index(affordable.len()) else {
+                break;
+            };
+            affordable[pick]
         };
-        let def = affordable[pick];
         remaining -= content.enemy(def).threat;
         let from = match at {
             Some(at) => at,
@@ -309,6 +347,29 @@ fn spawn_at(state: &mut GameState, content: &Content, def: EnemyIdx, at: Paces) 
     });
 }
 
+/// Rouse the one creature authored into a journey landmark.
+///
+/// The waypoint is the uniqueness boundary: it is generated once and
+/// can be taken once. This second guard prevents an accidental second
+/// command path from turning a resident back into a farmable wave.
+pub(crate) fn spawn_landmark_resident(
+    state: &mut GameState,
+    content: &Content,
+    def: EnemyIdx,
+    at: Paces,
+) {
+    if content.enemy(def).encounter != EnemyEncounter::LandmarkResident
+        || state
+            .siege
+            .enemies
+            .iter()
+            .any(|enemy| enemy.def == def && !enemy.state.is_going())
+    {
+        return;
+    }
+    spawn_at(state, content, def, at);
+}
+
 // ---------------------------------------------------------------------------
 // Approach and attack
 // ---------------------------------------------------------------------------
@@ -318,8 +379,33 @@ const CONTACT_PACES: i64 = 2;
 
 fn advance_enemies(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     let tower_at = state.world.distance;
-    let strode = state.strode;
+    // Siege runs before stride, so `paces_last` is the exact distance the
+    // tower covered on the preceding tick. This is deliberately stronger
+    // than `strode`: it also supplies the real short step into a fork and
+    // zero at a block, keeping restraints and contact in world coordinates.
+    let tower_step = state.paces_last;
+    let strode = tower_step > 0;
     let balance = &content.balance.siege;
+    // Read this tick's restraints before aging them. Defence runs after
+    // siege, so a net thrown on the previous tick gets exactly its
+    // authored number of approach ticks here.
+    let controls: Vec<(EnemyId, i64)> = state
+        .siege
+        .controls
+        .iter()
+        .map(|control| (control.enemy, control.speed_pct))
+        .collect();
+    for control in &mut state.siege.controls {
+        control.ticks_left = control.ticks_left.saturating_sub(1);
+    }
+    state.siege.controls.retain(|control| {
+        control.ticks_left > 0
+            && state
+                .siege
+                .enemies
+                .iter()
+                .any(|enemy| enemy.id == control.enemy && !enemy.state.is_going())
+    });
     let mut enemies = std::mem::take(&mut state.siege.enemies);
 
     for enemy in &mut enemies {
@@ -359,7 +445,20 @@ fn advance_enemies(state: &mut GameState, content: &Content, sounds: &mut Vec<So
 
         match enemy.state {
             EnemyState::Approaching => {
-                let step = paces_from_fx(Fx::ratio(def.speed_paces_per_100_ticks as i32, 100));
+                let speed_pct = controls
+                    .iter()
+                    .find(|(id, _)| *id == enemy.id)
+                    .map_or(100, |(_, pct)| *pct);
+                let step = paces_from_fx(
+                    Fx::ratio(def.speed_paces_per_100_ticks as i32, 100)
+                        * Fx::ratio(speed_pct as i32, 100),
+                );
+                // Control holds a creature off the hull as well as
+                // slowing its own approach. Compensating the same share
+                // of this tick's tower stride makes 0% an actual anchor
+                // at arm's length rather than something the walking
+                // tower immediately runs into.
+                enemy.at += tower_step * (100 - speed_pct) / 100;
                 // Closing on the tower from ahead. The tower is also
                 // moving, which is why this is a gap rather than a
                 // fixed distance.
@@ -704,18 +803,6 @@ fn reap(state: &mut GameState) {
         .siege
         .enemies
         .retain(|enemy| !(enemy.state.is_going() && enemy.fade_left == 0));
-
-    // A focus that has died or been left behind is cleared here rather
-    // than checked everywhere it is read. `EnemyId`s are never reused,
-    // so a stale one could not aim at the wrong creature — but it would
-    // sit in the snapshot as a highlight on nothing, and the player
-    // would think their emplacements were still obeying an order that
-    // had quietly expired.
-    if let Some(id) = state.siege.focus
-        && !state.siege.enemies.iter().any(|enemy| enemy.id == id)
-    {
-        state.siege.focus = None;
-    }
 }
 
 /// Health of the tower as a whole, for the readout. Panels, rooms, and

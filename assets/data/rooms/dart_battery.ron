@@ -45,6 +45,11 @@ RoomDef(
     defence: DefenceDef(
         ammo: "item.darts",
         ammo_per_shot: 1,
+        // A long-range workhorse, not an answer to something beneath
+        // the hull. Root wards own the burrow emergency.
+        // A long-range workhorse, not an answer to something beneath
+        // the hull. Root wards own the burrow emergency.
+        targets: [Ground, Canopy],
         // Eight darts on the rack. A skitter takes two (30 hp against
         // 15 damage), and `base_threat` 10 buys two skitters, so a
         // freshly stocked battery holds about two opening waves' worth
@@ -63,5 +68,15 @@ RoomDef(
         // full. An empty rack is silent for the same reason a starved
         // mill is.
         range_paces: 60,
+        // **The workhorse, so it sets the scale** (`SYSTEMS.md` §6.36).
+        // Twenty a shot against a 40-tick reload is 0.5 a tick while a
+        // wave is landing — next to a burner's 8, one battery is a
+        // sixteenth of the tower's whole supply, and a front deck with
+        // two of them plus a mill and a forge is genuinely tight.
+        //
+        // The compressor that throws the dart is the powered part; the
+        // dart is not. That is why this is charge *and* ammunition
+        // rather than either alone.
+        charge_per_shot: 20,
     ),
 )

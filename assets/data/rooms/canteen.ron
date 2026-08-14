@@ -18,7 +18,11 @@ RoomDef(
     // grows as the tower does. This is a fact about the tower, not the
     // player — the journal (§5.7) is the other kind of unlock and can
     // only filter a menu.
-    unlocked_by: "room.burner",
+    // Meals are the mill's first visible alternative to construction:
+    // spend bamboo on people or turn it into poles. Keeping the card
+    // behind the machine that supplies that choice prevents Burner's
+    // menu from opening into an undifferentiated catalog.
+    unlocked_by: "room.mill",
     category: Production,
     width: 2,
     // A thornwright's price: dearer than a mill (4), well short of a

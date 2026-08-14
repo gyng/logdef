@@ -1,0 +1,18 @@
+// A shallow utility network rather than drawn ducts: rooms connect to
+// their floor automatically, and this one vertical column carries the
+// shared smoke load to the roof. Its slot on every spanned floor is the
+// placement cost.
+#![enable(implicit_some)]
+ShaftDef(
+    id: "shaft.vent_stack",
+    name: "Vent stack",
+    short: "VNT",
+    kind: VentStack,
+    build_cost: [CostEntryDef(item: "item.poles", amount: 2)],
+    span_cost: [CostEntryDef(item: "item.poles", amount: 1)],
+    min_span: 2,
+    max_span: 0,
+    capacity: 1,
+    ticks_per_floor: 1,
+    exhaust_capacity: 5,
+)

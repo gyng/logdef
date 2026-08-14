@@ -1,0 +1,14 @@
+// One mechanism bypasses one precision purchase without replacing the
+// fitter: a bank, busbar, extra lift car or array can take it, while a
+// tower pursuing several still has to manufacture them.
+#![enable(implicit_some)]
+WaypointDef(
+    id: "waypoint.relay_orchard",
+    name: "Relay Orchard",
+    said: "Relay cabinets flower beneath the vines. One actuator still answers when you turn it by hand.",
+    take: "Ease it free",
+    costs: [],
+    gives: [CostEntryDef(item: "item.mechanisms", amount: 1)],
+    provocation: 20,
+    paces: -120,
+)

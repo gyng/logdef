@@ -38,11 +38,17 @@ import type {
  */
 export interface PlaceMode {
   kind: "room" | "shaft";
+  /** Existing room being refitted; absent for a newly built room. */
+  relocateRoom?: number;
   /** Content id of the room or shaft being placed. */
   id: string;
   width: number;
   maxFloor: number | null;
   minFloor: number | null;
+  /** Only legal on the tower's current roof deck. */
+  topFloorOnly: boolean;
+  /** Its footprint must touch a shaft that spans the same floor. */
+  shaftAdjacent: boolean;
   /** Floors a shaft will span upward from the clicked floor. */
   span: number;
   /**
@@ -73,6 +79,28 @@ export interface SceneContext {
   picked: readonly number[];
   /** Wall-clock seconds since load. Cosmetic wobble only. */
   clock: number;
+  /** A loaded watercolour sky is already behind the procedural pass. */
+  paintedSky?: boolean;
+  /** Painted parallax and doodads replace terrain gradients and feature bodies. */
+  paintedEnvironment?: boolean;
+  /** Painted articulated components replace the procedural leg material. */
+  paintedWalkerFrame?: boolean;
+  /** Authored roof vegetation replaces the procedural planter tufts only. */
+  paintedRoofFlora?: boolean;
+  /** The current route beat has a matching painted atlas cell. */
+  paintedWaypoint?: boolean;
+  /** Painted machinery replaces shaft bodies, treads, rails and car shells. */
+  paintedShafts?: boolean;
+  /** Painted species sprites replace only intact procedural creature bodies. */
+  paintedCreatures?: boolean;
+  /** The optional crew motion atlas owns the readable eat and sleep silhouettes. */
+  paintedCrewNeeds?: boolean;
+  /** The optional motion atlas also owns dying and leaving silhouettes. */
+  paintedCreatureTransitions?: boolean;
+  /** Painted full-cell shells and crown machinery replace their procedural equivalents. */
+  paintedRoomArchitecture?: boolean;
+  /** A painted edge wash replaces the procedural darkening pass. */
+  paintedVignette?: boolean;
 }
 
 /**
@@ -106,36 +134,100 @@ function hash01(id: number): number {
 }
 
 export function drawScene(batch: QuadBatch, ctx: SceneContext): void {
+  drawSceneGround(batch, ctx);
+  drawSceneAfterGround(batch, ctx);
+}
+
+/** Everything above the ground pass, used when a texture is inserted between them. */
+export function drawSceneAfterGround(batch: QuadBatch, ctx: SceneContext): void {
+  drawSceneBehindRoomsAfterGround(batch, ctx);
+  const body = towerBodyContext(ctx);
+  drawShafts(batch, body);
+  drawCrew(batch, body);
+  drawSmoke(batch, body);
+  drawSceneFront(batch, ctx);
+}
+
+/** Draw everything through the tower shell and procedural room bodies. */
+export function drawSceneBehindRooms(
+  batch: QuadBatch,
+  ctx: SceneContext,
+  paintedRooms?: ReadonlySet<string>,
+): void {
+  drawSceneGround(batch, ctx);
+  drawSceneBehindRoomsAfterGround(batch, ctx, paintedRooms);
+}
+
+/** Ground and journey landmarks that must sit beneath a painted waypoint. */
+export function drawSceneGround(batch: QuadBatch, ctx: SceneContext): void {
   drawSky(batch, ctx);
   drawTerrain(batch, ctx);
   drawJourneyEdge(batch, ctx);
   drawEnclave(batch, ctx);
-  drawBeat(batch, ctx);
+}
+
+/** The remainder of the behind-room pass, after the waypoint texture layer. */
+export function drawSceneBehindRoomsAfterGround(
+  batch: QuadBatch,
+  ctx: SceneContext,
+  paintedRooms?: ReadonlySet<string>,
+): void {
+  if (!ctx.paintedWaypoint) drawBeat(batch, ctx);
   drawFork(batch, ctx);
   drawLegs(batch, ctx);
   drawWake(batch, ctx);
+  drawLegExhaust(batch, ctx);
   // Everything above the knees rides the body offset. Done by handing
   // those passes a layout whose ground line has moved, so the whole
   // tower — shell, rooms, shafts, people, the smoke leaving the roof —
   // settles together without every one of them learning about it.
-  const shift = bodyOffset(ctx.view, ctx.layout, ctx.clock);
-  const body: SceneContext = {
-    ...ctx,
-    layout: {
-      ...ctx.layout,
-      groundY: ctx.layout.groundY + shift.dy,
-      originX: ctx.layout.originX + shift.dx,
-    },
-  };
-  drawTower(batch, body);
+  drawTower(batch, towerBodyContext(ctx), paintedRooms);
+}
+
+/**
+ * Draw state carried over painted room bodies, then the moving tower
+ * foreground. Kept separate so a transparent room atlas can sit between
+ * the shell and the facts that must remain legible on top of it.
+ */
+export function drawSceneInFrontOfRooms(
+  batch: QuadBatch,
+  ctx: SceneContext,
+  paintedRooms: ReadonlySet<string>,
+): void {
+  const body = towerBodyContext(ctx);
+  for (const floor of body.view.tower.floors) {
+    const y = floorY(body.layout, floor.index);
+    for (const room of floor.rooms) {
+      const id = body.catalog.rooms[room.def]?.id;
+      if (id && paintedRooms.has(id)) drawRoom(batch, body, room, y, true);
+    }
+  }
   drawShafts(batch, body);
   drawCrew(batch, body);
   drawSmoke(batch, body);
+  drawSceneFront(batch, ctx);
+}
+
+function drawSceneFront(batch: QuadBatch, ctx: SceneContext): void {
   drawSiege(batch, ctx);
   drawPlaceMode(batch, ctx);
   drawMotes(batch, ctx);
   drawLight(batch, ctx);
-  drawVignette(batch, ctx);
+  if (!ctx.paintedVignette) drawVignette(batch, ctx);
+}
+
+/** Layout of the walking body after its cosmetic stride bob. */
+export function towerBodyLayout(view: ViewSnapshot, layout: Layout, clock: number): Layout {
+  const shift = bodyOffset(view, layout, clock);
+  return {
+    ...layout,
+    groundY: layout.groundY + shift.dy,
+    originX: layout.originX + shift.dx,
+  };
+}
+
+function towerBodyContext(ctx: SceneContext): SceneContext {
+  return { ...ctx, layout: towerBodyLayout(ctx.view, ctx.layout, ctx.clock) };
 }
 
 /**
@@ -214,10 +306,12 @@ function drawSky(batch: QuadBatch, ctx: SceneContext): void {
   const mid = mix(palette.skyMid, palette.nightMid, dark);
   const low = mix(palette.skyLow, palette.nightLow, dark);
 
-  batch.push(0, 0, width, horizon * 0.62, high, { colorBottom: mid });
-  batch.push(0, horizon * 0.62 - 1, width, horizon - horizon * 0.62 + 2, mid, {
-    colorBottom: low,
-  });
+  if (!ctx.paintedSky) {
+    batch.push(0, 0, width, horizon * 0.62, high, { colorBottom: mid });
+    batch.push(0, horizon * 0.62 - 1, width, horizon - horizon * 0.62 + 2, mid, {
+      colorBottom: low,
+    });
+  }
 
   // The sun tracks the actual time of day, so the light source and the
   // charge income are visibly the same fact.
@@ -262,15 +356,19 @@ function drawSky(batch: QuadBatch, ctx: SceneContext): void {
  * on the same value and the frame reads as one flat wash. Scales stay
  * under 1 so nothing in the middle distance out-tops the tower, which
  * should read as the largest thing in the frame even in dense canopy.
+ * Painted distant growth is deliberately reduced more aggressively than
+ * the foreground. The authored detail still reads through its silhouette,
+ * while the size falloff keeps the three ground planes from collapsing
+ * into one shelf. Ground anchors do not move; only silhouette scale changes.
  *
  * `base` is a fraction of the horizon-to-feet depth, so it survives a
  * resize; the module-level table exists so the label layer can put a
  * figure on a ruin without re-deriving where the ruin was drawn.
  */
 const PARALLAX = [
-  { parallax: 0.22, tint: palette.haze, blend: 0.55, scale: 0.5, base: 0.05 },
-  { parallax: 0.55, tint: palette.haze, blend: 0.2, scale: 0.72, base: 0.55 },
-  { parallax: 1.0, tint: palette.vignette, blend: 0.45, scale: 0.95, base: 1.3 },
+  { parallax: 0.22, tint: palette.haze, blend: 0.55, scale: 0.4, base: 0.14, jitter: 0.06 },
+  { parallax: 0.55, tint: palette.haze, blend: 0.2, scale: 0.62, base: 0.62, jitter: 0.09 },
+  { parallax: 1.0, tint: palette.vignette, blend: 0.45, scale: 0.9, base: 1.08, jitter: 0.1 },
 ] as const;
 
 /**
@@ -288,9 +386,10 @@ export function featurePoint(
 ): { x: number; y: number; size: number } {
   const layer = PARALLAX[feature.layer] ?? PARALLAX[2]!;
   const depth = layout.groundY - layout.horizonY;
+  const stagger = (hash01(feature.at * 17 + feature.layer * 101) - 0.5) * 2 * layer.jitter;
   return {
     x: worldX(layout, feature.at, distance, layer.parallax),
-    y: layout.horizonY + depth * layer.base,
+    y: layout.horizonY + depth * (layer.base + stagger),
     size: depth * layer.scale * (0.45 + (feature.scale / 255) * 0.7),
   };
 }
@@ -306,6 +405,12 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
   // it there is nothing to draw because there is nothing decided —
   // `drawJourneyEdge` takes over from here.
   const edgeX = edgeScreenX(view, layout);
+  const underfootKind = view.world.band ?? view.world.bands.at(-1)?.kind ?? -1;
+
+  if (ctx.paintedEnvironment) {
+    drawPaintedTerrainSignals(batch, ctx, underfootKind, edgeX, dark);
+    return;
+  }
 
   // A base plate under the whole strip in the colour of the band
   // underfoot. The per-band quads paint over it; this is only here so a
@@ -315,7 +420,6 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
   // `world.band` is null exactly when the tower is standing on the last
   // generated pace — which is where it stands at a fork — so the last
   // band is the honest fallback rather than the default palette.
-  const underfootKind = view.world.band ?? view.world.bands.at(-1)?.kind ?? -1;
   const underfoot = terrainColors(catalog.terrain[underfootKind]?.id ?? "");
   batch.push(
     0,
@@ -382,6 +486,74 @@ function drawTerrain(batch: QuadBatch, ctx: SceneContext): void {
   drawFlood(batch, ctx, underfootKind, edgeX, dark);
 }
 
+/** Live facts that remain above a painted environment replacement. */
+function drawPaintedTerrainSignals(
+  batch: QuadBatch,
+  ctx: SceneContext,
+  underfootKind: number,
+  edgeX: number,
+  dark: number,
+): void {
+  const { view, catalog, layout } = ctx;
+  const ground = atNight(palette.ground, dark);
+  const footLine = Math.max(...feet(view, layout, ctx.clock).map((foot) => foot.y));
+  const washTop = Math.min(layout.viewport.height, footLine - layout.slotW * 0.16);
+  batch.push(0, washTop, edgeX, layout.viewport.height - washTop, fade(ground, 0), {
+    colorBottom: fade(ground, 0.26),
+    softness: 10,
+  });
+
+  for (const feature of view.world.features) {
+    const terrain = catalog.terrain[feature.band];
+    if (!terrain?.ruin_kinds[feature.kind] || feature.salvage <= 0) continue;
+    const { x, y, size } = featurePoint(view.world.distance, layout, feature);
+    if (x < -size || x > Math.min(layout.viewport.width, edgeX) + size) continue;
+    const load = unit((feature.salvage - 10) / 60);
+    drawPaintedSalvageSignal(batch, x, y, size, load, ctx.clock, dark, feature.at);
+  }
+
+  drawFlood(batch, ctx, underfootKind, edgeX, dark);
+}
+
+/** Compact live salvage quantity over an authored ruin; deliberately no leaning beams. */
+function drawPaintedSalvageSignal(
+  batch: QuadBatch,
+  x: number,
+  baseY: number,
+  size: number,
+  load: number,
+  clock: number,
+  dark: number,
+  seed: number,
+): void {
+  const metal = atNight(palette.salvage, dark * 0.55);
+  const lit = atNight(palette.salvageLit, dark * 0.4);
+  const markerSize = Math.max(1.8, size * 0.016);
+  const pieces = Math.max(1, Math.round(load * 4));
+  for (let i = 0; i < pieces; i += 1) {
+    const row = i % 2;
+    const px = x + (i - (pieces - 1) / 2) * markerSize * 1.35;
+    batch.push(
+      px - markerSize / 2,
+      baseY - markerSize * (1 + row * 0.75),
+      markerSize,
+      markerSize,
+      i % 2 === 0 ? metal : lit,
+      { radius: markerSize * 0.35 },
+    );
+  }
+  const pulse = 0.65 + Math.sin(clock * 2.4 + seed * 0.13) * 0.25;
+  const glint = markerSize * 0.85;
+  batch.push(
+    x + markerSize * 0.8 - glint,
+    baseY - markerSize * 3 - glint,
+    glint * 2,
+    glint * 2,
+    fade(lit, pulse),
+    { radius: glint, softness: glint * 0.8 },
+  );
+}
+
 /**
  * Standing water, where the ground is drowned street.
  *
@@ -405,20 +577,25 @@ function drawFlood(
   dark: number,
 ): void {
   if (catalog.terrain[underfootKind]?.id !== "terrain.drowned_street") return;
-  const depth = layout.viewport.height - layout.groundY;
+  const solvedFeet = feet(view, layout, clock);
+  const waterline = Math.min(
+    Math.max(...solvedFeet.map((foot) => foot.y)) - layout.slotW * 0.16,
+    layout.viewport.height - layout.slotW * 0.14,
+  );
+  const depth = layout.viewport.height - waterline;
   const water = atNight(palette.drownedFar, dark);
   // The sheet. Paler at the horizon end, sinking to the band's own dark
   // at the bottom of the frame, so it reads as depth rather than paint.
-  batch.push(0, layout.groundY, edgeX, depth, fade(water, 0.32), {
+  batch.push(0, waterline, edgeX, depth, fade(water, 0.22), {
     colorBottom: fade(atNight(palette.drownedNear, dark), 0.55),
   });
   // The waterline: a bright edge exactly where the ground line is, which
   // is what tells you the tower is *in* it and not on it.
-  batch.push(0, layout.groundY - 1, edgeX, 3, fade(atNight(palette.skyLow, dark), 0.5));
+  batch.push(0, waterline - 1, edgeX, 2, fade(atNight(palette.skyLow, dark), 0.28));
   // Slow drifting bands. Against the stride, and cheap — six quads.
   for (let i = 0; i < 6; i += 1) {
     const t = (clock * 0.06 + i / 6) % 1;
-    const y = layout.groundY + depth * t * t;
+    const y = waterline + depth * t * t;
     const sway = Math.sin(clock * 0.7 + i * 1.7) * layout.slotW * 0.4;
     batch.push(
       -layout.slotW + sway - (view.world.distance % 40) * layout.paceW * 0.15,
@@ -1036,7 +1213,9 @@ export function beatGeometry(view: ViewSnapshot, layout: Layout): BeatGeometry |
 }
 
 /**
- * The beat itself: four silhouettes, one per authored waypoint.
+ * The beat itself: procedural fallbacks for the original four authored
+ * waypoints, plus a neutral marker for later content. The painted atlas is
+ * keyed by full content id and suppresses this pass when its cell exists.
  *
  * Keyed off the content id rather than the index, because an index is a
  * fact about load order and a pack with a fifth beat in the middle
@@ -1550,25 +1729,21 @@ function drawSiege(batch: QuadBatch, ctx: SceneContext): void {
     let x = stood;
     if (x < -160 || x > layout.viewport.width + 160) continue;
 
-    // **The mark the player put on it, and it is a mark rather than a
-    // reticle.** `DECISIONS.md` §8 keeps creatures as animals defending
-    // their territory, not a gallery to clear, so this is a soft ring of
-    // the tower's own lamplight resting on the thing the emplacements
-    // have been asked to mind — the shape of attention, not of a sight.
-    if (view.siege.focus === enemy.id) {
-      const r = layout.slotW * (0.34 + 0.03 * Math.sin(clock * 2.2));
-      batch.push(x - r, y - r, r * 2, r * 2, fade(palette.lamplight, 0.16), {
-        radius: r,
-        softness: r * 0.7,
-      });
-    }
-
     const facing = x > layout.originX + spanX * 0.5 ? -1 : 1;
     // A bite is a short lunge toward whatever it is working on. Half a
     // sine, so it jabs rather than sways.
     if (enemy.state === "attack") {
       x -= facing * Math.max(0, Math.sin(clock * 6 + scatter * 7)) * layout.slotW * 0.07;
     }
+
+    // Species art owns the intact animal silhouette. With only the standing
+    // atlas, the procedural pass still carries dying/leaving; the optional
+    // motion atlas has authored silhouettes for those transitions as well.
+    if (
+      ctx.paintedCreatures &&
+      (ctx.paintedCreatureTransitions || (enemy.state !== "dying" && enemy.state !== "leaving"))
+    )
+      continue;
 
     // Hit points read as substance draining out: a hurt creature
     // washes toward the colour of the mist and thins as it goes, so
@@ -1808,7 +1983,7 @@ function drawEyes(batch: QuadBatch, x: number, y: number, r: number, eye: Color)
  * Standing still is four different situations, though, and they used to
  * be one picture: a leg frozen halfway through a step, which is what a
  * hung game looks like. So the legs answer `journey.halt`. A tower the
- * player stopped plants both feet and settles onto them. A tower that
+ * player stopped plants every foot and settles onto them. A tower that
  * cannot afford the step keeps trying — a foot lifts, stutters, and
  * comes back down, which is the whole of a brown-out in one gesture.
  * A tower at a fork stands square, weight even, facing the decision
@@ -1830,105 +2005,65 @@ function drawEyes(batch: QuadBatch, x: number, y: number, r: number, eye: Color)
  * tried at 0.86, where the reach was half this, and it is why the ground
  * line moved.
  *
- * **2.6 since the legs became a spider's.** `FOOT_DROP` lengthened them
- * by a quarter, so the same geometry reaches further, and a longer step
- * is the *point*: cadence falls out of step length, so a tower that
- * covers more ground per step takes fewer of them. At 1.8 with four
- * legs the thing scuttled — four sets of feet at the old tempo reads as
- * something small and quick, which is the opposite of what is walking
- * here.
+ * **2.6 since the chassis gained articulated bogies.** The same
+ * geometry reaches further, and a longer step is the *point*: cadence
+ * falls out of step length, so a tower that covers more ground per step
+ * takes fewer of them. At 1.8 the six feet scuttle, which reads as
+ * something small and quick rather than a building moving deliberately.
  */
 const STRIDE_SLOTS = 2.6;
 
 /**
  * How many legs the tower stands on.
  *
- * Four rather than two, in a wave gait — each a quarter cycle behind
- * the one in front, so the ripple runs down the body and two feet are
- * always planted. Two legs made the tower a *biped*, which is a
- * silhouette that reads as a person however it is drawn, and this is
- * not a person.
+ * Six rather than two or four: three bogies with near/rear partners.
+ * Three feet always carry the hull while the opposing tripod advances.
+ * This is visibly a redundant walking machine, not a biped or a row of
+ * independent stilts.
  */
-const LEGS = 4;
+const LEGS = 6;
 
 /**
- * Where the feet sit below the ground line, as a fraction of the
- * foreground.
- *
- * **0.78, lengthened from 0.62.** The ground line cannot move — the
- * whole parallax stack is hung off it — so a longer leg has to reach
- * further *down*, into the foreground, which also puts the feet nearer
- * the viewer and reads as scale. Anything past about 0.85 walks the
- * feet off the bottom of the frame at short viewport heights.
+ * Depth lanes use different ground planes. Rear feet remain fully
+ * visible at 0.78 of the foreground; near feet reach to 1.52 so roughly
+ * the lower third of those limbs continues beyond the frame. That
+ * deliberate crop gives the side-on scene depth without changing
+ * simulation or camera state.
  */
-const FOOT_DROP = 0.78;
+const FOOT_DROP_REAR = 0.78;
+const FOOT_DROP_NEAR = 1.52;
 
 /**
- * Where along the body each leg is anchored.
- *
- * Spread wider than the two hips were (0.26 and 0.74): a spider's legs
- * come off the whole length of it, and clustering four in the middle
- * reads as a stumble rather than a stance.
+ * Two longitudinal bogies, each carrying a rear-plane and near-plane
+ * limb. Four evenly spaced mounts read as unrelated stilts in strict
+ * side view; three paired mounts make the six-legged chassis legible.
  */
-const HIP_AT = [0.14, 0.38, 0.62, 0.86] as const;
+const LEG_STATION_AT = [0.18, 0.18, 0.5, 0.5, 0.82, 0.82] as const;
+// Alternating tripod gait: one limb at each bogie carries the body while
+// its partner advances, then the load swaps diagonally.
+const LEG_PHASE = [0, 0.5, 1 / 3, 5 / 6, 2 / 3, 1 / 6] as const;
 
 /**
- * Where the knee goes, so both bones keep their length.
- *
- * **Two-bone IK, bending *upward*** — the inverted V a spider stands
- * in. The femur rises from the hip to a joint above the body line and
- * the tibia drops from there to the foot, which is the single strongest
- * cue that this is not a person: a knee below the hip is a leg, and a
- * knee above it is a limb.
- *
- * It used to fold backwards, bird-fashion, and before that the knee was
- * a lerp toward the foot — fine while the foot never went far, but with
- * the foot planted it travels a full stride and an unsolved joint
- * visibly stretches. A leg that changes length is worse than one that
- * slides.
- *
- * The bone is 0.62 of the drop rather than 0.56 because the joint has
- * further to travel to get above the hip, and a shorter bone locks the
- * leg straight before it can rise.
+ * A broad mechanical Z linkage. The joint sits partway down the load
+ * path and is pushed away from the chassis centre. This keeps the two
+ * bones comparable in length and avoids the old short hook plus long
+ * vertical stilt silhouette.
  */
 function solveKnee(
   hipX: number,
   hipY: number,
   footX: number,
   footY: number,
+  outward: number,
 ): { x: number; y: number } {
   const dx = footX - hipX;
   const dy = footY - hipY;
   const span = Math.hypot(dx, dy) || 1;
-  // **Placed rather than solved, and that is a deliberate step back.**
-  //
-  // Exact two-bone IK was tried first and cannot do this: the elbow of
-  // a 2D chain has exactly two solutions, both perpendicular to the
-  // hip-foot chord, and when a foot is more or less below its hip that
-  // chord is vertical — so both solutions are *sideways*. The joint
-  // came out below the hip every time, which is a knee, which is the
-  // one thing this is not supposed to look like.
-  //
-  // So the joint is put where a spider's is — up and outboard — and the
-  // bones follow it. What the IK was protecting against was a leg that
-  // visibly *changes length* as the foot swings, and scaling the rise
-  // off `span` keeps that: the joint climbs and drops with the chord it
-  // belongs to, so the two bones stay in proportion through the stride
-  // rather than one of them stretching.
-  //
-  // **The joint rides above the hip, which is what makes it an
-  // inverted V rather than a knee** — and the hip had to come down out
-  // of the hull for that to be drawable at all. Three attempts before
-  // this one put the joint above a hip that was already at the hull's
-  // underside, so it landed *behind* the hull and the leg rendered as
-  // two collinear sticks.
-  //
-  // The rise scales with the chord, so the joint climbs and drops with
-  // the leg it belongs to and the two bones stay in proportion through
-  // a stride — which is what the exact IK this replaced was protecting
-  // against. Halfway out, so the femur and the tibia are about equal
-  // and the angle at the top is the sharp one.
-  return { x: hipX + dx * 0.5, y: hipY - span * 0.16 };
+  return { x: hipX + dx * 0.42 + outward * span * 0.18, y: hipY + dy * 0.42 };
+}
+
+function isRearLeg(index: number): boolean {
+  return index % 2 === 0;
 }
 
 /**
@@ -1964,6 +2099,13 @@ function bodyOffset(view: ViewSnapshot, layout: Layout, clock: number): { dx: nu
       const land = Math.max(0, 1 - foot.age / 0.25);
       dy = Math.max(dy, land * land * 3 * scale);
     }
+    // A quiet load-transfer heave between impacts. Distance, not wall
+    // time, keeps it locked to the alternating gait and frozen whenever
+    // the tower stops. `max` preserves the existing three-pixel cap.
+    const stridePaces = (STRIDE_SLOTS * layout.slotW) / layout.paceW;
+    const phase = view.world.distance / (stridePaces * 2);
+    const transfer = (0.5 + Math.cos(phase * Math.PI * 6) * 0.5) * 0.85 * scale;
+    dy = Math.min(3 * scale, Math.max(dy, transfer));
   }
   const biting = view.siege.enemies.filter((e) => e.state === "attack").length;
   const dx =
@@ -1987,7 +2129,7 @@ interface Foot {
 }
 
 /**
- * Where both feet are this frame.
+ * Where all six feet are this frame.
  *
  * Pulled out of `drawLegs` so the water can see them. Splashes and
  * ripples need to know *when a foot lands*, and planting the feet is
@@ -2002,17 +2144,19 @@ function feet(view: ViewSnapshot, layout: Layout, clock: number): Foot[] {
   const gait = halt === "walking" ? 1 : 0;
   const stanceScale = halt === "arrived" ? 0.34 : halt === "stopped" ? 0.62 : 1;
   const settle = halt === "walking" ? 0 : halt === "arrived" ? reach * 0.06 : reach * 0.03;
-  const footY = layout.groundY + reach * FOOT_DROP;
   const strideX = STRIDE_SLOTS * layout.slotW;
   const stridePaces = strideX / layout.paceW;
   const out: Foot[] = [];
   for (let i = 0; i < LEGS; i += 1) {
-    const hipX = layout.originX + spanX * HIP_AT[i]!;
-    // **A wave gait**: each leg a quarter cycle behind the one in
-    // front, so the ripple runs down the body and two feet are always
-    // planted. Two legs half a cycle apart was the old arrangement and
-    // it is what a biped does.
-    const cycle = view.world.distance / (stridePaces * 2) + i / LEGS;
+    const rear = isRearLeg(i);
+    const footY = layout.groundY + reach * (rear ? FOOT_DROP_REAR : FOOT_DROP_NEAR);
+    const station = LEG_STATION_AT[i]!;
+    const hipX =
+      layout.originX + spanX * station + (rear ? -layout.slotW * 0.1 : layout.slotW * 0.1);
+    // Alternating tripod gait. Partners within a bogie stay half a
+    // cycle apart and successive bogies lag by a sixth, so three feet
+    // carry the body while the other three advance in a travelling wave.
+    const cycle = view.world.distance / (stridePaces * 2) + LEG_PHASE[i]!;
     const t = cycle - Math.floor(cycle);
     const planted = t < 0.5;
     const swing = planted ? 0 : (t - 0.5) * 2;
@@ -2024,14 +2168,17 @@ function feet(view: ViewSnapshot, layout: Layout, clock: number): Foot[] {
     // outer pair stand a slot and a half outboard, the inner pair half
     // that, and this is *added* to the gait rather than replacing it so
     // a walking tower keeps its stance.
-    const rest = (HIP_AT[i]! - 0.5) * 2;
-    const splay = rest * layout.slotW * 2.2;
+    const stationRest = (station - 0.5) * 2;
+    const rest = Math.abs(stationRest) < 0.01 ? (rear ? -0.28 : 0.28) : stationRest;
+    const splay = rest * layout.slotW * 1.75 * (rear ? 0.9 : 1);
     const step = gait ? offset * strideX : rest * stanceScale * strideX * 0.32;
     const strain =
       halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 1.7)) ** 5 * reach * 0.08 : 0;
     const lift = (gait && !planted ? Math.sin(swing * Math.PI) * reach * 0.16 : 0) + strain;
     out.push({
       x: hipX + splay + step,
+      // The alternate pair stands on the slightly higher rear plane.
+      // It is a small depth cue, not a second ground system.
       y: footY - lift + settle,
       planted: planted && gait === 1,
       age: planted ? t * 2 : 0,
@@ -2070,15 +2217,23 @@ function drawWake(batch: QuadBatch, ctx: SceneContext): void {
     return;
   }
   const dark = darkness(view);
-  const depth = layout.viewport.height - layout.groundY;
+  const solvedFeet = feet(view, layout, clock);
+  // Near feet deliberately continue below the viewport. Clamp the
+  // visible water surface independently so an off-screen contact does
+  // not drag the whole drowned-street sheet out of the frame.
+  const waterline = Math.min(
+    Math.max(...solvedFeet.map((foot) => foot.y)) - layout.slotW * 0.16,
+    layout.viewport.height - layout.slotW * 0.14,
+  );
+  const depth = layout.viewport.height - waterline;
   const edgeX = layout.viewport.width;
 
   // Everything below the waterline is under water, legs included. Thin
   // enough that the feet still read, strong enough that they read as
   // submerged.
-  batch.push(0, layout.groundY, edgeX, depth, fade(atNight(palette.drownedNear, dark), 0.28));
+  batch.push(0, waterline, edgeX, depth, fade(atNight(palette.drownedNear, dark), 0.24));
 
-  for (const foot of feet(view, layout, clock)) {
+  for (const foot of solvedFeet) {
     if (!foot.planted) continue;
     // A ring that opens and thins. Two of them, half a beat apart, so
     // the disturbance has some width to it without needing particles.
@@ -2088,7 +2243,7 @@ function drawWake(batch: QuadBatch, ctx: SceneContext): void {
       const r = layout.slotW * (0.18 + age * 0.9);
       batch.push(
         foot.x - r,
-        layout.groundY - r * 0.16,
+        foot.y - r * 0.16,
         r * 2,
         r * 0.32,
         fade(atNight(palette.skyLow, dark), (1 - age) * 0.4),
@@ -2107,7 +2262,7 @@ function drawWake(batch: QuadBatch, ctx: SceneContext): void {
         const size = layout.slotW * 0.1 * burst;
         batch.push(
           foot.x + side * layout.slotW * 0.3 * (1 - burst) - size / 2,
-          layout.groundY - up - size,
+          foot.y - up - size,
           size,
           size,
           fade(atNight(palette.skyLow, dark), burst * 0.5),
@@ -2135,8 +2290,8 @@ function drawWake(batch: QuadBatch, ctx: SceneContext): void {
  * gone wrong.
  *
  * **It hangs for the whole stance, and it never fades to nothing.**
- * Exactly one foot is planted at a time and its age sweeps 0 to 1
- * across the stance, so a puff that dies quickly is on screen for a
+ * Exactly three feet are planted at a time and each age sweeps 0 to 1
+ * across its stance, so a puff that dies quickly is on screen for a
  * fraction of the time — two successive attempts at photographing this
  * both caught the tail and looked like a feature that did not work.
  * Dust the size of a car kicks up would hang for seconds anyway. The
@@ -2203,7 +2358,20 @@ function drawMotes(batch: QuadBatch, { view, layout, clock }: SceneContext): voi
   }
 }
 
-function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void {
+export interface WalkerLegPose {
+  hip: { x: number; y: number };
+  joint: { x: number; y: number };
+  foot: { x: number; y: number };
+  thickness: number;
+  lift: number;
+  rear: boolean;
+  planted: boolean;
+  /** 0 at touchdown, 1 at lift-off; zero while swinging. */
+  age: number;
+}
+
+/** Authoritative six-leg geometry shared by procedural fallback and painted components. */
+export function walkerLegPose(view: ViewSnapshot, layout: Layout, clock: number): WalkerLegPose[] {
   const shape = towerShape(view);
   const spanX = shape.slots * layout.slotW;
   const reach = layout.viewport.height - layout.groundY;
@@ -2222,24 +2390,31 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
   // inside the hull cannot show the joint, and the joint is the whole
   // shape — see `solveKnee`. Dropping the anchor into open air costs a
   // visible gap between hull and leg, which the base beam covers, and
-  // buys the inverted V.
+  // buys room for the visible linkage.
   const hipY = layout.groundY + reach * 0.14 + settle + shift.dy;
-  const footY = layout.groundY + reach * FOOT_DROP;
-  // Thinner than a biped's, because there are twice as many of them and
-  // four thick legs read as a stack of pipes rather than a gait.
+  // Thinner than a biped's: six thick legs read as a stack of pipes
+  // rather than an articulated gait.
   const thickness = layout.slotW * 0.17;
   const strideX = STRIDE_SLOTS * layout.slotW;
   // Paces of ground one step covers. Derived, so a planted foot lands
   // exactly where the ground is and the cadence can never drift out of
   // step with the scroll.
   const stridePaces = strideX / layout.paceW;
+  const poses: WalkerLegPose[] = [];
 
   for (let i = 0; i < LEGS; i += 1) {
-    const hipX = layout.originX + shift.dx + spanX * HIP_AT[i]!;
-    // Two steps to a gait cycle, each leg a quarter cycle behind the one
-    // in front, so two feet are always down and the ripple runs
-    // backwards along the body.
-    const cycle = view.world.distance / (stridePaces * 2) + i / LEGS;
+    const rear = isRearLeg(i);
+    const footY = layout.groundY + reach * (rear ? FOOT_DROP_REAR : FOOT_DROP_NEAR);
+    const station = LEG_STATION_AT[i]!;
+    const hipX =
+      layout.originX +
+      shift.dx +
+      spanX * station +
+      (rear ? -layout.slotW * 0.1 : layout.slotW * 0.1);
+    // Partners within a bogie are half a cycle apart; successive bogies
+    // trail by a sixth. Exactly three feet stay down while the load
+    // travels smoothly along the body.
+    const cycle = view.world.distance / (stridePaces * 2) + LEG_PHASE[i]!;
     const t = cycle - Math.floor(cycle);
     const planted = t < 0.5;
     const swing = planted ? 0 : (t - 0.5) * 2;
@@ -2259,8 +2434,9 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
     // rendered.
     const ease = swing * swing * (3 - 2 * swing);
     const offset = planted ? 0.5 - t * 2 : ease - 0.5;
-    const rest = (HIP_AT[i]! - 0.5) * 2;
-    const splay = rest * layout.slotW * 2.2;
+    const stationRest = (station - 0.5) * 2;
+    const rest = Math.abs(stationRest) < 0.01 ? (rear ? -0.28 : 0.28) : stationRest;
+    const splay = rest * layout.slotW * 1.75 * (rear ? 0.9 : 1);
     const step = gait ? offset * strideX : rest * stanceScale * strideX * 0.32;
     // A brown-out is the legs asking and not being answered: a small
     // stuttering lift that never becomes a step.
@@ -2268,26 +2444,86 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
       halt === "brownout" ? Math.max(0, Math.sin(clock * 5.5 + i * 1.7)) ** 5 * reach * 0.08 : 0;
     const lift = (gait && !planted ? Math.sin(swing * Math.PI) * reach * 0.16 : 0) + strain;
     const footX = hipX + splay + step;
-    const knee = solveKnee(hipX, hipY, footX, footY - lift);
-    const kneeX = knee.x;
-    const kneeY = knee.y;
+    const poseHipY = hipY - (rear ? layout.slotW * 0.035 : 0);
+    const poseFootY = footY - lift + settle;
+    // The two depth lanes bow to opposite sides of their shared bogie.
+    // Without this they converge on one elbow and the rear limb vanishes
+    // exactly behind the near one in a side-on view.
+    const stationOutward = rest < 0 ? -1 : 1;
+    const outward = rear ? stationOutward : -stationOutward;
+    const knee = solveKnee(hipX, poseHipY, footX, poseFootY, outward);
+    poses.push({
+      hip: { x: hipX, y: poseHipY },
+      joint: knee,
+      foot: { x: footX, y: poseFootY },
+      thickness,
+      lift,
+      rear,
+      planted: planted && gait === 1,
+      age: planted ? t * 2 : 0,
+    });
+  }
+  return poses;
+}
+
+/**
+ * Pressure valves breathing at load transfer.
+ *
+ * These are small charcoal steam puffs from the near-plane thigh
+ * actuators, not the burner's tall provocation plume. Their timing comes
+ * directly from the planted-leg solution, so a stopped tower is silent
+ * and a walking tower exhales in step with its mechanism.
+ */
+function drawLegExhaust(batch: QuadBatch, ctx: SceneContext): void {
+  if (ctx.view.journey.halt !== "walking") return;
+  const poses = walkerLegPose(ctx.view, ctx.layout, ctx.clock);
+  const haze = mix(palette.steam, palette.wreck, 0.62);
+  for (const pose of poses) {
+    if (pose.rear || !pose.planted || pose.age >= 0.32) continue;
+    const pressure = pose.age / 0.32;
+    const fadeOut = 1 - pressure;
+    const upperDx = pose.joint.x - pose.hip.x;
+    const upperDy = pose.joint.y - pose.hip.y;
+    const drift = upperDx < 0 ? 1 : -1;
+    const valveX = pose.hip.x + upperDx * 0.2;
+    const valveY = pose.hip.y + upperDy * 0.2;
+    for (let puff = 0; puff < 2; puff += 1) {
+      const lag = Math.max(0, pressure - puff * 0.11);
+      const size = ctx.layout.slotW * (0.1 + lag * 0.15);
+      const x = valveX + drift * ctx.layout.slotW * (0.08 + lag * 0.2) - size * 0.5;
+      const y = valveY - ctx.layout.slotW * lag * 0.2 - size * 0.5;
+      batch.push(x, y, size, size, fade(haze, fadeOut * (puff === 0 ? 0.2 : 0.12)), {
+        radius: size * 0.5,
+        softness: size * 0.6,
+      });
+    }
+  }
+}
+
+function drawLegs(batch: QuadBatch, ctx: SceneContext): void {
+  const { view, layout, clock } = ctx;
+  const reach = layout.viewport.height - layout.groundY;
+  for (const pose of walkerLegPose(view, layout, clock)) {
+    const { hip, joint, foot, thickness, lift } = pose;
 
     // A shadow that tightens as the foot lands. Cheap, and it does most
     // of the work of making the tower feel heavy.
     batch.push(
-      footX - layout.slotW * 0.5,
-      layout.groundY + reach * (FOOT_DROP - 0.02),
+      foot.x - layout.slotW * 0.5,
+      foot.y - thickness * 0.2,
       layout.slotW,
       reach * 0.1,
       fade(palette.vignette, 0.35 - (lift / (reach * 0.22)) * 0.2),
       { radius: reach * 0.05, softness: 4 },
     );
 
-    batch.pushLine(hipX, hipY, kneeX, kneeY, thickness, palette.leg);
-    batch.pushLine(kneeX, kneeY, footX, footY - lift, thickness * 0.8, palette.leg);
+    if (ctx.paintedWalkerFrame) continue;
+
+    batch.pushLine(hip.x, hip.y, joint.x, joint.y, thickness, palette.leg);
+    batch.pushLine(joint.x, joint.y, foot.x, foot.y, thickness * 0.8, palette.leg);
     batch.push(
-      kneeX - thickness * 0.55,
-      kneeY - thickness * 0.55,
+      joint.x - thickness * 0.55,
+      joint.y - thickness * 0.55,
       thickness * 1.1,
       thickness * 1.1,
       palette.legJoint,
@@ -2295,8 +2531,8 @@ function drawLegs(batch: QuadBatch, { view, layout, clock }: SceneContext): void
     );
     // A splayed foot, so it reads as planted rather than as a stick.
     batch.push(
-      footX - layout.slotW * 0.32,
-      footY - lift - thickness * 0.3,
+      foot.x - layout.slotW * 0.32,
+      foot.y - thickness * 0.3,
       layout.slotW * 0.64,
       thickness * 0.6,
       palette.legJoint,
@@ -2334,7 +2570,7 @@ function drawSmoke(batch: QuadBatch, ctx: SceneContext): void {
       // bamboo or wrecked draws nothing, which makes the plume a report
       // on what the tower is *doing* rather than on what it owns.
       if (!catalog.rooms[room.def]?.burner) continue;
-      if (!room.active || room.stalled || room.wrecked) continue;
+      if (!room.burning) continue;
 
       // **Out of the roof, not out of the room.** Smoke is drawn after
       // the tower so it passes in front of the shell, which means a
@@ -2381,7 +2617,7 @@ function drawSmoke(batch: QuadBatch, ctx: SceneContext): void {
   }
 }
 
-function drawTower(batch: QuadBatch, ctx: SceneContext): void {
+function drawTower(batch: QuadBatch, ctx: SceneContext, paintedRooms?: ReadonlySet<string>): void {
   const { view, layout } = ctx;
   const shape = towerShape(view);
   const spanX = shape.slots * layout.slotW;
@@ -2460,7 +2696,37 @@ function drawTower(batch: QuadBatch, ctx: SceneContext): void {
     // The deck itself.
     batch.push(layout.originX, y + layout.floorH - 3, spanX, 3, palette.floorEdge);
 
+    // The automatic horizontal deck bus. Five inset pilot lamps report
+    // the actual per-floor service for lifts, works, guns, lamps and
+    // legs, so an isolated upper deck reads on the machine itself.
+    const service = ctx.view.power.floor_satisfaction[floor.index] ?? ctx.view.power.satisfaction;
+    const busY = y + layout.floorH - Math.max(7, layout.slotW * 0.12);
+    batch.push(
+      layout.originX + layout.slotW * 0.16,
+      busY,
+      spanX - layout.slotW * 0.32,
+      Math.max(2, layout.slotW * 0.035),
+      fade(palette.chargeEmpty, 0.78),
+      { radius: 1 },
+    );
+    for (let circuit = 0; circuit < 5; circuit += 1) {
+      const served = Math.max(0, Math.min(1000, service[circuit] ?? 1000));
+      const color = served >= 995 ? palette.charge : served > 0 ? palette.brass : palette.hurt;
+      batch.push(
+        layout.originX + layout.slotW * (0.24 + circuit * 0.13),
+        busY - layout.slotW * 0.025,
+        Math.max(3, layout.slotW * 0.06),
+        Math.max(3, layout.slotW * 0.06),
+        fade(color, served > 0 ? 0.86 : 0.5),
+        { radius: layout.slotW * 0.03 },
+      );
+    }
+
     for (const room of floor.rooms) {
+      const id = ctx.catalog.rooms[room.def]?.id;
+      // Painted wreck fragments are inserted after this pass; the
+      // procedural carcass and debris return in the foreground pass.
+      if (id && paintedRooms?.has(id)) continue;
       drawRoom(batch, ctx, room, y);
     }
 
@@ -2493,15 +2759,35 @@ function drawTower(batch: QuadBatch, ctx: SceneContext): void {
       radius: 2,
     },
   );
-  for (let i = 0; i < shape.slots; i += 1) {
-    const px = layout.originX + (i + 0.5) * layout.slotW;
-    drawPlanter(
-      batch,
-      px - layout.slotW * 0.22,
-      roofY - layout.floorH * 0.07,
-      layout.slotW * 0.44,
-      ctx.clock + i * 1.7,
-    );
+  if (!ctx.paintedRoofFlora) {
+    for (let i = 0; i < shape.slots; i += 1) {
+      const px = layout.originX + (i + 0.5) * layout.slotW;
+      drawPlanter(
+        batch,
+        px - layout.slotW * 0.22,
+        roofY - layout.floorH * 0.07,
+        layout.slotW * 0.44,
+        ctx.clock + i * 1.7,
+      );
+    }
+  } else if (!ctx.paintedWalkerFrame) {
+    // The flora sheet owns plants, not architecture. Keep a plain
+    // procedural planter bed when the independently optional frame kit
+    // is unavailable, otherwise the authored growth would float.
+    for (let i = 0; i < shape.slots; i += 1) {
+      const width = layout.slotW * 0.44;
+      const x = layout.originX + (i + 0.5) * layout.slotW - width / 2;
+      batch.push(
+        x,
+        roofY - layout.floorH * 0.07 - width * 0.16,
+        width,
+        width * 0.16,
+        palette.towerShell,
+        {
+          radius: 1,
+        },
+      );
+    }
   }
 
   // Roof lip — where the canopy sails used to mount, and
@@ -2724,10 +3010,10 @@ function drawPlanter(
  * grown things from built ones: the Heartseed is nearly a lozenge, a
  * mill is nearly a box.
  */
-function roomProfile(info: RoomInfo | undefined): {
+export function roomProfile(info: RoomInfo | undefined): {
   rise: number;
   radius: number;
-  crown: "dome" | "leaves" | "cells" | "vent" | "boom" | "barrel" | "none";
+  crown: "dome" | "trellis" | "cells" | "stack" | "vent" | "boom" | "barrel" | "none";
 } {
   if (!info) return { rise: 0.84, radius: 4, crown: "none" };
   switch (info.category) {
@@ -2739,21 +3025,17 @@ function roomProfile(info: RoomInfo | undefined): {
       // a chimney. There used to be a third here — a sail deck, which
       // was mostly sail — and M6 cut it.
       if (info.bank_capacity > 0) return { rise: 0.5, radius: 3, crown: "cells" };
-      return { rise: 0.72, radius: 3, crown: "vent" };
+      return { rise: 0.72, radius: 3, crown: info.burner ? "stack" : "vent" };
     // Machinery: full height, square, and venting.
     case "Production":
       return { rise: 0.84, radius: 2, crown: "vent" };
     // An arm is a boom with a housing at the back of it.
     //
-    // **Except a garden, which wears the crown the sails used to.**
-    // That crown was two canted panels that filled and slackened with
-    // `exposure_pct`, and when M6 cut the sails the one room still
-    // paid by the sky was the garden. Same geometry, read as leaves
-    // rather than canvas: the roof still answers the route, and the
-    // room it answers for is the one the answer now matters to.
+    // A roof garden gets a narrow sensor trellis. It keeps sunlight legible
+    // without recycling the broad canted panels of the deleted sail deck.
     case "Intake":
       return info.top_floor_only
-        ? { rise: 0.5, radius: 3, crown: "leaves" }
+        ? { rise: 0.5, radius: 3, crown: "trellis" }
         : { rise: 0.6, radius: 3, crown: "boom" };
     case "Defence":
       return { rise: 0.52, radius: 3, crown: "barrel" };
@@ -2798,38 +3080,46 @@ function drawCrown(
   const lit = mix(body, palette.roomBodyLit, 0.35);
   switch (kind) {
     case "dome": {
-      // Two overlapping lozenges, so the top is round rather than
-      // chamfered.
-      batch.push(x + w * 0.1, y - head * 0.5, w * 0.8, head, lit, { radius: head });
-      batch.push(x + w * 0.28, y - head * 0.85, w * 0.44, head, lit, { radius: head });
+      // A compact capacitor cap over the centre of the three-slot
+      // Heartseed. The old width-relative dome became two enormous pink
+      // bars because this room is much wider than its headroom is tall.
+      const domeW = Math.min(w * 0.34, head * 3.6);
+      const cx = x + w * 0.5;
+      batch.push(cx - domeW * 0.5, y - head * 0.72, domeW, head * 0.92, lit, {
+        radius: head * 0.46,
+      });
+      batch.push(cx - domeW * 0.25, y - head, domeW * 0.5, head * 0.72, lit, {
+        radius: head * 0.36,
+      });
       break;
     }
-    case "leaves": {
-      // Canted, and tall enough to be the thing you notice about the
-      // roof. Two shapes at opposing angles read as growth reaching for
-      // the light rather than as a lid.
-      //
-      // **They open and close with `exposure_pct`**, which is the sun
-      // *after* terrain. This was the sails' crown until M6 cut them,
-      // and the argument carries over unchanged to the room that
-      // inherited it: a garden in dense canopy at 15% and one in open
-      // clearing at 100% would otherwise draw identically, so what the
-      // route buys would be invisible on the one part of the tower it
-      // buys it for. Walk into shade and the leaves close before the
-      // crop count moves, which is the §8 order — see it in the world
-      // first, read it off a gauge second.
+    case "trellis": {
       const fill = 0.35 + (exposure / 100) * 0.65;
-      const panel = head * 1.5 * (0.72 + fill * 0.28);
-      batch.push(x + w * 0.04, y - panel, w * 0.46, panel, palette.sunlight, {
-        colorBottom: lit,
-        rotation: -0.16 * fill,
-        radius: 2,
-      });
-      batch.push(x + w * 0.5, y - panel * 0.86, w * 0.46, panel * 0.86, palette.sunlight, {
-        colorBottom: lit,
-        rotation: 0.13 * fill,
-        radius: 2,
-      });
+      const stemTop = y - head * (0.55 + fill * 0.48);
+      const rail = mix(lit, palette.roomEnergy, 0.35);
+      for (let i = 0; i < 4; i += 1) {
+        const sx = x + w * (0.18 + i * 0.21);
+        batch.pushLine(sx, y, sx + (i % 2 === 0 ? -1 : 1) * head * 0.08, stemTop, 2, rail);
+        const leafW = Math.max(3, w * 0.075 * fill);
+        batch.push(
+          sx - leafW * 0.8,
+          stemTop + head * 0.12,
+          leafW,
+          leafW * 0.52,
+          palette.canopyNear,
+          {
+            radius: leafW * 0.3,
+          },
+        );
+      }
+      batch.pushLine(
+        x + w * 0.12,
+        stemTop + head * 0.28,
+        x + w * 0.88,
+        stemTop + head * 0.28,
+        2,
+        rail,
+      );
       break;
     }
     case "cells": {
@@ -2851,7 +3141,7 @@ function drawCrown(
       const count = Math.max(2, Math.round(w / 11));
       const cw = (w * 0.8) / count;
       const held = charge * count;
-      const breath = 0.88 + Math.sin(swing * 0.8) * 0.12;
+      const breath = working ? 0.88 + Math.sin(swing * 0.8) * 0.12 : 0.72;
       for (let i = 0; i < count; i += 1) {
         const cx = x + w * 0.1 + i * cw + 1;
         batch.push(cx, y - head, cw - 2, head, palette.chargeEmpty, {
@@ -2874,6 +3164,22 @@ function drawCrown(
       const vw = Math.max(4, w * 0.16);
       batch.push(x + w * 0.62, y - head * 0.9, vw, head * 0.9, lit, { radius: 1 });
       batch.push(x + w * 0.58, y - head, vw * 1.4, head * 0.22, lit, { radius: 1 });
+      break;
+    }
+    case "stack": {
+      // The burner is the tower's furnace and should be nameable from
+      // its silhouette alone: a broad heat-exchanger stack plus a
+      // shorter companion flue, unlike a workshop's single vent.
+      const tall = Math.max(5, w * 0.15);
+      const short = Math.max(4, w * 0.1);
+      batch.push(x + w * 0.58, y - head, tall, head, lit, { radius: 1.5 });
+      batch.push(x + w * 0.76, y - head * 0.68, short, head * 0.68, lit, { radius: 1.5 });
+      batch.push(x + w * 0.54, y - head, tall * 1.45, Math.max(3, head * 0.2), lit, {
+        radius: 1.5,
+      });
+      batch.push(x + w * 0.73, y - head * 0.7, short * 1.5, Math.max(2, head * 0.16), lit, {
+        radius: 1,
+      });
       break;
     }
     case "boom": {
@@ -2909,7 +3215,13 @@ function drawCrown(
   }
 }
 
-function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop: number): void {
+function drawRoom(
+  batch: QuadBatch,
+  ctx: SceneContext,
+  room: RoomView,
+  floorTop: number,
+  painted = false,
+): void {
   const { catalog, layout } = ctx;
   const info = catalog.rooms[room.def];
   const profile = roomProfile(info);
@@ -2927,6 +3239,26 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
   const base = info ? roomColor(info.category) : palette.roomBody;
   if (room.wrecked) {
     drawWreck(batch, room, base, x, y, w, h);
+    // Keep a dark, shortened remnant of the room's defining machinery.
+    // Destruction must dominate, but a wrecked burner should still leave
+    // a chimney and a lost gun a bent barrel rather than becoming the
+    // same anonymous pile of boards.
+    if (profile.crown !== "none" && head > 4) {
+      drawCrown(
+        batch,
+        profile.crown,
+        fade(mix(base, palette.wreck, 0.72), 0.72),
+        x,
+        y + head * 0.34,
+        w,
+        h,
+        head * 0.56,
+        0,
+        0,
+        false,
+        0,
+      );
+    }
     return;
   }
 
@@ -2957,16 +3289,17 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
   // A warmth in the room's own colour rather than a flash over it: the
   // stalled room going dim is the counterpart, and if this is ever loud
   // enough to read as a notification it has gone wrong.
+  const powered = room.powered;
   const fresh =
-    info && info.craft_ticks > 0 && room.active && !room.stalled
+    info && info.craft_ticks > 0 && room.active && powered && !room.stalled
       ? Math.max(0, 1 - room.progress / (info.craft_ticks * 0.16))
       : 0;
   const body = mix(mix(stalled, palette.hurt, hurt * 0.7), palette.lamplight, fresh * 0.28);
-  if (profile.crown !== "none" && head > 4) {
+  if (!ctx.paintedRoomArchitecture && profile.crown !== "none" && head > 4) {
     // A garden with a floor built over it grows nothing and should
     // not look like one that does; a stalled or halted arm has nothing
     // to cut. Both read off the snapshot rather than off a timer.
-    const working = room.active && !room.stalled && !room.shaded;
+    const working = room.active && powered && !room.stalled && !room.shaded;
     drawCrown(
       batch,
       profile.crown,
@@ -2982,34 +3315,129 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
       unit(ctx.view.power.fill_permille / 1000),
     );
   }
-  batch.push(x, y, w, h, mix(body, palette.roomBodyLit, 0.25), {
-    colorBottom: body,
-    radius: profile.radius,
-  });
-  // The stock, crowding the room it has nowhere to leave.
-  //
-  // **Stacked bands rather than a wash**, and the first version was the
-  // wash: a single translucent block of `outputFill` came out brighter
-  // than the working rooms around it, which inverts the whole point —
-  // a room that has stopped must never be the loudest thing on the
-  // screen. Bands read as *stock piled to the ceiling* instead of as a
-  // highlight, and they use the same vocabulary as the shelf pips and
-  // the buffer wells: this game draws quantity as repeated marks.
-  if (full) {
-    const bands = 4;
-    const gap = Math.max(1, h * 0.04);
-    const bandH = Math.max(2, (h - 6 - gap * (bands - 1)) / bands);
-    for (let i = 0; i < bands; i += 1) {
-      const by = y + h - 3 - bandH - i * (bandH + gap);
-      if (by < y + 3) break;
-      batch.push(x + 4, by, w - 8, bandH, fade(palette.outputFill, 0.22), { radius: 1.5 });
+  if (painted) {
+    // The illustration owns the intact body, while simulation state
+    // remains procedural and therefore cannot go stale in an atlas.
+    // Starved/off/shaded rooms dim; backed-up rooms stay bright and get
+    // their stock bands below. Damage is a bruise plus deterministic
+    // splits, and a just-finished craft keeps its quiet warmth.
+    if (!room.active || !powered) {
+      batch.push(x, y, w, h, fade(palette.roomStalled, 0.22), { radius: profile.radius });
+    } else if (room.stalled && !full) {
+      batch.push(x, y, w, h, fade(palette.roomStalled, 0.28), { radius: profile.radius });
     }
+    if (hurt > 0.05) {
+      batch.push(x, y, w, h, fade(palette.hurt, hurt * 0.32), { radius: profile.radius });
+    }
+    if (fresh > 0.02) {
+      batch.push(x, y, w, h, fade(palette.lamplight, fresh * 0.12), {
+        radius: profile.radius,
+      });
+    }
+  } else {
+    batch.push(x, y, w, h, mix(body, palette.roomBodyLit, 0.25), {
+      colorBottom: body,
+      radius: profile.radius,
+    });
   }
+
+  // Physical status lamps, not a UI badge. From across the frame a
+  // working machine is alive with cool green indicators, a stalled one
+  // holds an amber fault pattern, and a switched-off one is three dark
+  // glass housings. Wrecks returned above and therefore have no lights.
+  const lampR = Math.max(3.2, Math.min(5.4, layout.slotW * 0.07));
+  const lampGap = lampR * 2.7;
+  const lampY = y + Math.max(lampR * 2, h * 0.14);
+  const lampRight = x + w - Math.max(lampR * 2.2, w * 0.07);
+  const working = room.active && powered && !room.stalled;
+  const fault = room.active && (!powered || room.stalled);
+  const lampPulse = 0.82 + Math.sin(ctx.clock * 5.2 + room.id * 0.7) * 0.18;
+  if (room.active) {
+    const railColor = room.stalled ? palette.lamplight : palette.charge;
+    // A compact bank of hooded work lamps reads as part of the machine.
+    // The former room-wide fluorescent bar was loud, but it also looked
+    // like unexplained UI laid over the watercolor architecture.
+    const stripY = y + Math.max(2, h * 0.055);
+    const stripW = Math.min(w * 0.34, lampR * 9.5);
+    const stripX = lampRight - stripW;
+    batch.push(stripX - 2, stripY - 1, stripW + 4, Math.max(4, lampR * 0.9), palette.chargeEmpty, {
+      radius: 2,
+    });
+    for (let lamp = 0; lamp < 4; lamp += 1) {
+      const lw = stripW / 5.5;
+      const lx = stripX + (lamp + 0.45) * (stripW / 4.25);
+      batch.push(
+        lx,
+        stripY,
+        lw,
+        Math.max(2, lampR * 0.5),
+        fade(railColor, room.stalled ? 0.72 : 0.78 * lampPulse),
+        { radius: 1.5, softness: 0.8 },
+      );
+    }
+    batch.push(
+      lampRight - lampGap * 2 - lampR * 1.7,
+      lampY - lampR * 1.4,
+      lampGap * 2 + lampR * 3.4,
+      lampR * 2.8,
+      fade(railColor, room.stalled ? 0.08 : 0.12 * lampPulse),
+      { radius: lampR * 1.4, softness: lampR * 1.2 },
+    );
+  }
+  for (let i = 0; i < 3; i += 1) {
+    const lx = lampRight - (2 - i) * lampGap;
+    batch.push(lx - lampR, lampY - lampR, lampR * 2, lampR * 2, palette.chargeEmpty, {
+      radius: lampR,
+    });
+    const lit = working || (fault && i < (full ? 2 : 1));
+    if (!lit) continue;
+    const color = working ? palette.charge : palette.lamplight;
+    const alpha = working ? lampPulse : 0.92;
+    batch.push(
+      lx - lampR * 2.8,
+      lampY - lampR * 2.8,
+      lampR * 5.6,
+      lampR * 5.6,
+      fade(color, 0.14 * alpha),
+      {
+        radius: lampR * 2.8,
+        softness: lampR * 2,
+      },
+    );
+    batch.push(
+      lx - lampR * 0.64,
+      lampY - lampR * 0.64,
+      lampR * 1.28,
+      lampR * 1.28,
+      fade(color, alpha),
+      {
+        radius: lampR * 0.64,
+        softness: lampR * 0.28,
+      },
+    );
+  }
+  // Dyed casing gives each chain a restrained splash of identity
+  // without recolouring the whole watercolor sprite. It also breaks
+  // the repeated dark rectangle at normal zoom: intake is leaf green,
+  // workshops ochre, storage blue, energy teal, quarters cloth rose,
+  // defence violet, and the Heartseed keeps its own warm magenta.
+  if (!ctx.paintedRoomArchitecture) {
+    const accent = fade(base, room.active ? 0.74 : 0.22);
+    batch.push(x + 3, y + h * 0.24, Math.max(2, w * 0.025), h * 0.34, accent, {
+      radius: 1,
+    });
+    batch.push(x + 3, y + h * 0.12, Math.max(7, w * 0.14), Math.max(2, h * 0.045), accent, {
+      radius: 1.5,
+    });
+  }
+  // Backed-up rooms are now physically crowded with item sprites in
+  // the texture pass. The old four full-width green bands were louder
+  // than the room art and looked like dashboard UI pasted over it.
   if (hurt > 0.05) {
     drawSplits(batch, room.id, x, y, w, h, 1 + Math.floor(hurt * 4), fade(palette.crack, 0.7));
   }
 
-  const wellH = Math.max(4, h * 0.2);
+  const wellH = Math.max(2, Math.min(3.5, h * 0.055));
   const wellY = y + h - wellH - 3;
 
   // Inputs on the left, outputs on the right, mirroring the direction
@@ -3022,11 +3450,20 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
   gauges.forEach((gauge, i) => {
     const gx = x + 5 + i * gaugeW;
     const gw = Math.max(3, gaugeW - 3);
-    batch.push(gx, wellY, gw, wellH, palette.bufferWell, { radius: 2 });
+    batch.push(gx, wellY, gw, wellH, fade(palette.bufferWell, 0.62), { radius: wellH * 0.5 });
     const frac = gauge.stack.max > 0 ? gauge.stack.count / gauge.stack.max : 0;
     if (frac > 0) {
-      const fillH = Math.max(2, wellH * frac);
-      batch.push(gx, wellY + wellH - fillH, gw, fillH, gauge.color, { radius: 2 });
+      batch.push(
+        gx,
+        wellY,
+        gw * frac,
+        wellH,
+        fade(
+          room.active ? gauge.color : mix(gauge.color, palette.roomStalled, 0.78),
+          room.active ? 0.48 : 0.26,
+        ),
+        { radius: wellH * 0.5 },
+      );
     }
   });
 
@@ -3037,21 +3474,52 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
     room.shelves.forEach((shelf, i) => {
       const px = x + 5 + i * pipW;
       const pw = Math.max(3, pipW - 3);
-      batch.push(px, wellY, pw, wellH, palette.bufferWell, { radius: 2 });
+      batch.push(px, wellY, pw, wellH, fade(palette.bufferWell, 0.62), {
+        radius: wellH * 0.5,
+      });
       const frac = shelf.max > 0 ? shelf.count / shelf.max : 0;
       if (frac > 0) {
-        const fillH = Math.max(2, wellH * frac);
-        batch.push(px, wellY + wellH - fillH, pw, fillH, palette.outputFill, { radius: 2 });
+        batch.push(
+          px,
+          wellY,
+          pw * frac,
+          wellH,
+          fade(
+            room.active ? palette.outputFill : mix(palette.outputFill, palette.roomStalled, 0.78),
+            room.active ? 0.48 : 0.26,
+          ),
+          { radius: wellH * 0.5 },
+        );
       }
     });
   }
 
-  // Craft progress along the room's top edge.
+  // Craft progress lives in a small bank of panel lamps. A room-wide
+  // line read as HUD chrome pasted onto the machinery.
   if (info && info.craft_ticks > 0) {
     const frac = Math.min(1, room.progress / info.craft_ticks);
-    batch.push(x + 4, y + 3, w - 8, 3, palette.bufferWell, { radius: 1.5 });
-    if (frac > 0) {
-      batch.push(x + 4, y + 3, (w - 8) * frac, 3, palette.progress, { radius: 1.5 });
+    const steps = 5;
+    const pipW = Math.max(2.5, Math.min(5, w * 0.035));
+    const pipGap = Math.max(1.5, pipW * 0.45);
+    const panelW = steps * pipW + (steps - 1) * pipGap + 4;
+    const panelX = x + 5;
+    const panelY = y + 4;
+    batch.push(panelX - 2, panelY - 2, panelW, pipW + 4, fade(palette.bufferWell, 0.72), {
+      radius: 2,
+    });
+    for (let step = 0; step < steps; step += 1) {
+      const lit = frac * steps > step;
+      const color = room.active
+        ? palette.progress
+        : mix(palette.progress, palette.roomStalled, 0.8);
+      batch.push(
+        panelX + step * (pipW + pipGap),
+        panelY,
+        pipW,
+        pipW,
+        lit ? fade(color, 0.76) : fade(palette.chargeEmpty, 0.82),
+        { radius: 1 },
+      );
     }
   }
 
@@ -3064,7 +3532,7 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
     drawQuarters(batch, ctx, room, info, x, y, w, h);
   } else if (info && isCanteen(info)) {
     drawHearth(batch, ctx, room, x, y, w, h);
-  } else if (info && info.craft_ticks > 0 && !room.stalled) {
+  } else if (info && info.craft_ticks > 0 && room.active && room.powered && !room.stalled) {
     // Warm interiors, per room: a working room shows a lit window, a
     // stalled one does not. This reinforces the signal the dimmed body
     // already carries rather than adding a second, different one, which
@@ -3075,13 +3543,30 @@ function drawRoom(batch: QuadBatch, ctx: SceneContext, room: RoomView, floorTop:
     });
   }
 
-  // The Heartseed glows, gently, always — right up until it does not.
+  // The Heartseed glows at its capacitor core, not across the whole
+  // room. The old full-body rose wash made this machinery look like a
+  // pink furnace and erased the watercolor drawing it was meant to aid.
   if (info?.category === "Heart") {
     const pulse = 0.55 + Math.sin(ctx.clock * 1.2) * 0.12;
-    batch.push(x - 4, y - 4, w + 8, h + 8, fade(palette.roomHeart, pulse * 0.5 * (1 - hurt)), {
-      radius: 10,
-      softness: 8,
-    });
+    const core = Math.min(w * 0.24, h * 0.44);
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.48;
+    batch.push(
+      cx - core,
+      cy - core,
+      core * 2,
+      core * 2,
+      fade(palette.lamplight, pulse * 0.22 * (1 - hurt)),
+      { radius: core, softness: core * 0.9 },
+    );
+    batch.push(
+      cx - core * 0.22,
+      cy - core * 0.3,
+      core * 0.44,
+      core * 0.6,
+      fade(palette.roomHeart, pulse * 0.86 * (1 - hurt)),
+      { radius: core * 0.22, softness: core * 0.16 },
+    );
   }
 }
 
@@ -3136,13 +3621,29 @@ function drawQuarters(
     // shallow, one with somebody in it bellies down.
     const sag = occupied ? bandH * 0.5 : bandH * 0.22;
     const rope = Math.max(1.2, w * 0.012);
-    const cloth = occupied ? palette.hammock : mix(palette.hammock, palette.roomQuarters, 0.55);
+    const cloth = occupied
+      ? mix(palette.hammock, palette.floorLit, 0.62)
+      : mix(palette.hammock, palette.towerShellLip, 0.76);
     batch.pushLine(x + w * 0.1, cy, x + w * 0.5, cy + sag, rope, cloth);
     batch.pushLine(x + w * 0.5, cy + sag, x + w * 0.9, cy, rope, cloth);
     if (occupied) {
-      batch.push(x + w * 0.32, cy + sag - bandH * 0.34, w * 0.36, bandH * 0.4, palette.blanket, {
-        radius: bandH * 0.2,
+      // A tucked, sagging blanket and a small head shape, rather than a
+      // bright rectangular slab. Occupancy stays obvious without reading
+      // as a mystery magenta status bar.
+      const blanket = mix(palette.blanket, palette.floorLit, 0.72);
+      batch.push(x + w * 0.36, cy + sag - bandH * 0.2, w * 0.29, bandH * 0.24, blanket, {
+        radius: bandH * 0.12,
+        softness: bandH * 0.04,
       });
+      const head = bandH * 0.14;
+      batch.push(
+        x + w * 0.34 - head * 0.5,
+        cy + sag - head * 1.2,
+        head,
+        head,
+        mix(palette.crewSkin, palette.roomQuarters, 0.35),
+        { radius: head * 0.5 },
+      );
     }
   }
 }
@@ -3167,7 +3668,7 @@ function drawHearth(
   h: number,
 ): void {
   const { clock } = batchCtx;
-  const cooking = !room.stalled && room.progress > 0;
+  const cooking = room.active && room.powered && !room.stalled && room.progress > 0;
   const cx = x + w * 0.5;
   const baseY = y + h * 0.82;
   const fireW = Math.min(w * 0.36, h * 0.5);
@@ -3292,24 +3793,58 @@ function drawSplits(
   }
 }
 
+export interface ShaftVisualLayout {
+  x: number;
+  top: number;
+  bottom: number;
+  hurt: number;
+  gapH: number;
+  breakY: number;
+  busy: boolean;
+}
+
+/** Shared geometry for painted shaft components and their live overlays. */
+export function shaftVisualLayout(shaft: ShaftView, layout: Layout): ShaftVisualLayout {
+  const x = slotX(layout, shaft.slot);
+  const top = floorY(layout, shaft.high);
+  const bottom = floorY(layout, shaft.low) + layout.floorH;
+  const hurt = 1 - unit(shaft.health_permille / 1000);
+  const gapH = Math.min(layout.floorH * 0.5, (bottom - top) * 0.28);
+  const breakY = top + (bottom - top - gapH) * (0.3 + hash01(shaft.id) * 0.4);
+  const busy = shaft.riders >= shaft.capacity || shaft.queued > 0;
+  return { x, top, bottom, hurt, gapH, breakY, busy };
+}
+
+/** Treads that survive damage; both procedural and painted stairs use this list. */
+export function shaftTreadYs(shaft: ShaftView, layout: Layout): number[] {
+  const { top, bottom, hurt, gapH, breakY } = shaftVisualLayout(shaft, layout);
+  const result: number[] = [];
+  const treads = Math.max(1, Math.round((bottom - top) / 9));
+  for (let i = 0; i < treads; i += 1) {
+    const y = top + ((i + 0.5) * (bottom - top)) / treads;
+    const inGap = shaft.severed && y > breakY - 2 && y < breakY + gapH + 2;
+    if (!inGap && hash01(shaft.id + i * 6151) >= hurt * 0.7) result.push(y);
+  }
+  return result;
+}
+
+/** Exact moving car rectangle shared by its painted shell and live doors/load. */
+export function shaftCarRect(car: CarView, layout: Layout, x: number) {
+  const width = layout.slotW - 8;
+  const height = layout.floorH * 0.6;
+  const y = layout.groundY - car.floor * layout.floorH - height - 4;
+  return { x: x + 4, y, width, height };
+}
+
 function drawShafts(batch: QuadBatch, ctx: SceneContext): void {
   const { view, layout, clock } = ctx;
   for (const shaft of view.tower.shafts) {
-    const x = slotX(layout, shaft.slot);
-    const top = floorY(layout, shaft.high);
-    const bottom = floorY(layout, shaft.low) + layout.floorH;
-    const hurt = 1 - unit(shaft.health_permille / 1000);
-
-    // Where a severed column comes apart. Deterministic from the id,
-    // because a break that wandered between frames would look like
-    // damage happening over and over instead of damage that is there.
-    const gapH = Math.min(layout.floorH * 0.5, (bottom - top) * 0.28);
-    const breakY = top + (bottom - top - gapH) * (0.3 + hash01(shaft.id) * 0.4);
+    const { x, top, bottom, hurt, gapH, breakY, busy } = shaftVisualLayout(shaft, layout);
     // The two halves have slid past each other. Two pixels is enough:
     // the eye picks up a broken vertical line immediately.
     const shear = 2.5;
 
-    if (shaft.severed) {
+    if (!ctx.paintedShafts && shaft.severed) {
       batch.push(x + 2 + shear, top, layout.slotW - 4, breakY - top, palette.shaft, { radius: 3 });
       batch.push(
         x + 2 - shear,
@@ -3319,30 +3854,84 @@ function drawShafts(batch: QuadBatch, ctx: SceneContext): void {
         palette.shaft,
         { radius: 3 },
       );
-    } else {
+    } else if (!ctx.paintedShafts) {
       batch.push(x + 2, top, layout.slotW - 4, bottom - top, palette.shaft, { radius: 3 });
     }
 
     // A shaft with people queueing on it glows. The queue is the
     // bottleneck instrument, so it has to be visible from the shaft as
     // well as from the crew standing at it.
-    const busy = shaft.riders >= shaft.capacity || shaft.queued > 0;
     // A severed column is not busy and is not idle — it is dead, and
     // its rails go the colour of everything else that has broken.
     const rail = shaft.severed
       ? mix(palette.shaftRail, palette.crack, 0.65)
       : mix(busy ? palette.shaftBusy : palette.shaftRail, palette.crack, hurt * 0.5);
-    const inGap = (y: number) => shaft.severed && y > breakY - 2 && y < breakY + gapH + 2;
-
-    if (shaft.kind === "Stairs") {
+    if (shaft.kind === "Busbar") {
+      // A dark-steel trunk with paired ceramic carriers and a live teal
+      // conductor. Capacity and damage read on the object rather than a
+      // detached network overlay.
+      batch.push(x + layout.slotW * 0.2, top, layout.slotW * 0.6, bottom - top, palette.shaft, {
+        radius: 2,
+      });
+      const live = shaft.severed ? palette.crack : palette.charge;
+      for (const offset of [0.34, 0.62]) {
+        batch.push(
+          x + layout.slotW * offset - 1.5,
+          top,
+          3,
+          bottom - top,
+          fade(live, shaft.severed ? 0.3 : 0.82),
+          { radius: 1.5, softness: shaft.severed ? 0 : 1.2 },
+        );
+      }
+      for (let floor = shaft.low; floor <= shaft.high; floor += 1) {
+        const iy = floorY(layout, floor) + layout.floorH * 0.5;
+        batch.push(x + layout.slotW * 0.12, iy - 3, layout.slotW * 0.76, 6, palette.floorPlate, {
+          radius: 3,
+        });
+        batch.push(
+          x + layout.slotW * 0.42,
+          iy - 2,
+          layout.slotW * 0.16,
+          4,
+          fade(live, shaft.severed ? 0.28 : 0.92),
+          { radius: 2, softness: 1.5 },
+        );
+      }
+    } else if (shaft.kind === "VentStack") {
+      // A riveted flue with visible joints. Pale puffs at the roof say
+      // the stack is carrying smoke; the burner remains the source.
+      batch.push(x + layout.slotW * 0.24, top, layout.slotW * 0.52, bottom - top, palette.wreck, {
+        radius: 3,
+      });
+      for (let floor = shaft.low; floor <= shaft.high; floor += 1) {
+        const jointY = floorY(layout, floor) + layout.floorH * 0.1;
+        batch.push(x + layout.slotW * 0.17, jointY, layout.slotW * 0.66, 3, palette.brass, {
+          radius: 1.5,
+        });
+      }
+      if (!shaft.severed && shaft.exhaust_capacity > 0) {
+        for (let puff = 0; puff < 3; puff += 1) {
+          const drift = (clock * 0.18 + puff * 0.31 + shaft.id * 0.07) % 1;
+          const size = layout.slotW * (0.12 + drift * 0.14);
+          batch.push(
+            x + layout.slotW * 0.5 + (puff - 1) * layout.slotW * 0.12 - size / 2,
+            top - drift * layout.slotW * 0.55 - size,
+            size,
+            size,
+            fade(palette.steam, 0.2 * (1 - drift)),
+            { radius: size, softness: size * 0.7 },
+          );
+        }
+      }
+    } else if (shaft.kind === "Stairs") {
       // Treads, so stairs read as stairs at a glance. Damage takes them
       // out one at a time, which is what a half-wrecked staircase
       // should look like before it goes entirely.
-      const treads = Math.max(1, Math.round((bottom - top) / 9));
-      for (let i = 0; i < treads; i += 1) {
-        const ty = top + ((i + 0.5) * (bottom - top)) / treads;
-        if (inGap(ty) || hash01(shaft.id + i * 6151) < hurt * 0.7) continue;
-        batch.push(x + 4, ty, layout.slotW - 8, 1.5, fade(rail, busy ? 0.75 : 0.4));
+      if (!ctx.paintedShafts) {
+        for (const ty of shaftTreadYs(shaft, layout)) {
+          batch.push(x + 4, ty, layout.slotW - 8, 1.5, fade(rail, busy ? 0.75 : 0.4));
+        }
       }
     } else if (shaft.kind === "Chute") {
       // **A chute reads as a hole, not as machinery.** No treads, no
@@ -3370,7 +3959,7 @@ function drawShafts(batch: QuadBatch, ctx: SceneContext): void {
         fade(palette.cargo, 0.5 * (1 - drop)),
         { radius: size * 0.4 },
       );
-    } else {
+    } else if (!ctx.paintedShafts) {
       // Guide rails rather than treads, and a counterweight cable, so
       // a shaft with a car in it never gets mistaken for a staircase.
       batch.push(x + layout.slotW / 2 - 0.5, top, 1, bottom - top, fade(rail, 0.35));
@@ -3464,24 +4053,29 @@ function drawSeverance(
 
 function drawCar(
   batch: QuadBatch,
-  { layout, catalog }: SceneContext,
+  ctx: SceneContext,
   shaft: ShaftView,
   car: CarView,
   x: number,
 ): void {
-  const w = layout.slotW - 8;
-  const h = layout.floorH * 0.6;
-  const y = layout.groundY - car.floor * layout.floorH - h - 4;
+  const { layout, catalog } = ctx;
+  const rect = shaftCarRect(car, layout, x);
+  const { width: w, height: h, y } = rect;
   const dwelling = car.state === "dwelling";
 
-  batch.push(x + 4, y, w, h, mix(palette.towerShellLip, palette.shaftRail, 0.4), {
-    colorBottom: palette.towerShell,
-    radius: 3,
-  });
+  if (!ctx.paintedShafts) {
+    batch.push(x + 4, y, w, h, mix(palette.towerShellLip, palette.shaftRail, 0.4), {
+      colorBottom: palette.towerShell,
+      radius: 3,
+    });
+  }
   // Doors: shut while travelling, open at a stop. The clearest possible
   // signal for what a car is doing right now.
   const gap = dwelling ? w * 0.34 : w * 0.04;
-  batch.push(x + 4 + w * 0.06, y + h * 0.14, (w * 0.88 - gap) / 2, h * 0.72, palette.floorPlate, {
+  const doorColor = ctx.paintedShafts
+    ? mix(palette.floorPlate, dwelling ? palette.verdigris : palette.brass, dwelling ? 0.42 : 0.24)
+    : palette.floorPlate;
+  batch.push(x + 4 + w * 0.06, y + h * 0.14, (w * 0.88 - gap) / 2, h * 0.72, doorColor, {
     radius: 2,
   });
   batch.push(
@@ -3489,9 +4083,35 @@ function drawCar(
     y + h * 0.14,
     (w * 0.88 - gap) / 2,
     h * 0.72,
-    palette.floorPlate,
+    doorColor,
     { radius: 2 },
   );
+
+  if (ctx.paintedShafts) {
+    // A physical header lamp turns a tiny cage into a readable lift at
+    // normal zoom: teal in motion, warm at a landing, dim brass at rest.
+    const stateColor = car.state === "moving" ? palette.charge : palette.lamplight;
+    const stateAlpha = car.state === "idle" ? 0.52 : 0.96;
+    const pulse = car.state === "moving" ? 0.78 + Math.sin(ctx.clock * 8) * 0.22 : 1;
+    const lamp = Math.max(2.5, layout.slotW * 0.075);
+    batch.push(x + 4, y, w, Math.max(2, h * 0.08), fade(palette.brass, 0.9), { radius: 1 });
+    batch.push(
+      x + 4 + w * 0.5 - lamp,
+      y + h * 0.08 - lamp,
+      lamp * 2,
+      lamp * 2,
+      fade(stateColor, stateAlpha * pulse),
+      { radius: lamp, softness: lamp * 0.65 },
+    );
+    batch.push(
+      x + 4 + w * 0.5 - lamp * 0.38,
+      y + h * 0.08 - lamp * 0.38,
+      lamp * 0.76,
+      lamp * 0.76,
+      fade(stateColor, Math.min(1, stateAlpha + 0.12)),
+      { radius: lamp * 0.38 },
+    );
+  }
 
   // Load, as pips along the car's floor. Reading "how full is it"
   // should not need a number.
@@ -3535,7 +4155,10 @@ function drawCar(
  * of floating bars is a spreadsheet with legs, which is the exact
  * failure the sprint question names.
  */
-function drawCrew(batch: QuadBatch, { view, layout, clock, catalog, picked }: SceneContext): void {
+function drawCrew(
+  batch: QuadBatch,
+  { view, layout, clock, catalog, picked, paintedCrewNeeds }: SceneContext,
+): void {
   for (const member of view.crew) {
     const { x, y } = crewPosition(layout, member);
 
@@ -3563,6 +4186,7 @@ function drawCrew(batch: QuadBatch, { view, layout, clock, catalog, picked }: Sc
         softness: ring * 0.2,
       });
     }
+    if (paintedCrewNeeds && (member.state === "eat" || member.state === "sleep")) continue;
     // Phase-offset per crew member from the cosmetic RNG stream, so
     // nobody bobs, steps or breathes in lockstep. One draw, four uses.
     const phase = (member.fidget / 65535) * Math.PI * 2;
@@ -3819,7 +4443,18 @@ function drawPlaceMode(batch: QuadBatch, ctx: SceneContext): void {
     for (let slot = 0; slot + placeMode.width <= floor.slots; slot += 1) {
       if (!placementFits(view, placeMode, floor.index, slot, ctx.catalog.front_slots)) continue;
       const { x, y, w, h } = ghostRect(layout, placeMode, floor.index, slot);
-      batch.push(x, y, w, h, fade(palette.slotHint, 0.07), { radius: 4 });
+      // Legal locations are deck hardware, not translucent HUD panels.
+      // Two recessed pilot lamps mark a socket without washing out the art.
+      const lamp = Math.max(2, Math.min(4, layout.slotW * 0.055));
+      const socketY = y + h - lamp - 2;
+      batch.push(x + 3, socketY, lamp, lamp, fade(palette.slotHint, 0.48), {
+        radius: lamp * 0.5,
+        softness: 1,
+      });
+      batch.push(x + w - lamp - 3, socketY, lamp, lamp, fade(palette.slotHint, 0.48), {
+        radius: lamp * 0.5,
+        softness: 1,
+      });
     }
   }
 
@@ -3828,7 +4463,34 @@ function drawPlaceMode(batch: QuadBatch, ctx: SceneContext): void {
   const allowed = placementFits(view, placeMode, hover.floor, hover.slot, ctx.catalog.front_slots);
   const { x, y, w, h } = ghostRect(layout, placeMode, hover.floor, hover.slot);
   const color = allowed ? palette.ghostValid : palette.ghostBlocked;
-  batch.push(x, y, w, h, fade(color, 0.4), { radius: 4, softness: 2 });
+  batch.push(x, y, w, h, fade(color, 0.11), { radius: 3, softness: 2 });
+
+  // Bolted corner brackets describe the exact footprint. Invalid placement
+  // adds a physical cross-brace, so rejection does not rely on colour alone.
+  const arm = Math.max(6, Math.min(14, layout.slotW * 0.18));
+  const thick = Math.max(2, layout.slotW * 0.035);
+  const bracket = fade(color, allowed ? 0.82 : 0.9);
+  batch.push(x, y, arm, thick, bracket);
+  batch.push(x, y, thick, arm, bracket);
+  batch.push(x + w - arm, y, arm, thick, bracket);
+  batch.push(x + w - thick, y, thick, arm, bracket);
+  batch.push(x, y + h - thick, arm, thick, bracket);
+  batch.push(x, y + h - arm, thick, arm, bracket);
+  batch.push(x + w - arm, y + h - thick, arm, thick, bracket);
+  batch.push(x + w - thick, y + h - arm, thick, arm, bracket);
+
+  if (!allowed) {
+    const steps = 7;
+    for (let i = 0; i < steps; i += 1) {
+      const t = i / (steps - 1);
+      const px = x + t * (w - thick);
+      const py = y + t * (h - thick);
+      batch.push(px, py, thick, thick, fade(color, 0.68), { radius: thick * 0.25 });
+      batch.push(px, y + h - thick - t * (h - thick), thick, thick, fade(color, 0.68), {
+        radius: thick * 0.25,
+      });
+    }
+  }
 }
 
 /** The footprint a ghost would occupy: one floor for a room, several for a shaft. */
@@ -3859,6 +4521,7 @@ export function placementFits(
   if (placeMode.maxFloor !== null && floor > placeMode.maxFloor) return false;
   if (placeMode.minFloor !== null && floor < placeMode.minFloor) return false;
   if (placeMode.kind === "room") {
+    if (placeMode.topFloorOnly && floor !== view.tower.floors.length - 1) return false;
     // **The leading edge, both ways round** (`SYSTEMS.md` §6.13, §6.21).
     // A weapon goes at the front and nowhere else; everything else may
     // not stand on the front at all. Checked against the whole
@@ -3870,7 +4533,19 @@ export function placementFits(
     } else if (frontSlots > 0 && slot + placeMode.width > width - frontSlots) {
       return false;
     }
-    return slotRangeFree(view, floor, slot, placeMode.width);
+    if (!slotRangeFree(view, floor, slot, placeMode.width)) return false;
+    if (placeMode.shaftAdjacent) {
+      const left = slot - 1;
+      const right = slot + placeMode.width;
+      const touches = view.tower.shafts.some(
+        (shaft) =>
+          shaft.low <= floor &&
+          shaft.high >= floor &&
+          (shaft.slot === left || shaft.slot === right),
+      );
+      if (!touches) return false;
+    }
+    return true;
   }
   const top = floor + placeMode.span - 1;
   if (top >= view.tower.floors.length) return false;
@@ -3887,10 +4562,12 @@ function drawVignette(batch: QuadBatch, { layout, view }: SceneContext): void {
     colorBottom: fade(palette.vignette, 0.55),
   });
 
-  // A brown-out dims the whole frame, briefly and unmistakably. This is
-  // the one place the renderer editorialises, and it earns it: losing
-  // power is the emergency the charge economy exists to threaten.
-  if (view.power.brownout) {
+  // One refused workshop is a local breaker event, not an eclipse. The
+  // emergency wash is reserved for an empty bank or for losing both the
+  // lamps and the legs — the point where the walker itself has gone dark.
+  const busDark =
+    view.power.charge === 0 || (view.power.refused[2] === true && view.power.refused[3] === true);
+  if (busDark) {
     const pulse = 0.1 + Math.abs(Math.sin(view.tick * 0.06)) * 0.12;
     batch.push(0, 0, width, height, fade(palette.vignette, pulse));
   }

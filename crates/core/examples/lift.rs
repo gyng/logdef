@@ -5,10 +5,11 @@
 //! an elevator. There is one now — the lift fetches stock itself
 //! whenever nobody is calling it — so any figure below quoting a
 //! dumbwaiter is the pre-merge pair, kept because the argument for the
-//! merge *is* those figures. The current sweep says the merged shaft is
-//! worth +119% at five floors, +256% at eight, +493% at eleven and
-//! +913% at fourteen, and holds +251% to +271% across every hull width,
-//! where the old elevator fell from +91% to +48%.
+//! merge *is* those figures. The current floor-local-power sweep says
+//! the merged shaft is worth +44% at five floors, +123% at eight,
+//! +219% at eleven and +238% at fourteen. At eight floors it falls from
+//! +124% on the narrow hull to +70% on the widest: placement and the
+//! power it sheds are part of the result, not noise to subtract away.
 //!
 //! ```text
 //! cargo run --release -p understory-core --example lift
@@ -34,10 +35,11 @@
 //! a haul count cannot tell "fewer trips" from "slower trips", and those
 //! want opposite fixes.
 //!
-//! **What it does not measure:** whether an elevator is *worth building*
-//! — that is 18 poles and 6 rope against everything else those buy, and
-//! it belongs to `journey.rs`, which plays the whole run. This is the
-//! narrower question of whether the thing works once it is up.
+//! **What it does not measure:** whether an elevator is *worth building*.
+//! Its authored price is two rope plus one pole for every crossed deck,
+//! against everything else those materials buy; that belongs to
+//! `journey.rs`, which plays the whole run. This is the narrower
+//! question of whether the thing works once it is up.
 //!
 //! ## What it found, and how far to trust it
 //!
@@ -278,8 +280,8 @@ const DAY: u32 = 14_400;
 const WARMUP: u32 = DAY;
 const WINDOW: u32 = DAY * 2;
 
-/// Three seeds, because one run of a stochastic world is an anecdote,
-/// and the same three for both towers, because the comparison is only
+/// Twelve seeds, because one run of a stochastic world is an anecdote,
+/// and the same twelve for both towers, because the comparison is only
 /// meaningful if the ground underfoot was identical.
 const SEEDS: [u64; 12] = [
     0x00C0_FFEE,
@@ -350,6 +352,9 @@ struct Sample {
     climbing: u64,
     /// Crew-ticks spent aboard a car, which is not free either.
     riding: u64,
+    /// Item-ticks spent aboard a car. A lift used only by its autonomous
+    /// freight lane is still doing real work.
+    freight: u64,
     /// Crew-ticks spent walking along a floor.
     walking: u64,
     /// Crew-ticks spent doing none of the above: working, or idle for
@@ -380,6 +385,7 @@ impl Sample {
             boarding: a.boarding + b.boarding,
             climbing: a.climbing + b.climbing,
             riding: a.riding + b.riding,
+            freight: a.freight + b.freight,
             walking: a.walking + b.walking,
             ashore: a.ashore + b.ashore,
             brownout: a.brownout + b.brownout,
@@ -393,6 +399,7 @@ impl Sample {
             boarding: sum.boarding / n,
             climbing: sum.climbing / n,
             riding: sum.riding / n,
+            freight: sum.freight / n,
             walking: sum.walking / n,
             ashore: sum.ashore / n,
             brownout: sum.brownout / u32::try_from(of.len()).unwrap_or(1),
@@ -431,8 +438,8 @@ fn main() {
     );
 
     println!(
-        "{:<7} {:>6} {:>16} {:>16} {:>10} {:>10}",
-        "floors", "shaft", "hauls", "crafts", "transit", "boarding"
+        "{:<7} {:>6} {:>16} {:>16} {:>10} {:>10} {:>9}",
+        "floors", "shaft", "hauls", "crafts", "transit", "boarding", "shed"
     );
 
     let mut verdicts = Vec::new();
@@ -995,13 +1002,14 @@ fn row(height: u8, kind: Lift, s: Sample, against: Option<Sample>) {
         }
     };
     println!(
-        "{height:<7} {label:>6} {:>10}{:<6} {:>10}{:<6} {:>10} {:>10}",
+        "{height:<7} {label:>6} {:>10}{:<6} {:>10}{:<6} {:>10} {:>10} {:>9}",
         s.hauls,
         delta(s.hauls, against.map(|a| a.hauls)),
         s.crafts,
         delta(s.crafts, against.map(|a| a.crafts)),
         s.in_transit(),
         s.boarding,
+        s.brownout,
     );
     if s.dead > 0 {
         println!(
@@ -1030,7 +1038,7 @@ fn verdict(rows: &[(u8, Sample, (Lift, Sample))]) {
         );
     }
 
-    println!("\nwhat a tower of each height should build:\n");
+    println!("\nthroughput winner at each height (with its power consequence):\n");
     for (height, stairs, (best, sample)) in rows {
         let gain = sample.hauls as i64 - stairs.hauls as i64;
         let pct = if stairs.hauls == 0 {
@@ -1042,10 +1050,20 @@ fn verdict(rows: &[(u8, Sample, (Lift, Sample))]) {
             Lift::None => {
                 println!("  {height:>2} floors — nothing. Neither shaft beats the stairs here.");
             }
-            other => println!(
-                "  {height:>2} floors — the {} ({gain:+} hauls, {pct:+}%)",
-                other.label(),
-            ),
+            other => {
+                let shedding = if sample.brownout == 0 {
+                    "no shedding".to_owned()
+                } else {
+                    format!(
+                        "sheds {:.0}% of measured ticks",
+                        f64::from(sample.brownout) * 100.0 / f64::from(WINDOW)
+                    )
+                };
+                println!(
+                    "  {height:>2} floors — the {} ({gain:+} hauls, {pct:+}%; {shedding})",
+                    other.label(),
+                );
+            }
         }
     }
 
@@ -1138,6 +1156,12 @@ fn measure_with(
         .map_or(game.content().balance.tower.floor_slots, |floor| {
             floor.slots
         });
+    // Build the mandatory ladder before choosing service columns. The
+    // old fixture reserved columns first, then let `open_the_ladder`
+    // place rooms without knowing about that reservation; a burner on
+    // the later vent line made the shaft setup panic before a single
+    // transport comparison ran.
+    understory_core::harness::open_the_ladder(&mut game, height);
     // **Every row reserves every candidate column**, not just the one it
     // uses. Reserving only the column this row needs would let the rows
     // differ by which rooms fitted as well as by the shaft, and then the
@@ -1146,7 +1170,23 @@ fn measure_with(
     if std::env::var("UNDERSTORY_COLUMNS").is_ok() {
         println!("  {height} floors, {slots} slots: free columns {free:?}");
     }
-    let reserved = [Lift::slot(&free, slots)];
+    let lift_slot = Lift::slot(&free, slots);
+    let mut service: Vec<u8> = free
+        .iter()
+        .copied()
+        .filter(|slot| *slot != lift_slot && *slot < slots.saturating_sub(2))
+        .rev()
+        .take(2)
+        .collect();
+    assert_eq!(
+        service.len(),
+        2,
+        "a {height}-floor fixture needs separate vent, busbar and comparison columns"
+    );
+    service.sort_unstable();
+    let vent_slot = service[0];
+    let busbar_slot = service[1];
+    let reserved = [vent_slot, busbar_slot, lift_slot];
 
     // A chain that crosses the whole tower, top to bottom, so a haul has
     // somewhere to go — an elevator in a tower whose chain sits on two
@@ -1179,8 +1219,6 @@ fn measure_with(
     // room in the plan below is gated behind a farm, a cutter arm and a
     // burner. This puts one of each up — wherever they fit — and the
     // plan then builds the tower this instrument actually measures.
-    understory_core::harness::open_the_ladder(&mut game, height);
-
     let plan = [
         // Reaches the ground, so `max_floor` is 1. Nowhere else to go.
         ("room.cutter_arm", 1),
@@ -1286,18 +1324,43 @@ fn measure_with(
         has("room.mill"),
     );
 
-    // Every tower is handed the *elevator's* price, the dearest of the
-    // three, so the three rows differ by the shaft and by nothing else —
-    // including how much was left on the shelves for the crew to move.
-    endow(&mut game, "shaft.elevator");
+    // Both fixtures get the same service trunk. The busbar prevents the
+    // elevator row getting a vertical power network the stairs control
+    // lacks; the vent keeps burner smoke and siege pressure out of a
+    // transport comparison. Their columns were reserved before either
+    // floor plan was built, so layout opportunity is identical too.
+    for (shaft, slot) in [
+        ("shaft.vent_stack", vent_slot),
+        ("shaft.busbar", busbar_slot),
+    ] {
+        endow(&mut game, shaft, 0, height - 1);
+        raise(&mut game, shaft, 0, height - 1, slot, height);
+    }
+
+    // The comparison column holds a third busbar in the stairs control
+    // and the lift in the treatment. Both are handed both prices before
+    // either spends one: equal layout opportunity, equal starting
+    // economy, and enough local conductor capacity for fourteen floors.
+    let mut comparison_price = shaft_cost(&game, "shaft.elevator", 0, height - 1);
+    for (item, amount) in shaft_cost(&game, "shaft.busbar", 0, height - 1) {
+        if let Some((_, held)) = comparison_price
+            .iter_mut()
+            .find(|(candidate, _)| *candidate == item)
+        {
+            *held += amount;
+        } else {
+            comparison_price.push((item, amount));
+        }
+    }
+    give(&mut game, &comparison_price);
     match build_lift {
-        Lift::None => {}
+        Lift::None => raise(&mut game, "shaft.busbar", 0, height - 1, lift_slot, height),
         Lift::Elevator => raise(
             &mut game,
             "shaft.elevator",
             0,
             height - 1,
-            Lift::slot(&free, slots),
+            lift_slot,
             height,
         ),
     }
@@ -1356,6 +1419,18 @@ fn measure_with(
                 _ => s.ashore += 1,
             }
         }
+        s.freight += state
+            .tower
+            .shafts
+            .iter()
+            .flat_map(|shaft| shaft.cars.iter())
+            .map(|car| {
+                car.freight
+                    .iter()
+                    .map(|stack| stack.count as u64)
+                    .sum::<u64>()
+            })
+            .sum::<u64>();
         if state.power.brownout {
             s.brownout += 1;
         }
@@ -1367,39 +1442,13 @@ fn measure_with(
     s.harvested = after.items_harvested - before.items_harvested;
     s.meals = after.meals_eaten - before.meals_eaten;
 
-    // **Not an assert, deliberately.** `AGENTS.md` §II says to check the
-    // run gave the mechanism something to do, and the first version of
-    // this stopped the sweep dead on the shortest tower. But "nobody
-    // ever rode it" is the answer to the question rather than a broken
-    // harness — so it is reported per row and the sweep continues, and
-    // the row is marked so it can never be read as a fair comparison.
-    if build_lift == Lift::Elevator && s.riding == 0 {
-        s.dead = 1;
-        println!(
-            "  ! {height} floors, seed {seed:#x}: the lift was built and nobody ever rode it \
-             (charge {} of {}, brownout on {} ticks)",
-            game.state().power.charge,
-            game.state().power.capacity,
-            s.brownout,
-        );
-    }
-    // The setup check that actually matters, and the one whose absence
-    // produced the blackout sweep above: a tower that cannot keep its
-    // lamps on is not measuring transport.
-    //
-    // **Marked, not asserted.** Stopping the sweep dead on it throws
-    // away every taller row as well, and the harness tower genuinely
-    // cannot buy more sail than one roof holds — so past eight floors it
-    // is one busy day from the dark whatever the shaft does. Reported
-    // and excluded from the verdict, the same way a lift nobody rode is.
-    if s.brownout > WINDOW / 4 {
-        s.dead = 1;
-        println!(
-            "  ! {height} floors, seed {seed:#x}: browned out on {} of {WINDOW} ticks — \
-             this row is the power budget, not the shaft",
-            s.brownout,
-        );
-    }
+    assert!(
+        build_lift != Lift::Elevator || s.riding + s.freight > 0,
+        "{height} floors, seed {seed:#x}: comparison lift carried neither crew nor freight"
+    );
+    // Power is part of the elevator's price, not invalid noise. Report
+    // shedding beside throughput so a lift that moves more crates by
+    // starving the rest of the tower cannot be called an upgrade.
     s
 }
 
@@ -1574,17 +1623,33 @@ fn place(game: &mut GameEngine, room: &str, floor: u8, slots: u8, reserved: &[u8
 /// the shaft and by nothing else. See `throughput.rs` for why waiting
 /// until it can afford one is the wrong repair — it starts the two
 /// samples three in-game days apart, on different ground.
-fn endow(game: &mut GameEngine, shaft: &str) {
-    let cost = game
-        .content()
-        .shaft_rt(
-            game.content()
-                .shaft_idx(shaft)
-                .unwrap_or_else(|| panic!("the pack has no {shaft}")),
-        )
-        .build_cost
-        .clone();
+fn endow(game: &mut GameEngine, shaft: &str, low: u8, high: u8) {
+    let cost = shaft_cost(game, shaft, low, high);
     give(game, &cost);
+}
+
+fn shaft_cost(
+    game: &GameEngine,
+    shaft: &str,
+    low: u8,
+    high: u8,
+) -> Vec<(understory_core::ids::ItemIdx, i64)> {
+    let runtime = game.content().shaft_rt(
+        game.content()
+            .shaft_idx(shaft)
+            .unwrap_or_else(|| panic!("the pack has no {shaft}")),
+    );
+    let mut cost = runtime.build_cost.clone();
+    let boundaries = i64::from(high.saturating_sub(low));
+    for &(item, per_boundary) in &runtime.span_cost {
+        let amount = per_boundary.saturating_mul(boundaries);
+        if let Some((_, held)) = cost.iter_mut().find(|(had, _)| *had == item) {
+            *held = held.saturating_add(amount);
+        } else {
+            cost.push((item, amount));
+        }
+    }
+    cost
 }
 
 /// Put a cost's worth of goods on the shelves.
@@ -1599,6 +1664,7 @@ fn endow(game: &mut GameEngine, shaft: &str) {
 /// starting with a stocked tower and another with a jammed one.
 fn give(game: &mut GameEngine, cost: &[(understory_core::ids::ItemIdx, i64)]) {
     let state = game.state_mut_for_test();
+    let protected: Vec<_> = cost.iter().map(|(item, _)| *item).collect();
     for &(item, amount) in cost {
         let mut left = amount;
         for floor in &mut state.tower.floors {
@@ -1620,7 +1686,9 @@ fn give(game: &mut GameEngine, cost: &[(understory_core::ids::ItemIdx, i64)]) {
             .iter_mut()
             .flat_map(|floor| floor.rooms.iter_mut())
             .flat_map(|room| room.shelves.iter_mut())
-            .filter(|shelf| shelf.item != Some(item))
+            .filter(|shelf| {
+                shelf.item != Some(item) && shelf.item.is_none_or(|held| !protected.contains(&held))
+            })
             .collect();
         shelves.sort_by_key(|shelf| -shelf.max);
         for shelf in shelves {
@@ -1653,6 +1721,30 @@ fn give(game: &mut GameEngine, cost: &[(understory_core::ids::ItemIdx, i64)]) {
         }
         assert!(left <= 0, "the tower has no shelves at all");
     }
+    // Several build materials must coexist until the command validates
+    // the complete price. If the fallback above had to commandeer the
+    // last physical shelf, restore only the displaced line in a
+    // harness shelf; otherwise a successful `give` can still leave the
+    // subsequent all-or-nothing stock check short.
+    for &(item, amount) in cost {
+        let held = state.stock_of(item);
+        if held >= amount {
+            continue;
+        }
+        let room = state
+            .tower
+            .floors
+            .iter_mut()
+            .flat_map(|floor| floor.rooms.iter_mut())
+            .next()
+            .expect("the tower has no room for a harness shelf");
+        room.shelves.push(understory_core::state::tower::Shelf {
+            filter: Some(item),
+            item: Some(item),
+            count: amount - held,
+            max: amount - held,
+        });
+    }
 }
 
 /// Step, answering any fork before it can bring the tower to a halt —
@@ -1670,9 +1762,35 @@ fn walk(game: &mut GameEngine, ticks: u32) {
             let _ = game.try_send(GameCommand::TakeFork { branch: 0 });
         }
         let _ = game.try_send(GameCommand::SetStriding { walking: true });
-        let chunk = left.min(300);
+        refuel_burners(game);
+        let chunk = left.min(30);
         game.step(chunk);
         left -= chunk;
+    }
+}
+
+/// Keep the power fixture fuelled without adding a second experiment
+/// about whether a particular seed happened to deliver bamboo to a
+/// burner. Fuel is topped up identically in both rows; the measured
+/// hauls remain the production chain's work.
+fn refuel_burners(game: &mut GameEngine) {
+    let Some(bamboo) = game.content().item_idx("item.bamboo") else {
+        return;
+    };
+    let Some(burner) = game.content().room_idx("room.burner") else {
+        return;
+    };
+    for room in game
+        .state_mut_for_test()
+        .tower
+        .floors
+        .iter_mut()
+        .flat_map(|floor| floor.rooms.iter_mut())
+        .filter(|room| room.def == burner)
+    {
+        if let Some(input) = room.inputs.iter_mut().find(|stack| stack.item == bamboo) {
+            input.count = input.max;
+        }
     }
 }
 

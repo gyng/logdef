@@ -17,10 +17,137 @@ use serde::{Deserialize, Serialize};
 use crate::content::{Content, RoomCategory};
 use crate::fx::{FX_ONE, Paces};
 use crate::state::{GameState, RunStats, SimSpeed};
+use crate::systems::CombatEvent;
 
 // ---------------------------------------------------------------------------
 // Per-frame view
 // ---------------------------------------------------------------------------
+
+/// Transient output from one browser frame. Sounds remain payload-free;
+/// spatial combat facts travel beside them instead of changing the audio
+/// contract.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FrameEvents {
+    pub sounds: Vec<crate::systems::SoundEvent>,
+    pub combat: Vec<CombatEventView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CombatEventView {
+    EmplacementFired {
+        effect: CombatEffect,
+        source: CombatSourceView,
+        target: CombatTargetView,
+    },
+    CutterStruck {
+        effect: CombatEffect,
+        source: CombatSourceView,
+        target: CombatTargetView,
+    },
+}
+
+/// Authored visual language for a combat action. Room definitions remain
+/// the source of truth; this stable family lets the renderer choose motion
+/// and colour without comparing content IDs every frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CombatEffect {
+    Thorn,
+    Dart,
+    Lantern,
+    RootWard,
+    Tanglenet,
+    Resonance,
+    Cutter,
+    Generic,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct CombatSourceView {
+    pub room_id: u32,
+    /// Index into `catalog.rooms`; this is also the effect-family key.
+    pub room_def: u16,
+    pub floor: u8,
+    pub slot: u8,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct CombatTargetView {
+    pub enemy_id: u32,
+    /// Index into `catalog.enemies`.
+    pub enemy_def: u16,
+    /// World position in paces, on the same axis as `world.distance`.
+    pub at: f32,
+}
+
+impl FrameEvents {
+    #[must_use]
+    pub fn from_sim(
+        content: &Content,
+        sounds: Vec<crate::systems::SoundEvent>,
+        combat: Vec<CombatEvent>,
+    ) -> Self {
+        Self {
+            sounds,
+            combat: combat
+                .into_iter()
+                .map(|event| CombatEventView::from_sim(event, content))
+                .collect(),
+        }
+    }
+}
+
+impl CombatEventView {
+    fn from_sim(event: CombatEvent, content: &Content) -> Self {
+        let views = |source: crate::systems::CombatSource, target: crate::systems::CombatTarget| {
+            (
+                CombatSourceView {
+                    room_id: source.room_id.0,
+                    room_def: source.room_def.0,
+                    floor: source.floor,
+                    slot: source.slot,
+                },
+                CombatTargetView {
+                    enemy_id: target.enemy_id.0,
+                    enemy_def: target.enemy_def.0,
+                    at: paces_to_f32(target.at),
+                },
+            )
+        };
+        match event {
+            CombatEvent::EmplacementFired { source, target } => {
+                let (source, target) = views(source, target);
+                let effect = combat_effect(content, source.room_def);
+                Self::EmplacementFired {
+                    effect,
+                    source,
+                    target,
+                }
+            }
+            CombatEvent::CutterStruck { source, target } => {
+                let (source, target) = views(source, target);
+                Self::CutterStruck {
+                    effect: CombatEffect::Cutter,
+                    source,
+                    target,
+                }
+            }
+        }
+    }
+}
+
+fn combat_effect(content: &Content, room_def: u16) -> CombatEffect {
+    match content.room(crate::ids::RoomIdx(room_def)).id.as_str() {
+        "room.thorn_gun" => CombatEffect::Thorn,
+        "room.dart_battery" => CombatEffect::Dart,
+        "room.lantern_mast" => CombatEffect::Lantern,
+        "room.root_ward" => CombatEffect::RootWard,
+        "room.tanglenet" => CombatEffect::Tanglenet,
+        "room.resonance_array" => CombatEffect::Resonance,
+        _ => CombatEffect::Generic,
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ViewSnapshot {
@@ -57,14 +184,11 @@ pub struct ViewSnapshot {
     /// about what is buildable — a card that offers something the
     /// command layer refuses is worse than no card.
     pub unlocked: Vec<u16>,
-    /// What kind of work idle crew reach for first, best first, as
-    /// indices into `catalog.jobs`.
-    pub work: Vec<u8>,
     /// **Who** the settlement the tower is standing at is offering
     /// (`SYSTEMS.md` §6.29). A recruit used to be a purchase — pay, and
     /// receive the next name off a list. This is the person, before you
     /// decide. `None` away from a settlement or once its are spent.
-    pub recruit: Option<RecruitInfo>,
+    pub recruit: Vec<RecruitInfo>,
     pub stats: RunStats,
 }
 
@@ -92,16 +216,37 @@ pub struct PowerView {
     pub spent_last: i64,
     /// Something went unpowered this tick. The tower dims.
     pub brownout: bool,
+    /// Per-service refusals, indexed by `PowerUse::index`.
+    pub refused: Vec<bool>,
     /// Lamps are on — either it is daylight, or the tower can afford them.
     pub lit: bool,
     /// The legs are running.
     pub walking: bool,
     /// What the player has ranked to keep running when charge is short,
-    /// best first. Always all four uses.
+    /// best first. Always every use.
     pub priority: Vec<crate::state::power::PowerUse>,
     /// What each use wanted this tick, indexed by `PowerUse::index`. Lets
     /// a panel say *why* something was cut rather than only that it was.
     pub demand: Vec<i64>,
+    /// Charge per tick the tower can actually deliver — burners, cell
+    /// banks and the Heartseed (`SYSTEMS.md` §6.36).
+    ///
+    /// **The reading the bank gauge could never give.** Capacity says
+    /// how long the tower can keep going; this says how hard it can
+    /// spend, and a tower can be full and shedding.
+    pub rail: i64,
+    /// **How well each circuit was served, in per-mille**, indexed by
+    /// `PowerUse::index` (`SYSTEMS.md` §6.39). 1000 is everything it
+    /// asked for.
+    ///
+    /// The reading `refused` could never give: a circuit is no longer on
+    /// or off, it is running at a rate, and the panel and the renderer
+    /// both want the rate. `refused` is kept as the derived
+    /// "less than everything" for anything that only needs the bit.
+    pub satisfaction: Vec<i64>,
+    /// Circuit service on each physical deck, indexed
+    /// `[floor][PowerUse]`. Used by the deck bus pilot lamps.
+    pub floor_satisfaction: Vec<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,9 +265,6 @@ pub struct SiegeView {
     /// Poles it would take to put everything right, so the player can
     /// see the bill before deciding what to triage.
     pub repair_cost: i64,
-    /// The creature every emplacement has been asked to prefer, if
-    /// any. Drawn as a mark on that creature; never a target reticle.
-    pub focus: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,6 +276,8 @@ pub struct EnemyView {
     pub at: f32,
     pub hp_permille: i64,
     pub state: EnemyStateTag,
+    /// A net, resonance pulse or root ward is visibly holding it.
+    pub controlled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,6 +350,10 @@ pub struct JourneyView {
     /// that must agree is the shape that went wrong. `None` when there
     /// is nothing coming inside the streaming window.
     pub waypoint_ahead: Option<WaypointAheadView>,
+    /// The unique territorial landmark still ahead, even when an
+    /// ordinary beat is nearer. This is the long warning that makes
+    /// preparation a decision rather than a reaction test.
+    pub landmark_ahead: Option<WaypointAheadView>,
     /// The branch the tower is walking through, if any. Indexes
     /// `catalog.branches`.
     pub branch: Option<u16>,
@@ -320,6 +468,10 @@ pub struct RoomView {
     pub def: u16,
     pub slot: u8,
     pub width: u8,
+    /// Left-side material input port.
+    pub input_slot: u8,
+    /// Right-side material output port.
+    pub output_slot: u8,
     /// Ticks into the current craft. Zero for rooms without a recipe.
     pub progress: u32,
     pub inputs: Vec<StackView>,
@@ -342,6 +494,12 @@ pub struct RoomView {
     pub stall: Option<StallTag>,
     /// Switched on by the player.
     pub active: bool,
+    /// This otherwise-ready powered room was refused charge this tick.
+    pub powered: bool,
+    /// This burner actually advanced its fire this tick.
+    pub burning: bool,
+    /// This room can reach enough intact shared exhaust capacity.
+    pub vented: bool,
     /// A sail that is no longer on the top floor. Shaded rooms draw
     /// stalled, and this is why.
     pub shaded: bool,
@@ -359,6 +517,8 @@ pub struct StackView {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShelfView {
+    /// Item this shelf is reserved for, even while empty.
+    pub filter: Option<u16>,
     pub item: Option<u16>,
     pub count: i64,
     pub max: i64,
@@ -374,6 +534,11 @@ pub struct ShaftView {
     pub high: u8,
     pub slot: u8,
     pub capacity: u8,
+    /// Charge per tick this intact column can carry between floors.
+    pub power_capacity: i64,
+    /// Smoke units this stack can carry while intact. Zero for transport shafts.
+    pub exhaust_capacity: i64,
+    /// Whether a chute is currently allowed to discard surplus.
     /// Crew on the stairs. Zero for shafts with cars.
     pub riders: u8,
     pub cars: Vec<CarView>,
@@ -482,6 +647,10 @@ pub enum StallTag {
     Unarmed,
     /// A burner with no fuel.
     Unfuelled,
+    /// Ready to work, but its circuit was shed by the charge priority.
+    Unpowered,
+    /// Ready to work, but the shared flue is full or severed.
+    Unvented,
     /// Waiting on an input the chain has not delivered.
     Starved,
     /// **Its output has nowhere to go.** The tower does not want any
@@ -579,11 +748,11 @@ pub struct CatalogSnapshot {
     pub front_slots: u8,
     pub max_floors: u8,
     pub floor_slots: u8,
+    /// Strategic warning range for unique resident landmarks.
+    pub landmark_warning_paces: i64,
     pub stress_ticks: u32,
     pub ticks_per_day: u32,
-    /// The kinds of work, in `Job::ALL` order — which is the *default*
-    /// work order and not necessarily the current one. `view.work` is
-    /// the current one, as indices into this.
+    /// The kinds of work, in stable `Job::ALL` order, for practice labels.
     pub jobs: Vec<JobInfo>,
     /// Things that can be true about a person, in pack order.
     pub traits: Vec<TraitInfo>,
@@ -607,6 +776,21 @@ pub struct DefenceInfo {
     /// Which approaches it answers, in the pack's own words. Empty
     /// means all of them.
     pub targets: Vec<String>,
+    /// Charge a shot costs (`SYSTEMS.md` §6.36).
+    ///
+    /// **On the card, where damage and range deliberately are not.** The
+    /// numbers stay off because where you put a weapon and whether the
+    /// chain keeps it fed are the decisions. This is one of those: a
+    /// thorn gun costs nothing and a lantern mast costs 40 a shot, so
+    /// arming the front deck is now a question about the switchboard as
+    /// well as about the shelves — and a player who cannot see it cannot
+    /// answer it.
+    pub charge_per_shot: i64,
+    /// One of Direct, Tangle, Resonance, Repel, RootWard.
+    pub effect: String,
+    pub control_ticks: u32,
+    pub control_speed_pct: i64,
+    pub pulse_radius_paces: i64,
 }
 
 /// The person a settlement is offering.
@@ -629,7 +813,7 @@ pub struct TraitInfo {
 /// A kind of work, as the panel that ranks them needs it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobInfo {
-    /// The spelling a `SetWorkOrder` has to use.
+    /// Stable enum spelling used by practice records.
     pub id: String,
     /// What the tower calls it.
     pub name: String,
@@ -640,9 +824,11 @@ pub struct ShaftInfo {
     pub id: String,
     pub name: String,
     pub short: String,
-    /// One of: Stairs, Elevator, Chute.
+    /// One of: Stairs, Elevator, Chute, Busbar, VentStack.
     pub kind: String,
     pub build_cost: Vec<CostInfo>,
+    /// Cost for each boundary crossed, in addition to installation.
+    pub span_cost: Vec<CostInfo>,
     pub min_span: u8,
     /// Zero means "as tall as the tower".
     pub max_span: u8,
@@ -658,6 +844,8 @@ pub struct ShaftInfo {
     /// Stock the shaft fetches per trip when nobody is riding it
     /// (`SYSTEMS.md` §6.18).
     pub batch: i64,
+    pub power_capacity: i64,
+    pub exhaust_capacity: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -668,6 +856,9 @@ pub struct EnemyInfo {
     /// One of: Ground, Canopy, Burrow.
     pub approach: String,
     pub night_only: bool,
+    /// Materials carried by a unique resident. Empty for ordinary
+    /// creatures so the journey never becomes a target gallery.
+    pub drops: Vec<CostInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -722,6 +913,8 @@ pub struct RoomInfo {
     /// placement preview mirrors command validation, and a preview that
     /// offered every free slot to a weapon would be lying.
     pub front_only: bool,
+    /// Must touch a shaft column.
+    pub shaft_adjacent: bool,
     /// Charge drawn per tick while working.
     pub power_draw: i64,
     /// Burns an item for charge, and can be switched off.
@@ -733,6 +926,12 @@ pub struct RoomInfo {
     pub burner_fuel: Option<u16>,
     /// Charge capacity this room adds.
     pub bank_capacity: i64,
+    /// Charge per tick this room can give back (`SYSTEMS.md` §6.36).
+    ///
+    /// Capacity is how long; this is how hard. A card showing only the
+    /// first would not explain why a second bank helps a tower that is
+    /// already full.
+    pub bank_discharge: i64,
     /// Shoots back, and eats ammo off the same shelves as everything
     /// else. `None` for everything that does not.
     ///
@@ -783,6 +982,10 @@ pub struct WaypointInfo {
     pub provocation: i64,
     /// Ground gained, or lost if negative.
     pub paces: i64,
+    /// Fixed once inside a region rather than scattered repeatedly.
+    pub landmark: bool,
+    /// Creature roused by taking it, if this is a territorial crisis.
+    pub resident: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -791,6 +994,8 @@ pub struct RegionInfo {
     pub name: String,
     /// The settlement in this region, if it has one.
     pub enclave: Option<EnclaveInfo>,
+    /// Ground, canopy, burrow specialist pressure.
+    pub approaches: [i64; 3],
 }
 
 /// What a settlement will do for you, so a trade board can say what it
@@ -839,6 +1044,8 @@ pub struct BranchInfo {
     pub terrain: Vec<u16>,
     /// Against the region it interrupts: 100 is as usual.
     pub threat_pct: i64,
+    /// Ground, canopy, burrow specialist pressure.
+    pub approaches: [i64; 3],
 }
 
 // ---------------------------------------------------------------------------
@@ -866,15 +1073,25 @@ pub fn build_view(state: &GameState, content: &Content, alpha: f32) -> ViewSnaps
         crew: build_crew(state, content),
         stock: build_stock(state),
         unlocked: build_unlocked(state, content),
-        work: state
-            .work
-            .iter()
-            .map(|job| u8::try_from(job.index()).unwrap_or(0))
-            .collect(),
-        recruit: state.recruit_offer.map(|at| RecruitInfo {
-            name: state.next_crew_name(content),
-            trait_at: Some(at.0),
-        }),
+        recruit: state
+            .world
+            .berthed_enclave(content, state.strode)
+            .and_then(|region| {
+                state
+                    .recruit_offers
+                    .get(region.get())
+                    .and_then(|offer| *offer)
+            })
+            .map_or_else(Vec::new, |offers| {
+                offers
+                    .into_iter()
+                    .enumerate()
+                    .map(|(candidate, at)| RecruitInfo {
+                        name: state.crew_name_offset(content, candidate as u32),
+                        trait_at: Some(at.0),
+                    })
+                    .collect()
+            }),
         stats: state.stats.clone(),
     }
 }
@@ -899,6 +1116,11 @@ fn build_siege(state: &GameState, content: &Content) -> SiegeView {
                     crate::state::EnemyState::Dying => EnemyStateTag::Dying,
                     crate::state::EnemyState::Leaving => EnemyStateTag::Leaving,
                 },
+                controlled: state
+                    .siege
+                    .controls
+                    .iter()
+                    .any(|control| control.enemy == enemy.id),
             })
             .collect(),
         provocation: state.siege.provocation,
@@ -907,7 +1129,6 @@ fn build_siege(state: &GameState, content: &Content) -> SiegeView {
         repelled: state.siege.repelled,
         lost: state.siege.lost,
         repair_cost: crate::systems::repair::outstanding_repair_cost(state, content),
-        focus: state.siege.focus.map(|id| id.0),
     }
 }
 
@@ -929,10 +1150,17 @@ fn build_power(state: &GameState) -> PowerView {
         income_last: state.power.income_last,
         spent_last: state.power.spent_last,
         brownout: state.power.brownout,
+        refused: crate::state::power::PowerUse::ALL
+            .iter()
+            .map(|use_| state.power.short(*use_))
+            .collect(),
         lit: state.power.lit,
         walking: state.walking,
         priority: state.power.priority.clone(),
         demand: state.power.demand.clone(),
+        rail: state.power.rail,
+        satisfaction: state.power.satisfaction.clone(),
+        floor_satisfaction: state.power.floor_satisfaction.clone(),
     }
 }
 
@@ -944,6 +1172,7 @@ fn build_regions(content: &Content) -> Vec<RegionInfo> {
         .map(|(i, region)| RegionInfo {
             id: region.id.clone(),
             name: region.name.clone(),
+            approaches: region.approaches.as_array(),
             enclave: region.enclave.as_ref().map(|def| {
                 let rt = content
                     .region_rt(crate::ids::RegionIdx(i as u16))
@@ -1011,6 +1240,7 @@ fn build_branches(content: &Content) -> Vec<BranchInfo> {
                 name: branch.name.clone(),
                 terrain: palette.iter().map(|(idx, _)| idx.0).collect(),
                 threat_pct: branch.threat_pct,
+                approaches: branch.approaches.as_array(),
             }
         })
         .collect()
@@ -1063,6 +1293,25 @@ fn build_journey(state: &GameState, content: &Content) -> JourneyView {
             .waypoints
             .iter()
             .find(|way| !way.taken && way.at > world.distance)
+            .map(|way| WaypointAheadView {
+                def: way.def,
+                ahead: paces_to_f32(way.at - world.distance),
+            }),
+        landmark_ahead: world
+            .waypoints
+            .iter()
+            .filter(|way| {
+                !way.taken
+                    && way.at > world.distance
+                    && way.at - world.distance
+                        <= crate::fx::paces_from_int(content.balance.world.landmark_warning_paces)
+            })
+            .find(|way| {
+                content
+                    .waypoint_runtime
+                    .get(way.def as usize)
+                    .is_some_and(|runtime| runtime.landmark_region.is_some())
+            })
             .map(|way| WaypointAheadView {
                 def: way.def,
                 ahead: paces_to_f32(way.at - world.distance),
@@ -1295,6 +1544,8 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                         def: room.def.0,
                         slot: room.slot,
                         width: room.width,
+                        input_slot: room.inbox_slot(),
+                        output_slot: room.outbox_slot(),
                         progress: room.progress,
                         inputs: room.inputs.iter().map(stack_view).collect(),
                         outputs: room.outputs.iter().map(stack_view).collect(),
@@ -1302,6 +1553,7 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                             .shelves
                             .iter()
                             .map(|shelf| ShelfView {
+                                filter: shelf.filter.map(|i| i.0),
                                 item: shelf.item.map(|i| i.0),
                                 count: shelf.count,
                                 max: shelf.max,
@@ -1311,6 +1563,8 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                             || shaded
                             || burner_dry
                             || magazine_dry
+                            || room.power_refused
+                            || room.exhaust_refused
                             || wrecked
                             || !room.active,
                         // First match wins, most-answerable first.
@@ -1324,6 +1578,10 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                             Some(StallTag::Unarmed)
                         } else if burner_dry {
                             Some(StallTag::Unfuelled)
+                        } else if room.power_refused {
+                            Some(StallTag::Unpowered)
+                        } else if room.exhaust_refused {
+                            Some(StallTag::Unvented)
                         } else if has_work && starved {
                             Some(StallTag::Starved)
                         } else if has_work && backed_up {
@@ -1332,6 +1590,9 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
                             None
                         },
                         active: room.active,
+                        powered: !room.power_refused,
+                        burning: room.burning,
+                        vented: !room.exhaust_refused,
                         shaded,
                         health_permille: room.health.permille(),
                         wrecked,
@@ -1353,6 +1614,8 @@ fn build_tower(state: &GameState, content: &Content) -> TowerView {
             high: shaft.high,
             slot: shaft.slot,
             capacity: shaft.capacity,
+            power_capacity: content.shaft(shaft.def).power_capacity,
+            exhaust_capacity: content.shaft(shaft.def).exhaust_capacity,
             riders: shaft.riders,
             cars: shaft
                 .cars
@@ -1446,11 +1709,10 @@ fn build_crew(state: &GameState, content: &Content) -> Vec<CrewView> {
                 count,
             }),
             wait_ticks: member.wait_ticks,
-            // Scaled per person: `wait_ticks` is the game's whole
-            // bottleneck instrument, and somebody who shows it sooner
-            // is somebody whose queue you notice (`SYSTEMS.md` §6.25).
-            stressed: i64::from(member.wait_ticks)
-                >= i64::from(stress) * member.trait_pct(content, |t| t.stress_pct) / 100,
+            // Stress is a tower signal, not a personality roll. Everyone
+            // crosses the same visible threshold, so a red porter always
+            // means the same thing: this route has been blocked too long.
+            stressed: member.wait_ticks >= stress,
             fidget: member.fidget,
             hunger: member.hunger,
             rested: member.rested,
@@ -1574,14 +1836,21 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                         .and_then(|burner| content.item_idx(&burner.fuel))
                         .map(|item| item.0),
                     bank_capacity: room.bank.as_ref().map_or(0, |bank| bank.capacity),
+                    bank_discharge: room.bank.as_ref().map_or(0, |bank| bank.discharge_per_tick),
                     sleepers: room.quarters.as_ref().map_or(0, |q| q.sleepers),
                     front_only: room.front_only,
+                    shaft_adjacent: room.shaft_adjacent,
                     defence: room.defence.as_ref().map(|d| DefenceInfo {
                         ammo: content.item_idx(&d.ammo).map_or(0, |item| item.0),
                         ammo_per_shot: d.ammo_per_shot,
                         damage: d.damage,
                         reload_ticks: d.reload_ticks,
                         range_paces: d.range_paces,
+                        charge_per_shot: d.charge_per_shot,
+                        effect: format!("{:?}", d.effect),
+                        control_ticks: d.control_ticks,
+                        control_speed_pct: d.control_speed_pct,
+                        pulse_radius_paces: d.pulse_radius_paces,
                         targets: d
                             .targets
                             .iter()
@@ -1608,6 +1877,7 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                 short: shaft.short.clone(),
                 kind: format!("{:?}", shaft.kind),
                 build_cost: cost(&content.shaft_runtime[i].build_cost),
+                span_cost: cost(&content.shaft_runtime[i].span_cost),
                 min_span: shaft.min_span,
                 max_span: shaft.max_span,
                 capacity: shaft.capacity,
@@ -1617,17 +1887,21 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                 max_cars: shaft.max_cars.max(shaft.cars),
                 car_cost: cost(&content.shaft_runtime[i].car_cost),
                 batch: shaft.batch,
+                power_capacity: shaft.power_capacity,
+                exhaust_capacity: shaft.exhaust_capacity,
             })
             .collect(),
         enemies: content
             .enemies
             .iter()
-            .map(|enemy| EnemyInfo {
+            .enumerate()
+            .map(|(i, enemy)| EnemyInfo {
                 id: enemy.id.clone(),
                 name: enemy.name.clone(),
                 glyph: enemy.glyph.clone(),
                 approach: format!("{:?}", enemy.approach),
                 night_only: enemy.night_only,
+                drops: cost(&content.enemy_runtime[i].drops),
             })
             .collect(),
         dayparts: content
@@ -1665,6 +1939,8 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
                 gives: cost(&rt.gives),
                 provocation: way.provocation,
                 paces: way.paces,
+                landmark: rt.landmark_region.is_some(),
+                resident: rt.resident.map(|enemy| enemy.0),
             })
             .collect(),
         branches: build_branches(content),
@@ -1715,6 +1991,7 @@ pub fn build_catalog(content: &Content) -> CatalogSnapshot {
         front_slots: content.balance.tower.front_slots,
         max_floors: content.balance.tower.max_floors,
         floor_slots: content.balance.tower.floor_slots,
+        landmark_warning_paces: content.balance.world.landmark_warning_paces,
         stress_ticks: content.balance.crew.stress_ticks,
         ticks_per_day: content.balance.clock.ticks_per_day,
     }

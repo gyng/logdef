@@ -21,7 +21,8 @@ RoomDef(
     category: Defence,
     // **Unlocked by the room that feeds it** (`SYSTEMS.md` §6.27). A
     // weapon you cannot supply is a weapon that never fires, and this
-    // one costs 4 poles and 2 rope — cheap enough to buy by accident. The menu
+    // one costs 3 poles and 2 rope — cheap enough to become the first deliberate
+    // control investment, but still paid out of the same rope as transport. The menu
     // offers it once the tower can make rope, which is a fact about
     // the tower rather than about the player.
     unlocked_by: "room.ropery",
@@ -29,7 +30,7 @@ RoomDef(
     // One slot, like the thorn gun and the dart battery.
     width: 1,
     build_cost: [
-        CostEntryDef(item: "item.poles", amount: 4),
+        CostEntryDef(item: "item.poles", amount: 3),
         CostEntryDef(item: "item.rope", amount: 2),
     ],
     defence: DefenceDef(
@@ -53,5 +54,17 @@ RoomDef(
         reload_ticks: 20,
         // Short. A net is thrown, not fired.
         range_paces: 12,
+        // **Free, and mechanical on purpose.** A net is rope under
+        // tension; there is nothing here to electrify. Leaving it at the
+        // default zero means a browned-out tower still has *something*
+        // that answers the ground, which keeps a rail failure a setback
+        // rather than a defencelessness — the same argument as the
+        // Heartseed's trickle, applied to the guns.
+        charge_per_shot: 0,
+        effect: Tangle,
+        // Pins a ground creature long enough for the walking tower to
+        // open distance; it is control rather than a cheap dart.
+        control_ticks: 150,
+        control_speed_pct: 0,
     ),
 )

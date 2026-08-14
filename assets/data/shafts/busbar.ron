@@ -1,0 +1,20 @@
+// A high-capacity electrical riser. Horizontal deck buses are automatic;
+// this is the scarce vertical link that makes height and redundancy matter.
+#![enable(implicit_some)]
+ShaftDef(
+    id: "shaft.busbar",
+    name: "Busbar Riser",
+    short: "BUS",
+    kind: Busbar,
+    build_cost: [
+        CostEntryDef(item: "item.poles", amount: 2),
+        CostEntryDef(item: "item.rope", amount: 1),
+        CostEntryDef(item: "item.mechanisms", amount: 1),
+    ],
+    span_cost: [CostEntryDef(item: "item.poles", amount: 1)],
+    min_span: 2,
+    max_span: 0,
+    capacity: 0,
+    ticks_per_floor: 0,
+    power_capacity: 12,
+)

@@ -17,6 +17,8 @@ use wasm_bindgen::prelude::*;
 
 use understory_core::GameEngine;
 use understory_core::command::GameCommand;
+use understory_core::fx::paces_from_int;
+use understory_core::state::{Enemy, EnemyState};
 
 thread_local! {
     static ENGINE: RefCell<Option<GameEngine>> = const { RefCell::new(None) };
@@ -62,12 +64,12 @@ pub fn send_command(json: &str) -> String {
 }
 
 /// Advance the simulation by `elapsed_us` microseconds of wall clock,
-/// scaled by the current speed. Returns the JSON array of sound events
-/// produced. Call once per animation frame.
+/// scaled by the current speed. Returns payload-free sound events beside
+/// spatial combat events. Call once per animation frame.
 #[wasm_bindgen]
 pub fn frame(elapsed_us: u32) -> String {
-    let sounds = with_engine_mut(|engine| engine.frame(u64::from(elapsed_us)));
-    serde_json::to_string(&sounds).unwrap_or_else(|_| "[]".into())
+    let events = with_engine_mut(|engine| engine.frame_events(u64::from(elapsed_us)));
+    serde_json::to_string(&events).unwrap_or_else(|_| r#"{"sounds":[],"combat":[]}"#.into())
 }
 
 /// Everything the renderer needs for one frame, as one JSON document.
@@ -174,10 +176,78 @@ pub fn debug_grant(item: &str, amount: i64) -> i64 {
     })
 }
 
+/// Wreck the room covering `slot` on `floor`. **Tests only.**
+///
+/// Visual harnesses need to prove the destroyed presentation without
+/// waiting for a seeded wave to choose one particular room. Like
+/// `debug_grant`, this bypasses commands and replays and must never be
+/// called by shipping UI. Returns whether a room was found.
+#[wasm_bindgen]
+pub fn debug_wreck_room(floor: u8, slot: u8) -> bool {
+    with_engine_mut(|engine| {
+        let state = engine.state_mut_for_test();
+        let Some(room) = state
+            .tower
+            .floor_mut(floor)
+            .and_then(|level| level.rooms.iter_mut().find(|room| room.covers(slot)))
+        else {
+            return false;
+        };
+        room.health.hp = 0;
+        true
+    })
+}
+
+/// Stage one of every authored creature ahead of the tower. **Tests only.**
+///
+/// Art checkpoints need the real renderer's approach placement, depth,
+/// tower overlap and day/night treatment. Waiting for seeded waves cannot
+/// guarantee all eight definitions, especially the berth-only warden, so
+/// this hook constructs a gallery in simulation state without touching the
+/// command/replay surface used by the shipped game.
+#[wasm_bindgen]
+pub fn debug_stage_enemies() -> usize {
+    with_engine_mut(|engine| {
+        let defs: Vec<_> = engine
+            .content()
+            .enemies
+            .iter()
+            .enumerate()
+            .map(|(index, def)| {
+                (
+                    understory_core::ids::EnemyIdx(index as u16),
+                    def.hp,
+                    def.cling_ticks,
+                )
+            })
+            .collect();
+        let state = engine.state_mut_for_test();
+        state.siege.enemies.clear();
+        let tower_at = state.world.distance;
+        for (index, (def, hp, cling_left)) in defs.into_iter().enumerate() {
+            let id = state.alloc_enemy_id();
+            // Stagger the real world positions so logarithmic approach
+            // compression and size-at-depth are both exercised.
+            let ahead = 18 + index as i64 * 13;
+            state.siege.enemies.push(Enemy {
+                id,
+                def,
+                at: tower_at + paces_from_int(ahead),
+                hp,
+                state: EnemyState::Approaching,
+                attack_cooldown: 0,
+                cling_left,
+                fade_left: 0,
+            });
+        }
+        state.siege.enemies.len()
+    })
+}
+
 /// Run exactly `ticks` ticks regardless of the speed setting. For tests
 /// that need to reach a state quickly without waiting in real time.
 #[wasm_bindgen]
 pub fn debug_step(ticks: u32) -> String {
-    let sounds = with_engine_mut(|engine| engine.step(ticks));
-    serde_json::to_string(&sounds).unwrap_or_else(|_| "[]".into())
+    let events = with_engine_mut(|engine| engine.step_events(ticks));
+    serde_json::to_string(&events).unwrap_or_else(|_| r#"{"sounds":[],"combat":[]}"#.into())
 }

@@ -18,9 +18,9 @@ use std::sync::Arc;
 use crate::command::{CommandError, CommandResult, GameCommand};
 use crate::content::Content;
 use crate::replay::{CHECKPOINT_INTERVAL, Divergence, Recorder, Replay, ReplayReport, hash_state};
-use crate::snapshot::{CatalogSnapshot, ViewSnapshot, build_catalog, build_view};
+use crate::snapshot::{CatalogSnapshot, FrameEvents, ViewSnapshot, build_catalog, build_view};
 use crate::state::{GameState, SimSpeed};
-use crate::systems::{self, SoundEvent};
+use crate::systems::{self, CombatEvent, SoundEvent};
 
 /// Microseconds per simulation tick, at 30 Hz.
 ///
@@ -117,11 +117,17 @@ impl GameEngine {
     /// Advance by wall-clock time, honouring the current speed setting.
     /// Returns the sound events produced by every tick that ran.
     pub fn frame(&mut self, elapsed_us: u64) -> Vec<SoundEvent> {
+        self.frame_events(elapsed_us).sounds
+    }
+
+    /// Advance by wall-clock time and return both payload-free audio cues
+    /// and spatial presentation events. Neither is stored in `GameState`.
+    pub fn frame_events(&mut self, elapsed_us: u64) -> FrameEvents {
         let multiplier = u64::from(self.state.speed.multiplier());
         if multiplier == 0 {
             // Paused: don't bank real time, or unpausing lurches.
             self.accumulator_us = 0;
-            return Vec::new();
+            return FrameEvents::from_sim(&self.content, Vec::new(), Vec::new());
         }
 
         let budget = TICK_US * u64::from(MAX_TICKS_PER_FRAME);
@@ -132,16 +138,22 @@ impl GameEngine {
             self.accumulator_us -= TICK_US;
             ticks += 1;
         }
-        self.step(ticks)
+        self.step_events(ticks)
     }
 
     /// Run exactly `ticks` ticks, ignoring the speed setting. Used by
     /// replay, tests, and anything that wants determinism without a
     /// clock in the way.
     pub fn step(&mut self, ticks: u32) -> Vec<SoundEvent> {
+        self.step_events(ticks).sounds
+    }
+
+    /// Deterministic stepping with transient presentation output.
+    pub fn step_events(&mut self, ticks: u32) -> FrameEvents {
         let mut sounds = Vec::new();
+        let mut combat: Vec<CombatEvent> = Vec::new();
         for _ in 0..ticks {
-            systems::tick(&mut self.state, &self.content, &mut sounds);
+            systems::tick(&mut self.state, &self.content, &mut sounds, &mut combat);
             if self.state.tick.is_multiple_of(CHECKPOINT_INTERVAL) {
                 let hash = hash_state(&self.state);
                 self.recorder.record_checkpoint(self.state.tick, hash);
@@ -150,7 +162,7 @@ impl GameEngine {
         if ticks > 0 {
             self.recorder.set_final_tick(self.state.tick);
         }
-        sounds
+        FrameEvents::from_sim(&self.content, sounds, combat)
     }
 
     /// Fraction of a tick elapsed, for render interpolation.

@@ -15,12 +15,23 @@ RoomDef(
     // grows as the tower does. This is a fact about the tower, not the
     // player — the journal (§5.7) is the other kind of unlock and can
     // only filter a menu.
-    unlocked_by: "room.burner",
+    // The comb establishes the fiber stream; only then is reserving
+    // some of it as rope a meaningful choice.
+    unlocked_by: "room.fiber_comb",
     category: Production,
     width: 2,
-    build_cost: [CostEntryDef(item: "item.poles", amount: 4)],
+    // Three poles, paired with the comb's four. Seven poles establishes
+    // the line instead of eight; the real price remains its floor space
+    // and the hands that move fiber, not a second room tax.
+    build_cost: [CostEntryDef(item: "item.poles", amount: 3)],
     recipe: RecipeDef(
         craft_ticks: 120,
+        // Four coils are one elevator plus one tanglenet. Once the
+        // tower holds that reserve the walk stops automatically, then
+        // starts again as construction or a net spends it. Rope is a
+        // finite infrastructure material, not a reason to babysit an
+        // otherwise-correct production room.
+        output_stock_target: 4,
         // Two fiber a coil against the mill's one bamboo a pole: rope is
         // dearer than poles, which is what stops it being a formality
         // and makes "can I afford a shaft" a real question.

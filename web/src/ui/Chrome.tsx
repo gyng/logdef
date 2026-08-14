@@ -9,9 +9,10 @@
  * would not do.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { Economy } from "./Economy";
+import { ItemIcon } from "./ItemIcon";
 import type { Game, UiState } from "../engine/Game";
 import type {
   CatalogSnapshot,
@@ -26,6 +27,8 @@ import type {
   SimSpeed,
   StoreView,
 } from "../bridge/types";
+import { crewArtCell } from "../engine/crewAtlas";
+import { POWER_USES } from "../bridge/types";
 
 const SPEEDS: { value: SimSpeed; label: string; key: string }[] = [
   { value: "Paused", label: "❚❚", key: "Space" },
@@ -63,6 +66,7 @@ export function Chrome({ game, ui }: Props) {
       </button>
       {chain && <Economy game={game} ui={ui} />}
       {ui.fork && <ForkCard game={game} ui={ui} />}
+      {ui.landmarkAhead && !ui.waypoint && <LandmarkWarning game={game} ui={ui} />}
       {ui.waypoint && <WaypointCard game={game} ui={ui} />}
       {ui.atEnclave && <EnclaveBoard game={game} ui={ui} />}
       {/*
@@ -87,6 +91,23 @@ export function Chrome({ game, ui }: Props) {
       {ui.lost && <Elegy ui={ui} />}
       {ui.arrived && !ui.lost && <Arrival game={game} ui={ui} />}
     </div>
+  );
+}
+
+function LandmarkWarning({ game, ui }: Props) {
+  const coming = ui.landmarkAhead;
+  if (!coming) return null;
+  const info = game.getCatalog().waypoints[coming.def];
+  if (!info?.landmark) return null;
+  const resident = info.resident === null ? null : game.getCatalog().enemies[info.resident];
+  return (
+    <aside className="landmark-warning" data-testid="landmark-warning" aria-live="polite">
+      <span className="landmark-warning-lamp" aria-hidden="true" />
+      <span>
+        territory ahead · <b>{info.name}</b> · {Math.ceil(coming.ahead)} paces
+        {resident ? ` · ${resident.name}` : ""}
+      </span>
+    </aside>
   );
 }
 
@@ -123,9 +144,7 @@ function Roster({ game, ui }: Props) {
         {ui.crew.map((member) => {
           return (
             <li className="roster-row" key={member.id} data-testid={`crew-${member.id}`}>
-              <span className="roster-face" aria-hidden="true">
-                {FACES[member.fidget % FACES.length]}
-              </span>
+              <RosterPortrait member={member} />
               <span className="roster-who">
                 <span className="roster-name">{member.name}</span>
                 <span
@@ -153,9 +172,43 @@ function Roster({ game, ui }: Props) {
         })}
       </ul>
       <Schedules game={game} ui={ui} />
-      <WorkOrder game={game} ui={ui} />
-      <PowerOrder game={game} ui={ui} />
     </aside>
+  );
+}
+
+/**
+ * A dedicated 4x2 portrait atlas sits over the old full-body crop. Loading is
+ * deliberately observed: development builds and old asset packs keep the
+ * established crew-atlas crop instead of displaying an empty well.
+ */
+function RosterPortrait({ member }: { member: CrewView }) {
+  const [portraitReady, setPortraitReady] = useState(false);
+  const cell = crewArtCell(member.name, member.fidget);
+  const column = cell % 4;
+  const row = Math.floor(cell / 4);
+
+  return (
+    <span
+      className="roster-face"
+      aria-hidden="true"
+      data-crew-cell={cell}
+      style={
+        {
+          "--crew-fallback-x": `${(cell / 7) * 100}%`,
+          "--crew-portrait-x": `${(column / 3) * 100}%`,
+          "--crew-portrait-y": `${row * 100}%`,
+        } as CSSProperties
+      }
+    >
+      <span className={`roster-portrait${portraitReady ? " loaded" : ""}`} />
+      <img
+        className="roster-portrait-probe"
+        src="/art/crew-portraits-atlas.png"
+        alt=""
+        onLoad={() => setPortraitReady(true)}
+        onError={() => setPortraitReady(false)}
+      />
+    </span>
   );
 }
 
@@ -233,62 +286,6 @@ function Practice({ catalog, member }: { catalog: CatalogSnapshot; member: CrewV
 }
 
 /**
- * What idle crew reach for first.
- *
- * Shaped exactly like the charge order below it, because it is the same
- * kind of statement — one sentence about the whole tower rather than a
- * rota per person. Somebody who should be doing one specific thing is
- * what the station button is for, and it is per-person precisely because
- * it is the exception.
- *
- * Needs are not in the list. A player who could rank hauling above
- * dinner would only be building the starvation trap, and offering it as
- * a setting would be the game pretending a mistake is a strategy.
- */
-function WorkOrder({ game, ui }: Props) {
-  const jobs = game.getCatalog().jobs;
-  const move = (from: number, by: number) => {
-    const next = [...ui.workOrder];
-    const to = from + by;
-    if (to < 0 || to >= next.length) return;
-    [next[from], next[to]] = [next[to]!, next[from]!];
-    game.setWorkOrder(next);
-  };
-  return (
-    <>
-      <h2 className="section-title schedule-title">Work</h2>
-      <ol className="power-order" data-testid="work-order">
-        {ui.workOrder.map((job, at) => (
-          <li key={job} className="power-row">
-            <span className="power-name">{jobs[job]?.name ?? "work"}</span>
-            <span className="power-moves">
-              <button
-                type="button"
-                disabled={at === 0}
-                title={`Reach for ${jobs[job]?.name ?? "this"} before the one above`}
-                data-testid={`work-up-${job}`}
-                onClick={() => move(at, -1)}
-              >
-                ▲
-              </button>
-              <button
-                type="button"
-                disabled={at === ui.workOrder.length - 1}
-                title={`Leave ${jobs[job]?.name ?? "this"} until after the one below`}
-                data-testid={`work-down-${job}`}
-                onClick={() => move(at, 1)}
-              >
-                ▼
-              </button>
-            </span>
-          </li>
-        ))}
-      </ol>
-    </>
-  );
-}
-
-/**
  * Put another car in this shaft.
  *
  * Reads how many it has from the view and how many it may have from the
@@ -312,6 +309,7 @@ function AddCarButton({
       className="schedule-car"
       disabled={!affordable}
       data-testid={`add-car-${shaft.id}`}
+      aria-label={`Add a car to ${info.name}`}
       title={
         affordable
           ? `Put another car in. ${shaft.cars.length} of ${info.max_cars} — a car is a turn, not speed, so this buys queue rather than pace.`
@@ -352,48 +350,96 @@ function PowerOrder({ game, ui }: Props) {
     [next[from], next[to]] = [next[to]!, next[from]!];
     game.setPowerPriority(next);
   };
+  // **What the bank gauge cannot say.** Capacity is how long the tower
+  // can keep going; generation is how hard it can spend right now, and a
+  // full bank behind thin generation still runs everything slowly
+  // (`SYSTEMS.md` §6.39).
+  const asked = ui.powerDemand.reduce((sum, want) => sum + want, 0);
+  const strained = ui.powerSatisfaction.some((served) => served < 1000);
   return (
     <>
       <h2 className="section-title schedule-title">Charge</h2>
+      <p
+        className={`power-rail${strained ? " power-rail-strained" : ""}`}
+        data-testid="power-rail"
+        title="What the burners, cell banks and Heartseed can deliver each tick, against what the tower is asking for. The bank says how long; this says how hard."
+      >
+        supply {ui.powerRail}/tick
+        <span className="power-rail-slack">
+          {` · asking ${asked}`}
+          {strained ? " — running short" : ""}
+        </span>
+      </p>
       <ol className="power-order" data-testid="power-order">
-        {ui.powerPriority.map((use, at) => (
-          <li key={use} className="power-row">
-            <span className="power-name">{POWER_WORDS[use]}</span>
-            <span className="power-moves">
-              <button
-                type="button"
-                disabled={at === 0}
-                title={`Keep ${POWER_WORDS[use]} running before the one above`}
-                data-testid={`power-up-${use}`}
-                onClick={() => move(at, -1)}
+        {ui.powerPriority.map((use, at) => {
+          const circuit = POWER_USES.indexOf(use);
+          const refused = ui.powerRefused[circuit] ?? false;
+          const demand = ui.powerDemand[circuit] ?? 0;
+          const served = ui.powerSatisfaction[circuit] ?? 1000;
+          return (
+            <li
+              key={use}
+              className={`power-row${refused ? " circuit-shed" : ""}`}
+              title={
+                refused
+                  ? `${POWER_WORDS[use]} asked for ${demand} and got ${Math.round((served * demand) / 1000)}`
+                  : undefined
+              }
+            >
+              <span className="power-name">{POWER_WORDS[use]}</span>
+              <span className="circuit-lamp" aria-label={refused ? "load shed" : "circuit ready"} />
+              {/* **How well this circuit is being served, as a rate.**
+                  A circuit is not on or off any more — it runs at a
+                  fraction, and the fraction is what a player needs to
+                  see to know whether to reorder or to go and build
+                  another burner (`SYSTEMS.md` §6.39). Full service says
+                  nothing at all, because a panel that shows "100%" on
+                  five rows all day is noise. */}
+              <span
+                className={`power-served${served < 1000 ? " power-served-short" : ""}`}
+                data-testid={`power-served-${use}`}
               >
-                ▲
-              </button>
-              <button
-                type="button"
-                disabled={at === ui.powerPriority.length - 1}
-                title={`Let ${POWER_WORDS[use]} be cut before the one below`}
-                data-testid={`power-down-${use}`}
-                onClick={() => move(at, 1)}
-              >
-                ▼
-              </button>
-            </span>
-          </li>
-        ))}
+                {served < 1000 ? `${Math.round(served / 10)}%` : ""}
+              </span>
+              <span className="power-moves">
+                <button
+                  type="button"
+                  disabled={at === 0}
+                  title={`Keep ${POWER_WORDS[use]} running before the one above`}
+                  aria-label={`Move ${POWER_WORDS[use]} earlier`}
+                  data-testid={`power-up-${use}`}
+                  onClick={() => move(at, -1)}
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  disabled={at === ui.powerPriority.length - 1}
+                  title={`Let ${POWER_WORDS[use]} be cut before the one below`}
+                  aria-label={`Move ${POWER_WORDS[use]} later`}
+                  data-testid={`power-down-${use}`}
+                  onClick={() => move(at, 1)}
+                >
+                  ▼
+                </button>
+              </span>
+            </li>
+          );
+        })}
       </ol>
     </>
   );
 }
 
 /**
- * The tower's own words for its four draws. "Lifts" rather than
+ * The tower's own words for its five draws. "Lifts" rather than
  * "transport", "works" rather than "production" — this is a place people
  * live, and the panel should sound like somebody who lives there.
  */
 const POWER_WORDS: Record<PowerUse, string> = {
   Lifts: "the lifts",
   Works: "the works",
+  Guns: "the guns",
   Lamps: "the lamps",
   Legs: "the legs",
 };
@@ -445,6 +491,7 @@ function KitButton({ game, ui, member }: Props & { member: UiState["crew"][numbe
       type="button"
       className={`kit-toggle${held ? " on" : ""}`}
       data-testid={`kit-${member.id}`}
+      aria-label={held ? `Change ${member.name}'s kit` : `Give ${member.name} a kit`}
       title={
         held
           ? `${member.name} is carrying the ${held.name}. Click to hand it in.`
@@ -452,7 +499,7 @@ function KitButton({ game, ui, member }: Props & { member: UiState["crew"][numbe
       }
       onClick={() => game.equipCrew(member.id, next)}
     >
-      {held?.glyph ?? "·"}
+      {held ? <ItemIcon item={held} decorative /> : "·"}
     </button>
   );
 }
@@ -473,6 +520,7 @@ function StationButton({ game, ui, member }: Props & { member: UiState["crew"][n
         type="button"
         className="station-toggle on"
         data-testid={`station-${member.id}`}
+        aria-label={`Return ${member.name} to hauling`}
         title={`${member.name} is working a room rather than hauling. Send them back to the stairs.`}
         onClick={() => game.stationCrew(member.id, null)}
       >
@@ -490,6 +538,7 @@ function StationButton({ game, ui, member }: Props & { member: UiState["crew"][n
       type="button"
       className="station-toggle"
       data-testid={`station-${member.id}`}
+      aria-label={`Post ${member.name} to ${here.info.name}`}
       title={`Put ${member.name} to work in the ${here.info.name}. They stop hauling while they are there.`}
       onClick={() => game.stationCrew(member.id, here.id)}
     >
@@ -498,21 +547,25 @@ function StationButton({ game, ui, member }: Props & { member: UiState["crew"][n
   );
 }
 
+/**
+ * Physical shaft changes, without an always-present timetable.
+ *
+ * Per-daypart stop masks remain replay-compatible in the simulation,
+ * but no instrument has shown them creating a worthwhile decision.
+ * Placement, extension and another car already answer the visible
+ * questions: where the column goes, how high it reaches, and whether a
+ * queue needs another turn.
+ */
 function Schedules({ game, ui }: Props) {
   const catalog = game.getCatalog();
   const dispatched = ui.shafts.filter((shaft) => shaft.kind !== "Stairs");
   if (dispatched.length === 0) return null;
-  const daypart = ui.daypartIndex;
 
   return (
     <>
-      <h2 className="section-title schedule-title">
-        Shafts · {catalog.dayparts[daypart]?.name ?? "now"}
-      </h2>
+      <h2 className="section-title schedule-title">Shafts</h2>
       <ul className="schedule-list">
         {dispatched.map((shaft) => {
-          const program = shaft.programs[daypart];
-          const served = program?.served ?? [];
           const info = catalog.shafts[shaft.def];
           return (
             <li className="schedule-row" key={shaft.id} data-testid={`schedule-${shaft.id}`}>
@@ -524,40 +577,26 @@ function Schedules({ game, ui }: Props) {
                 queue late on lives here, on the shaft that already
                 exists, rather than in the build menu.
               */}
-              <AddCarButton game={game} shaft={shaft} info={info} />
-              <span className="schedule-floors">
-                {Array.from({ length: shaft.high - shaft.low + 1 }, (_, i) => {
-                  const floor = shaft.low + i;
-                  const on = served[floor] ?? true;
-                  return (
-                    <button
-                      type="button"
-                      key={floor}
-                      className={`floor-pip${on ? " on" : ""}`}
-                      data-testid={`stop-${shaft.id}-${floor}`}
-                      aria-pressed={on}
-                      title={
-                        on
-                          ? `Stops at F${floor}. Click to skip it this daypart.`
-                          : `Skips F${floor}. Click to stop there this daypart.`
-                      }
-                      onClick={() => {
-                        const next = [...served];
-                        while (next.length <= floor) next.push(true);
-                        next[floor] = !on;
-                        game.setShaftProgram(
-                          shaft.id,
-                          daypart,
-                          next,
-                          program?.priority ?? "Balanced",
-                        );
-                      }}
-                    >
-                      {floor}
-                    </button>
-                  );
-                })}
-              </span>
+              {shaft.kind === "Elevator" && <AddCarButton game={game} shaft={shaft} info={info} />}
+              {shaft.high < ui.floors - 1 && (
+                <button
+                  type="button"
+                  className="schedule-car"
+                  data-testid={`extend-shaft-${shaft.id}`}
+                  disabled={
+                    !info || !game.canAffordShaftExtension(info, ui.floors - 1 - shaft.high)
+                  }
+                  onClick={() => game.extendShaft(shaft.id, ui.floors - 1)}
+                >
+                  extend to roof
+                  {info && (
+                    <Cost
+                      game={game}
+                      costs={game.shaftExtensionCost(info, ui.floors - 1 - shaft.high)}
+                    />
+                  )}
+                </button>
+              )}
             </li>
           );
         })}
@@ -565,18 +604,6 @@ function Schedules({ game, ui }: Props) {
     </>
   );
 }
-
-/**
- * Faces, chosen by `fidget` — the per-crew cosmetic draw that already
- * exists for the renderer's idle phase.
- *
- * `portrait = fidget % faces` is the whole mechanism. It costs no new
- * state and no new roll, it is stable for the life of a crew member,
- * and it is reproducible from a seed. Crucially it is drawn from the
- * `cosmetic` stream, so adding or removing a face can never perturb an
- * economic roll (`DECISIONS.md` §2).
- */
-const FACES = ["🌱", "🍃", "🪴", "🌿", "🌾", "🌻", "🌴", "🍂"] as const;
 
 /**
  * What somebody is doing, in words a person would use.
@@ -683,6 +710,7 @@ function TopBar({ game, ui }: Props) {
         type="button"
         className={`stride-toggle stride-${ui.halt}`}
         aria-pressed={ui.walking}
+        aria-label={ui.walking ? "Halt the tower" : "Set the tower striding"}
         title="Halting the legs banks the charge they would burn (W)"
         data-testid="stride-toggle"
         onClick={() => game.setStriding(!ui.walking)}
@@ -695,6 +723,7 @@ function TopBar({ game, ui }: Props) {
             key={speed.value}
             type="button"
             aria-pressed={ui.speed === speed.value}
+            aria-label={`Simulation speed ${speed.value}`}
             title={`${speed.value} (${speed.key})`}
             data-testid={`speed-${speed.value}`}
             onClick={() => game.setSpeed(speed.value)}
@@ -727,6 +756,7 @@ function TopBar({ game, ui }: Props) {
         <button
           type="button"
           title="Zoom out (-)"
+          aria-label="Zoom out"
           data-testid="zoom-out"
           onClick={() => game.zoomBy(1 / 1.15)}
         >
@@ -735,6 +765,7 @@ function TopBar({ game, ui }: Props) {
         <button
           type="button"
           title="Fit the tower to the frame (0)"
+          aria-label="Fit tower to frame"
           data-testid="zoom-reset"
           onClick={() => game.resetZoom()}
         >
@@ -743,6 +774,7 @@ function TopBar({ game, ui }: Props) {
         <button
           type="button"
           title="Zoom in (+)"
+          aria-label="Zoom in"
           data-testid="zoom-in"
           onClick={() => game.zoomBy(1.15)}
         >
@@ -803,6 +835,7 @@ function SoundToggle({ game }: { game: Game }) {
       className={`sound-toggle${on ? " on" : ""}`}
       data-testid="sound-toggle"
       aria-pressed={on}
+      aria-label={on ? "Mute the tower" : "Listen to the tower"}
       title={on ? "Mute" : "Listen to the tower"}
       onClick={() => {
         const next = !on;
@@ -810,7 +843,10 @@ function SoundToggle({ game }: { game: Game }) {
         game.setAudioEnabled(next);
       }}
     >
-      {on ? "🔊" : "🔇"}
+      <span className="sound-lamp" aria-hidden="true" />
+      <span className="sound-word" aria-hidden="true">
+        aud
+      </span>
     </button>
   );
 }
@@ -870,6 +906,7 @@ function WaypointCard({ game, ui }: Props) {
   const catalog = game.getCatalog();
   const info = catalog.waypoints[here.def];
   if (!info) return null;
+  const resident = info.resident === null ? null : catalog.enemies[info.resident];
 
   const ground =
     info.paces === 0
@@ -878,7 +915,12 @@ function WaypointCard({ game, ui }: Props) {
         ? `${info.paces} paces gained`
         : `${-info.paces} paces lost`;
   const attention =
-    info.provocation === 0 ? null : info.provocation > 0 ? "draws attention" : "sheds attention";
+    info.provocation === 0
+      ? null
+      : `canopy: ${attentionMood(ui.provocation, ui.provocationMax)} → ${attentionMood(
+          Math.max(0, Math.min(ui.provocationMax, ui.provocation + info.provocation)),
+          ui.provocationMax,
+        )}`;
   const offered = [
     ...info.gives.map((give) => `${give.amount} ${catalog.items[give.item]?.name ?? "?"}`),
     ...(ground ? [ground] : []),
@@ -902,6 +944,27 @@ function WaypointCard({ game, ui }: Props) {
         <Cost game={game} costs={info.costs} />
       </button>
       <p className="waypoint-terms">{offered.join(" · ") || "nothing but the time"}</p>
+      {resident && (
+        <div className="waypoint-postures" aria-label="Ways through the nesting ground">
+          <p>
+            <b>Go around</b> — leave it undisturbed and give up the shortcut.
+          </p>
+          <p>
+            <b>Break away</b> — cut through, keep the legs moving, and outlast its grip.
+          </p>
+          <p>
+            <b>Hold ground</b> — cut through, halt, and spend ammunition, charge, and repairs for
+            {resident.drops.length > 0
+              ? ` ${resident.drops
+                  .map(
+                    (drop) =>
+                      `${String(drop.amount)} ${catalog.items[drop.item]?.name ?? "material"}`,
+                  )
+                  .join(" + ")}.`
+              : " what it carries."}
+          </p>
+        </div>
+      )}
     </section>
   );
 }
@@ -970,12 +1033,23 @@ function ForkCard({ game, ui }: Props) {
               <span className={`fork-threat threat-${threatWord(info.threat_pct)}`}>
                 {threatWord(info.threat_pct)}
               </span>
+              <span className="fork-pressure">{approachForecast(info.approaches)}</span>
             </button>
           );
         })}
       </div>
     </section>
   );
+}
+
+function approachForecast(weights: [number, number, number]): string {
+  const labels = ["ground", "canopy", "burrow"] as const;
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const highest = Math.max(...weights);
+  const leaders = weights.filter((weight) => weight === highest).length;
+  const index = weights.indexOf(highest);
+  if (total <= 0 || highest * 2 < total || leaders !== 1) return "mixed approaches";
+  return `${labels[index] ?? "mixed"} pressure`;
 }
 
 /**
@@ -1009,7 +1083,9 @@ function EnclaveBoard({ game, ui }: Props) {
               data-testid={`trade-${String(index)}`}
               onClick={() => game.trade(index)}
             >
-              <span className="offer-terms">{terms(catalog, ui.enclave, index)}</span>
+              <span className="offer-terms">
+                <Terms catalog={catalog} enclave={ui.enclave} index={index} />
+              </span>
               <span className="offer-left">{left > 0 ? `${left} to be had` : "spoken for"}</span>
             </button>
           </li>
@@ -1023,9 +1099,14 @@ function EnclaveBoard({ game, ui }: Props) {
           data-testid="reinforce"
           onClick={() => game.reinforce()}
         >
-          {ui.shellWork > 0
-            ? `Have them plate the hull · ${costLine(catalog, ui.enclave.reinforce.cost)}`
-            : "The hull is as plated as they will make it"}
+          {ui.shellWork > 0 ? (
+            <>
+              Have them plate the hull ·{" "}
+              <CostItems catalog={catalog} costs={ui.enclave.reinforce.cost} />
+            </>
+          ) : (
+            "The hull is as plated as they will make it"
+          )}
           <span className="enclave-note">
             {ui.shellWork > 0
               ? `+${ui.enclave.reinforce.panel_hp} to every panel, and to every floor built after`
@@ -1041,29 +1122,31 @@ function EnclaveBoard({ game, ui }: Props) {
         drawn when the tower berths and held until it walks on, so
         passing costs you the visit rather than nothing.
       */}
-      <button
-        type="button"
-        className="enclave-recruit"
-        disabled={ui.recruits <= 0}
-        data-testid="recruit"
-        onClick={() => game.recruit()}
-      >
-        {ui.recruits > 0 && ui.recruit ? (
-          <>
-            <span className="recruit-who">{ui.recruit.name}</span>
-            <span className="recruit-trait">
-              {ui.recruit.trait_at !== null
-                ? (catalog?.traits[ui.recruit.trait_at]?.blurb ?? "wants to come aboard")
-                : "wants to come aboard"}
-            </span>
-            <span className="recruit-cost">
-              {costLine(catalog, ui.enclave?.recruit_cost ?? [])}
-            </span>
-          </>
+      <div className="enclave-candidates" aria-label="People willing to come aboard">
+        {ui.recruits > 0 && ui.recruit.length > 0 ? (
+          ui.recruit.map((candidate, index) => (
+            <button
+              key={`${candidate.name}-${String(index)}`}
+              type="button"
+              className="enclave-recruit"
+              data-testid={`recruit-${String(index)}`}
+              onClick={() => game.recruit(index)}
+            >
+              <span className="recruit-who">{candidate.name}</span>
+              <span className="recruit-trait">
+                {candidate.trait_at !== null
+                  ? (catalog?.traits[candidate.trait_at]?.blurb ?? "wants to come aboard")
+                  : "wants to come aboard"}
+              </span>
+              <span className="recruit-cost">
+                <CostItems catalog={catalog} costs={ui.enclave?.recruit_cost ?? []} />
+              </span>
+            </button>
+          ))
         ) : (
-          "Nobody else is coming"
+          <span className="enclave-empty">Nobody else is coming</span>
         )}
-      </button>
+      </div>
     </aside>
   );
 }
@@ -1205,8 +1288,16 @@ function Seed({ ui }: { ui: UiState }) {
  */
 function ChargeGauge({ ui }: { ui: UiState }) {
   const fill = Math.max(0, Math.min(100, ui.chargeFill / 10));
-  const net = ui.chargeIncome - ui.chargeSpend;
-  const level = ui.brownout ? "empty" : fill < 25 ? "low" : "ok";
+  const shed = ui.powerRefused.some(Boolean) || ui.brownout;
+  const level = ui.charge <= 0 ? "empty" : shed ? "shed" : fill < 25 ? "low" : "ok";
+  const condition =
+    level === "empty"
+      ? "empty"
+      : level === "shed"
+        ? "load shed"
+        : level === "low"
+          ? "reserve"
+          : "holding";
   return (
     <div className={`charge charge-${level}`} data-testid="charge">
       <div
@@ -1221,10 +1312,7 @@ function ChargeGauge({ ui }: { ui: UiState }) {
       </div>
       <span className="charge-figures">
         {ui.charge}/{ui.chargeCapacity}
-        <span className={net < 0 ? "charge-net down" : "charge-net up"}>
-          {net >= 0 ? "+" : ""}
-          {net}
-        </span>
+        <span className="charge-condition">{condition}</span>
       </span>
     </div>
   );
@@ -1256,7 +1344,7 @@ const MOODS: [number, string][] = [
  */
 function Weather({ ui }: { ui: UiState }) {
   const fill = Math.max(0, Math.min(100, (ui.provocation / Math.max(1, ui.provocationMax)) * 100));
-  const mood = MOODS.find(([ceiling]) => fill < ceiling)?.[1] ?? "roused";
+  const mood = attentionMood(ui.provocation, ui.provocationMax);
   const band = fill < 34 ? "calm" : fill < 85 ? "stirring" : "roused";
   return (
     <div className={`weather weather-${band}`} data-testid="weather">
@@ -1274,6 +1362,11 @@ function Weather({ ui }: { ui: UiState }) {
       <span className="weather-word">the canopy is {mood}</span>
     </div>
   );
+}
+
+function attentionMood(value: number, maximum: number): string {
+  const fill = Math.max(0, Math.min(100, (value / Math.max(1, maximum)) * 100));
+  return MOODS.find(([ceiling]) => fill < ceiling)?.[1] ?? "roused";
 }
 
 /**
@@ -1341,6 +1434,10 @@ function Readout({
 
 function Sidebar({ game, ui }: Props) {
   const catalog = game.getCatalog();
+  const selectionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (ui.selected) selectionRef.current?.scrollIntoView({ block: "nearest" });
+  }, [ui.selected]);
   // The Heartseed is pre-placed and unique; offering it in the menu
   // would only ever produce a rejection.
   //
@@ -1447,6 +1544,10 @@ function Sidebar({ game, ui }: Props) {
         </ul>
       </section>
 
+      <section className="power-bus">
+        <PowerOrder game={game} ui={ui} />
+      </section>
+
       <section>
         <h2 className="section-title">Transport</h2>
         <ul className="build-list">
@@ -1462,21 +1563,29 @@ function Sidebar({ game, ui }: Props) {
       </section>
 
       {ui.selected && (
-        <section className="selection" data-testid="selection">
+        <section ref={selectionRef} className="selection" data-testid="selection">
           <h3>{ui.selected.info.name}</h3>
           <p>{describeRoom(game, ui.selected.info)}</p>
+          {ui.selected.info.category === "Storage" && ui.selected.room.shelves.length > 0 && (
+            <ShelfFilters game={game} ui={ui} />
+          )}
           <div className="selection-actions">
-            {(ui.selected.info.burner || ui.selected.info.power_draw > 0) && (
-              <button
-                type="button"
-                className="toggle"
-                aria-pressed={ui.selectedActive}
-                data-testid="toggle-room"
-                onClick={() => game.toggleSelectedRoom()}
-              >
-                {ui.selectedActive ? "Running" : "Shut down"}
-              </button>
-            )}
+            <button
+              type="button"
+              className="selection-key"
+              disabled={
+                !ui.selected.removable ||
+                ui.selected.room.active ||
+                [...ui.selected.room.inputs, ...ui.selected.room.outputs].some(
+                  (stack) => stack.count > 0,
+                ) ||
+                ui.selected.room.shelves.some((shelf) => shelf.count > 0)
+              }
+              data-testid="relocate-room"
+              onClick={() => game.beginRelocatingSelected()}
+            >
+              Refit elsewhere
+            </button>
             <button
               type="button"
               className="danger"
@@ -1490,6 +1599,61 @@ function Sidebar({ game, ui }: Props) {
         </section>
       )}
     </aside>
+  );
+}
+
+/** Physical shelf labels: a reservation, not an abstract routing rule. */
+function ShelfFilters({ game, ui }: Props) {
+  const selected = ui.selected;
+  if (!selected || selected.info.category !== "Storage") return null;
+  const catalog = game.getCatalog();
+  // A shelf label is planning, not a content encyclopedia. Offer what the
+  // tower already holds and what its currently unlocked rooms consume or
+  // produce. Preserve an existing label even if its chain is not open now.
+  const relevant = new Set(ui.stock.map((entry) => entry.item));
+  for (const roomIndex of ui.unlocked) {
+    const room = catalog.rooms[roomIndex];
+    if (!room) continue;
+    for (const cost of [...room.build_cost, ...room.inputs, ...room.outputs]) {
+      relevant.add(cost.item);
+    }
+  }
+  for (const shelf of selected.room.shelves) {
+    if (shelf.item !== null) relevant.add(shelf.item);
+    if (shelf.filter !== null) relevant.add(shelf.filter);
+  }
+  const relevantItems = catalog.items.filter((_item, index) => relevant.has(index));
+  return (
+    <fieldset className="shelf-filters" data-testid="shelf-filters">
+      <legend>Shelf labels</legend>
+      {selected.room.shelves.map((shelf, index) => (
+        <label key={index} className="shelf-filter">
+          <span>{index + 1}</span>
+          <select
+            aria-label={`Reserve shelf ${index + 1}`}
+            value={shelf.filter === null ? "" : (catalog.items[shelf.filter]?.id ?? "")}
+            onChange={(event) =>
+              game.setShelfFilter(selected.id, index, event.currentTarget.value || null)
+            }
+          >
+            <option value="">anything</option>
+            {relevantItems.map((item) => (
+              <option
+                key={item.id}
+                value={item.id}
+                disabled={
+                  shelf.count > 0 &&
+                  shelf.item !== null &&
+                  catalog.items[shelf.item]?.id !== item.id
+                }
+              >
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+    </fieldset>
   );
 }
 
@@ -1526,7 +1690,7 @@ function Store({ catalog, entry }: { catalog: CatalogSnapshot; entry: StoreView 
       aria-valuemax={entry.space}
     >
       <span className="stock-level" style={{ height: `${fill}%` }} />
-      <span className="glyph">{item?.glyph}</span>
+      <ItemIcon item={item} className="glyph" decorative />
     </span>
   );
 }
@@ -1546,6 +1710,7 @@ function RoomCard({ game, ui, room }: Props & { room: RoomInfo }) {
   if (locked) hint = "the journal has not learnt this yet";
   else if (!fits) hint = placed ? "already standing" : "no room for it";
   else if (!affordable) hint = "not enough on the shelves";
+  const tradeoff = roomTradeoff(game.getCatalog(), ui, room);
 
   return (
     <button
@@ -1559,6 +1724,11 @@ function RoomCard({ game, ui, room }: Props & { room: RoomInfo }) {
       <span className="build-name">
         {room.name}
         <span className="build-hint">{hint}</span>
+        {tradeoff && (
+          <span className="build-tradeoff" data-testid={`tradeoff-${room.id}`}>
+            {tradeoff}
+          </span>
+        )}
       </span>
       <Cost game={game} costs={room.build_cost} />
     </button>
@@ -1568,15 +1738,21 @@ function RoomCard({ game, ui, room }: Props & { room: RoomInfo }) {
 function ShaftCard({ game, ui, shaft }: Props & { shaft: ShaftInfo }) {
   const affordable = game.canAffordShaft(shaft);
   const perFloor = (shaft.ticks_per_floor / 30).toFixed(1);
+  const span = game.shaftBuildSpan(shaft);
   // **One built shaft, two jobs, and the card says both** — the lift
   // carries people, and fetches stock by itself whenever nobody is
   // calling it (`SYSTEMS.md` §6.18). This used to branch on a
   // Dumbwaiter kind that no longer exists.
-  const hint = affordable
-    ? shaft.kind === "Chute"
-      ? `one way, down · ${perFloor}s a floor`
-      : `${shaft.capacity} aboard, or ${shaft.batch} in stock · ${perFloor}s a floor · ${shaft.charge_per_floor}⚡ a floor`
-    : "not enough on the shelves";
+  const role =
+    shaft.kind === "Chute"
+      ? `automatic relief for surplus in a touching storeroom · one way down · ${perFloor}s a floor`
+      : shaft.kind === "Busbar"
+        ? `primary ${shaft.power_capacity} charge/tick trunk between floors`
+        : shaft.kind === "VentStack"
+          ? `${shaft.exhaust_capacity} smoke capacity · hot rooms must touch · must reach the roof`
+          : `${shaft.capacity} aboard, or ${shaft.batch} in stock · ${perFloor}s a floor · ${shaft.charge_per_floor}⚡ a floor`;
+  const pricedRole = `${span}-floor installation · ${role}`;
+  const hint = affordable ? pricedRole : `${pricedRole} · not enough on the shelves`;
 
   return (
     <button
@@ -1590,10 +1766,94 @@ function ShaftCard({ game, ui, shaft }: Props & { shaft: ShaftInfo }) {
       <span className="build-name">
         {shaft.name}
         <span className="build-hint">{hint}</span>
+        <span className="build-tradeoff" data-testid={`tradeoff-${shaft.id}`}>
+          {shaftTradeoff(shaft)}
+        </span>
       </span>
-      <Cost game={game} costs={shaft.build_cost} />
+      <Cost game={game} costs={game.shaftBuildCost(shaft)} />
     </button>
   );
+}
+
+/**
+ * The card's second line says what a thing does. This line says what
+ * choosing it gives up. It is deliberately derived from the existing
+ * catalog rather than becoming another authored tuning field: when two
+ * unlocked recipes consume the same item, that competition is the fact
+ * the player needs to see.
+ */
+function roomTradeoff(catalog: CatalogSnapshot, ui: UiState, room: RoomInfo): string | null {
+  if (room.burner) {
+    return "tradeoff · charge now, but less bamboo for poles and more attention";
+  }
+  if (room.bank_capacity > 0) {
+    return "tradeoff · local reserve and discharge; a riser is still needed to share it between floors";
+  }
+  if (room.category === "Storage") {
+    return "tradeoff · safer buffers, but no new harvest or throughput";
+  }
+  if (room.top_floor_only && room.category === "Intake") {
+    return "tradeoff · claims the roof for a weather-dependent harvest";
+  }
+  if (room.category === "Defence") {
+    const mount = room.top_floor_only
+      ? "the roof"
+      : room.shaft_adjacent
+        ? "a shaft-side bay"
+        : room.front_only
+          ? "the leading edge"
+          : `${room.width} deck slot${room.width === 1 ? "" : "s"}`;
+    return `tradeoff · commits ${mount} and its ammunition chain`;
+  }
+
+  const open = new Set(ui.unlocked);
+  const inputItems = new Set(room.inputs.map((input) => input.item));
+  const rivals = catalog.rooms
+    .filter(
+      (candidate, index) =>
+        candidate.id !== room.id &&
+        open.has(index) &&
+        candidate.inputs.some((input) => inputItems.has(input.item)),
+    )
+    .slice(0, 2);
+  if (rivals.length > 0) {
+    const shared = room.inputs
+      .filter((input) =>
+        rivals.some((candidate) => candidate.inputs.some((it) => it.item === input.item)),
+      )
+      .map((input) => catalog.items[input.item]?.name.toLowerCase() ?? "stock")
+      .filter((name, index, names) => names.indexOf(name) === index)
+      .join(" and ");
+    return `tradeoff · shares ${shared} with ${rivals.map((candidate) => candidate.name).join(" / ")}`;
+  }
+  if (room.crew_required > 0) {
+    return `tradeoff · commits ${room.crew_required} porter${room.crew_required === 1 ? "" : "s"} while staffed`;
+  }
+  if (room.category === "Intake") {
+    return `tradeoff · ${room.width} low-deck slot${room.width === 1 ? "" : "s"} for one terrain yield`;
+  }
+  if (room.power_draw > 0) {
+    return `tradeoff · adds ${room.power_draw} charge/tick to its floor circuit`;
+  }
+  // A universal "uses deck slots" sentence is not a decision; it made
+  // every card taller while hiding the few conflicts that deserve a
+  // pause. Quiet cards are intentional.
+  return null;
+}
+
+function shaftTradeoff(shaft: ShaftInfo): string {
+  switch (shaft.kind) {
+    case "Elevator":
+      return "tradeoff · movement and a medium trunk, in the column a Busbar would occupy";
+    case "Busbar":
+      return "tradeoff · strongest trunk and redundancy, but carries no people or stock";
+    case "VentStack":
+      return "tradeoff · clean hot rooms, but carries neither charge nor cargo";
+    case "Chute":
+      return "tradeoff · clears unwanted surplus downward, with no return journey";
+    case "Stairs":
+      return "tradeoff · emergency movement and wiring, slowly";
+  }
 }
 
 function Cost({ game, costs }: { game: Game; costs: { item: number; amount: number }[] }) {
@@ -1601,7 +1861,7 @@ function Cost({ game, costs }: { game: Game; costs: { item: number; amount: numb
   if (costs.length === 0) return <span className="build-cost">free</span>;
   return (
     <span className="build-cost">
-      {costs.map((cost) => `${cost.amount}${catalog.items[cost.item]?.glyph ?? ""}`).join(" ")}
+      <CostItems catalog={catalog} costs={costs} />
     </span>
   );
 }
@@ -1612,21 +1872,46 @@ function Cost({ game, costs }: { game: Game; costs: { item: number; amount: numb
  * "4⚙️ → 3🎋" rather than a price: there is no currency in this game,
  * and inventing a unit to display would be inventing one.
  */
-function terms(
-  catalog: CatalogSnapshot | null,
-  enclave: EnclaveInfo | null,
-  index: number,
-): string {
+function Terms({
+  catalog,
+  enclave,
+  index,
+}: {
+  catalog: CatalogSnapshot | null;
+  enclave: EnclaveInfo | null;
+  index: number;
+}) {
   const offer = enclave?.offers[index];
   if (!catalog || !offer) return "an exchange";
-  const side = (cost: CostInfo) => `${cost.amount}${catalog.items[cost.item]?.glyph ?? ""}`;
-  return `${side(offer.give)} → ${side(offer.take)}`;
+  return (
+    <>
+      <CostItem catalog={catalog} cost={offer.give} />
+      <span aria-hidden="true"> → </span>
+      <CostItem catalog={catalog} cost={offer.take} />
+    </>
+  );
+}
+
+function CostItem({ catalog, cost }: { catalog: CatalogSnapshot; cost: CostInfo }) {
+  const item = catalog.items[cost.item];
+  return (
+    <span className="item-amount">
+      <span>{cost.amount}</span>
+      <ItemIcon item={item} />
+    </span>
+  );
 }
 
 /** A list of costs, in the same shorthand. */
-function costLine(catalog: CatalogSnapshot | null, costs: CostInfo[]): string {
-  if (!catalog) return "";
-  return costs.map((cost) => `${cost.amount}${catalog.items[cost.item]?.glyph ?? ""}`).join(" ");
+function CostItems({ catalog, costs }: { catalog: CatalogSnapshot | null; costs: CostInfo[] }) {
+  if (!catalog) return null;
+  return (
+    <span className="cost-items">
+      {costs.map((cost, index) => (
+        <CostItem key={`${String(cost.item)}-${String(index)}`} catalog={catalog} cost={cost} />
+      ))}
+    </span>
+  );
 }
 
 function costHint(room: RoomInfo): string {
@@ -1649,7 +1934,13 @@ function costHint(room: RoomInfo): string {
           ? "burns bamboo for charge"
           : `burns bamboo for charge · floor ${room.min_floor} and up`;
       }
-      if (room.bank_capacity > 0) return `holds ${room.bank_capacity}⚡`;
+      if (room.bank_capacity > 0) {
+        // **Both halves, because they answer different problems.**
+        // Capacity is how long the tower lasts; discharge is how hard it
+        // can spend at once, and a tower browning out with a full bank
+        // needs the second number to understand why (`SYSTEMS.md` §6.36).
+        return `holds ${room.bank_capacity}⚡ · gives ${room.bank_discharge}⚡ a tick`;
+      }
       return "";
     case "Defence": {
       // **Still no damage, rate or range on the card**, and the reason
@@ -1665,8 +1956,24 @@ function costHint(room: RoomInfo): string {
       const answers = room.defence?.targets.length
         ? `answers ${room.defence.targets.join(" and ")}`
         : "answers anything";
+      const effect = room.defence ? defenceEffect(room.defence.effect) : "strikes one creature";
+      const mount = room.top_floor_only
+        ? " · roof only"
+        : room.shaft_adjacent
+          ? " · must touch a shaft"
+          : "";
       const power = room.power_draw > 0 ? ` · ${room.power_draw}⚡ a tick` : "";
-      return `${answers}${power}`;
+      // **A shot's charge is on the card, and damage still is not.** The
+      // rule has not moved: the numbers stay off because placement and
+      // supply are the decisions. This is one of those — a thorn gun
+      // costs nothing to fire and a lantern mast costs 40, so which
+      // weapon a tower can afford to *run* is now a real question and an
+      // invisible one until it is written down (`SYSTEMS.md` §6.36).
+      const shot =
+        room.defence && room.defence.charge_per_shot > 0
+          ? ` · ${room.defence.charge_per_shot}⚡ a shot`
+          : "";
+      return `${effect} · ${answers}${mount}${power}${shot}`;
     }
     default:
       return "";
@@ -1681,7 +1988,7 @@ function describeRoom(game: Game, info: RoomInfo): string {
     return "Burns bamboo for charge, and nothing else in the tower makes any. Every stalk burned is a stalk not built with — but it only lights when the bank has room, so what it really costs you is walking far and working hard.";
   }
   if (info.bank_capacity > 0) {
-    return `Holds ${info.bank_capacity} charge. Storage is something you build, not something you find.`;
+    return `Holds ${info.bank_capacity} charge and can give back ${info.bank_discharge} a tick. Storage is something you build, not something you find — and the second number is the one that matters when the tower is full and still shedding circuits, because that is the tower asking for a wider pipe rather than a deeper well.`;
   }
   if (info.defence) {
     // **It names the ammo now**, and the comment that used to sit here
@@ -1694,7 +2001,17 @@ function describeRoom(game: Game, info: RoomInfo): string {
     const answers = info.defence.targets.length
       ? `what comes out of ${info.defence.targets.join(" and ")}`
       : "whatever comes close";
-    return `Answers ${answers}, off a rack of ${eats} that ordinary crew have to keep filled. Run it dry and it goes quiet, for exactly the same reason a mill does.`;
+    const effect = defenceEffect(info.defence.effect);
+    const mount = info.top_floor_only
+      ? " It only mounts on the current roof."
+      : info.shaft_adjacent
+        ? " It must touch a shaft column so it can interrupt a creature already inside circulation."
+        : "";
+    const draw =
+      info.defence.charge_per_shot > 0
+        ? ` Every shot also draws ${info.defence.charge_per_shot} charge off the bank, so a wave is a load on the switchboard and not only on the shelves.`
+        : " It draws no charge, so it keeps answering through a brown-out when the powered emplacements have gone quiet.";
+    return `${effect[0]?.toUpperCase() ?? ""}${effect.slice(1)} and answers ${answers}, off a rack of ${eats} that ordinary crew have to keep filled.${mount} Run it dry and it goes quiet, for exactly the same reason a mill does.${draw}`;
   }
   if (info.intake_item !== null) {
     return `Strips ${name(info.intake_item).toLowerCase()} from the terrain the tower is walking through.`;
@@ -1708,6 +2025,21 @@ function describeRoom(game: Game, info: RoomInfo): string {
     return `Holds ${info.shelves} shelves of anything the crew bring up. Construction spends straight off these.`;
   }
   return "The tower's living core.";
+}
+
+function defenceEffect(effect: NonNullable<RoomInfo["defence"]>["effect"]): string {
+  switch (effect) {
+    case "Tangle":
+      return "anchors one approach";
+    case "Resonance":
+      return "staggers a nearby cluster";
+    case "Repel":
+      return "turns one canopy creature away";
+    case "RootWard":
+      return "interrupts and pins one burrower";
+    case "Direct":
+      return "strikes one creature";
+  }
 }
 
 /**

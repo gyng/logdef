@@ -1,4 +1,4 @@
-// Winds alloy into charge cells, which are what storage is made of.
+// Winds alloy in resin insulation into charge cells, which are what storage is made of.
 //
 // Batteries are *built* (`v2-plan.md` §6.1). A cell bank used to cost 8
 // poles, which made "I keep browning out at night" a problem you spent
@@ -16,13 +16,22 @@ RoomDef(
     // grows as the tower does. This is a fact about the tower, not the
     // player — the journal (§5.7) is the other kind of unlock and can
     // only filter a menu.
-    unlocked_by: "room.burner",
+    // Cells need forged alloy as well as resin. The material cost still
+    // requires the Garden; the forge is the visible progression gate.
+    unlocked_by: "room.sun_forge",
     category: Production,
     width: 2,
     build_cost: [CostEntryDef(item: "item.poles", amount: 6)],
     recipe: RecipeDef(
         craft_ticks: 300,
-        inputs: [IoEntryDef(item: "item.alloy", amount: 2, buffer_max: 6)],
+        // Resin is the dielectric and sealant. This is the garden's
+        // second consumer: a tower that never builds a resonance array
+        // can choose cells for local reserves and the mast. It is a late
+        // forge branch, not an opening excuse for making the Garden mandatory.
+        inputs: [
+            IoEntryDef(item: "item.alloy", amount: 2, buffer_max: 6),
+            IoEntryDef(item: "item.resin_feedstock", amount: 1, buffer_max: 4),
+        ],
         outputs: [IoEntryDef(item: "item.charge_cells", amount: 1, buffer_max: 4)],
     ),
 )

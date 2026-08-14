@@ -1,0 +1,14 @@
+// A second quiet beat, deliberately smaller than the Seep Pool.
+// It trades more stopped ground for less attention shed, so neither
+// place is simply the other with a different picture.
+#![enable(implicit_some)]
+WaypointDef(
+    id: "waypoint.cloud_cistern",
+    name: "Cloud Cistern",
+    said: "A rain cistern ticks under the canopy, still clear beneath its gauges. Stop and let the tower go quiet?",
+    take: "Wait by the cistern",
+    costs: [],
+    gives: [],
+    provocation: -30,
+    paces: -120,
+)

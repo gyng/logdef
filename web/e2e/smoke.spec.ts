@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import type {
+  CombatEvent,
+  FrameEvents,
   SoundEvent,
   CatalogSnapshot,
   CommandResult,
@@ -43,6 +45,9 @@ interface TestHooks {
   stateHash(): string;
   /** Step, and hand back the sounds that tick would have made. */
   step(ticks: number): SoundEvent[];
+  stepEvents(ticks: number): FrameEvents;
+  /** Hand deterministic combat events to the live presentation layer. */
+  presentCombat(combat: CombatEvent[]): void;
   /**
    * Put items straight onto the shelves.
    *
@@ -53,6 +58,10 @@ interface TestHooks {
    * at 2 charge without reaching the elevator it exists to schedule.
    */
   grant(item: string, amount: number): number;
+  /** Force a room into the exact wrecked snapshot state. */
+  wreck(floor: number, slot: number): boolean;
+  /** Stage every authored creature for a renderer checkpoint. */
+  stageEnemies(): number;
   /** The renderer's zoom, straight off the renderer that is drawing. */
   zoom(): number;
   /** One notch in, without a round trip through the DOM. */
@@ -141,20 +150,16 @@ async function openLadder(page: Page): Promise<string[]> {
       return false;
     };
 
-    // Farm, cutter arm, **then a floor**, then the burner and the mill.
-    // Each waits for the money rather than assuming it.
-    //
-    // The floor comes before the burner for the same reason the golden
-    // recorder grows there: floor 1 has six usable slots, the bunk
-    // holds two and the farm two more, and a burner in the last two
-    // would leave the fiber comb — two wide and `max_floor` 1 — with
-    // nowhere in the tower to stand.
+    // The survival ladder is Cutter Arm -> Burner -> Mill. Garden is
+    // now an optional resin branch after the burner rather than an
+    // opening toll, so this general-purpose harness must not require it.
+    // Grow only after pole income exists; each step waits for the money
+    // rather than assuming it.
     const plan = [
-      "room.garden",
       "room.cutter_arm",
-      "floor",
       "room.burner",
       "room.mill",
+      "floor",
       // **And somewhere to put the poles.** The Heartseed carries three
       // shelves and a shelf holds one kind, so bamboo, produce and
       // poles fill them exactly — and the next material to arrive
@@ -185,14 +190,7 @@ async function openLadder(page: Page): Promise<string[]> {
   // on is this project's most-repeated bug** (`AGENTS.md` §II). A spec
   // measuring an empty tower reports "the chain does not run", which is
   // true and says nothing.
-  expect(built).toEqual([
-    "room.garden",
-    "room.cutter_arm",
-    "floor",
-    "room.burner",
-    "room.mill",
-    "room.storeroom",
-  ]);
+  expect(built).toEqual(["room.cutter_arm", "room.burner", "room.mill", "floor", "room.storeroom"]);
   return built;
 }
 
@@ -394,22 +392,19 @@ test("the same seed produces the same run", async ({ page }) => {
 });
 
 /**
- * The two schedules the player writes, both through the roster panel.
+ * Shaft controls stay attached to physical decisions.
  *
- * A rota and a shaft program are the same category of thing — something
- * written against the daypart clock — which is why they share a panel
- * (`SYSTEMS.md` §4.5, §4.8) and why they share a test. Both are also the
- * kind of UI that can look right and be wired to nothing, so this drives
- * them the way a player does, through the DOM, and checks the
- * simulation actually moved.
+ * The simulation retains replay-compatible daypart programs, but the
+ * unmeasured per-floor timetable is no longer a permanent UI. The
+ * roster offers the things a visible queue or growing roof asks for:
+ * another car and an extension.
  */
-test("the roster writes both of the player's schedules", async ({ page }) => {
+test("the roster keeps shaft controls physical", async ({ page }) => {
   await boot(page);
   await openLadder(page);
 
-  // The elevator's per-daypart program. These existed in the data
-  // model, the command layer and the replay format from M1 and had no
-  // UI for three milestones; this is the test that says they have one.
+  // Grant the shaft itself; this test is about its contextual controls,
+  // not the rope economy that purchases it in a run.
   const outcome = await page.evaluate(() => {
     const hooks = window.__understory!;
     const catalog = hooks.catalog();
@@ -461,26 +456,9 @@ test("the roster writes both of the player's schedules", async ({ page }) => {
   );
   expect(tiredIsReal, "CrewView.tired is missing — the WASM predates this source").toBe(true);
 
-  // Skip a floor this daypart, and check the program says so.
-  await expect(page.getByTestId(`stop-${shaft}-1`)).toHaveAttribute("aria-pressed", "true");
-  await page.getByTestId(`stop-${shaft}-1`).click();
-  await expect
-    .poll(() =>
-      page.evaluate((id) => {
-        const view = window.__understory!.view();
-        const found = view.tower.shafts.find((s) => s.id === id);
-        return found?.programs[view.clock.daypart]?.served[1] ?? null;
-      }, shaft),
-    )
-    .toBe(false);
-  // And that it is *this* daypart only — a program editor that silently
-  // wrote every daypart would be a different, worse feature.
-  const elsewhere = await page.evaluate((id) => {
-    const view = window.__understory!.view();
-    const found = view.tower.shafts.find((s) => s.id === id);
-    return found?.programs.filter((program) => program.served[1] === false).length ?? 0;
-  }, shaft);
-  expect(elsewhere).toBe(1);
+  await expect(page.getByTestId(`schedule-${shaft}`)).toBeVisible();
+  await expect(page.getByTestId(`add-car-${shaft}`)).toBeVisible();
+  await expect(page.locator(`[data-testid^="stop-${shaft}-"]`)).toHaveCount(0);
 });
 
 test("zoom and right-click are the two verbs the canvas answers", async ({ page }) => {
@@ -536,15 +514,13 @@ test("zoom and right-click are the two verbs the canvas answers", async ({ page 
   const before = await page.evaluate(() =>
     window.__understory!.view().tower.floors.reduce((n, floor) => n + floor.rooms.length, 0),
   );
-  // **The farm, deliberately.** It is turn one's only card
-  // (`SYSTEMS.md` §6.11), so clicking it here is also the check that a
-  // new player can reach the first rung at all — which they could not,
-  // because the journal gated the garden behind "fed eight people" and
-  // a new journal has done nothing. This test timed out on it.
-  await page.getByTestId("build-room.garden").click();
-  await expect(page.getByTestId("build-room.garden")).toHaveAttribute("aria-pressed", "true");
+  // The Cutter Arm is the opening card. Garden is now an optional resin
+  // branch after the burner, so waiting for it here would turn a simple
+  // placement-cancel check into a stale progression assertion.
+  await page.getByTestId("build-room.cutter_arm").click();
+  await expect(page.getByTestId("build-room.cutter_arm")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("game-canvas").click({ button: "right" });
-  await expect(page.getByTestId("build-room.garden")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("build-room.cutter_arm")).toHaveAttribute("aria-pressed", "false");
 
   // And nothing was built by the right-click.
   const after = await page.evaluate(() =>
@@ -640,32 +616,8 @@ test("crew can be picked out and pushed at a room", async ({ page }) => {
     .toBe(0);
 });
 
-test("the work order is the player's, and practice shows on the card", async ({ page }) => {
+test("practice shows on the crew card", async ({ page }) => {
   await boot(page);
-
-  // **The order the tower reaches for work in** (`SYSTEMS.md` §6.17).
-  // Four jobs, and the panel is two arrows per row exactly like the
-  // charge order it sits under.
-  const before = await page.evaluate(() => window.__understory!.view().work);
-  expect(before.length).toBe(4);
-
-  // Push whatever is second up to the top, and check the simulation
-  // agrees rather than only the widget.
-  const second = before[1]!;
-  await page.getByTestId(`work-up-${second}`).click();
-  await expect.poll(() => page.evaluate(() => window.__understory!.view().work[0])).toBe(second);
-
-  // A refused order must not move anything. The command layer rejects
-  // anything that is not every job exactly once, and the panel can only
-  // ever produce permutations — so this asks the bridge directly.
-  const refused = await page.evaluate(() => {
-    const hooks = window.__understory!;
-    const held = hooks.view().work.slice();
-    const sent = hooks.send({ SetWorkOrder: { order: ["Haul", "Mend"] } });
-    return { sent, held, after: hooks.view().work };
-  });
-  expect(refused.sent).not.toBe(true);
-  expect(refused.after).toEqual(refused.held);
 
   // And practice, as far as a smoke test should go with it.
   //
@@ -760,7 +712,7 @@ test("the chain panel shows every material the pack moves", async ({ page }) => 
   // **A graph that hides part of itself is worse than a list.** The
   // lanes were a flex child with `overflow-x: auto`, which makes them
   // shrinkable below their content — the room list underneath squeezed
-  // them to three rows and silently clipped scrap, rope and seed bombs.
+  // them to three rows and silently clipped scrap, rope and resonator drums.
   // Nothing said so; the panel just looked tidy.
   await page.getByTestId("chain-toggle").click();
   await expect(page.getByTestId("economy")).toBeVisible();

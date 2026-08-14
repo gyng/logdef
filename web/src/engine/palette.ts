@@ -99,6 +99,7 @@ export const palette = {
   roomIntake: hex("#6b8f45"),
   roomProduction: hex("#a37a45"),
   roomStorage: hex("#527a86"),
+  roomEnergy: hex("#4f8f83"),
   roomDefence: hex("#7b6f9a"),
   roomHeart: hex("#a85878"),
   /** Quarters. Dyed cloth and slung rope — the one soft room. */
@@ -199,10 +200,10 @@ export const palette = {
     "item.alloy": hex("#c8d4dc"),
     "item.darts": hex("#8fb9a4"),
     "item.meals": hex("#e0a866"),
-    "item.produce": hex("#d4737b"),
+    "item.resin_feedstock": hex("#d4737b"),
     "item.mechanisms": hex("#a6a2b8"),
     "item.charge_cells": hex("#7fd4c8"),
-    "item.seed_bombs": hex("#b7a05e"),
+    "item.resonator_drums": hex("#b7a05e"),
   } as Record<string, Color>,
 
   // Creatures. Wet, dark, forest-coloured things with their own light
@@ -289,6 +290,8 @@ export function roomColor(category: string): Color {
       return palette.roomProduction;
     case "Storage":
       return palette.roomStorage;
+    case "Energy":
+      return palette.roomEnergy;
     case "Defence":
       return palette.roomDefence;
     case "Heart":

@@ -10,12 +10,27 @@
 //! just goes quiet until the crate arrives.
 
 use crate::content::Content;
+use crate::ids::ItemIdx;
 use crate::state::GameState;
 
 use super::SoundEvent;
 
 pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
     let mut crafts = 0u64;
+
+    // A finite-output recipe may carry an authored tower-wide kanban.
+    // Count before borrowing the tower mutably, then update the count
+    // as this tick completes crafts. Hauling only moves these items and
+    // consumers run after production, so the next tick observes every
+    // other change without putting policy into the porter.
+    let mut targeted_stock: Vec<(ItemIdx, i64)> = content
+        .room_runtime
+        .iter()
+        .filter_map(|room| room.output_stock_target.map(|(item, _)| item))
+        .map(|item| (item, total_in_flight(state, item)))
+        .collect();
+    targeted_stock.sort_by_key(|(item, _)| *item);
+    targeted_stock.dedup_by_key(|(item, _)| *item);
 
     // Charge is drawn as rooms advance, and production sits second in
     // the priority order — after the cars, before the lamps.
@@ -29,11 +44,28 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             if rt.craft_ticks == 0 || !room.is_working(content, tick) {
                 continue;
             }
+            if room.exhaust_refused {
+                continue;
+            }
             if !super::staffed(content, room, &manned) {
                 // Understaffed. Stalls in place like a starved room
                 // rather than resetting, so the work already done
                 // survives somebody being called away.
                 continue;
+            }
+
+            if let Some((item, target)) = rt.output_stock_target {
+                let held = targeted_stock
+                    .iter()
+                    .find(|(candidate, _)| *candidate == item)
+                    .map_or(0, |(_, held)| *held);
+                let batch = rt
+                    .recipe_outputs
+                    .first()
+                    .map_or(0, |(_, amount, _)| *amount);
+                if held + batch > target {
+                    continue;
+                }
             }
 
             let inputs_ready = rt
@@ -56,15 +88,36 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                 continue;
             }
 
-            // A powered room that cannot buy its charge this tick holds
-            // progress too. Indistinguishable from starving, from the
-            // outside — which is correct: it is starving, for power.
+            // **A half-powered room turns at half speed** (`SYSTEMS.md`
+            // §6.39). It used to be paid in full or hold its progress
+            // entirely, which made the smallest expressible `power_draw`
+            // an all-or-nothing commitment; now the Works circuit's
+            // share applies to every room on it equally.
+            //
+            // A room that draws nothing is never slowed, so an unpowered
+            // chain is untouched by a brown-out — which is what keeps the
+            // charge loop (cutter arm to bamboo to burner) free of any
+            // dependence on charge.
             let draw = content.room(room.def).power_draw;
-            if !power.draw(crate::state::power::PowerUse::Works, draw) {
+            let pace = if draw > 0 {
+                power.served_at(floor.index, crate::state::power::PowerUse::Works)
+            } else {
+                crate::state::power::FULL
+            };
+            if pace <= 0 {
+                room.power_refused = true;
                 continue;
             }
+            room.power_refused = pace < crate::state::power::FULL;
 
-            room.progress += 1;
+            // Whole ticks of work, plus whatever fraction carries over.
+            room.work_acc += pace;
+            let ticks = room.work_acc / crate::state::power::FULL;
+            room.work_acc -= ticks * crate::state::power::FULL;
+            if ticks <= 0 {
+                continue;
+            }
+            room.progress += u32::try_from(ticks).unwrap_or(1);
             // **Somebody standing in the room shortens the craft, and
             // the shortening is on the target rather than on the step.**
             // Scaling progress instead was the obvious version and it
@@ -105,6 +158,16 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
                     stack.deposit(*amount);
                 }
             }
+            if let Some((item, _)) = rt.output_stock_target
+                && let Some((_, held)) = targeted_stock
+                    .iter_mut()
+                    .find(|(candidate, _)| *candidate == item)
+            {
+                *held += rt
+                    .recipe_outputs
+                    .first()
+                    .map_or(0, |(_, amount, _)| *amount);
+            }
             room.progress = 0;
             crafts += 1;
             sounds.push(SoundEvent::Craft);
@@ -113,4 +176,44 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
 
     std::mem::swap(&mut state.power, &mut power);
     state.stats.crafts_completed += crafts;
+}
+
+fn total_in_flight(state: &GameState, target: ItemIdx) -> i64 {
+    let rooms: i64 = state
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| &floor.rooms)
+        .map(|room| {
+            room.inputs
+                .iter()
+                .chain(&room.outputs)
+                .filter(|stack| stack.item == target)
+                .map(|stack| stack.count)
+                .sum::<i64>()
+                + room
+                    .shelves
+                    .iter()
+                    .filter(|shelf| shelf.item == Some(target))
+                    .map(|shelf| shelf.count)
+                    .sum::<i64>()
+        })
+        .sum();
+    let carried: i64 = state
+        .crew
+        .iter()
+        .filter_map(|crew| crew.carrying)
+        .filter(|(item, _)| *item == target)
+        .map(|(_, count)| count)
+        .sum();
+    let cars: i64 = state
+        .tower
+        .shafts
+        .iter()
+        .flat_map(|shaft| &shaft.cars)
+        .flat_map(|car| &car.freight)
+        .filter(|stack| stack.item == target)
+        .map(|stack| stack.count)
+        .sum();
+    rooms + carried + cars
 }

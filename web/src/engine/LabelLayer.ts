@@ -24,10 +24,20 @@ export interface Label {
    * first thing a player sees, and never a number on the screen.
    */
   title?: string;
+  /**
+   * A small control physically attached to the thing the label names.
+   * Used for room breakers: the world remains the primary interface,
+   * while the simulation still receives an ordinary command.
+   */
+  control?: {
+    ariaLabel: string;
+    pressed: boolean;
+    onActivate: () => void;
+  };
 }
 
 interface PooledLabel {
-  element: HTMLDivElement;
+  element: HTMLDivElement | HTMLButtonElement;
   text: string;
   title: string;
   x: number;
@@ -35,6 +45,7 @@ interface PooledLabel {
   variant: string;
   alpha: number;
   seen: boolean;
+  activate: (() => void) | null;
 }
 
 export class LabelLayer {
@@ -57,7 +68,10 @@ export class LabelLayer {
       let pooled = this.pool.get(label.key);
 
       if (!pooled) {
-        const element = document.createElement("div");
+        const element = label.control
+          ? document.createElement("button")
+          : document.createElement("div");
+        if (element instanceof HTMLButtonElement) element.type = "button";
         element.className = variant ? `label ${variant}` : "label";
         element.textContent = label.text;
         if (label.title) element.title = label.title;
@@ -71,7 +85,14 @@ export class LabelLayer {
           variant,
           alpha: Number.NaN,
           seen: true,
+          activate: label.control?.onActivate ?? null,
         };
+        if (label.control) {
+          element.addEventListener("click", (event) => {
+            event.stopPropagation();
+            pooled?.activate?.();
+          });
+        }
         this.pool.set(label.key, pooled);
       }
 
@@ -89,6 +110,11 @@ export class LabelLayer {
       if (pooled.title !== title) {
         pooled.element.title = title;
         pooled.title = title;
+      }
+      pooled.activate = label.control?.onActivate ?? null;
+      if (label.control && pooled.element instanceof HTMLButtonElement) {
+        pooled.element.setAttribute("aria-label", label.control.ariaLabel);
+        pooled.element.setAttribute("aria-pressed", String(label.control.pressed));
       }
       const x = Math.round(label.x);
       const y = Math.round(label.y);

@@ -72,9 +72,24 @@ pub struct Enemy {
     pub fade_left: u32,
 }
 
+/// A temporary physical restraint applied by an emplacement.
+///
+/// Kept beside the wave rather than on `Enemy` so fixtures that author
+/// creatures directly cannot accidentally grant or omit hidden combat
+/// state. One entry per enemy, sorted by id whenever it is changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EnemyControl {
+    pub enemy: EnemyId,
+    pub ticks_left: u32,
+    pub speed_pct: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Siege {
     pub enemies: Vec<Enemy>,
+    /// Nets, resonance pulses and root wards currently holding a
+    /// creature. Cleared when their subject leaves the wave.
+    pub controls: Vec<EnemyControl>,
     /// How much attention the tower has drawn, 0 to `provocation_max`.
     ///
     /// One knob, raised by harvesting hard and by burner smoke, bled off
@@ -91,19 +106,6 @@ pub struct Siege {
     pub repelled: u64,
     /// The Heartseed is gone. The run is over.
     pub lost: bool,
-    /// The creature the player has asked every emplacement to prefer.
-    ///
-    /// **The battery still has no judgement of its own.** `defence.rs`
-    /// picks the nearest creature in range precisely because a battery
-    /// should not weigh up a wave — the player's judgement went into
-    /// where they put it. This does not change that. It adds a second
-    /// moment for the player to supply judgement, live, at the cost of
-    /// their attention during a wave; nearest remains the answer
-    /// whenever nothing is focused, which is most of the time.
-    ///
-    /// Cleared when the creature dies or leaves, so it can never quietly
-    /// point at nothing.
-    pub focus: Option<EnemyId>,
 }
 
 impl Siege {
@@ -111,12 +113,12 @@ impl Siege {
     pub const fn new() -> Self {
         Self {
             enemies: Vec::new(),
+            controls: Vec::new(),
             provocation: 0,
             provocation_acc: 0,
             next_wave_tick: 0,
             repelled: 0,
             lost: false,
-            focus: None,
         }
     }
 

@@ -32,7 +32,7 @@ pub fn run(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent
             // crew member's own power, and a chute is gravity: things
             // fall down it the moment they are let go, so there is
             // nothing to advance between ticks.
-            ShaftKind::Stairs | ShaftKind::Chute => {}
+            ShaftKind::Stairs | ShaftKind::Chute | ShaftKind::Busbar | ShaftKind::VentStack => {}
             ShaftKind::Elevator => run_elevator(state, content, index, daypart, sounds),
         }
     }
@@ -61,7 +61,6 @@ fn run_elevator(
     let shaft_id = state.tower.shafts[shaft_index].id;
     let def_idx = state.tower.shafts[shaft_index].def;
     let ticks_per_floor = content.shaft(def_idx).ticks_per_floor.max(1);
-    let charge_per_floor = content.shaft(def_idx).charge_per_floor;
     let capacity = state.tower.shafts[shaft_index].capacity;
     let batch = content.shaft(def_idx).batch;
     let balance = &content.balance.transport;
@@ -95,13 +94,30 @@ fn run_elevator(
                 )
             }
             CarState::Moving => {
-                // Charge buys the next step. A car that cannot pay
-                // simply holds position — the brown-out made physical.
-                let step = Fx::ratio(1, ticks_per_floor as i32);
-                let cost = charge_per_floor / i64::from(ticks_per_floor).max(1);
-                if !state.power.draw(crate::state::power::PowerUse::Lifts, cost) {
+                // Charge buys the complete floor segment as the car
+                // leaves a landing. Charging per tick truncated four
+                // charge over eight ticks to zero; a segment purchase
+                // is exact and a refusal holds the car at a floor rather
+                // than marooning it between decks.
+                // **A half-powered car crawls** (`SYSTEMS.md` §6.39).
+                // The comment above is why this used to be a segment
+                // purchase: four charge over eight ticks truncated to
+                // zero per tick, and a refusal had to hold the car at a
+                // landing rather than maroon it between decks. Serving
+                // the circuit a fraction removes the truncation — the
+                // step itself scales — and a car short of power is
+                // simply slow, which cannot maroon anything.
+                let pace = state.power.served_at(
+                    state.tower.shafts[shaft_index].low,
+                    crate::state::power::PowerUse::Lifts,
+                );
+                if pace <= 0 {
                     car
                 } else {
+                    let step = Fx::ratio(
+                        i32::try_from(pace).unwrap_or(1000),
+                        ticks_per_floor as i32 * 1000,
+                    );
                     advance(car, step, &state.tower.shafts[shaft_index], daypart, &calls)
                 }
             }
@@ -789,7 +805,7 @@ pub fn estimated_trip_ticks(
         // reached; the arm exists so that a future caller which forgets
         // to gets an answer that reads as "never" rather than a panic or
         // an accidental free ride.
-        ShaftKind::Chute => u32::MAX,
+        ShaftKind::Chute | ShaftKind::Busbar | ShaftKind::VentStack => u32::MAX,
         ShaftKind::Stairs => {
             let per_floor = content.balance.crew.climb_ticks_per_floor
                 + load * content.balance.crew.climb_ticks_per_item;

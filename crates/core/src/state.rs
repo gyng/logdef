@@ -170,26 +170,10 @@ pub struct GameState {
     /// standing there is the person standing there. `None` away from a
     /// settlement, or once its recruits are spent.
     #[serde(default)]
-    pub recruit_offer: Option<crate::ids::TraitIdx>,
+    pub recruit_offers: Vec<Option<[crate::ids::TraitIdx; 2]>>,
     /// How many more times each settlement will plate the shell. Only
     /// one of them does any, but the shape follows the others.
     pub shell_work_left: Vec<u8>,
-    /// What kind of work an idle crew member reaches for first.
-    ///
-    /// **One order for the whole tower, not a rota per person.** A
-    /// per-person matrix is the shape that turns crew into a
-    /// spreadsheet, and it answers a question the player is rarely
-    /// asking: what they want to say is *stop mending and get the
-    /// harvest in*, which is one sentence about the tower. Somebody who
-    /// should be doing one specific thing has `stationed` for that
-    /// already, and it is per-person precisely because it is the
-    /// exception.
-    ///
-    /// Needs are not in here — see `Job`. `serde(default)` is not
-    /// enough for a `Vec` that must be a full permutation, so old saves
-    /// get the default order through `work_order` below.
-    #[serde(default = "default_work_order")]
-    pub work: Vec<Job>,
     pub stats: RunStats,
     /// Monotonic allocators. Never reuse an ID, even after removal —
     /// a stale reference should fail to resolve, not silently alias.
@@ -200,10 +184,6 @@ pub struct GameState {
 }
 
 /// The order an untouched tower works in. See `Job` for the argument.
-fn default_work_order() -> Vec<Job> {
-    Job::ALL.to_vec()
-}
-
 impl GameState {
     /// A fresh run: the starting tower, its starting crew, and the
     /// first stretch of terrain already streamed in.
@@ -225,7 +205,6 @@ impl GameState {
             walking: true,
             strode: false,
             paces_last: 0,
-            work: default_work_order(),
             stats: RunStats {
                 // One slot per item in the pack, so a harvest counter is
                 // never a lookup that can miss.
@@ -252,7 +231,7 @@ impl GameState {
                     })
                 })
                 .collect(),
-            recruit_offer: None,
+            recruit_offers: vec![None; content.regions.len()],
             enclave_recruits: content
                 .regions
                 .iter()
@@ -395,8 +374,14 @@ impl GameState {
     /// without touching any RNG at all.
     #[must_use]
     pub fn next_crew_name(&self, content: &Content) -> String {
+        self.crew_name_offset(content, 0)
+    }
+
+    #[must_use]
+    pub fn crew_name_offset(&self, content: &Content, offset: u32) -> String {
         let names = &content.crew_names;
-        let index = (self.next_crew_id as usize).saturating_sub(1) % names.len();
+        let index =
+            (self.next_crew_id.saturating_add(offset) as usize).saturating_sub(1) % names.len();
         names[index].clone()
     }
 
@@ -429,10 +414,29 @@ impl GameState {
     /// (`SYSTEMS.md` §6.29) rather than rolling a fresh one — otherwise
     /// the card was a lie. `None` rolls, which is every other caller.
     pub fn add_crew_with(&mut self, content: &Content, given: Option<crate::ids::TraitIdx>) {
+        self.add_crew_with_offset(content, given, 0, 1);
+    }
+
+    pub fn add_recruit_candidate(
+        &mut self,
+        content: &Content,
+        given: crate::ids::TraitIdx,
+        candidate: u8,
+    ) {
+        self.add_crew_with_offset(content, Some(given), u32::from(candidate), 2);
+    }
+
+    fn add_crew_with_offset(
+        &mut self,
+        content: &Content,
+        given: Option<crate::ids::TraitIdx>,
+        offset: u32,
+        advance: u32,
+    ) {
         let names = &content.crew_names;
-        let id = CrewId(self.next_crew_id);
-        self.next_crew_id += 1;
-        let index = (self.next_crew_id as usize).saturating_sub(2) % names.len();
+        let id = CrewId(self.next_crew_id.saturating_add(offset));
+        self.next_crew_id = self.next_crew_id.saturating_add(advance);
+        let index = (id.0 as usize).saturating_sub(1) % names.len();
         let fidget = (self.rng.cosmetic.next_u32() & 0xFFFF) as u16;
 
         // **Nobody comes aboard in step with anybody else.**

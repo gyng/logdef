@@ -119,7 +119,7 @@ true in theory. Each one closes off a v1 failure mode by construction — see `v
 4. **The world streams past.** Terrain sets the input rates; the route is the strategy. A
    tower parked in one spot forever is not a valid way to play — the design assumes motion.
 5. **Reclaim, don't conquer.** Solarpunk warmth, not gunmetal. Defence reads as thorns and
-   seed-bombs, not artillery. Creatures defend their territory; you are the intruder
+   resonator drums, not artillery. Creatures defend their territory; you are the intruder
    passing through, not a soldier clearing ground. Breakage and silence are the interface —
    see `DECISIONS.md` §8 for how this becomes an enforceable rule rather than a mood board.
 
@@ -153,8 +153,8 @@ Small and legible on purpose: **max two inputs per recipe, chain depth of three 
 If a chain can't be read at a glance in the cross-section, it's too deep — this is a hard
 constraint, enforced by a content-validation check, not a style guide.
 
-Raw materials (bamboo, fiber, produce, scrap) become Tier 1 goods (poles, rope, meals,
-alloy, darts) become Tier 2 goods (mechanisms, seed bombs, charge cells). Bamboo is the
+Raw materials (bamboo, fiber, resin feedstock, scrap) become Tier 1 goods (poles, rope, meals,
+alloy, darts) become Tier 2 goods (mechanisms, resonator drums, charge cells). Bamboo is the
 contested material, v1's wood tension reborn: it becomes poles for construction, repair,
 and ammunition, or fuel for the burner when the sun isn't enough. Burn your building
 material, or build with it — never both.
@@ -195,7 +195,7 @@ always.
 Categories: intake (harvests the terrain underfoot), production (crafts on a timer),
 energy (burner, cell banks — the burner wants a floor above the works, so the chain has a
 direction and a tower has a reason to haul upward), logistics (storerooms,
-caches), defence (dart batteries, seed-bomb mortars, repair workshops), crew (bunks,
+caches), defence (dart batteries, resonance arrays, repair workshops), crew (bunks,
 canteen), and the Heart (the Heartseed, unique and pre-placed).
 
 ### 5.4 Transport
@@ -226,8 +226,9 @@ shafts and legs to teach transport redundancy, spitters bombard from cover to te
 priority targeting, feral wardens are armored old-world machines that wake when you salvage
 ruins (provocation given a face), and night predators are the reason you bank charge.
 
-Emplacements auto-fire by player-set priority, consuming ammo from local racks — the
-player's verb is triage, not aim. Repair consumes poles, rope, and crew time, so defence is
+Emplacements auto-fire by authored approach role and proximity, consuming ammo from local
+racks — the player's verb is what to build and where, not aim. Repair consumes poles, rope,
+and crew time, so defence is
 itself a chain sink, not a separate system bolted on. Creatures do not hold on forever: each
 type's grip counts down only while the tower is actually striding, so continuing to walk is
 a free, always-available answer to a wave and stopping to work mid-assault is a real risk,
@@ -235,6 +236,30 @@ not a formality — losing a wave's grip is not the same as driving it off, and 
 counts as the latter. Provocation is one knob: aggressive harvesting, burner smoke, and
 ruin-salvaging all raise local threat, which keeps the tone guardrail in pillar 5 true by
 construction — they defend their home; you are the one passing through.
+
+#### Walker-scale crises, not mirrored combat screens
+
+The first rare crisis is implemented as the Snare Thicket's resident, and any later rival
+walker must remain a test of the tower
+the player already built. It is not a second FTL-style ship UI, an enemy room grid, or a
+manual subsystem-targeting phase. Those would add a parallel tactics game precisely where
+Understory is strongest: watching existing logistics, charge, movement and defence answer
+one visible problem together.
+
+The still-promising *later* shape is a rare rival walker with three or four readable exterior functions:
+legs that determine whether it can keep pace, a beacon that raises attention, a harvester
+that strips ground ahead, and a cargo or shelter module that makes approaching tempting.
+The player's alternatives remain existing verbs: outrun it by protecting Legs charge,
+shadow it and accept the attention, hold it off with the defence chain already aboard, or
+take another route. Its functions may fail as consequences of those systems, but the player
+does not click an enemy schematic to call shots.
+
+The acceptance gate is hesitation between at least three visible postures with different
+economic consequences. The resident prototype meets the mechanical gate with detour,
+break-away and prepared hold-ground, while deliberately refusing the mirrored-machine
+fiction and extra controls. If a later encounter reduces to waiting for an enemy health bar
+to empty, or needs dedicated boss controls, it does not belong. A rival walker remains a
+future possibility, not a promise or a requirement for progression.
 
 ### 5.6 Journey and run structure
 

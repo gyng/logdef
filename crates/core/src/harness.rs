@@ -30,8 +30,8 @@ pub fn give(game: &mut GameEngine, id: &str, amount: i64) {
 /// Walk the opening ladder, so the rest of the build menu exists.
 ///
 /// **M6 cut the starting tower to a Heartseed and a bed** (`SYSTEMS.md`
-/// §6.11): the farm opens the cutter arm, the cutter arm opens the
-/// burner, and the burner opens everything else. A harness that placed
+/// §6.11): the Heartseed opens the cutter arm, the cutter arm opens the
+/// burner, and the burner opens the optional garden and wider menu. A harness that placed
 /// a canteen on turn one used to get a tower; it now gets
 /// `CommandError::Locked`, which is the rule working and the instrument
 /// measuring nothing.
@@ -51,7 +51,7 @@ pub fn open_the_ladder(game: &mut GameEngine, floors: u8) {
             .expect("a paid-for floor should go up");
     }
 
-    for room in ["room.garden", "room.cutter_arm", "room.burner"] {
+    for room in ["room.cutter_arm", "room.burner", "room.garden"] {
         let cost: Vec<(String, i64)> = {
             let content = game.content();
             let idx = content

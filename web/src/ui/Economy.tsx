@@ -21,6 +21,7 @@
  */
 import type { Game, UiState } from "../engine/Game";
 import type { CatalogSnapshot, RoomInfo } from "../bridge/types";
+import { ItemIcon } from "./ItemIcon";
 
 /** One transformation: the room, what it eats, what it makes. */
 interface Flow {
@@ -135,27 +136,26 @@ export function Economy({ game, ui }: { game: Game; ui: UiState }) {
               const eaten = all.filter((f) => f.eats.includes(item));
               const dead = eaten.length === 0;
               const reachable = eaten.some((f) => standing.has(f.room.id));
+              const explanation = dead
+                ? `${info.name} — nothing in the pack consumes this`
+                : reachable
+                  ? `${info.name} — ${eaten
+                      .filter((f) => standing.has(f.room.id))
+                      .map((f) => f.room.name.toLowerCase())
+                      .join(", ")} take it`
+                  : `${info.name} — only ${eaten
+                      .map((f) => f.room.name.toLowerCase())
+                      .join(", ")} take it, and you have none`;
               return (
                 <div
                   className={`economy-item${dead ? " dead" : reachable ? " flowing" : ""}`}
                   key={item}
                   data-testid={`economy-item-${info.id}`}
-                  title={
-                    dead
-                      ? `${info.name} — nothing in the pack consumes this`
-                      : reachable
-                        ? `${info.name} — ${eaten
-                            .filter((f) => standing.has(f.room.id))
-                            .map((f) => f.room.name.toLowerCase())
-                            .join(", ")} take it`
-                        : `${info.name} — only ${eaten
-                            .map((f) => f.room.name.toLowerCase())
-                            .join(", ")} take it, and you have none`
-                  }
+                  title={explanation}
+                  aria-label={explanation}
+                  tabIndex={0}
                 >
-                  <span className="economy-glyph" aria-hidden="true">
-                    {info.glyph}
-                  </span>
+                  <ItemIcon item={info} className="economy-glyph" decorative />
                   <span className="economy-name">{info.name}</span>
                   <span className="economy-count">{count}</span>
                 </div>

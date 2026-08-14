@@ -48,8 +48,8 @@ fn main() {
     // bug (`AGENTS.md` II rule 3) rather than a finding about batteries.
     let mut ever_hurt = false;
     for (idx, def) in content.enemies.iter().enumerate() {
-        let bare = fight(idx, false);
-        let armed = fight(idx, true);
+        let bare = fight(idx, 0, false, false);
+        let armed = fight(idx, 1, false, false);
         if bare.standing > 0 {
             ever_hurt = true;
         }
@@ -70,6 +70,30 @@ fn main() {
             },
         );
     }
+
+    let mother = content
+        .enemy_idx("enemy.thicket_mother")
+        .expect("the pack has its resident");
+    let stand = fight(usize::from(mother.0), 2, false, true);
+    let flee = fight(usize::from(mother.0), 0, true, false);
+    println!(
+        "\n  Thicket Mother: prepared stand (two batteries + tanglenet) loses {} hp / {} darts + {} rope / {}; unprepared break-away loses {} hp / {} darts / {}.",
+        stand.standing,
+        stand.darts,
+        stand.rope,
+        ending(&stand),
+        flee.standing,
+        flee.darts,
+        ending(&flee),
+    );
+    assert!(
+        flee.gone,
+        "a tower that wakes the resident must still be able to break away"
+    );
+    assert!(
+        stand.killed,
+        "a prepared specialist tower must have a credible reason to hold ground"
+    );
 
     if !ever_hurt {
         println!();
@@ -100,11 +124,22 @@ fn main() {
 struct Fight {
     standing: i64,
     darts: i64,
+    rope: i64,
     killed: bool,
     gone: bool,
 }
 
-fn fight(enemy: usize, armed: bool) -> Fight {
+fn ending(fight: &Fight) -> &'static str {
+    if fight.killed {
+        "shot"
+    } else if fight.gone {
+        "walked off"
+    } else {
+        "still on"
+    }
+}
+
+fn fight(enemy: usize, batteries: usize, walking: bool, tanglenet: bool) -> Fight {
     let mut game = GameEngine::new(0x0BE5_71A9);
     game.set_speed(SimSpeed::X1);
     let content = game.content().clone();
@@ -122,7 +157,7 @@ fn fight(enemy: usize, armed: bool) -> Fight {
     // armed copy of itself, which is `siege_run.rs`'s oldest bug.
     understory_core::harness::disarm(&mut game);
 
-    if armed {
+    if batteries > 0 {
         // Paid for, then insisted on — a "defended" tower that failed to
         // build its battery is how `siege_run.rs` spent a milestone
         // reporting a defence comparison in which nothing was defended.
@@ -135,13 +170,26 @@ fn fight(enemy: usize, armed: bool) -> Fight {
         // panicking on its own seed and printing an empty table, while
         // fifteen `BALANCE.md` rows quoted it. A fourth dead instrument
         // after the three `AGENTS.md` §II already records.
-        for room in ["room.thornwright", "room.dart_battery"] {
+        assert!(
+            build_anywhere(&mut game, "room.thornwright"),
+            "the armed tower could not build room.thornwright"
+        );
+        for _ in 0..batteries {
+            let room = "room.dart_battery";
             assert!(
                 build_anywhere(&mut game, room),
                 "the armed tower could not build {room}"
             );
         }
         load_racks(&mut game);
+        if tanglenet {
+            understory_core::harness::open_the_armoury(&mut game, "room.tanglenet");
+            assert!(
+                build_anywhere(&mut game, "room.tanglenet"),
+                "the prepared tower could not build its tanglenet"
+            );
+            load_ammo(&mut game, "item.rope");
+        }
     }
 
     // One creature, placed at the far edge of its approach, and nothing
@@ -185,11 +233,24 @@ fn fight(enemy: usize, armed: bool) -> Fight {
     // Halted, six of the eight land: the night prowler takes an
     // undefended tower to 618 permille. That is the number this
     // instrument exists to produce.
-    let _ = game.try_send(GameCommand::SetStriding { walking: false });
+    let _ = game.try_send(GameCommand::SetStriding { walking });
     let mut darts_used = 0i64;
-    for tick in 0..TICKS {
-        if tick % 60 == 0 && armed {
+    let mut rope_used = 0i64;
+    // Walking away can take longer than the combat observation window
+    // when the bank stutters: grip decays only on ticks the tower
+    // actually advances. Give escape three windows so "still on" is
+    // not mistaken for "cannot be escaped".
+    let window = if walking || batteries >= 2 {
+        TICKS * 3
+    } else {
+        TICKS
+    };
+    for tick in 0..window {
+        if tick % 60 == 0 && batteries > 0 {
             darts_used += load_racks(&mut game);
+            if tanglenet {
+                rope_used += load_ammo(&mut game, "item.rope");
+            }
         }
         if let Some(fork) = game.state().world.fork
             && fork.answer.is_none()
@@ -206,6 +267,7 @@ fn fight(enemy: usize, armed: bool) -> Fight {
     Fight {
         standing: hp_lost(state),
         darts: darts_used,
+        rope: rope_used,
         killed: state.siege.repelled > 0,
         gone: state.siege.enemies.is_empty(),
     }
@@ -214,7 +276,7 @@ fn fight(enemy: usize, armed: bool) -> Fight {
 fn endow(game: &mut GameEngine) {
     let content = game.content().clone();
     let state = game.state_mut_for_test();
-    for id in ["item.poles", "item.rope"] {
+    for id in ["item.poles", "item.rope", "item.bamboo"] {
         let Some(item) = content.item_idx(id) else {
             continue;
         };
@@ -227,21 +289,41 @@ fn endow(game: &mut GameEngine) {
                 }
             }
         }
+        if left > 0 {
+            let room = state
+                .tower
+                .floors
+                .iter_mut()
+                .flat_map(|floor| floor.rooms.iter_mut())
+                .next()
+                .expect("the fixture has no room for a stock shelf");
+            room.shelves.push(understory_core::state::tower::Shelf {
+                filter: Some(item),
+                item: Some(item),
+                count: left,
+                max: left,
+            });
+        }
     }
 }
 
 /// Top every dart rack up, and report how many it took — which is
 /// exactly how many were fired since the last time.
 fn load_racks(game: &mut GameEngine) -> i64 {
+    load_ammo(game, "item.darts")
+}
+
+/// Top every rack for one authored ammunition item up.
+fn load_ammo(game: &mut GameEngine, item_id: &str) -> i64 {
     let content = game.content().clone();
-    let Some(darts) = content.item_idx("item.darts") else {
+    let Some(ammo) = content.item_idx(item_id) else {
         return 0;
     };
     let mut reloaded = 0;
     let state = game.state_mut_for_test();
     for floor in &mut state.tower.floors {
         for room in &mut floor.rooms {
-            if let Some(rack) = room.inputs.iter_mut().find(|s| s.item == darts) {
+            if let Some(rack) = room.inputs.iter_mut().find(|s| s.item == ammo) {
                 let space = rack.space();
                 reloaded += rack.deposit(space);
             }

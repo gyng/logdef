@@ -1,0 +1,17 @@
+// What the sun grows, and the first thing a *stopped* tower can make.
+//
+// The counterweight to bamboo. Deep shade is biomass-rich and sun-poor,
+// which since M1 has meant a sun-seeking route buys charge and nothing
+// else — a means rather than an end, so the open branches read as a
+// sacrifice with a rebate. Resin feedstock is the end: it grows in the light,
+// it becomes the resonator drums an array spins and the insulation around
+// charge cells, and it accrues per tick
+// rather than per pace, so it is the one harvest a berthed tower does
+// not give up (`SYSTEMS.md` §5.2).
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.resin_feedstock",
+    name: "Resin feedstock",
+    glyph: "◉",
+    order: 14,
+)

@@ -45,6 +45,9 @@ EnemyDef(
     // the opposite of the mire-hulk's "the coast is not impressed by
     // you" — this is "you are in somebody's home".
     min_region: 0,
+    // Exactly one deep-jungle landmark can rouse it. It is never bought
+    // by an ordinary wave budget and cannot recur as an alloy farm.
+    encounter: LandmarkResident,
     // **What it leaves.** Alloy, which otherwise needs a salvage rig, a
     // forge and a ruin to stop at — so felling one is a genuine
     // shortcut through a whole chain rather than a pile of the material

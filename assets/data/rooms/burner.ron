@@ -41,6 +41,10 @@ RoomDef(
     // pinned above it or a whole chain sits beside its own intake and
     // never hauls upward. Floor 1 says that at the new scale.
     min_floor: 1,
+    // One stack can serve two burners or a burner beside a forge. A
+    // burner never stops without it; the visible difference is how much
+    // attention its smoke draws.
+    exhaust_draw: 2,
     build_cost: [CostEntryDef(item: "item.poles", amount: 5)],
     burner: BurnerDef(
         fuel: "item.bamboo",
@@ -91,5 +95,8 @@ RoomDef(
         // the tower spends rather than by the clock. A base tower runs
         // about one burn in fourteen.
         burn_ticks: 100,
+        // A proper roof flue removes most of the visible plume without
+        // making dirty generation silent or free.
+        vented_provocation_pct: 35,
     ),
 )

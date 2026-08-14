@@ -9,8 +9,8 @@ WaypointDef(
     name: "Snare Thicket",
     // Second person, present tense, and short. This is read once as the
     // thing comes into range and never again.
-    said: "Thorn and wire, grown together. Push through, or go around?",
-    take: "Push through",
+    said: "Thorn and wire mark an old nesting ground. Go around, or cut straight through and wake what lives there?",
+    take: "Cut straight through",
     // Pushing through is the *taken* branch, so the cost is on the take
     // and doing nothing is free. That is the shape §11 asks for
     // everywhere: the free answer is always available and never the
@@ -24,4 +24,16 @@ WaypointDef(
     // And it saves ground: the tower comes out the far side further
     // along than it went in.
     paces: 300,
+    // A unique, forecastable territorial crisis rather than one random
+    // beat among many. Ignoring it is the detour; taking it rouses the
+    // Mother, after which walking and halting remain the two responses.
+    landmark_region: "region.deep_jungle",
+    // Late in the first region, after the tower has had time to choose
+    // between transport and one coherent defence posture. The natural
+    // progression check reaches it with the starting thorn gun plus a
+    // Tanglenet; a Dart Battery is the competing damage-heavy purchase,
+    // not another checklist prerequisite. Earlier placement advertised
+    // a granted-fixture answer the ordinary economy could not produce.
+    landmark_permille: 850,
+    resident: "enemy.thicket_mother",
 )

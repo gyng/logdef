@@ -325,7 +325,7 @@ export class AudioManager {
       for (const room of floor.rooms) {
         if (room.wrecked) continue;
         rooms += 1;
-        if (!room.stalled && room.active) working += 1;
+        if (!room.stalled && room.active && room.powered) working += 1;
       }
     }
     const busy = rooms > 0 ? working / rooms : 0;
@@ -348,7 +348,9 @@ export class AudioManager {
     // "is the tower walking" unanswerable. A hum should be something
     // you notice when it *changes*, not a floor.
     const drained = clamp01(view.power.fill_permille / 1000);
-    this.setTarget("hum", view.power.brownout ? 0 : 0.004 + drained * 0.008);
+    const busDark =
+      view.power.charge === 0 || (view.power.refused[2] === true && view.power.refused[3] === true);
+    this.setTarget("hum", busDark ? 0 : 0.004 + drained * 0.008);
     this.tuneNode("hum", (loop) => {
       // Pitch sags with the bank, so a tower running down is audible
       // before it is dark.

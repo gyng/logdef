@@ -40,7 +40,6 @@ export type CrewStateTag =
   /** Asleep — in a hammock if a bed was free, on the deck if not. */
   | "sleep";
 
-
 /**
  * `dying` was shot down; `leaving` lost its grip on a walking tower.
  * They fade out the same way — the difference is that only one of them
@@ -59,7 +58,11 @@ export type ShaftKind =
    * the escape hatch for the shelf-typing deadlock `BALANCE.md`'s
    * `storeroom` row has described since M2.
    */
-  | "Chute";
+  | "Chute"
+  /** A dedicated high-capacity electrical riser. */
+  | "Busbar"
+  /** A passive shared flue for burners and hot works. */
+  | "VentStack";
 
 export type ShaftPriority = "Balanced" | "FreightFirst" | "CrewFirst";
 
@@ -122,13 +125,9 @@ export interface ViewSnapshot {
    * refuses is worse than no card.
    */
   unlocked: number[];
-  /**
-   * What kind of work idle crew reach for first, best first, as indices
-   * into `catalog.jobs`.
-   */
-  work: number[];
+  /** How aggressively idle crew mend damage. */
   /** Who the settlement the tower is standing at is offering. */
-  recruit: RecruitInfo | null;
+  recruit: RecruitInfo[];
   stats: RunStats;
 }
 
@@ -165,24 +164,47 @@ export interface PowerView {
   walking: boolean;
   /**
    * What the player ranked to keep running when charge is short, best
-   * first. Always all four.
+   * first. Always every use.
    */
   priority: PowerUse[];
   /** What each use wanted this tick, in `POWER_USES` order. */
   demand: number[];
+  /** Which requested circuits were refused, in `POWER_USES` order. */
+  refused: boolean[];
+  /**
+   * Charge per tick the tower can actually deliver — burners, cell banks
+   * and the Heartseed (`SYSTEMS.md` §6.36).
+   *
+   * **The reading the bank gauge could never give.** `capacity` says how
+   * long the tower can keep going; this says how hard it can spend, and
+   * a tower can be full and shedding.
+   */
+  rail: number;
+  /**
+   * How well each circuit was served, in per-mille, in `POWER_USES`
+   * order (`SYSTEMS.md` §6.39). 1000 is everything it asked for.
+   *
+   * **The reading `refused` could never give.** A circuit is no longer
+   * on or off — it runs at a rate, and the mill turns, the legs walk and
+   * the guns reload at that rate. `refused` remains as the derived
+   * "less than everything" for anything that only wants the bit.
+   */
+  satisfaction: number[];
+  /** Per-deck circuit service, indexed `[floor][POWER_USES]`. */
+  floor_satisfaction: number[][];
 }
 
 /**
- * The four things that spend charge.
+ * The five things that spend charge.
  *
  * Charge priority used to *be* the tick order — lifts first because
  * transport runs first, legs last because striding runs last — so it was
  * a constant rather than a decision. This is that ranking, handed over.
  */
-export type PowerUse = "Lifts" | "Works" | "Lamps" | "Legs";
+export type PowerUse = "Lifts" | "Works" | "Guns" | "Lamps" | "Legs";
 
 /** In the order the tick spends, which is also the default ranking. */
-export const POWER_USES: PowerUse[] = ["Lifts", "Works", "Lamps", "Legs"];
+export const POWER_USES: PowerUse[] = ["Lifts", "Works", "Guns", "Lamps", "Legs"];
 
 export interface WorldView {
   /** Whole paces walked, with fraction. */
@@ -232,6 +254,8 @@ export interface JourneyView {
   waypoint: WaypointView | null;
   /** Paces to the next one still ahead. */
   waypoint_ahead: WaypointAheadView | null;
+  /** Unique territorial landmark still ahead, independent of nearer beats. */
+  landmark_ahead: WaypointAheadView | null;
   /** The branch being walked through, if any. Indexes `catalog.branches`. */
   branch: number | null;
   /** Why the tower is standing still, if it is. */
@@ -314,7 +338,6 @@ export interface SiegeView {
    * `DECISIONS.md` §8 keeps creatures as animals defending their
    * territory rather than a gallery to clear.
    */
-  focus: number | null;
 }
 
 export interface EnemyView {
@@ -325,6 +348,8 @@ export interface EnemyView {
   at: number;
   hp_permille: number;
   state: EnemyStateTag;
+  /** Temporarily held by a net, pulse, or root ward. */
+  controlled: boolean;
 }
 
 export interface TowerView {
@@ -346,6 +371,9 @@ export interface RoomView {
   def: number;
   slot: number;
   width: number;
+  /** Physical material ports on the floor deck. */
+  input_slot: number;
+  output_slot: number;
   progress: number;
   inputs: StackView[];
   outputs: StackView[];
@@ -361,6 +389,12 @@ export interface RoomView {
   stall: StallTag | null;
   /** Switched on by the player. */
   active: boolean;
+  /** The room's breaker is closed and its draw was met this tick. */
+  powered: boolean;
+  /** A burner is in its production cycle, rather than merely enabled. */
+  burning: boolean;
+  /** This room can reach enough intact shared exhaust capacity. */
+  vented: boolean;
   /**
    * A `top_floor_only` room with a floor above it — since M6 that
    * means a garden in the dark. The price of building higher.
@@ -378,6 +412,8 @@ export interface StackView {
 }
 
 export interface ShelfView {
+  /** Item reserved for this shelf even while it is empty. */
+  filter: number | null;
   item: number | null;
   count: number;
   max: number;
@@ -392,6 +428,10 @@ export interface ShaftView {
   high: number;
   slot: number;
   capacity: number;
+  /** Charge per tick this intact column can move between floors. */
+  power_capacity: number;
+  /** Smoke capacity while intact; zero for non-flue shafts. */
+  exhaust_capacity: number;
   /** Crew on the stairs. Zero for shafts with cars. */
   riders: number;
   cars: CarView[];
@@ -567,12 +607,11 @@ export interface CatalogSnapshot {
   front_slots: number;
   max_floors: number;
   floor_slots: number;
+  /** How far ahead a unique resident landmark begins foreshadowing. */
+  landmark_warning_paces: number;
   stress_ticks: number;
   ticks_per_day: number;
-  /**
-   * The kinds of work, in the *default* order — not necessarily the
-   * current one. `view.work` is the current one, as indices into this.
-   */
+  /** The kinds of work, in stable order, for practice labels. */
   jobs: JobInfo[];
   /** Things that can be true about a person, in pack order. */
   traits: TraitInfo[];
@@ -587,6 +626,8 @@ export interface CatalogSnapshot {
 export type StallTag =
   | "wrecked"
   | "off"
+  | "unpowered"
+  | "unvented"
   | "shaded"
   | "unarmed"
   | "unfuelled"
@@ -600,6 +641,19 @@ export interface DefenceInfo {
   damage: number;
   reload_ticks: number;
   range_paces: number;
+  /**
+   * Charge a shot costs (`SYSTEMS.md` §6.36).
+   *
+   * **On the card, where damage and range deliberately are not.** A
+   * thorn gun costs nothing and a lantern mast costs 40 a shot, so
+   * arming the front deck is a question about the switchboard as well as
+   * about the shelves.
+   */
+  charge_per_shot: number;
+  effect: "Direct" | "Tangle" | "Resonance" | "Repel" | "RootWard";
+  control_ticks: number;
+  control_speed_pct: number;
+  pulse_radius_paces: number;
   /** Which approaches it answers. Empty means all of them. */
   targets: string[];
 }
@@ -621,7 +675,7 @@ export interface TraitInfo {
 
 /** A kind of work, as the panel that ranks them needs it. */
 export interface JobInfo {
-  /** The spelling a `SetWorkOrder` has to use. */
+  /** Stable enum spelling used by practice records. */
   id: string;
   /** What the tower calls it. */
   name: string;
@@ -633,6 +687,8 @@ export interface ShaftInfo {
   short: string;
   kind: ShaftKind;
   build_cost: CostInfo[];
+  /** Material paid for every boundary crossed. */
+  span_cost: CostInfo[];
   min_span: number;
   /** Zero means "as tall as the tower". */
   max_span: number;
@@ -646,6 +702,10 @@ export interface ShaftInfo {
   /** Stock the shaft fetches per trip when nobody is riding it. */
   batch: number;
   cars: number;
+  /** Electrical transfer capacity between each crossed floor. */
+  power_capacity: number;
+  /** Shared smoke capacity; zero for non-flue shafts. */
+  exhaust_capacity: number;
 }
 
 export interface EnemyInfo {
@@ -654,6 +714,8 @@ export interface EnemyInfo {
   glyph: string;
   approach: EnemyApproach;
   night_only: boolean;
+  /** Materials carried by a unique resident; empty for ordinary creatures. */
+  drops: CostInfo[];
 }
 
 export interface DaypartInfo {
@@ -695,6 +757,8 @@ export interface RoomInfo {
   top_floor_only: boolean;
   /** Stands on the tower's leading edge, and nowhere else. */
   front_only: boolean;
+  /** Must touch a shaft column. */
+  shaft_adjacent: boolean;
   /** Charge drawn per tick while working. */
   power_draw: number;
   /** Makes charge from sunlight. */
@@ -704,6 +768,9 @@ export interface RoomInfo {
   burner_fuel: number | null;
   /** Charge capacity this room adds. */
   bank_capacity: number;
+  /** Charge per tick this room can give back. Capacity is how long; this
+   * is how hard (`SYSTEMS.md` §6.36). */
+  bank_discharge: number;
   /**
    * Shoots back, and what at. `null` for everything that does not.
    *
@@ -778,6 +845,10 @@ export interface WaypointInfo {
   provocation: number;
   /** Ground gained, or lost if negative. */
   paces: number;
+  /** Fixed once inside its authored region rather than scattered. */
+  landmark: boolean;
+  /** Catalog enemy roused by taking it, if any. */
+  resident: number | null;
 }
 
 export interface RegionInfo {
@@ -785,6 +856,8 @@ export interface RegionInfo {
   name: string;
   /** The name of the settlement in this region, if it has one. */
   enclave: EnclaveInfo | null;
+  /** Ground, canopy, burrow specialist pressure. */
+  approaches: [number, number, number];
 }
 
 /**
@@ -804,6 +877,8 @@ export interface BranchInfo {
   terrain: number[];
   /** Against the region it interrupts: 100 is as usual. */
   threat_pct: number;
+  /** Ground, canopy, burrow specialist pressure. */
+  approaches: [number, number, number];
 }
 
 // ---------------------------------------------------------------------------
@@ -829,8 +904,8 @@ export type GameCommand =
   | { SetStriding: { walking: boolean } }
   /** Take one of the enclave's posted offers, once. */
   | { Trade: { offer: number } }
-  /** Take somebody aboard, for poles. */
-  | "Recruit"
+  /** Choose candidate 0 or 1 from the enclave. */
+  | { Recruit: { candidate: number } }
   | "TakeWaypoint"
   | "WidenTower"
   /** Have the settlement plate the tower's shell, for scrap. */
@@ -845,12 +920,14 @@ export type GameCommand =
    * would leave the rest ranked by an accident of list position.
    */
   | { SetPowerPriority: { order: PowerUse[] } }
-  /** Every job exactly once, best first. Anything else is refused. */
-  | { SetWorkOrder: { order: string[] } }
+  /** Reserve one storeroom shelf for an item, or clear its reservation. */
+  | { SetShelfFilter: { room: number; shelf: number; item: string | null } }
+  /** Refit an empty, inactive room into another clear cell. */
+  | { RelocateRoom: { room: number; floor: number; slot: number } }
+  /** Extend an existing shaft upward. */
+  | { ExtendShaft: { shaft: number; high: number } }
   /** Put another car in a shaft that already exists. */
   | { AddCar: { shaft: number } }
-  /** Ask every emplacement to prefer one creature. `null` clears it. */
-  | { FocusEnemy: { enemy: number | null } }
   /**
    * Post somebody to a room, or call them back. `null` returns them to
    * hauling. A standing order about somebody's working day, the same
@@ -884,6 +961,54 @@ export interface ReplayReport {
   divergence: { tick: number; expected: string; actual: string } | null;
   message: string;
 }
+
+/** Transient output from one simulation frame. */
+export interface FrameEvents {
+  /** Payload-free punctuation consumed by the audio layer. */
+  sounds: SoundEvent[];
+  /** Spatial actions consumed by combat presentation. */
+  combat: CombatEvent[];
+}
+
+export interface CombatSource {
+  room_id: number;
+  /** Index into `catalog.rooms`; also the visual effect-family key. */
+  room_def: number;
+  floor: number;
+  slot: number;
+}
+
+export interface CombatTarget {
+  enemy_id: number;
+  /** Index into `catalog.enemies`. */
+  enemy_def: number;
+  /** World paces, on the same axis as `view.world.distance`. */
+  at: number;
+}
+
+export type CombatEffect =
+  | "thorn"
+  | "dart"
+  | "lantern"
+  | "root_ward"
+  | "tanglenet"
+  | "resonance"
+  | "cutter"
+  | "generic";
+
+export type CombatEvent =
+  | {
+      kind: "emplacement_fired";
+      effect: CombatEffect;
+      source: CombatSource;
+      target: CombatTarget;
+    }
+  | {
+      kind: "cutter_struck";
+      effect: "cutter";
+      source: CombatSource;
+      target: CombatTarget;
+    };
 
 export type SoundEvent =
   | "Harvest"

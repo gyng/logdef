@@ -36,9 +36,10 @@ ShaftDef(
     // when the chain has stopped. Six poles and a slot column on every
     // floor it spans is cost enough — and a tower that is not jammed
     // gains nothing at all from owning one.
-    build_cost: [CostEntryDef(item: "item.poles", amount: 6)],
-    // Reaches from anywhere down to the ground, so a spill gate is
-    // always at the bottom of it.
+    build_cost: [CostEntryDef(item: "item.poles", amount: 4)],
+    span_cost: [CostEntryDef(item: "item.poles", amount: 1)],
+    // Reaches from anywhere down to the ground, so the automatic
+    // overflow outlet is always at the bottom of it.
     min_span: 2,
     max_span: 14,
     // Nothing rides a chute and nothing queues for one. Kept at the
@@ -50,4 +51,5 @@ ShaftDef(
     charge_per_floor: 0,
     cars: 0,
     batch: 0,
+    power_capacity: 0,
 )

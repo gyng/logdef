@@ -60,6 +60,8 @@ pub mod stride;
 pub mod transport;
 
 use crate::content::Content;
+use crate::fx::Paces;
+use crate::ids::{EnemyId, EnemyIdx, FloorIdx, RoomId, RoomIdx, SlotIdx};
 use crate::state::GameState;
 
 /// Things that happened this tick, for the audio layer to voice. Sound
@@ -140,6 +142,41 @@ pub enum SoundEvent {
     EnemyLeaves,
 }
 
+/// A combat action the renderer can place truthfully in the world.
+///
+/// Unlike [`SoundEvent`], this carries presentation coordinates. It is
+/// transient output from a tick, never simulation state, and therefore
+/// never enters a replay or state hash. Fixed-point positions stay fixed
+/// here; the snapshot boundary converts them for JavaScript.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CombatEvent {
+    /// An ammo-fed emplacement fired and dealt its instantaneous hit.
+    EmplacementFired {
+        source: CombatSource,
+        target: CombatTarget,
+    },
+    /// A working cutter arm caught something clinging to its floor.
+    CutterStruck {
+        source: CombatSource,
+        target: CombatTarget,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CombatSource {
+    pub room_id: RoomId,
+    pub room_def: RoomIdx,
+    pub floor: FloorIdx,
+    pub slot: SlotIdx,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CombatTarget {
+    pub enemy_id: EnemyId,
+    pub enemy_def: EnemyIdx,
+    pub at: Paces,
+}
+
 /// Run exactly one simulation tick.
 /// Who is standing in which room, gathered once.
 ///
@@ -213,7 +250,12 @@ pub fn staffed(
     manned.iter().filter(|(id, _)| *id == room.id).count() >= need as usize
 }
 
-pub fn tick(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEvent>) {
+pub fn tick(
+    state: &mut GameState,
+    content: &Content,
+    sounds: &mut Vec<SoundEvent>,
+    combat: &mut Vec<CombatEvent>,
+) {
     let day = state.clock.day;
     state.clock.advance(content);
     if state.clock.day != day {
@@ -224,7 +266,7 @@ pub fn tick(state: &mut GameState, content: &Content, sounds: &mut Vec<SoundEven
     intake::run(state, content, sounds);
     production::run(state, content, sounds);
     siege::run(state, content, sounds);
-    defence::run(state, content, sounds);
+    defence::run(state, content, sounds, combat);
     needs::run(state, content, sounds);
     haul::run(state, content, sounds);
     repair::run(state, content, sounds);

@@ -315,6 +315,231 @@ fn every_room_that_moves_an_item_has_a_buffer_for_it() {
 }
 
 #[test]
+fn late_materials_have_more_than_one_reachable_reason_to_exist() {
+    // This is the economy-retention audit stated as pack structure. A
+    // garden should not be rung one of the opening and feed only the
+    // deepest specialist weapon; mechanisms should not exist merely to
+    // print an unlimited pile of identical personal kit.
+    let content = content();
+    let resin = item(&content, "item.resin_feedstock");
+    let mechanisms = item(&content, "item.mechanisms");
+
+    let cellwright = content
+        .room_idx("room.cellwright")
+        .expect("the pack defines a cellwright");
+    assert!(
+        content
+            .room_rt(cellwright)
+            .recipe_inputs
+            .iter()
+            .any(|(item, _, _)| *item == resin),
+        "charge cells no longer use the garden's insulating resin"
+    );
+
+    let bank = content
+        .room_idx("room.cell_bank")
+        .expect("the pack defines a cell bank");
+    assert!(
+        content
+            .room_rt(bank)
+            .build_cost
+            .iter()
+            .any(|(item, _)| *item == mechanisms),
+        "precision power infrastructure no longer consumes mechanisms"
+    );
+
+    assert!(
+        content.room_idx("room.kitbench").is_none(),
+        "the finite kit checklist returned as a permanent production room"
+    );
+}
+
+#[test]
+fn a_tower_without_a_working_arm_can_hand_gather_but_never_compete() {
+    let content = content();
+    let bamboo = item(&content, "item.bamboo");
+    let poles = item(&content, "item.poles");
+    let cutter = content
+        .room_idx("room.cutter_arm")
+        .expect("the pack defines a cutter arm");
+    let interval = content.balance.tower.emergency_bamboo_ticks;
+
+    let prepare = |game: &mut crate::engine::GameEngine, remove: bool| {
+        let state = game.state_mut_for_test();
+        state.walking = false;
+        state.strode = false;
+        state.paces_last = 0;
+        for crew in &mut state.crew {
+            if crew.carrying.is_some_and(|(item, _)| item == bamboo) {
+                crew.carrying = None;
+            }
+        }
+        let arm_at = state
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| floor.rooms.iter().map(move |room| (floor.index, room)))
+            .find(|(_, room)| room.def == cutter)
+            .map(|(floor, room)| (floor, room.slot))
+            .expect("the fixture has a cutter arm");
+        if remove {
+            state
+                .tower
+                .floor_mut(arm_at.0)
+                .expect("the arm floor exists")
+                .rooms
+                .retain(|room| room.def != cutter);
+        }
+        for room in state
+            .tower
+            .floors
+            .iter_mut()
+            .flat_map(|floor| &mut floor.rooms)
+        {
+            for stack in room.inputs.iter_mut().chain(&mut room.outputs) {
+                if stack.item == bamboo {
+                    stack.count = 0;
+                }
+            }
+            for shelf in &mut room.shelves {
+                // Empty founding stores as well: this fixture is the
+                // literal terminal case, with room for one gathered
+                // stalk and no spare poles silently mending the arm.
+                shelf.item = None;
+                shelf.count = 0;
+            }
+        }
+        arm_at
+    };
+
+    let mut broken = engine(221);
+    let arm_at = prepare(&mut broken, true);
+    let before = broken.state().stats.items_harvested;
+    broken.step(interval + 1);
+    assert_eq!(
+        crate::tests::total_in_flight(broken.state(), bamboo),
+        1,
+        "a terminal tower did not hand-gather one recovery stalk"
+    );
+    assert_eq!(broken.state().stats.items_harvested, before + 1);
+    broken.step(interval);
+    assert_eq!(
+        crate::tests::total_in_flight(broken.state(), bamboo),
+        1,
+        "hand gathering kept producing while a recovery stalk remained"
+    );
+
+    // Continue through the actual escape, not merely the appearance of
+    // one item. Recovery stalks go straight to the mill, its poles are
+    // hauled onto shelves, and those exact four poles must pay for a
+    // replacement arm. A fifth interval gives the final pole time to
+    // clear the outbox without making this fallback competitive.
+    let deadline = u64::from(interval) * 6;
+    while broken.state().tick < deadline && broken.state().stock_of(poles) < 4 {
+        broken.step(1);
+    }
+    assert!(
+        broken.state().stock_of(poles) >= 4,
+        "manual recovery never became four spendable poles by tick {deadline}; only {} reached stock",
+        broken.state().stock_of(poles)
+    );
+    broken
+        .try_send(crate::command::GameCommand::PlaceRoom {
+            room: "room.cutter_arm".into(),
+            floor: arm_at.0,
+            slot: arm_at.1,
+        })
+        .expect("the recovery poles should rebuild one cutter arm");
+    assert!(
+        broken
+            .state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| &floor.rooms)
+            .any(|room| room.def == cutter && !room.is_wrecked(&content)),
+        "the terminal tower did not return to normal bamboo intake"
+    );
+
+    let mut intact = engine(222);
+    prepare(&mut intact, false);
+    intact.step(interval + 1);
+    assert_eq!(
+        crate::tests::total_in_flight(intact.state(), bamboo),
+        0,
+        "manual gathering competed with an intact cutter arm"
+    );
+}
+
+#[test]
+fn a_finite_rope_order_stops_and_restarts_after_use() {
+    let content = content();
+    let ropery = content
+        .room_idx("room.ropery")
+        .expect("the pack defines a ropery");
+    let fiber = item(&content, "item.fiber");
+    let rope = item(&content, "item.rope");
+    let target = content
+        .room_rt(ropery)
+        .output_stock_target
+        .expect("rope carries an authored reserve")
+        .1;
+    let mut game = engine(223);
+    game.state_mut_for_test().crew.clear();
+    let id = game.state_mut_for_test().alloc_room_id();
+    let mut room = crate::state::tower::Room::new(id, ropery, 5, &content);
+    assert_eq!(room.inputs[0].item, fiber);
+    room.inputs[0].count = room.inputs[0].max;
+    game.state_mut_for_test()
+        .tower
+        .floor_mut(2)
+        .expect("fixture floor")
+        .rooms
+        .push(room);
+
+    game.step(500);
+    {
+        let room = game
+            .state_mut_for_test()
+            .tower
+            .floor_mut(2)
+            .expect("fixture floor")
+            .rooms
+            .iter_mut()
+            .find(|room| room.id == id)
+            .expect("placed ropery");
+        room.inputs[0].count = room.inputs[0].max;
+    }
+    game.step(500);
+    assert_eq!(
+        crate::tests::total_in_flight(game.state(), rope),
+        target,
+        "the rope order ran past its useful reserve"
+    );
+    game.step(500);
+    assert_eq!(crate::tests::total_in_flight(game.state(), rope), target);
+
+    {
+        let room = game
+            .state_mut_for_test()
+            .tower
+            .floor_mut(2)
+            .expect("fixture floor")
+            .rooms
+            .iter_mut()
+            .find(|room| room.id == id)
+            .expect("placed ropery");
+        assert_eq!(room.outputs[0].withdraw(1), 1);
+    }
+    game.step(121);
+    assert_eq!(
+        crate::tests::total_in_flight(game.state(), rope),
+        target,
+        "the rope order did not resume after a consumer drew it down"
+    );
+}
+
+#[test]
 fn a_room_with_a_zero_buffer_is_a_broken_pack() {
     // The rule has to *bite*, not merely hold today. A buffer of zero
     // does not fail loudly — the room simply never participates and the

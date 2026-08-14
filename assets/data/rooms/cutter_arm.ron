@@ -17,10 +17,10 @@ RoomDef(
     id: "room.cutter_arm",
     name: "Cutter Arm",
     short: "CUT",
-    // **Gated behind `room.garden`** — fed the tower before the tower fed itself. The opening
-    // ladder is farm, cutter arm, burner, and then the whole
-    // menu (`SYSTEMS.md` §6.11).
-    unlocked_by: "room.garden",
+    // The arm is the first machine the Heartseed can unfold. The
+    // Garden is now an optional sun/resin branch, not a five-pole toll
+    // paid before the tower is allowed to earn bamboo.
+    unlocked_by: "room.heartseed",
     category: Intake,
     width: 2,
     // **No floor cap, and removing it was the largest balance change in

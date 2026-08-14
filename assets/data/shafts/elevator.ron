@@ -14,30 +14,14 @@ ShaftDef(
     name: "Elevator",
     short: "ELV",
     kind: Elevator,
-    // **Twelve poles, not eighteen, and the reason is measured rather
-    // than felt.** `examples/lift.rs` plays a tower that buys the chain in
-    // order and never builds a shaft: its crew have accumulated a full
-    // crew-day of standing at a staircase by **tick 20,806 — about
-    // twelve minutes** — and the only shaft it can pay for in that
-    // window is a chute, which goes one way, downward, and carries
-    // nobody. At eighteen poles the lift was the *last* thing a tower
-    // could afford, and `record_golden.rs` needed 124,500 ticks of
-    // walking to bank one.
-    //
-    // That was the right price while a lift was worth +1% at five floors
-    // and was not chosen at all at eight or eleven. It is the wrong one
-    // now `climb_ticks_per_item` has made it worth +54% at five and
-    // +650% at fourteen: a thing the tower needs from minute twelve
-    // should not arrive at minute ninety. Still nearly twice a floor's
-    // own cost, so it is a decision rather than a default.
+    // **Two poles after the logistics expansion; rope remains the real
+    // gate.** The chain-first whole-run fixture reaches the Refugia with
+    // 47 rope but only one pole after spending 110 poles keeping the
+    // walking house repaired. At ten poles the lift vanished from the
+    // 31–36 minute run; at two it returns without bypassing the fiber →
+    // rope chain or the permanent full-height slot cost. This is a
+    // measured affordability correction, not a playtested final price.
     build_cost: [
-        // **Ten, down from twelve, because this is now the cheap rung
-        // as well as the dear one.** The dumbwaiter it absorbed cost 8
-        // poles and 3 rope and was what a tower bought first; a tower
-        // that has to save for the lift or have nothing is a tower with
-        // no answer at all for its first twelve minutes of queueing.
-        // Between the two prices, nearer the low one.
-        CostEntryDef(item: "item.poles", amount: 10),
         // **Rope, from M5 — and deliberately not mechanisms.**
         //
         // The spec (`SYSTEMS.md` §5.3) gated this behind mechanisms, and
@@ -57,7 +41,7 @@ ShaftDef(
         // still says "your route decides whether you can build this",
         // and what it now says is "you have to have walked ordinary
         // ground", which is a more interesting sentence than "you have
-        // to have gone to the ruins". Mechanisms keep the seed thrower,
+        // to have gone to the ruins". Mechanisms keep the seed scatterer,
         // which is a fair consumer for a tier-two item and does not have
         // to exist by minute twenty.
         // **Four, not six, because rope is the real gate and six of it
@@ -80,6 +64,10 @@ ShaftDef(
         // that no better than two and said it later.
         CostEntryDef(item: "item.rope", amount: 2),
     ],
+    // Frame and guide rail per crossed deck. A two-floor lift retains
+    // the old one-pole entry price; height now has an honest material
+    // cost instead of being free once the machinery exists.
+    span_cost: [CostEntryDef(item: "item.poles", amount: 1)],
     min_span: 2,
     // Unlimited — the elevator is chosen floors, not a fixed hop.
     max_span: 0,
@@ -115,10 +103,13 @@ ShaftDef(
     car_cost: [
         CostEntryDef(item: "item.poles", amount: 6),
         CostEntryDef(item: "item.rope", amount: 2),
+        CostEntryDef(item: "item.mechanisms", amount: 1),
     ],
     // Items moved per autonomous trip, inherited from the dumbwaiter
     // unchanged: a little more than one crew member's `carry_capacity`
     // of 3, so the lift beats a hauler on volume without making the
     // trip pointless.
     batch: 4,
+    // Useful machine trunk, but weaker than a dedicated riser.
+    power_capacity: 6,
 )

@@ -326,9 +326,14 @@ crates/
                                   #   first is what funds the repairs. Contains its own
                                   #   control: "mend first" is the shipped default
       watch.rs                    # do M6's wave verbs move the numbers? Focus does not
-                                  #   (<=1%, five policies, two tower shapes) and charge
-                                  #   priority does not either (five orders, identical to
-                                  #   the digit) — and in both cases the code says why.
+                                  #   (<=1%, five policies, two tower shapes) and the code
+                                  #   says why. Charge priority DID not either — seven
+                                  #   orders identical to the digit — until the rail
+                                  #   (SYSTEMS.md 6.36) gave a draw a way to be refused
+                                  #   that does not need the bank to be empty. It now
+                                  #   spreads paces 15% and crafts 38% on a short tower,
+                                  #   and still nothing on a comfortable one, which is the
+                                  #   comparison working rather than half of it failing.
                                   #   Carries the validity check worth copying: one policy
                                   #   reproduces the engine's own default and must match
                                   #   the control

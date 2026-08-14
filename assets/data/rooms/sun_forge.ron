@@ -22,7 +22,9 @@ RoomDef(
     // grows as the tower does. This is a fact about the tower, not the
     // player — the journal (§5.7) is the other kind of unlock and can
     // only filter a menu.
-    unlocked_by: "room.burner",
+    // A forge without a rig has no scrap to refine. Reveal the metal
+    // branch when the tower has actually committed to salvage.
+    unlocked_by: "room.salvage_rig",
     category: Production,
     width: 2,
     // A salvage rig's price. If you are buying one you are probably
@@ -34,6 +36,9 @@ RoomDef(
     // so a forge is something a tower runs in bursts and plans around
     // rather than leaves on.
     power_draw: 4,
+    // Hotter than a burner and deliberately large enough that one
+    // modest stack cannot carry two forges at once.
+    exhaust_draw: 3,
     recipe: RecipeDef(
         // Eight seconds a bar: visibly the slowest thing in the chain,
         // which is what a forge should look like.

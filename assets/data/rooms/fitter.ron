@@ -16,12 +16,17 @@ RoomDef(
     // grows as the tower does. This is a fact about the tower, not the
     // player — the journal (§5.7) is the other kind of unlock and can
     // only filter a menu.
-    unlocked_by: "room.burner",
+    // Precision manufacture belongs after the forge that supplies its
+    // alloy, not in the Burner's first post-opening menu.
+    unlocked_by: "room.sun_forge",
     category: Production,
     width: 2,
     build_cost: [
         CostEntryDef(item: "item.poles", amount: 6),
-        CostEntryDef(item: "item.rope", amount: 4),
+        // Two coils keep precision manufacture dependent on the rope
+        // branch without repeating the old whole-chain famine as a
+        // four-coil admission charge.
+        CostEntryDef(item: "item.rope", amount: 2),
     ],
     recipe: RecipeDef(
         craft_ticks: 300,

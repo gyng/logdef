@@ -8,9 +8,10 @@
 
 use crate::command::GameCommand;
 use crate::content::Approach;
-use crate::ids::{EnemyIdx, FloorIdx, ShaftId, SlotIdx};
+use crate::ids::{BranchIdx, EnemyIdx, FloorIdx, ShaftId, SlotIdx};
 use crate::state::CrewState;
-use crate::state::siege::{DamageTarget, EnemyState};
+use crate::state::siege::{DamageTarget, Enemy, EnemyControl, EnemyState};
+use crate::state::world::PendingFork;
 use crate::systems::SoundEvent;
 use crate::tests::{content, engine, item};
 
@@ -20,6 +21,49 @@ use crate::tests::{content, engine, item};
 fn provoke_fully(game: &mut crate::engine::GameEngine) {
     let max = content().balance.siege.provocation_max;
     game.state_mut_for_test().siege.provocation = max;
+}
+
+#[test]
+fn a_powered_tower_blocked_at_a_fork_does_not_shake_anything_off() {
+    let content = content();
+    let skitter = content
+        .enemy_idx("enemy.skitter")
+        .expect("a ground creature");
+    let mut game = engine(0xf04c);
+    let at = game.state().world.distance;
+    let branches = [BranchIdx(0), BranchIdx(1)];
+    {
+        let state = game.state_mut_for_test();
+        state.world.fork = Some(PendingFork {
+            at,
+            branches,
+            answer: None,
+        });
+        state.paces_last = 0;
+        state.strode = true; // powered intent left from the preceding tick
+        state.siege.next_wave_tick = u64::MAX;
+        state.siege.enemies.push(Enemy {
+            id: crate::ids::EnemyId(404),
+            def: skitter,
+            at,
+            hp: content.enemy(skitter).hp,
+            state: EnemyState::Attacking {
+                target: DamageTarget::Panel { floor: 0 },
+            },
+            attack_cooldown: u32::MAX,
+            cling_left: 10,
+            fade_left: 0,
+        });
+    }
+
+    game.step(1);
+    assert_eq!(game.state().paces_last, 0);
+    assert!(!game.state().strode);
+    assert_eq!(
+        game.state().siege.enemies[0].cling_left,
+        10,
+        "powered legs shed a creature without covering ground"
+    );
 }
 
 /// Wait until something has its teeth into the tower, and return which
@@ -211,6 +255,77 @@ fn staged_creature(
     }
 }
 
+/// **A gun on a dark circuit does not fire, and does not lose its dart.**
+///
+/// §6.39 moved what a starved switchboard costs an emplacement from the
+/// shot to the *reload*: a half-served gun comes round again more slowly.
+/// At zero service it does not come round at all — and the dart and the
+/// reload both survive, because nothing this game hands the player ever
+/// vanishes and ammunition burned into a brown-out would be exactly that.
+#[test]
+fn a_gun_on_a_dark_circuit_keeps_its_dart_and_its_reload() {
+    let content = content();
+    let darts = item(&content, "item.darts");
+
+    let mut game = engine(1043);
+    crate::harness::open_the_armoury(&mut game, "room.dart_battery");
+    crate::tests::stock_poles(&mut game, 20);
+    game.try_send(GameCommand::PlaceRoom {
+        room: "room.dart_battery".into(),
+        floor: 2,
+        slot: 9,
+    })
+    .expect("affordable");
+    game.try_send(GameCommand::SetStriding { walking: false })
+        .expect("always legal");
+    top_up(&mut game, darts);
+
+    let full = place_one_creature(&mut game, 5);
+    let loaded = rack_count(&game, darts);
+    assert!(
+        loaded > 0,
+        "the rack has to start full or this says nothing"
+    );
+
+    // Rank the guns last and take the tower's supply away, so the guns
+    // circuit is the one that goes dark.
+    game.try_send(GameCommand::SetPowerPriority {
+        order: vec![
+            crate::state::power::PowerUse::Lifts,
+            crate::state::power::PowerUse::Works,
+            crate::state::power::PowerUse::Lamps,
+            crate::state::power::PowerUse::Legs,
+            crate::state::power::PowerUse::Guns,
+        ],
+    })
+    .expect("a legal order");
+    {
+        let state = game.state_mut_for_test();
+        state.power.charge = 0;
+        for floor in &mut state.tower.floors {
+            for room in &mut floor.rooms {
+                if content.room(room.def).burner.is_some() {
+                    for stack in room.inputs.iter_mut() {
+                        stack.count = 0;
+                    }
+                }
+            }
+        }
+    }
+    game.step(1);
+
+    assert_eq!(
+        creature_hp(&game),
+        Some(full),
+        "a gun with no charge still managed to shoot"
+    );
+    assert_eq!(
+        rack_count(&game, darts),
+        loaded,
+        "a gun that could not fire spent its dart anyway"
+    );
+}
+
 #[test]
 fn a_battery_shoots_the_nearest_thing_first() {
     // With a wave strung out along the approach, which one a battery
@@ -292,8 +407,8 @@ fn equally_hurt_things_are_mended_nearest_first() {
         // Identical wounds, one right where the crew member is
         // standing and one at the top of the tower.
         let top = state.tower.top_floor();
-        state.tower.floor_mut(0).expect("ground floor").panel.hp -= 100;
-        state.tower.floor_mut(top).expect("top floor").panel.hp -= 100;
+        state.tower.floor_mut(0).expect("ground floor").panel.hp = 0;
+        state.tower.floor_mut(top).expect("top floor").panel.hp = 0;
         let member = state.crew.first_mut().expect("one crew member");
         member.state = crate::state::CrewState::Idle;
     }
@@ -333,21 +448,21 @@ fn the_repair_bill_is_what_the_repairs_actually_cost() {
 
     // A quiet tower with one known wound, so the bill has exactly one
     // thing in it and repair is not racing fresh damage.
-    let hurt_by = 100;
     {
         let state = game.state_mut_for_test();
         state.siege.provocation = 0;
         state.siege.enemies.clear();
         state.siege.next_wave_tick = u64::MAX;
         let floor = state.tower.floor_mut(0).expect("ground floor");
-        floor.panel.hp -= hurt_by;
+        floor.panel.hp = 0;
     }
 
     let bill = crate::systems::repair::outstanding_repair_cost(game.state(), &content);
     assert_eq!(
         bill,
-        hurt_by * content.balance.siege.repair_poles_per_10_hp / 10,
-        "the bill is not the damage priced at the going rate"
+        content.balance.siege.repair_hp_per_shift * content.balance.siege.repair_poles_per_10_hp
+            / 10,
+        "the bill is not the one emergency shift the crew will perform"
     );
 
     // Now let the crew settle it, and see the two figures agree.
@@ -390,7 +505,7 @@ fn crew_go_to_the_worst_damage_first() {
         // Two wounds on the same floor, so distance cannot be the
         // reason for the choice — only how bad they are.
         state.tower.floor_mut(0).expect("ground floor").panel.hp -= 20;
-        state.tower.floor_mut(1).expect("first floor").panel.hp -= 120;
+        state.tower.floor_mut(1).expect("first floor").panel.hp = 0;
     }
 
     let mut went_to = None;
@@ -1744,6 +1859,42 @@ fn a_dry_battery_is_as_quiet_as_a_starved_mill() {
         slot: 9,
     })
     .expect("affordable");
+    // The armoury helper has to build the supplying room to unlock the
+    // battery. Wreck it after construction and remove any darts it made
+    // while the command fixture was being assembled, so this remains a
+    // true no-supply case rather than a timing-dependent one.
+    let thornwright = game
+        .content()
+        .room_idx("room.thornwright")
+        .expect("the pack has a thornwright");
+    let darts = crate::tests::item(game.content(), "item.darts");
+    for floor in &mut game.state_mut_for_test().tower.floors {
+        floor.rooms.retain(|room| room.def != thornwright);
+        for room in &mut floor.rooms {
+            for stack in room.inputs.iter_mut().chain(&mut room.outputs) {
+                if stack.item == darts {
+                    stack.count = 0;
+                }
+            }
+            for shelf in &mut room.shelves {
+                if shelf.item == Some(darts) {
+                    shelf.item = None;
+                    shelf.count = 0;
+                }
+            }
+        }
+    }
+    for crew in &mut game.state_mut_for_test().crew {
+        if crew.carrying.is_some_and(|(item, _)| item == darts) {
+            crew.carrying = None;
+            crew.task = None;
+        }
+    }
+    for shaft in &mut game.state_mut_for_test().tower.shafts {
+        for car in &mut shaft.cars {
+            car.freight.retain(|stack| stack.item != darts);
+        }
+    }
     provoke_fully(&mut game);
 
     // No thornwright, so no darts are ever made and the magazine can
@@ -1796,7 +1947,7 @@ fn crew_mend_what_is_broken_and_it_costs_poles() {
     {
         let state = game.state_mut_for_test();
         if let Some(floor) = state.tower.floor_mut(0) {
-            floor.panel.hp = floor.panel.max / 4;
+            floor.panel.hp = 0;
         }
     }
     let poles_before = game.state().stock_of(poles);
@@ -2175,13 +2326,9 @@ fn something_holding_a_leg_slows_the_tower_down() {
     );
 }
 
-/// **A focused creature is shot before a nearer one.**
-///
-/// The whole of the feature: `defence.rs` picks the nearest thing in
-/// range because a battery has no judgement of its own, and this is the
-/// player supplying theirs live instead.
+/// An emplacement shoots the nearest creature it can answer.
 #[test]
-fn an_emplacement_prefers_the_creature_the_player_named() {
+fn an_emplacement_uses_its_own_nearest_target() {
     use crate::state::siege::{Enemy, EnemyState};
     let mut game = engine(9001);
     crate::tests::stock_poles(&mut game, 40);
@@ -2233,12 +2380,6 @@ fn an_emplacement_prefers_the_creature_the_player_named() {
         }
     }
 
-    // Name the *farther* one, which nearest-first would never pick.
-    game.try_send(GameCommand::FocusEnemy {
-        enemy: Some(crate::ids::EnemyId(102)),
-    })
-    .expect("102 is out there");
-
     let hp_of = |game: &crate::engine::GameEngine, id: u32| -> i64 {
         game.state()
             .siege
@@ -2248,66 +2389,63 @@ fn an_emplacement_prefers_the_creature_the_player_named() {
             .map_or(0, |enemy| enemy.hp)
     };
     let before = (hp_of(&game, 101), hp_of(&game, 102));
+    let tower_at_when_fired = game.view().world.distance;
     // Long enough for several volleys, short enough that neither
     // creature can die and hand the battery a new nearest target.
-    game.step(300);
+    let frame = game.step_events(300);
     let after = (hp_of(&game, 101), hp_of(&game, 102));
 
     assert!(
-        after.1 < before.1,
-        "the named creature was never shot: {before:?} then {after:?}"
+        after.0 < before.0,
+        "the nearest creature was never shot: {before:?} then {after:?}"
     );
     assert_eq!(
-        after.0, before.0,
-        "the nearer creature was shot anyway, so the focus did nothing"
+        after.1, before.1,
+        "the farther creature was shot before the nearer one"
     );
-}
 
-/// A focus that dies is cleared, so the mark never points at nothing.
-#[test]
-fn a_focus_is_dropped_when_its_creature_goes() {
-    use crate::state::siege::{Enemy, EnemyState};
-    let mut game = engine(9002);
-    let at = game.state().world.distance;
-    {
-        let state = game.state_mut_for_test();
-        state.siege.enemies.push(Enemy {
-            id: crate::ids::EnemyId(77),
-            def: crate::ids::EnemyIdx(0),
-            at,
-            hp: 1,
-            state: EnemyState::Leaving,
-            attack_cooldown: 0,
-            cling_left: 0,
-            fade_left: 1,
-        });
-    }
-    game.try_send(GameCommand::FocusEnemy {
-        enemy: Some(crate::ids::EnemyId(77)),
-    })
-    .expect("77 is out there");
-    game.step(120);
-    assert!(
-        game.state().siege.focus.is_none(),
-        "the focus outlived the creature it named"
-    );
-}
-
-/// Focusing something that is not out there is refused, and changes
-/// nothing.
-#[test]
-fn focusing_a_creature_that_is_not_there_is_refused() {
-    let mut game = engine(9003);
-    let err = game
-        .try_send(GameCommand::FocusEnemy {
-            enemy: Some(crate::ids::EnemyId(4242)),
+    let dart = game
+        .content()
+        .room_idx("room.dart_battery")
+        .expect("the pack defines a dart battery");
+    let fired = frame
+        .combat
+        .iter()
+        .find_map(|event| match event {
+            crate::snapshot::CombatEventView::EmplacementFired {
+                effect,
+                source,
+                target,
+            } if target.enemy_id == 101 => Some((effect, source, target)),
+            _ => None,
         })
-        .expect_err("nothing with that id is out there");
-    assert!(matches!(
-        err,
-        crate::command::CommandError::NoSuchEnemy { .. }
-    ));
-    assert!(game.state().siege.focus.is_none());
+        .expect("the nearest shot crossed the presentation boundary");
+    assert_eq!(*fired.0, crate::snapshot::CombatEffect::Dart);
+    assert_eq!(fired.1.room_def, dart.0);
+    assert_eq!((fired.1.floor, fired.1.slot), (2, 9));
+    assert!(fired.1.room_id > 0, "the shooter lost its instance id");
+    assert_eq!(fired.2.enemy_def, 0);
+    assert!(
+        fired.2.at > tower_at_when_fired,
+        "the target position did not stay on the world axis"
+    );
+    assert!(
+        frame.sounds.contains(&SoundEvent::Shot),
+        "adding spatial events changed the payload-free audio cue"
+    );
+    let json = serde_json::to_value(&frame).expect("frame events must cross as JSON");
+    let event = json["combat"]
+        .as_array()
+        .and_then(|events| {
+            events
+                .iter()
+                .find(|event| event["target"]["enemy_id"] == 101)
+        })
+        .expect("the nearest shot must be present in the JSON envelope");
+    assert_eq!(event["kind"], "emplacement_fired");
+    assert_eq!(event["effect"], "dart");
+    assert_eq!(event["source"]["floor"], 2);
+    assert_eq!(event["source"]["slot"], 9);
 }
 
 /// **Somebody standing in the room sends a thief away, and nobody
@@ -2418,17 +2556,11 @@ fn a_weapon_only_goes_on_the_leading_edge() {
     let mut game = crate::tests::opening(31);
     crate::tests::stock_item(&mut game, "item.poles", 60);
     game.try_send(GameCommand::PlaceRoom {
-        room: "room.garden".into(),
-        floor: 1,
-        slot: 3,
-    })
-    .expect("the farm opens the cutter arm");
-    game.try_send(GameCommand::PlaceRoom {
         room: "room.cutter_arm".into(),
         floor: 1,
         slot: slots - 2,
     })
-    .expect("two wide, so the front is two back from the edge");
+    .expect("the Heartseed opens the two-wide arm at the front");
 }
 
 #[test]
@@ -2599,7 +2731,7 @@ fn ordinary_creatures_leave_nothing() {
 
 /// Put a weapon on the leading edge of a floor and load its rack.
 fn arm(game: &mut crate::engine::GameEngine, room: &str, floor: u8) {
-    let (width, ammo, rack) = {
+    let (width, ammo, rack, shaft_adjacent) = {
         let content = game.content();
         let idx = content
             .room_idx(room)
@@ -2613,6 +2745,7 @@ fn arm(game: &mut crate::engine::GameEngine, room: &str, floor: u8) {
             content.room(idx).width,
             defence.ammo.clone(),
             defence.buffer_max,
+            content.room(idx).shaft_adjacent,
         )
     };
     crate::harness::open_the_armoury(game, room);
@@ -2630,10 +2763,21 @@ fn arm(game: &mut crate::engine::GameEngine, room: &str, floor: u8) {
         crate::tests::stock_item(game, &item, n * 2);
     }
     let slots = game.state().tower.floors[floor as usize].slots;
+    if shaft_adjacent {
+        crate::tests::stock_for_shaft(game, "shaft.busbar", 1);
+        game.try_send(GameCommand::BuildShaft {
+            shaft: "shaft.busbar".into(),
+            low: 0,
+            high: floor,
+            slot: 7,
+        })
+        .expect("a root ward test can build its circulation column");
+    }
+    let slot = if shaft_adjacent { 6 } else { slots - width };
     game.try_send(GameCommand::PlaceRoom {
         room: room.into(),
         floor,
-        slot: slots - width,
+        slot,
     })
     .unwrap_or_else(|err| panic!("could not arm {room} on floor {floor}: {err}"));
 
@@ -2670,7 +2814,12 @@ fn a_mast_looks_up_and_a_ward_looks_down() {
         let mut game = engine(1900);
         crate::tests::disarm(&mut game);
         hold_the_repairs_off(&mut game);
-        arm(&mut game, weapon, 3);
+        let floor = if weapon == "room.lantern_mast" {
+            game.state().tower.top_floor()
+        } else {
+            1
+        };
+        arm(&mut game, weapon, floor);
         let hp = place_creature(&mut game, creature, 20);
         game.step(1200);
         game.state()
@@ -2691,6 +2840,65 @@ fn a_mast_looks_up_and_a_ward_looks_down() {
     assert!(
         survives("room.root_ward", leaper),
         "a ward shot at something in the trees"
+    );
+}
+
+#[test]
+fn directional_defences_pay_for_their_physical_view() {
+    let mut game = engine(1909);
+    for room in ["room.lantern_mast", "room.root_ward"] {
+        crate::harness::open_the_armoury(&mut game, room);
+        crate::tests::stock_for(&mut game, room, 1);
+    }
+    let mast = game.try_send(GameCommand::PlaceRoom {
+        room: "room.lantern_mast".into(),
+        floor: 3,
+        slot: 8,
+    });
+    assert!(
+        matches!(
+            mast,
+            Err(crate::command::CommandError::FloorTooLow { min_floor: 4, .. })
+        ),
+        "a mast below the roof was accepted: {mast:?}"
+    );
+    let ward = game.try_send(GameCommand::PlaceRoom {
+        room: "room.root_ward".into(),
+        floor: 1,
+        slot: 6,
+    });
+    assert!(
+        matches!(
+            ward,
+            Err(crate::command::CommandError::NotShaftAdjacent { .. })
+        ),
+        "a root ward away from circulation was accepted: {ward:?}"
+    );
+}
+
+#[test]
+fn building_over_a_mast_takes_away_its_sky() {
+    let content = content();
+    let leaper = content
+        .enemy_idx("enemy.canopy_leaper")
+        .expect("a canopy creature");
+    let mut game = engine(1914);
+    crate::tests::disarm(&mut game);
+    hold_the_repairs_off(&mut game);
+    let roof = game.state().tower.top_floor();
+    arm(&mut game, "room.lantern_mast", roof);
+    crate::tests::stock_poles(&mut game, 12);
+    game.try_send(GameCommand::BuildFloor)
+        .expect("the mast can be built over");
+    place_creature(&mut game, leaper, 10);
+    game.step(300);
+    assert!(
+        game.state()
+            .siege
+            .enemies
+            .iter()
+            .any(|enemy| { enemy.id.0 == 9001 && !matches!(enemy.state, EnemyState::Leaving) }),
+        "a mast below the new roof still repelled the canopy"
     );
 }
 
@@ -2729,6 +2937,194 @@ fn a_tanglenet_eats_rope() {
         held(&game) < before,
         "a tanglenet fired without spending any rope: {before} then {}",
         held(&game)
+    );
+}
+
+#[test]
+fn a_tanglenet_holds_the_crowd_before_refreshing_one_creature() {
+    let content = content();
+    let skitter = content.enemy_idx("enemy.skitter").expect("a ground pest");
+    let hp = content.enemy(skitter).hp;
+    let mut game = engine(0x7a6e);
+    crate::tests::disarm(&mut game);
+    hold_the_repairs_off(&mut game);
+    arm(&mut game, "room.tanglenet", 3);
+    let tower = game.state().world.distance;
+    {
+        let state = game.state_mut_for_test();
+        state.siege.enemies.clear();
+        for (id, ahead) in [(7001, 4), (7002, 6)] {
+            state.siege.enemies.push(Enemy {
+                id: crate::ids::EnemyId(id),
+                def: skitter,
+                at: tower + crate::fx::paces_from_int(ahead),
+                hp,
+                state: EnemyState::Approaching,
+                attack_cooldown: 0,
+                cling_left: u32::MAX,
+                fade_left: 0,
+            });
+        }
+        state.siege.controls.push(EnemyControl {
+            enemy: crate::ids::EnemyId(7001),
+            ticks_left: 100,
+            speed_pct: 0,
+        });
+        state.siege.next_wave_tick = u64::MAX;
+    }
+
+    game.step(1);
+    assert!(
+        game.state()
+            .siege
+            .controls
+            .iter()
+            .any(|control| control.enemy == crate::ids::EnemyId(7002)),
+        "the net spent another rope refreshing the nearest held creature"
+    );
+}
+
+#[test]
+fn a_tanglenet_holds_ground_creatures_instead_of_being_a_small_dart() {
+    let content = content();
+    let skitter = content.enemy_idx("enemy.skitter").expect("a ground pest");
+    let mut game = engine(1910);
+    crate::tests::disarm(&mut game);
+    hold_the_repairs_off(&mut game);
+    arm(&mut game, "room.tanglenet", 3);
+    let hp = place_creature(&mut game, skitter, 10);
+    game.step(1);
+    let held_gap = game.state().siege.enemies[0].at - game.state().world.distance;
+    assert!(
+        game.state().siege.enemies[0].hp < hp,
+        "the net never landed"
+    );
+    assert!(
+        game.state()
+            .siege
+            .controls
+            .iter()
+            .any(|control| control.enemy.0 == 9001),
+        "the net dealt damage but applied no restraint"
+    );
+    game.step(30);
+    let held = game
+        .state()
+        .siege
+        .enemies
+        .iter()
+        .find(|enemy| enemy.id.0 == 9001)
+        .expect("the net should hold rather than kill this creature in the window");
+    assert_eq!(
+        held.at - game.state().world.distance,
+        held_gap,
+        "the anchored creature kept closing on the tower"
+    );
+}
+
+#[test]
+fn resonance_is_a_pulse_across_a_cluster() {
+    let content = content();
+    let skitter = content.enemy_idx("enemy.skitter").expect("a ground pest");
+    let hp = content.enemy(skitter).hp;
+    let mut game = engine(1911);
+    crate::tests::disarm(&mut game);
+    hold_the_repairs_off(&mut game);
+    arm(&mut game, "room.resonance_array", 3);
+    let tower = game.state().world.distance;
+    let state = game.state_mut_for_test();
+    state.siege.enemies.clear();
+    for (id, ahead) in [(9101, 10), (9102, 18)] {
+        state.siege.enemies.push(Enemy {
+            id: crate::ids::EnemyId(id),
+            def: skitter,
+            at: tower + crate::fx::paces_from_int(ahead),
+            hp,
+            state: EnemyState::Approaching,
+            attack_cooldown: 0,
+            cling_left: u32::MAX,
+            fade_left: 0,
+        });
+    }
+    game.step(1);
+    assert!(
+        game.state().siege.enemies.iter().all(|enemy| enemy.hp < hp),
+        "the resonance array reduced its pulse to one direct target"
+    );
+    assert_eq!(
+        game.state().siege.controls.len(),
+        2,
+        "the pulse did not stagger the cluster"
+    );
+}
+
+#[test]
+fn darts_leave_burrowers_to_the_root_ward() {
+    let content = content();
+    let borer = content.enemy_idx("enemy.root_borer").expect("a burrower");
+    let mut game = engine(1912);
+    crate::tests::disarm(&mut game);
+    hold_the_repairs_off(&mut game);
+    arm(&mut game, "room.dart_battery", 3);
+    let hp = place_creature(&mut game, borer, 20);
+    game.step(300);
+    assert_eq!(
+        game.state().siege.enemies[0].hp,
+        hp,
+        "a dart battery answered the legs"
+    );
+
+    let mut ward = engine(1913);
+    crate::tests::disarm(&mut ward);
+    hold_the_repairs_off(&mut ward);
+    arm(&mut ward, "room.root_ward", 1);
+    let hp = place_creature(&mut ward, borer, 0);
+    ward.step(1);
+    let enemy = &ward.state().siege.enemies[0];
+    assert!(
+        enemy.hp < hp,
+        "the root ward did not strike a burrower at the shaft"
+    );
+    assert!(
+        matches!(enemy.state, EnemyState::Approaching),
+        "the ward did not interrupt the bite"
+    );
+    assert!(
+        ward.state()
+            .siege
+            .controls
+            .iter()
+            .any(|control| control.enemy == enemy.id)
+    );
+}
+
+#[test]
+fn emplacement_roles_are_an_approach_matrix_not_a_damage_ladder() {
+    let content = content();
+    let targets = |id: &str| {
+        let room = content.room_idx(id).expect("the emplacement exists");
+        content
+            .room(room)
+            .defence
+            .as_ref()
+            .expect("the room is an emplacement")
+            .targets
+            .clone()
+    };
+    assert_eq!(
+        targets("room.dart_battery"),
+        [Approach::Ground, Approach::Canopy]
+    );
+    assert_eq!(targets("room.tanglenet"), [Approach::Ground]);
+    assert_eq!(
+        targets("room.resonance_array"),
+        [Approach::Ground, Approach::Canopy]
+    );
+    assert_eq!(targets("room.lantern_mast"), [Approach::Canopy]);
+    assert_eq!(targets("room.root_ward"), [Approach::Burrow]);
+    assert_eq!(
+        targets("room.thorn_gun"),
+        [Approach::Ground, Approach::Canopy]
     );
 }
 

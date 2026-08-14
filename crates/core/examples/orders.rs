@@ -1,3 +1,6 @@
+//! Maintenance-doctrine instrument, plus the historical work-order measurement that caused
+//! the old configurable ordering API to be removed.
+//!
 //! Two questions about mending, both raised by played runs.
 //!
 //! **Is the mending backlog a spiral?** No. It peaks on day one at 15-32
@@ -5,7 +8,7 @@
 //! by day two on every seed. A dogfood tower reading 13 outstanding on
 //! day two was the tail of that peak, not a tower losing ground.
 //!
-//! **Does the work order help?** No, and moving `Mend` down makes the
+//! **Did the former work order help?** No, and moving `Mend` down made the
 //! tower mend *more*. Both sections below.
 //!
 //! Does the work order move the numbers?
@@ -54,21 +57,17 @@
 use understory_core::GameEngine;
 use understory_core::command::GameCommand;
 use understory_core::harness;
-use understory_core::state::Job;
-
-fn run(order: &[Job], label: &str, seeds: &[u64]) {
+fn run(seeds: &[u64]) {
     let mut poles = 0i64;
     let mut hauls = 0u64;
     let mut mended = 0u64;
     let mut spent = 0u64;
+    let mut crafts = 0u64;
+    let mut wrecked = 0u64;
     let mut whole = 0i64;
     for &seed in seeds {
         let mut game = GameEngine::new(seed);
         harness::chain_tower(&mut game, 5);
-        game.try_send(GameCommand::SetWorkOrder {
-            order: order.to_vec(),
-        })
-        .expect("a permutation of every job is a legal work order");
         for _ in 0..60_000 {
             game.step(1);
             let _ = game.try_send(GameCommand::TakeFork { branch: 0 });
@@ -80,13 +79,25 @@ fn run(order: &[Job], label: &str, seeds: &[u64]) {
         hauls += s.hauls_completed;
         mended += s.hp_repaired;
         spent += s.repair_poles_spent;
+        crafts += s.crafts_completed;
+        wrecked += game
+            .state()
+            .tower
+            .floors
+            .iter()
+            .flat_map(|floor| &floor.rooms)
+            .filter(|room| room.is_wrecked(content))
+            .count() as u64;
         whole += game.view().siege.integrity_permille;
     }
     let n = seeds.len() as i64;
     println!(
-        "  {label:<14} poles {:>4}  hauls {:>5}  hp mended {:>5}  poles spent {:>4}  whole {:>3}%",
+        "  {:<14} poles {:>4}  hauls {:>5}  crafts {:>4}  wrecks {:>2}  hp mended {:>5}  poles spent {:>4}  whole {:>3}%",
+        "automatic",
         poles / n,
         hauls / seeds.len() as u64,
+        crafts / seeds.len() as u64,
+        wrecked / seeds.len() as u64,
         mended / seeds.len() as u64,
         spent / seeds.len() as u64,
         whole / n / 10,
@@ -96,21 +107,13 @@ fn run(order: &[Job], label: &str, seeds: &[u64]) {
 fn main() {
     let seeds = [4242u64, 7, 101, 2718, 31337];
     println!(
-        "Does demoting Mend below Haul help a poor tower? {} seeds, 60k ticks",
+        "What does automatic recovery cost a poor tower? {} seeds, 60k ticks",
         seeds.len()
     );
-    run(&Job::ALL, "default", &seeds);
+    println!("  Historical comparison removed from play: Restore spent 90 poles, made 45 crafts");
+    println!("  and prevented no wrecks; emergency recovery spent 42 and made 59.");
+    run(&seeds);
     backlog(&seeds);
-    run(
-        &[Job::Answer, Job::Man, Job::Haul, Job::Mend],
-        "mend last",
-        &seeds,
-    );
-    run(
-        &[Job::Mend, Job::Answer, Job::Man, Job::Haul],
-        "mend first",
-        &seeds,
-    );
 }
 
 /// Does the mending backlog clear, or does it only ever grow?
@@ -118,10 +121,9 @@ fn main() {
 /// **The question came from a played run.** A dogfood tower reached day
 /// two at *zero poles* with thirteen poles of mending outstanding, on a
 /// tower 98% whole and barely provoked (attention 79 of 1000). Mending
-/// and building draw on the same pole, mending outranks hauling, and
-/// `orders.rs`'s first section shows the player cannot reorder their way
-/// out — so if the backlog grows monotonically the tower is in a slow
-/// death spiral it has no verb against.
+/// and building draw on the same pole. The two postures above are the
+/// player's deliberate answer: preserve only broken systems, or spend
+/// toward full restoration.
 ///
 /// Sampled every whole day rather than at the end, because a backlog
 /// that ends at thirteen could have been at thirty and clearing, or at
@@ -182,8 +184,8 @@ fn backlog(seeds: &[u64]) {
     println!();
     if grew == seeds.len() {
         println!("  **THE BACKLOG GROWS ON EVERY SEED.** Mending outranks hauling and the work");
-        println!("  order cannot demote it usefully (above), so a tower under even light");
-        println!("  harassment has no verb against this. That is a design problem, not a tuning");
+        println!("  emergency posture cannot arrest it, so a tower under even light harassment");
+        println!("  has no effective verb against this. That is a design problem, not a tuning");
         println!("  one.");
     } else {
         println!(

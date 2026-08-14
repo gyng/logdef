@@ -6,7 +6,7 @@
 //! scheduling problem, and neither is allowed to make the bottleneck
 //! instrument lie.
 
-use crate::command::{CommandError, GameCommand};
+use crate::command::GameCommand;
 use crate::ids::CrewId;
 use crate::state::{CrewState, Errand};
 use crate::tests::{content, engine, item};
@@ -276,6 +276,14 @@ fn nothing_wakes_a_sleeper_by_itself() {
         let state = game.state_mut_for_test();
         for floor in &mut state.tower.floors {
             floor.panel.hp = 1;
+        }
+        // Keep the promised observation window inside this sleep. The
+        // deterministic opening may catch a deck sleeper at the end of
+        // the maximum night; that is waking by time, not by attack.
+        for member in &mut state.crew {
+            if asleep.contains(&member.id) {
+                member.slept = 0;
+            }
         }
     }
     game.step(120);
@@ -888,25 +896,19 @@ fn a_practised_crew_gets_more_done() {
 }
 
 #[test]
-fn the_work_order_decides_what_an_idle_person_starts() {
-    // A tower with damage *and* a haul available. Under the default
-    // order somebody goes to mend; put hauling first and the same tower
-    // on the same tick leaves the wall alone.
-    use crate::state::{CrewState, Job};
+fn automatic_maintenance_restores_failures_without_chasing_wounds() {
+    use crate::state::CrewState;
 
-    let mends_under = |order: Vec<Job>| {
+    let mends_at = |hp: i64| {
         let mut game = engine(1703);
-        game.try_send(GameCommand::SetWorkOrder { order })
-            .expect("a full permutation");
-        // Break every panel, so a mend is always the nearest thing to do.
         {
             let state = game.state_mut_for_test();
             for floor in &mut state.tower.floors {
-                floor.panel.hp = 1;
+                floor.panel.hp = hp;
             }
         }
         crate::tests::stock_poles(&mut game, 200);
-        game.step(900);
+        game.step(2);
         game.state()
             .crew
             .iter()
@@ -917,58 +919,16 @@ fn the_work_order_decides_what_an_idle_person_starts() {
             .count()
     };
 
-    let by_default = mends_under(Job::ALL.to_vec());
-    let hauling_first = mends_under(vec![Job::Answer, Job::Haul, Job::Mend, Job::Man]);
-
-    assert!(
-        by_default > 0,
-        "nobody mended a tower with every panel at one hit point"
-    );
-    assert!(
-        hauling_first < by_default,
-        "putting hauling first changed nothing: {hauling_first} mending against {by_default}"
-    );
+    assert_eq!(mends_at(30), 0);
+    assert_eq!(mends_at(100), 0);
+    assert!(mends_at(0) > 0);
 }
 
 #[test]
-fn a_work_order_with_a_job_missing_is_refused() {
-    // A list with a job left out is a list that has quietly made that
-    // job unreachable — nobody would ever mend again and nothing would
-    // say so.
-    use crate::state::Job;
-    let mut game = engine(1704);
-    let before = game.state().work.clone();
-
-    for bad in [
-        vec![Job::Haul, Job::Mend, Job::Man],
-        vec![Job::Haul, Job::Haul, Job::Mend, Job::Man],
-        Vec::new(),
-    ] {
-        let err = game
-            .try_send(GameCommand::SetWorkOrder { order: bad })
-            .expect_err("not a permutation");
-        assert!(matches!(err, CommandError::NotAWorkOrder), "{err:?}");
-    }
-    assert_eq!(
-        game.state().work,
-        before,
-        "a refused order changed the tower"
-    );
-}
-
-#[test]
-fn no_work_order_lets_anybody_skip_dinner() {
-    // **Needs are not jobs and are not offered as settings.** Whatever
-    // the player ranks first, a hungry crew member still goes and eats
-    // — a game that let you turn that off would be offering a mistake
-    // as a strategy.
-    use crate::state::{CrewState, Job};
+fn automatic_maintenance_does_not_let_anybody_skip_dinner() {
+    use crate::state::CrewState;
     let content = content();
     let mut game = engine(1705);
-    game.try_send(GameCommand::SetWorkOrder {
-        order: vec![Job::Haul, Job::Man, Job::Mend, Job::Answer],
-    })
-    .expect("a full permutation");
 
     // Something to eat. The fixture has no canteen, and a shelf with
     // meals on it is a meal as far as `find_meal` is concerned — which
@@ -991,7 +951,7 @@ fn no_work_order_lets_anybody_skip_dinner() {
                 .crew
                 .iter()
                 .any(|member| matches!(member.state, CrewState::Eating { .. })),
-        "everybody worked through dinner because hauling was ranked first"
+        "automatic maintenance let everybody work through dinner"
     );
 }
 
@@ -1108,24 +1068,16 @@ fn a_big_appetite_eats_sooner() {
 }
 
 #[test]
-fn somebody_who_sleeps_rough_well_frees_a_bed() {
-    // The rota is the system traits exist to make interesting. A
-    // nocturnal crew member rests on bare deck about as well as most
-    // people do in a bunk, so the tower gets a bed back.
+fn somebody_out_of_phase_can_sleep_rough_and_free_a_bed() {
     let content = content();
-    let nocturnal = content
+    let nightborn = content
         .traits
         .iter()
-        .find(|def| def.id == "trait.nocturnal")
-        .expect("the pack defines a nocturnal");
-    let light = content
-        .traits
-        .iter()
-        .find(|def| def.id == "trait.light_sleeper")
-        .expect("the pack defines a light sleeper");
+        .find(|def| def.id == "trait.nightborn")
+        .expect("the pack defines nightborn");
     assert!(
-        nocturnal.deck_rest_pct > 100 && light.deck_rest_pct < 100,
-        "the two sleep traits should point in opposite directions"
+        nightborn.starts_out_of_phase && nightborn.deck_rest_pct > 100,
+        "the phase trait should make rough sleep viable"
     );
 }
 
@@ -1168,33 +1120,12 @@ fn a_trait_that_says_it_is_practised_arrives_practised() {
 }
 
 #[test]
-fn the_pack_has_a_lot_of_traits_and_a_rare_tail() {
-    // **Rarity is the whole reason there are forty.** A pack where
-    // every trait is equally likely has no rare ones by definition, and
-    // somebody merely *unusual* is worth more than somebody strong: the
-    // common ones are quirks you plan around and the rare ones are why
-    // you remember a particular run's roster.
+fn the_pack_is_a_small_readable_set_of_traits() {
     let content = content();
-    assert!(
-        content.traits.len() >= 30,
-        "only {} traits; the point of them is that a run shows you a few of many",
-        content.traits.len()
-    );
-    let heaviest = content
-        .traits
-        .iter()
-        .map(|def| def.weight)
-        .max()
-        .unwrap_or(0);
-    let lightest = content
-        .traits
-        .iter()
-        .map(|def| def.weight)
-        .min()
-        .unwrap_or(0);
-    assert!(
-        heaviest >= lightest * 4,
-        "every trait is about as likely as every other ({lightest}..{heaviest}); nothing is rare"
+    assert_eq!(
+        content.traits.len(),
+        12,
+        "the recruit choice stopped being readable"
     );
 }
 
@@ -1212,48 +1143,6 @@ fn every_trait_does_something_and_can_be_drawn() {
             def.id
         );
     }
-}
-
-#[test]
-fn a_rare_trait_is_actually_rare() {
-    // Measured through the draw rather than asserted about the weights:
-    // a weighted table with a bug in it still has the right weights in
-    // it. Two hundred crew, and the rare tail should be a small share.
-    let content = content();
-    let rare: Vec<usize> = content
-        .traits
-        .iter()
-        .enumerate()
-        .filter(|(_, def)| def.weight <= 10)
-        .map(|(at, _)| at)
-        .collect();
-    assert!(!rare.is_empty(), "the pack has no rare traits");
-
-    let mut game = engine(1960);
-    let mut drawn = 0u32;
-    let mut rare_drawn = 0u32;
-    {
-        let state = game.state_mut_for_test();
-        for _ in 0..200 {
-            state.add_crew(&content);
-        }
-        for member in state.crew.iter().skip(3) {
-            for idx in &member.traits {
-                drawn += 1;
-                if rare.contains(&idx.get()) {
-                    rare_drawn += 1;
-                }
-            }
-        }
-    }
-    assert!(drawn > 100, "only {drawn} draws to judge by");
-    // Seven rare traits at weight 10 against a table summing to ~2,590
-    // is about 2.7%. Anything up to a fifth is still a tail; a third is
-    // not, and would mean the weights are being ignored.
-    assert!(
-        rare_drawn * 5 < drawn,
-        "rare traits came up {rare_drawn} times in {drawn}; the weights are not binding"
-    );
 }
 
 #[test]

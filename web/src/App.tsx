@@ -41,7 +41,11 @@ export function App() {
   }, []);
 
   if (boot.status === "loading") {
-    return <div className="boot">the tower is waking</div>;
+    return (
+      <div className="boot">
+        <span className="boot-status">the tower is waking</span>
+      </div>
+    );
   }
   if (boot.status === "failed") {
     return (

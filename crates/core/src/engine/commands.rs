@@ -31,8 +31,13 @@ pub fn apply(
             slot,
             active,
         } => set_room_active(state, *floor, *slot, *active),
+        GameCommand::RelocateRoom { room, floor, slot } => {
+            relocate_room(state, content, *room, *floor, *slot)
+        }
+        GameCommand::SetShelfFilter { room, shelf, item } => {
+            set_shelf_filter(state, content, *room, *shelf, item.as_deref())
+        }
         GameCommand::SetPowerPriority { order } => set_power_priority(state, order),
-        GameCommand::FocusEnemy { enemy } => focus_enemy(state, *enemy),
         GameCommand::StationCrew {
             crew,
             room,
@@ -45,6 +50,7 @@ pub fn apply(
             high,
             slot,
         } => build_shaft(state, content, shaft, *low, *high, *slot),
+        GameCommand::ExtendShaft { shaft, high } => extend_shaft(state, content, *shaft, *high),
         GameCommand::RemoveShaft { id } => remove_shaft(state, *id),
         GameCommand::SetShaftProgram {
             id,
@@ -58,13 +64,64 @@ pub fn apply(
         }
         GameCommand::TakeFork { branch } => take_fork(state, content, *branch),
         GameCommand::Trade { offer } => trade(state, content, *offer),
-        GameCommand::Recruit => recruit(state, content),
+        GameCommand::Recruit { candidate } => recruit(state, content, *candidate),
         GameCommand::TakeWaypoint => take_waypoint(state, content),
         GameCommand::WidenTower => widen_tower(state, content),
-        GameCommand::SetWorkOrder { order } => set_work_order(state, order),
         GameCommand::AddCar { shaft } => add_car(state, content, *shaft),
         GameCommand::Reinforce => reinforce(state, content),
     }
+}
+
+fn set_shelf_filter(
+    state: &mut GameState,
+    content: &Content,
+    room_id: crate::ids::RoomId,
+    shelf_index: u8,
+    item: Option<&str>,
+) -> Result<(), CommandError> {
+    // Resolve and validate everything before mutation (DECISIONS.md
+    // §4). In particular, a typo must not clear an existing filter.
+    let filter = match item {
+        None => None,
+        Some(id) => Some(
+            content
+                .item_idx(id)
+                .ok_or_else(|| CommandError::UnknownItem { item: id.into() })?,
+        ),
+    };
+    let room = state
+        .tower
+        .floors
+        .iter()
+        .flat_map(|floor| floor.rooms.iter())
+        .find(|room| room.id == room_id)
+        .ok_or(CommandError::NoSuchRoom { id: room_id })?;
+    if content.room(room.def).category != RoomCategory::Storage {
+        return Err(CommandError::NotAStoreroom { room: room_id });
+    }
+    let shelf = room
+        .shelves
+        .get(usize::from(shelf_index))
+        .ok_or(CommandError::NoSuchShelf {
+            room: room_id,
+            shelf: shelf_index,
+        })?;
+    if shelf.count > 0 && filter.is_some_and(|wanted| shelf.item != Some(wanted)) {
+        return Err(CommandError::ShelfOccupied {
+            room: room_id,
+            shelf: shelf_index,
+        });
+    }
+
+    let room = state
+        .tower
+        .floors
+        .iter_mut()
+        .flat_map(|floor| floor.rooms.iter_mut())
+        .find(|room| room.id == room_id)
+        .expect("room validated above");
+    room.shelves[usize::from(shelf_index)].filter = filter;
+    Ok(())
 }
 
 /// Answer the pending fork.
@@ -175,7 +232,7 @@ fn reinforce(state: &mut GameState, content: &Content) -> Result<(), CommandErro
 }
 
 /// Take somebody aboard.
-fn recruit(state: &mut GameState, content: &Content) -> Result<(), CommandError> {
+fn recruit(state: &mut GameState, content: &Content, candidate: u8) -> Result<(), CommandError> {
     let (region, enclave) = berthed_enclave(state, content)?;
     if state.enclave_recruits.get(region).copied().unwrap_or(0) == 0 {
         return Err(CommandError::NobodyToRecruit);
@@ -186,6 +243,12 @@ fn recruit(state: &mut GameState, content: &Content) -> Result<(), CommandError>
     }
     let cost = enclave.recruit_cost.clone();
     check_stock(state, content, &cost)?;
+    let offered = state
+        .recruit_offers
+        .get(region)
+        .and_then(|offer| *offer)
+        .and_then(|offer| offer.get(usize::from(candidate)).copied())
+        .ok_or(CommandError::NoSuchRecruit { candidate })?;
 
     spend(state, &cost);
     state.enclave_recruits[region] -= 1;
@@ -193,10 +256,8 @@ fn recruit(state: &mut GameState, content: &Content) -> Result<(), CommandError>
     // (`SYSTEMS.md` §6.29). The offer was drawn when the tower berthed
     // and is what the board has been showing; taking it must hand over
     // that person or the card was a lie.
-    match state.recruit_offer.take() {
-        Some(offered) => state.add_crew_with(content, Some(offered)),
-        None => state.add_crew(content),
-    }
+    state.recruit_offers[region] = None;
+    state.add_recruit_candidate(content, offered, candidate);
     Ok(())
 }
 
@@ -213,6 +274,82 @@ fn set_room_active(
         return Err(CommandError::NoRoomThere { floor, slot });
     };
     room.active = active;
+    Ok(())
+}
+
+fn relocate_room(
+    state: &mut GameState,
+    content: &Content,
+    room_id: crate::ids::RoomId,
+    floor: FloorIdx,
+    slot: SlotIdx,
+) -> Result<(), CommandError> {
+    let (old_floor, old_position, def_idx, width, active, empty) = state
+        .tower
+        .floors
+        .iter()
+        .enumerate()
+        .find_map(|(floor_index, deck)| {
+            deck.rooms
+                .iter()
+                .position(|room| room.id == room_id)
+                .map(|position| {
+                    let room = &deck.rooms[position];
+                    (
+                        floor_index,
+                        position,
+                        room.def,
+                        room.width,
+                        room.active,
+                        room.inputs.iter().all(|stack| stack.count == 0)
+                            && room.outputs.iter().all(|stack| stack.count == 0)
+                            && room.shelves.iter().all(|shelf| shelf.count == 0),
+                    )
+                })
+        })
+        .ok_or(CommandError::NoSuchRoom { id: room_id })?;
+    if content.room(def_idx).category == RoomCategory::Heart {
+        return Err(CommandError::Undemolishable {
+            room: content.room(def_idx).id.clone(),
+        });
+    }
+    if active {
+        return Err(CommandError::RoomStillActive { room: room_id });
+    }
+    // Front-edge defences are the narrow exception to the empty-machine
+    // rule. In particular, growing the hull leaves a top-floor lantern
+    // mast one deck below the roof; requiring its expensive cells to be
+    // fired or discarded before it can follow the roof turns building a
+    // floor into a trap. The whole Room moves below, so its racks are
+    // preserved exactly, and porter routes are replanned afterwards.
+    let loaded_defence = {
+        let def = content.room(def_idx);
+        def.front_only && def.defence.is_some()
+    };
+    if !empty && !loaded_defence {
+        return Err(CommandError::RoomNotEmpty { room: room_id });
+    }
+    validate_room_position(state, content, def_idx, floor, slot, Some(room_id))?;
+
+    let mut room = state.tower.floors[old_floor].rooms.remove(old_position);
+    room.slot = slot;
+    debug_assert_eq!(room.width, width);
+    let target = state.tower.floor_mut(floor).expect("destination validated");
+    target.rooms.push(room);
+    target.rooms.sort_by_key(|placed| placed.slot);
+
+    // A refit changes all route coordinates. Any porter already headed
+    // to the old cell replans next tick; carried stock remains in hand.
+    for member in &mut state.crew {
+        if member.task.as_ref().is_some_and(|task| {
+            task.pickup.is_some_and(|pickup| pickup.room == room_id)
+                || matches!(task.destination,
+                    crate::state::HaulDestination::Inbox { room, .. }
+                    | crate::state::HaulDestination::Shelf { room } if room == room_id)
+        }) {
+            member.task = None;
+        }
+    }
     Ok(())
 }
 
@@ -243,6 +380,9 @@ fn build_shaft(
     if high > top {
         return Err(CommandError::NoSuchFloor { floor: high });
     }
+    if def.kind == ShaftKind::VentStack && high != top {
+        return Err(CommandError::VentMustReachRoof { high, roof: top });
+    }
 
     // Span counts both ends, so a two-floor shaft spans floors n and
     // n+1 — which is what a player means by "two floors".
@@ -263,7 +403,7 @@ fn build_shaft(
         }
     }
 
-    let cost = content.shaft_rt(def_idx).build_cost.clone();
+    let cost = shaft_span_cost(content.shaft_rt(def_idx), span - 1, true);
     check_stock(state, content, &cost)?;
     spend(state, &cost);
 
@@ -291,6 +431,57 @@ fn build_shaft(
         programs: vec![ShaftProgram::all_floors(floors); dayparts],
         health: crate::state::Health::full(content.balance.siege.shaft_hp),
     });
+    Ok(())
+}
+
+fn extend_shaft(
+    state: &mut GameState,
+    content: &Content,
+    id: ShaftId,
+    high: FloorIdx,
+) -> Result<(), CommandError> {
+    let Some(index) = state.tower.shafts.iter().position(|shaft| shaft.id == id) else {
+        return Err(CommandError::NoSuchShaft { id });
+    };
+    let shaft = &state.tower.shafts[index];
+    let def = content.shaft(shaft.def);
+    let old_high = shaft.high;
+    if high <= old_high || high > state.tower.top_floor() {
+        return Err(CommandError::BadSpan {
+            low: shaft.low,
+            high,
+            min_span: def.min_span,
+            max_span: def.max_span,
+        });
+    }
+    if def.kind == ShaftKind::VentStack && high != state.tower.top_floor() {
+        return Err(CommandError::VentMustReachRoof {
+            high,
+            roof: state.tower.top_floor(),
+        });
+    }
+    let span = high - shaft.low + 1;
+    if def.max_span != 0 && span > def.max_span {
+        return Err(CommandError::BadSpan {
+            low: shaft.low,
+            high,
+            min_span: def.min_span,
+            max_span: def.max_span,
+        });
+    }
+    for floor in old_high + 1..=high {
+        if state.tower.slot_range_blocked(floor, shaft.slot, 1) {
+            return Err(CommandError::SlotOccupied {
+                floor,
+                slot: shaft.slot,
+            });
+        }
+    }
+    let added_boundaries = high - old_high;
+    let cost = shaft_span_cost(content.shaft_rt(shaft.def), added_boundaries, false);
+    check_stock(state, content, &cost)?;
+    spend(state, &cost);
+    state.tower.shafts[index].high = high;
     Ok(())
 }
 
@@ -410,11 +601,12 @@ fn build_floor(state: &mut GameState, content: &Content) -> Result<(), CommandEr
     Ok(())
 }
 
-/// Stretch every full-height shaft to cover the new top floor.
+/// Stretch only the built-in stairs. Every chosen utility pays to grow
+/// through `ExtendShaft`; otherwise height would erase its own layout cost.
 fn extend_stairs(tower: &mut Tower, new_top: FloorIdx) {
     let previous_top = new_top.saturating_sub(1);
     for shaft in &mut tower.shafts {
-        if shaft.high == previous_top {
+        if shaft.kind == ShaftKind::Stairs && shaft.high == previous_top {
             shaft.high = new_top;
         }
     }
@@ -434,27 +626,9 @@ fn place_room(
     };
     let def = content.room(def_idx);
 
-    let Some(target) = state.tower.floor(floor) else {
+    let Some(_target) = state.tower.floor(floor) else {
         return Err(CommandError::NoSuchFloor { floor });
     };
-
-    if slot as u16 + def.width as u16 > target.slots as u16 {
-        return Err(CommandError::SlotOutOfRange {
-            slot,
-            width: def.width,
-            floor_slots: target.slots,
-        });
-    }
-    if let Some(max_floor) = def.max_floor
-        && floor > max_floor
-    {
-        return Err(CommandError::FloorTooHigh { floor, max_floor });
-    }
-    if let Some(min_floor) = def.min_floor
-        && floor < min_floor
-    {
-        return Err(CommandError::FloorTooLow { floor, min_floor });
-    }
     if def.unique && state.tower.count_of(def_idx) > 0 {
         return Err(CommandError::AlreadyPlaced {
             room: room_id.to_string(),
@@ -475,39 +649,13 @@ fn place_room(
             needs: content.room(needs).id.clone(),
         });
     }
-    if state.tower.slot_range_blocked(floor, slot, def.width) {
-        return Err(CommandError::SlotOccupied { floor, slot });
-    }
+    validate_room_position(state, content, def_idx, floor, slot, None)?;
     // **A weapon goes on the leading edge.** See `RoomDef::front_only`:
     // a thing that reaches out of the tower has to be on the outside of
     // it, and the front is the edge everything arrives from.
     //
     // The frontmost slot a room of this width can occupy, so a wide
     // weapon is flush with the edge rather than banned from it.
-    if def.front_only {
-        let front = target.slots.saturating_sub(def.width);
-        if slot != front {
-            return Err(CommandError::NotAtTheFront { slot, front });
-        }
-    } else {
-        // **And the front is *for* weapons**, which is the half that was
-        // missing (`SYSTEMS.md` §6.21). `front_only` said a gun must
-        // stand on the leading edge; nothing said an ordinary room could
-        // not stand there instead — so a storeroom on the edge of a
-        // floor made that floor unarmable, and nothing on the card said
-        // the column was special.
-        //
-        // Checked against the room's whole footprint rather than its
-        // left edge, for the same reason `slot_range_blocked` is: a
-        // three-wide room at slot 7 of ten covers 7, 8 and 9, and
-        // testing the 7 alone reserves nothing at all.
-        let deck_from = target
-            .slots
-            .saturating_sub(content.balance.tower.front_slots);
-        if content.balance.tower.front_slots > 0 && slot.saturating_add(def.width) > deck_from {
-            return Err(CommandError::OnTheWeaponsDeck { slot, deck_from });
-        }
-    }
 
     let cost = content.room_rt(def_idx).build_cost.clone();
     check_stock(state, content, &cost)?;
@@ -518,6 +666,81 @@ fn place_room(
     if let Some(target) = state.tower.floor_mut(floor) {
         target.rooms.push(room);
         target.rooms.sort_by_key(|r| r.slot);
+    }
+    Ok(())
+}
+
+fn validate_room_position(
+    state: &GameState,
+    content: &Content,
+    def_idx: crate::ids::RoomIdx,
+    floor: FloorIdx,
+    slot: SlotIdx,
+    ignore: Option<crate::ids::RoomId>,
+) -> Result<(), CommandError> {
+    let def = content.room(def_idx);
+    let Some(target) = state.tower.floor(floor) else {
+        return Err(CommandError::NoSuchFloor { floor });
+    };
+    if slot as u16 + def.width as u16 > target.slots as u16 {
+        return Err(CommandError::SlotOutOfRange {
+            slot,
+            width: def.width,
+            floor_slots: target.slots,
+        });
+    }
+    if let Some(max_floor) = def.max_floor
+        && floor > max_floor
+    {
+        return Err(CommandError::FloorTooHigh { floor, max_floor });
+    }
+    if let Some(min_floor) = def.min_floor
+        && floor < min_floor
+    {
+        return Err(CommandError::FloorTooLow { floor, min_floor });
+    }
+    if def.top_floor_only && floor != state.tower.top_floor() {
+        return Err(CommandError::FloorTooLow {
+            floor,
+            min_floor: state.tower.top_floor(),
+        });
+    }
+    let end = u16::from(slot) + u16::from(def.width);
+    let room_blocked = target
+        .rooms
+        .iter()
+        .filter(|room| Some(room.id) != ignore)
+        .any(|room| u16::from(room.slot) < end && u16::from(slot) < room.end_slot());
+    let shaft_blocked = state.tower.shafts.iter().any(|shaft| {
+        shaft.spans(floor)
+            && u16::from(shaft.slot) >= u16::from(slot)
+            && u16::from(shaft.slot) < end
+    });
+    if room_blocked || shaft_blocked {
+        return Err(CommandError::SlotOccupied { floor, slot });
+    }
+    if def.front_only {
+        let front = target.slots.saturating_sub(def.width);
+        if slot != front {
+            return Err(CommandError::NotAtTheFront { slot, front });
+        }
+    } else {
+        let deck_from = target
+            .slots
+            .saturating_sub(content.balance.tower.front_slots);
+        if content.balance.tower.front_slots > 0 && slot.saturating_add(def.width) > deck_from {
+            return Err(CommandError::OnTheWeaponsDeck { slot, deck_from });
+        }
+    }
+    if def.shaft_adjacent {
+        let left = slot.checked_sub(1);
+        let right = slot.checked_add(def.width);
+        let touches = state.tower.shafts.iter().any(|shaft| {
+            shaft.spans(floor) && (Some(shaft.slot) == left || Some(shaft.slot) == right)
+        });
+        if !touches {
+            return Err(CommandError::NotShaftAdjacent { floor, slot });
+        }
     }
     Ok(())
 }
@@ -592,6 +815,43 @@ fn resolve_cost(
         .collect()
 }
 
+/// Price a shaft as installation plus material for the boundaries it
+/// actually crosses. Lines naming the same item are merged before stock
+/// validation; checking two separate pole lines against the same shelf
+/// would otherwise let each pass while their sum was unaffordable.
+fn shaft_span_cost(
+    runtime: &crate::content::ShaftRuntime,
+    boundaries: u8,
+    include_installation: bool,
+) -> Vec<(ItemIdx, i64)> {
+    let mut cost = Vec::<(ItemIdx, i64)>::new();
+    if include_installation {
+        for (item, amount) in &runtime.build_cost {
+            add_cost_line(&mut cost, *item, *amount);
+        }
+    }
+    for (item, amount) in &runtime.span_cost {
+        add_cost_line(
+            &mut cost,
+            *item,
+            amount.saturating_mul(i64::from(boundaries)),
+        );
+    }
+    cost.sort_by_key(|(item, _)| item.0);
+    cost
+}
+
+fn add_cost_line(cost: &mut Vec<(ItemIdx, i64)>, item: ItemIdx, amount: i64) {
+    if amount <= 0 {
+        return;
+    }
+    if let Some((_, held)) = cost.iter_mut().find(|(had, _)| *had == item) {
+        *held = held.saturating_add(amount);
+    } else {
+        cost.push((item, amount));
+    }
+}
+
 /// Check every line of a cost before spending any of it, so a failed
 /// build never leaves the shelves half-emptied.
 fn check_stock(
@@ -641,19 +901,6 @@ fn set_power_priority(
 /// Validated before mutating (`DECISIONS.md` §4): an id nobody is
 /// carrying is rejected rather than stored, so the highlight in the
 /// cross-section can never be aimed at nothing.
-fn focus_enemy(
-    state: &mut GameState,
-    enemy: Option<crate::ids::EnemyId>,
-) -> Result<(), CommandError> {
-    if let Some(id) = enemy
-        && !state.siege.enemies.iter().any(|out| out.id == id)
-    {
-        return Err(CommandError::NoSuchEnemy { id });
-    }
-    state.siege.focus = enemy;
-    Ok(())
-}
-
 /// Post somebody to a room, or call them back.
 ///
 /// Validated before mutating (`DECISIONS.md` §4): an unknown person or a
@@ -670,19 +917,6 @@ fn focus_enemy(
 /// Rejects anything that is not a permutation of every job, because a
 /// list with a job missing is a list that has quietly made that job
 /// unreachable — nobody would ever mend again and nothing would say so.
-fn set_work_order(state: &mut GameState, order: &[crate::state::Job]) -> Result<(), CommandError> {
-    use crate::state::Job;
-    if order.len() != Job::ALL.len()
-        || !Job::ALL
-            .iter()
-            .all(|job| order.iter().filter(|had| *had == job).count() == 1)
-    {
-        return Err(CommandError::NotAWorkOrder);
-    }
-    state.work = order.to_vec();
-    Ok(())
-}
-
 /// Widen the hull, and slide everything aboard back to make room.
 ///
 /// **The new frame goes on the back.** It is the only arrangement that
@@ -775,6 +1009,9 @@ fn take_waypoint(state: &mut GameState, content: &Content) -> Result<(), Command
     let Some(runtime) = content.waypoint_runtime.get(def) else {
         return Err(CommandError::NothingInReach);
     };
+    let resident = runtime.resident;
+    let resident_at = state.world.waypoints[at].at
+        + crate::fx::paces_from_int(content.balance.siege.spawn_paces_ahead);
 
     let costs = runtime.costs.clone();
     check_stock(state, content, &costs)?;
@@ -819,6 +1056,9 @@ fn take_waypoint(state: &mut GameState, content: &Content) -> Result<(), Command
             (state.world.distance + crate::fx::paces_from_int(waypoint.paces)).max(0);
     }
     state.world.waypoints[at].taken = true;
+    if let Some(resident) = resident {
+        crate::systems::siege::spawn_landmark_resident(state, content, resident, resident_at);
+    }
     Ok(())
 }
 

@@ -1,0 +1,14 @@
+// The resonance array's tuned drums, and resin feedstock's reason to exist.
+//
+// Cheaper per shot than darts and slower to make, so a thrower is the
+// answer to *many* things rather than to one hard thing — which is what
+// keeps the second emplacement a different shape rather than an upgrade
+// (`SYSTEMS.md` §5.3). Tone: these are acoustic machine parts, spun to
+// send a low pulse across an approach band. Nothing here is ordnance.
+#![enable(implicit_some)]
+ItemDef(
+    id: "item.resonator_drums",
+    name: "Resonator drums",
+    glyph: "◌",
+    order: 42,
+)

@@ -915,7 +915,7 @@ test("capture stills", async ({ page }) => {
     // buy. Permanent beats convertible.
     const plate = hooks.send("Reinforce");
     const trade = hooks.send({ Trade: { offer: 0 } });
-    const hire = hooks.send("Recruit");
+    const hire = hooks.send({ Recruit: { candidate: 0 } });
     hooks.step(2);
     const after = hooks.view();
     const moved = after.stock
@@ -1501,4 +1501,14 @@ test("capture crew badges", async ({ page }) => {
       ),
   );
   await page.screenshot({ path: "capture/crew-badges.png" });
+
+  // The motion sheet is deliberately only two restrained frames per pose.
+  // Advance the simulation—not wall time—and keep a paired close-up so a
+  // static-atlas regression remains visible in review.
+  await page.evaluate(() => window.__capture!.walk(90, 30));
+  await page.waitForFunction(() =>
+    window.__understory!.view().crew.some((c) => c.state === "walk"),
+  );
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await page.screenshot({ path: "capture/crew-motion-b.png" });
 });

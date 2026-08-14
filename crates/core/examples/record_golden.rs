@@ -23,6 +23,7 @@ use std::path::PathBuf;
 
 use understory_core::GameEngine;
 use understory_core::command::GameCommand;
+use understory_core::content::EnemyEncounter;
 use understory_core::content::IntakeSource;
 use understory_core::state::{ShaftPriority, SimSpeed};
 
@@ -42,54 +43,52 @@ fn main() {
     //
     // M6 cut the starting tower to two floors, three crew, a Heartseed
     // and a bed. There is no chain to let run any more: the fixture has
-    // to build one, in the order the gate allows — farm, cutter arm,
-    // burner — and only then does the rest of the menu exist. That is
+    // to build one, in the order the gate allows — cutter arm, burner,
+    // mill — and only then choose optional branches. That is
     // worth recording rather than skipping, because it is now the first
     // five minutes of every run.
     // ---------------------------------------------------------------
 
-    // The farm, on the roof it starts with. It is the only card on turn
-    // one and the only room in the pack that refuses to work without
-    // people in it.
-    place_when_affordable(&mut engine, "room.garden", 1, 3);
-    // **Two of the three, posted.** `crew_required` is 2, so this is
-    // not a bonus, it is the difference between a farm and an
-    // ornament — and it puts `StationCrew`, `Errand::Station` and
-    // `CrewState::Manning` into the fixture on the first minute rather
-    // than nowhere at all.
-    staff(&mut engine, 1, 3, 2);
-    step_walking(&mut engine, 600);
-
-    // The cutter arm, which the farm unlocked. **On floor 1's leading
+    // The Cutter Arm, opened by the standing Heartseed. **On floor 1's leading
     // edge**, because it is `front_only` since M6 (`SYSTEMS.md` §6.13)
     // — a blade on a boom lives on the outside — and floor 0's front is
     // where the tower's own thorn gun stands. `max_floor` 1 leaves
     // exactly one place for it.
     place_when_affordable(&mut engine, "room.cutter_arm", 1, 8);
-    step_walking(&mut engine, 900);
+    step_walking(&mut engine, 600);
 
-    // **Upward before the burner**, which is a placement argument
-    // rather than an economic one. Floor 1 has six usable slots, the
-    // bunk holds two of them and the farm two more; a burner in the
-    // last two would leave the fiber comb — two wide and `max_floor` 1,
-    // because fiber is stripped off the ground — with nowhere in the
-    // tower to stand. So the tower grows first and the burner goes on
-    // the new deck.
-    build_floor_when_affordable(&mut engine);
-
-    // The burner, which the cutter arm unlocked, and with it the rest
-    // of the menu.
-    place_when_affordable(&mut engine, "room.burner", 2, 1);
+    place_when_affordable(&mut engine, "room.burner", 1, 3);
     step_walking(&mut engine, 600);
 
     // ---------------------------------------------------------------
-    // The menu is open. Everything below is the game rather than the
-    // opening.
+    // The first branches are open. Everything below is the game rather
+    // than the opening, with deeper cards revealed by their suppliers.
     // ---------------------------------------------------------------
 
     // The mill: bamboo into poles, and the reason anything else is
     // affordable.
-    place_when_affordable(&mut engine, "room.mill", 2, 3);
+    place_when_affordable(&mut engine, "room.mill", 1, 5);
+    step_walking(&mut engine, 600);
+
+    // The optional resin branch is the first diversion after survival
+    // income. Grow a roof for it and post one person as a finite,
+    // visible commitment.
+    build_floor_when_affordable(&mut engine);
+
+    // Refit the mill upstairs before the low-deck intake branch arrives.
+    // The opening has no two-slot gap left on floors 0-1 once the mill,
+    // burner and cutter are aboard, while the Fiber Comb is deliberately
+    // restricted to those low floors. Build the replacement first so the
+    // tower never loses its only pole income, then retire the old mill.
+    // This also records a real layout commitment instead of granting the
+    // recorder a footprint the player does not have.
+    place_when_affordable(&mut engine, "room.mill", 2, 5);
+    engine
+        .try_send(GameCommand::RemoveRoom { floor: 1, slot: 5 })
+        .expect("the opening mill still occupies floor 1 slot 5");
+
+    place_when_affordable(&mut engine, "room.garden", 2, 1);
+    staff(&mut engine, 2, 1, 1);
     step_walking(&mut engine, 600);
 
     // A second storeroom — the Heartseed carries two shelves and a
@@ -101,7 +100,21 @@ fn main() {
     // stuck in the mill. This is the shelf bottleneck working exactly
     // as designed; the script answers it the way a player has to, and
     // early.
-    place_when_affordable(&mut engine, "room.storeroom", 2, 5);
+    place_when_affordable(&mut engine, "room.storeroom", 2, 3);
+    let storeroom = engine
+        .state()
+        .tower
+        .floor(2)
+        .and_then(|floor| floor.room_at(3))
+        .expect("the recorder just built this storeroom")
+        .id;
+    engine
+        .try_send(GameCommand::SetShelfFilter {
+            room: storeroom,
+            shelf: 0,
+            item: Some("item.rope".into()),
+        })
+        .expect("the lift plan reserves one physical rope shelf");
     step_walking(&mut engine, 600);
 
     // A canteen, bought early because it is cheap and because a fixture
@@ -141,7 +154,11 @@ fn main() {
     engine
         .try_send(GameCommand::SetStriding { walking: false })
         .expect("always legal");
-    step_walking(&mut engine, 4500);
+    // Record the berth transition without turning this no-rig fixture
+    // into a long siege that spends every later pole on repairs. Ruin
+    // extraction and wardens have dedicated journey tests; 300 ticks is
+    // long enough for the halted world state to enter the replay.
+    step_walking(&mut engine, 300);
 
     // And off again. **The resume belongs to the berth**, not to a
     // later paragraph: left behind when the berth moved earlier, the
@@ -164,9 +181,11 @@ fn main() {
     // and `tests/journey.rs` for where ruin intake and wardens are
     // covered end to end.
 
-    // Higher again, and a second burner with it: charge is no longer
-    // free, growing the tower adds lamps, and the fixture should record
-    // a tower that can pay for the height it just bought.
+    // The tower stays four floors tall here. A fifth floor used to be
+    // bought before the lift, spending the exact poles the shortened
+    // journey now needs for that lift and adding another lamp load on
+    // top. Height is already exercised by the two earlier growths; the
+    // scarce-column decision is better covered by affording the shaft.
     //
     // **Waits for the money, like every room does.** This used to
     // assert a floor was affordable after a fixed minute of milling,
@@ -175,7 +194,6 @@ fn main() {
     // chain got slower, and the recorder died at 2 poles of 6 — a
     // fixture that cannot be recorded, from a script that was making a
     // timing assumption it never said out loud.
-    build_floor_when_affordable(&mut engine);
     // **The second burner is off this list since M6 cut the rota.**
     //
     // It cost five poles and, worse, a share of the same bamboo the
@@ -223,13 +241,14 @@ fn main() {
     // that is a real thing this economy asks of a player rather than a
     // quirk of the fixture. `SYSTEMS.md` §5.11 carries it as an open
     // question, because "remember to switch it off" is a poor answer.
-    // **Six, not twenty-four**, and the difference is shelf space rather
+    // **Four, not twenty-four**, and the difference is shelf space rather
     // than thrift. A shelf holds one kind, the tower has eight of them,
     // and twenty-four rope claims two — which it then never gives back,
     // because nothing eats rope. Measured on a 40-minute journey: 28
     // rope banked, bamboo with nowhere to land, the mill starved, and a
-    // tower holding four poles of the twelve its elevator costs. Six is
-    // an elevator (4) and a dart battery (2) and not one coil more.
+    // tower holding four poles of the twelve its elevator cost then. Four
+    // is an elevator plus a Tanglenet, matching the Ropery's authored
+    // reserve rather than waiting forever above its automatic stop.
     // **The canteen off once the larder is full**, the same move the ropery
     // and the comb get here, and for a reason that only started
     // biting at M6.
@@ -267,7 +286,7 @@ fn main() {
     // died on a thornwright at two poles, having spent the difference
     // on ammunition for a gun nothing was shooting at.
     off_when_stocked(&mut engine, "room.thorn_gun", "item.bamboo", 0);
-    off_when_stocked(&mut engine, "room.ropery", "item.rope", 6);
+    off_when_stocked(&mut engine, "room.ropery", "item.rope", 4);
     // And the comb behind it, one material along and for exactly the
     // same reason: with the ropery off, fiber's consumer is gone too,
     // and an intake room with no consumer fills shelves precisely as
@@ -371,7 +390,7 @@ fn main() {
     // through the night and stop to eat takes longer to get there, and
     // hardcoding the wait meant the recorder panicked eight poles short
     // rather than recording a slower tower.
-    build_shaft_when_affordable(&mut engine, "shaft.elevator", 0, 4, 7);
+    build_shaft_when_affordable(&mut engine, "shaft.elevator", 0, 3, 7);
     step_walking(&mut engine, 1800);
 
     // Reprogram it, so the per-daypart program path is in the fixture.
@@ -542,7 +561,7 @@ fn wardens_out(engine: &GameEngine) -> usize {
         .siege
         .enemies
         .iter()
-        .filter(|enemy| !engine.content().enemy(enemy.def).wave_eligible)
+        .filter(|enemy| engine.content().enemy(enemy.def).encounter == EnemyEncounter::RuinResident)
         .count()
 }
 
@@ -557,7 +576,7 @@ fn step_walking(engine: &mut GameEngine, ticks: u32) {
     let mut left = ticks;
     while left > 0 {
         answer_any_fork(engine);
-        // **And take every beat the route offers** (`SYSTEMS.md`
+        // **And take every ordinary free beat the route offers** (`SYSTEMS.md`
         // §6.14). A waypoint is a moment: it comes into range, asks one
         // question, and goes past — so a script that only checks every
         // few thousand ticks misses most of them, and this is the same
@@ -568,13 +587,16 @@ fn step_walking(engine: &mut GameEngine, ticks: u32) {
         // elevator at zero poles, which is a fixture that cannot be
         // recorded — and a tower that ignored every offer on the way.
         //
-        // **Two rules, and a player would keep both.** Nothing that
+        // **Three rules, and a player would keep all three.** Nothing that
         // costs anything, because the opening cannot spare it and this
         // script is not a trading strategy; and nothing at all until
         // there is somewhere to put it. Taking every gift on offer with
         // three shelves to your name is how the recorder ended up
         // holding twenty scrap, twenty bamboo and *no poles* — the
-        // shelf jam, arriving as a reward.
+        // shelf jam, arriving as a reward. And no resident landmark:
+        // "free materials" is a valid scripted policy; waking a named
+        // territorial crisis is a loadout decision this recorder cannot
+        // make by checking an empty cost list.
         take_a_free_beat(engine);
         let chunk = left.min(300);
         engine.step(chunk);
@@ -605,10 +627,8 @@ fn take_a_free_beat(engine: &mut GameEngine) {
     let Some(view) = engine.view().journey.waypoint else {
         return;
     };
-    if !engine.content().waypoints[view.def as usize]
-        .costs
-        .is_empty()
-    {
+    let waypoint = &engine.content().waypoints[view.def as usize];
+    if !waypoint.costs.is_empty() || waypoint.landmark_region.is_some() {
         return;
     }
     let _ = engine.try_send(GameCommand::TakeWaypoint);
@@ -642,11 +662,20 @@ fn off_when_stocked(engine: &mut GameEngine, room: &str, item: &str, enough: i64
     let Some(idx) = engine.content().item_idx(item) else {
         return;
     };
+    let mut stocked = enough <= 0;
     for _ in 0..40 {
         if engine.state().stock_of(idx) >= enough {
+            stocked = true;
             break;
         }
         step_walking(engine, 300);
+    }
+    // A slower upstream chain may not reach the target inside this
+    // helper's bounded wait. In that case leave the machine running:
+    // switching it off anyway guarantees the stock can never arrive
+    // and turns a fixture timeout into a permanent economic deadlock.
+    if !stocked {
+        return;
     }
     let found = engine.state().tower.floors.iter().find_map(|floor| {
         floor
@@ -715,7 +744,11 @@ fn staff(engine: &mut GameEngine, floor: u8, slot: u8, count: usize) {
             .try_send(GameCommand::StationCrew {
                 crew: who,
                 room: Some(room),
-                until_tired: false,
+                // A finite push records staffing without permanently
+                // removing a third of the opening crew from hauling.
+                // The Garden is optional; posting here forever made the
+                // later elevator fixture measure its own labour policy.
+                until_tired: true,
             })
             .expect("posting somebody to a room that exists is always legal");
     }

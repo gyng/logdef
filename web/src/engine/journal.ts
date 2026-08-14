@@ -101,7 +101,7 @@ export const DEEDS: Deed[] = [
   {
     id: "coast",
     said: "Reached the coast, where the canopy runs out.",
-    opens: ["room.bombary", "room.seed_thrower"],
+    opens: ["room.resonator_works", "room.resonance_array"],
   },
   {
     id: "arrived",

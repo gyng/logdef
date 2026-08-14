@@ -8,9 +8,19 @@
 //! **Priority is execution order.** Consumers call [`Power::draw`] from
 //! inside their own system, and the tick's system order decides who
 //! gets served when the pool is thin: transport, then production, then
-//! lighting, then striding. So the tower stops walking before the chain
-//! stalls, and a car freezing mid-shaft only happens when things are
-//! genuinely dire — which is what makes that moment land.
+//! defence, then lighting, then striding. So the tower stops walking
+//! before the chain stalls, and a car freezing mid-shaft only happens
+//! when things are genuinely dire — which is what makes that moment
+//! land.
+//!
+//! **There are two constraints on a withdrawal, not one** (`SYSTEMS.md`
+//! §6.36). The bank is a reservoir; the *rail* is the pipe out of it,
+//! and a tower cannot spend faster than its burners and cell banks can
+//! deliver however full the bank happens to be. That is what turns
+//! charge from a stock into a supply: a stock only forces a choice at
+//! the boundary of running out, by which point the tower is already in
+//! a spiral, and a ranking that only matters in a spiral is a ranking
+//! nobody gets to use.
 //!
 //! A failed draw never goes into debt. The consumer just does not act
 //! this tick.
@@ -18,18 +28,11 @@
 use crate::fx::Fx;
 use serde::{Deserialize, Serialize};
 
-/// Which prepaid meter a block purchase belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Credit {
-    Stride,
-    Light,
-}
-
-/// The four things that spend charge, in the order they spend it.
+/// The five things that spend charge, in the order they spend it.
 ///
 /// **Charge priority used to *be* the tick order** — lifts drew first
 /// because transport runs first, legs last because striding runs last —
-/// and it was not a decision anybody could make. This is the same four
+/// and it was not a decision anybody could make. This is the same
 /// draws with a ranking the player owns, which is the one piece of FTL's
 /// reactor that Understory already had the wiring for.
 ///
@@ -41,8 +44,22 @@ pub enum Credit {
 pub enum PowerUse {
     /// Elevator and dumbwaiter cars, per floor travelled.
     Lifts,
-    /// Every room with a `power_draw`: mills, forges, batteries.
+    /// Every room with a `power_draw`: mills, forges, thornwrights.
     Works,
+    /// Emplacements, per shot (`SYSTEMS.md` §6.36).
+    ///
+    /// **Its own circuit rather than part of `Works`, and the reason is
+    /// the reserve rather than tidiness.** `defence` runs at step 7 of
+    /// the tick and `production` at step 5, so a gun drawing under
+    /// `Works`'s tick position would claim to have already spent when it
+    /// had not, and every reservation computed against it would be
+    /// wrong.
+    ///
+    /// It is also the one decision the rail exists to create: *shed the
+    /// mill, keep the guns* — or the reverse, which is a real answer for
+    /// a tower that would rather lose a panel than lose an afternoon's
+    /// poles. Folded into `Works`, neither is expressible.
+    Guns,
     /// Keeping the decks lit after dark.
     Lamps,
     /// Walking.
@@ -50,7 +67,13 @@ pub enum PowerUse {
 }
 
 impl PowerUse {
-    pub const ALL: [Self; 4] = [Self::Lifts, Self::Works, Self::Lamps, Self::Legs];
+    pub const ALL: [Self; 5] = [
+        Self::Lifts,
+        Self::Works,
+        Self::Guns,
+        Self::Lamps,
+        Self::Legs,
+    ];
 
     /// Where in the tick this one spends. Fixed by `systems::tick` and
     /// not something the player can change — reordering the tick would
@@ -60,8 +83,9 @@ impl PowerUse {
         match self {
             Self::Lifts => 0,
             Self::Works => 1,
-            Self::Lamps => 2,
-            Self::Legs => 3,
+            Self::Guns => 2,
+            Self::Lamps => 3,
+            Self::Legs => 4,
         }
     }
 
@@ -80,35 +104,82 @@ pub struct Power {
     /// Sub-unit accumulation of the Heartseed's trickle, so six per
     /// hundred ticks still adds up instead of truncating to nothing.
     pub trickle_acc: Fx,
+    /// Hundredths of a charge owed to the bank, and by it. Rates run in
+    /// charge per 100 ticks (see [`PER_TICK`]), so the whole-charge
+    /// remainder has to be carried between ticks or a tower spending
+    /// 0.2 a tick would spend nothing at all.
+    #[serde(default)]
+    pub spend_acc: i64,
+    #[serde(default)]
+    pub fill_acc: i64,
     /// Charge added last tick. Presentation only.
     pub income_last: i64,
     /// Charge drawn last tick. Presentation only.
     pub spent_last: i64,
-    /// Some draw failed last tick. What the cross-section reads to dim
-    /// the tower.
+    /// Something ran short this tick. What the cross-section reads to
+    /// dim the tower.
     pub brownout: bool,
-    /// Lamps are lit — it is dark enough to need them and there was
-    /// charge to spare.
+    /// Lamps are lit — it is dark enough to need them and the tower
+    /// could serve them.
     pub lit: bool,
-    /// Ticks of striding already paid for. See [`Self::buy_block`].
-    pub stride_credit: u32,
-    /// Ticks of lighting already paid for.
-    pub light_credit: u32,
+    /// **Generation capacity: the most charge the tower could deliver
+    /// this tick**, from burners, cell banks and the Heartseed.
+    ///
+    /// Factorio's number, and it is a *ceiling* rather than an income —
+    /// a burner only consumes fuel for what is actually drawn.
+    #[serde(default)]
+    pub rail: i64,
     /// What the player wants kept running when charge is short, best
     /// first. Defaults to the order the tick already spent in, so an
     /// untouched tower behaves exactly as it did before this existed.
     pub priority: Vec<PowerUse>,
-    /// What each use is expected to want this tick, indexed by
+    /// What each circuit asked for this tick, indexed by
     /// [`PowerUse::index`].
-    ///
-    /// **An estimate, and it only has to be good enough to rank.** It is
-    /// recomputed every tick before anything spends, and its whole job
-    /// is to let a use that draws early leave room for a higher-ranked
-    /// one that draws late. Being a little high makes the tower cautious
-    /// for a tick; being a little low costs the high-ranked use nothing,
-    /// because it still draws from whatever is actually left.
     pub demand: Vec<i64>,
+    /// **How well each circuit was served, in per-mille**, indexed by
+    /// [`PowerUse::index`]. 1000 is everything it asked for.
+    ///
+    /// **The whole of `SYSTEMS.md` §6.39.** A draw used to be binary —
+    /// paid in full or refused — which made the smallest expressible
+    /// `power_draw` an enormous commitment, forced block purchases for
+    /// anything cheaper than a charge a tick, and meant a tower one
+    /// joule short stopped dead rather than slowing down.
+    ///
+    /// Now a circuit is served a fraction and everything on it runs at
+    /// that fraction: the mill turns slower, the legs walk slower, the
+    /// guns reload slower. Proportionality lives *inside* a circuit;
+    /// [`Self::priority`] orders *between* circuits, which is how a
+    /// switchboard sheds load.
+    #[serde(default)]
+    pub satisfaction: Vec<i64>,
+    /// Stored charge physically attached to each floor's automatic bus.
+    /// Keeping it by floor means severing a riser forms honest islands:
+    /// a bank remains with the deck it was built on rather than being
+    /// silently available through the global total.
+    #[serde(default)]
+    pub floor_charge: Vec<i64>,
+    /// Per-floor circuit service, indexed `[floor][PowerUse]`.
+    #[serde(default)]
+    pub floor_satisfaction: Vec<Vec<i64>>,
+    #[serde(default)]
+    pub floor_spend_acc: Vec<i64>,
+    #[serde(default)]
+    pub floor_fill_acc: Vec<i64>,
 }
+
+/// Full service, in the per-mille this module works in.
+pub const FULL: i64 = 1000;
+
+/// **Rates are carried in charge per 100 ticks**, which is the unit the
+/// balance pack authors them in ("rates are written the way a designer
+/// thinks about them") and the only one that keeps them whole numbers.
+///
+/// Striding is 20 per 100 ticks — 0.2 a tick — and a demand table in
+/// charge-per-tick would round that to nothing. Every figure in
+/// [`Power::demand`], and the supply handed to [`Power::allocate`], is
+/// in these units; [`Power::settle`] converts back to whole charge with
+/// the remainder carried, so nothing is lost to truncation.
+pub const PER_TICK: i64 = 100;
 
 impl Power {
     #[must_use]
@@ -117,103 +188,96 @@ impl Power {
             charge: starting_charge,
             capacity: starting_charge,
             trickle_acc: Fx::ZERO,
+            spend_acc: 0,
+            fill_acc: 0,
             income_last: 0,
             spent_last: 0,
             brownout: false,
             lit: false,
-            stride_credit: 0,
-            light_credit: 0,
+            rail: 0,
             priority: vec![
                 PowerUse::Lifts,
                 PowerUse::Works,
+                PowerUse::Guns,
                 PowerUse::Lamps,
                 PowerUse::Legs,
             ],
-            demand: vec![0; 4],
+            demand: vec![0; PowerUse::ALL.len()],
+            satisfaction: vec![FULL; PowerUse::ALL.len()],
+            floor_charge: Vec::new(),
+            floor_satisfaction: Vec::new(),
+            floor_spend_acc: Vec::new(),
+            floor_fill_acc: Vec::new(),
         }
     }
 
-    /// How much charge this use must leave behind for higher-ranked
-    /// uses that have not spent yet.
-    ///
-    /// Only uses that draw *later* in the tick can be starved by this
-    /// one, so only those are reserved for. A higher-ranked use that
-    /// already spent needs nothing held back.
+    /// How well this circuit is being served, in per-mille.
     #[must_use]
-    pub fn reserved_against(&self, spender: PowerUse) -> i64 {
-        let rank = |use_: PowerUse| {
-            self.priority
-                .iter()
-                .position(|entry| *entry == use_)
-                .unwrap_or(usize::MAX)
-        };
-        let mine = rank(spender);
-        PowerUse::ALL
-            .iter()
-            .filter(|other| rank(**other) < mine && other.tick_position() > spender.tick_position())
-            .map(|other| self.demand.get(other.index()).copied().unwrap_or(0))
-            .sum()
+    pub fn served(&self, use_: PowerUse) -> i64 {
+        self.satisfaction
+            .get(use_.index())
+            .copied()
+            .unwrap_or(FULL)
+            .clamp(0, FULL)
     }
 
-    /// Pay for a hundred ticks of something up front, then spend that
-    /// credit a tick at a time.
+    /// Service on one deck. Old saves and unit tests without topology
+    /// state fall back to the tower-wide value.
+    #[must_use]
+    pub fn served_at(&self, floor: u8, use_: PowerUse) -> i64 {
+        self.floor_satisfaction
+            .get(floor as usize)
+            .and_then(|row| row.get(use_.index()))
+            .copied()
+            .unwrap_or_else(|| self.served(use_))
+            .clamp(0, FULL)
+    }
+
+    /// Was this circuit given less than it asked for?
+    #[must_use]
+    pub fn short(&self, use_: PowerUse) -> bool {
+        self.served(use_) < FULL
+    }
+
+    /// Divide this tick's supply between the circuits and record how
+    /// well each one came out of it.
     ///
-    /// The obvious alternative — charge `rate / 100` every tick — is
-    /// wrong in a way that hides: a rate of 20 per 100 ticks truncates
-    /// to zero charge on eighty ticks out of every hundred, so a tower
-    /// with an empty bank would keep walking for free most of the time.
-    /// Buying in blocks means running out actually stops you, and it
-    /// makes the draw visible as a periodic bite rather than a trickle.
-    pub fn buy_block(&mut self, per_100: i64, credit: Credit) -> bool {
-        let held = match credit {
-            Credit::Stride => &mut self.stride_credit,
-            Credit::Light => &mut self.light_credit,
-        };
-        if *held > 0 {
-            *held -= 1;
-            return true;
+    /// **Served in the player's order, each in full until the supply
+    /// runs out.** Everything above the cut runs at its full rate, one
+    /// circuit runs partially, and anything below gets nothing — which
+    /// is a switchboard shedding load rather than a pool being raced
+    /// for. Inside a circuit the fraction applies to every room on it
+    /// equally, so a half-served Works is every mill turning at half
+    /// speed rather than half the mills stopped.
+    ///
+    /// Returns how much was actually taken, which is what the bank and
+    /// the fuel are charged for. **Nothing is spent on a circuit that
+    /// was not served**, so a tower short of charge burns less fuel
+    /// rather than burning the same amount for less work.
+    pub fn allocate(&mut self, supply: i64) -> i64 {
+        if self.satisfaction.len() != PowerUse::ALL.len() {
+            self.satisfaction = vec![FULL; PowerUse::ALL.len()];
         }
-        // Free is free: a zero rate never needs buying.
-        if per_100 <= 0 {
-            return true;
+        let mut left = supply.max(0);
+        let mut taken = 0;
+        for at in 0..self.priority.len() {
+            let index = self.priority[at].index();
+            let want = self.demand.get(index).copied().unwrap_or(0).max(0);
+            if want <= 0 {
+                // Nothing asked for is fully served by definition. Saying
+                // otherwise would light the brown-out flag for circuits a
+                // tower does not even have.
+                self.satisfaction[index] = FULL;
+                continue;
+            }
+            let got = want.min(left);
+            left -= got;
+            taken += got;
+            self.satisfaction[index] = got * FULL / want;
         }
-        let spender = match credit {
-            Credit::Stride => PowerUse::Legs,
-            Credit::Light => PowerUse::Lamps,
-        };
-        if !self.draw(spender, per_100) {
-            return false;
-        }
-        match credit {
-            Credit::Stride => self.stride_credit = 99,
-            Credit::Light => self.light_credit = 99,
-        }
-        true
-    }
-
-    /// Take `amount` for `spender` if the pool can cover it *and* still
-    /// leave what higher-ranked uses are owed. Returns whether it could.
-    /// A refusal sets `brownout`, which is the only place that flag is
-    /// raised.
-    pub fn draw(&mut self, spender: PowerUse, amount: i64) -> bool {
-        if amount <= 0 {
-            return true;
-        }
-        if self.charge < amount {
-            self.brownout = true;
-            return false;
-        }
-        // Yield to anything the player ranked above this that has not
-        // spent yet. Without it the ranking would be decoration: the
-        // tick order alone decides who gets the last of the bank, which
-        // is exactly the thing being replaced.
-        if self.charge - amount < self.reserved_against(spender) {
-            self.brownout = true;
-            return false;
-        }
-        self.charge -= amount;
-        self.spent_last += amount;
-        true
+        self.brownout = PowerUse::ALL.iter().any(|use_| self.short(*use_));
+        self.spent_last = taken;
+        taken
     }
 
     /// Add charge, discarding anything past capacity. Overflow is not
@@ -235,11 +299,29 @@ impl Power {
         if self.capacity <= 0 {
             return 0;
         }
-        self.charge * 1000 / self.capacity
+        self.charge * FULL / self.capacity
+    }
+
+    /// Turn a rate in charge-per-100-ticks into whole charge, carrying
+    /// the remainder so nothing is lost to truncation.
+    fn take_whole(acc: &mut i64, rate: i64) -> i64 {
+        *acc += rate.max(0);
+        let whole = *acc / PER_TICK;
+        *acc -= whole * PER_TICK;
+        whole
+    }
+
+    /// Move this tick's allocated rates into the bank: what the tower
+    /// drew out of storage, and what its spare generation put back.
+    pub fn settle(&mut self, from_bank_rate: i64, to_bank_rate: i64) {
+        let drawn = Self::take_whole(&mut self.spend_acc, from_bank_rate);
+        self.charge = (self.charge - drawn).max(0);
+        let filled = Self::take_whole(&mut self.fill_acc, to_bank_rate);
+        self.add(filled);
     }
 
     /// Clear the per-tick counters. Called once at the top of the tick,
-    /// before anything draws.
+    /// before anything is allocated.
     pub fn begin_tick(&mut self) {
         self.income_last = 0;
         self.spent_last = 0;
@@ -251,115 +333,121 @@ impl Power {
 mod tests {
     use super::*;
 
-    fn pool(charge: i64, capacity: i64) -> Power {
+    fn pool(charge: i64, demand: &[(PowerUse, i64)]) -> Power {
         let mut power = Power::new(charge);
-        power.capacity = capacity;
+        for (use_, want) in demand {
+            power.demand[use_.index()] = *want;
+        }
         power
     }
 
     #[test]
-    fn a_draw_within_budget_succeeds_and_is_counted() {
-        let mut power = pool(100, 100);
-        assert!(power.draw(PowerUse::Legs, 30));
-        assert_eq!(power.charge, 70);
-        assert_eq!(power.spent_last, 30);
+    fn a_supply_that_covers_everything_serves_everything() {
+        let mut power = pool(100, &[(PowerUse::Works, 10), (PowerUse::Legs, 5)]);
+        assert_eq!(power.allocate(100), 15, "only what was asked for is taken");
+        assert_eq!(power.served(PowerUse::Works), FULL);
+        assert_eq!(power.served(PowerUse::Legs), FULL);
         assert!(!power.brownout);
     }
 
     #[test]
-    fn a_draw_over_budget_takes_nothing_and_raises_brownout() {
-        // Partial payment would be worse than refusal: half a floor of
-        // elevator travel is not a thing, and a consumer that spent
-        // charge without acting is charge that vanished.
-        let mut power = pool(10, 100);
-        assert!(!power.draw(PowerUse::Legs, 11));
-        assert_eq!(power.charge, 10);
-        assert_eq!(power.spent_last, 0);
+    fn a_circuit_that_asks_for_nothing_is_not_a_brown_out() {
+        // A tower with no shaft has no Lifts demand at all, and reporting
+        // that as an unserved circuit would light the flag permanently.
+        let mut power = pool(100, &[]);
+        power.allocate(0);
+        assert!(!power.brownout);
+        for use_ in PowerUse::ALL {
+            assert_eq!(power.served(use_), FULL, "{use_:?}");
+        }
+    }
+
+    #[test]
+    fn a_short_supply_is_served_in_the_players_order() {
+        // Lifts and Works fully, Guns half, and nothing below it — a
+        // switchboard shedding load rather than a pool being raced for.
+        let mut power = pool(
+            100,
+            &[
+                (PowerUse::Lifts, 10),
+                (PowerUse::Works, 10),
+                (PowerUse::Guns, 20),
+                (PowerUse::Lamps, 10),
+            ],
+        );
+        assert_eq!(power.allocate(30), 30, "everything available is used");
+        assert_eq!(power.served(PowerUse::Lifts), FULL);
+        assert_eq!(power.served(PowerUse::Works), FULL);
+        assert_eq!(power.served(PowerUse::Guns), 500, "half of what it asked");
+        assert_eq!(power.served(PowerUse::Lamps), 0);
         assert!(power.brownout);
     }
 
     #[test]
-    fn drawing_exactly_the_balance_is_allowed() {
-        let mut power = pool(10, 100);
-        assert!(power.draw(PowerUse::Legs, 10));
-        assert_eq!(power.charge, 0);
-        assert!(!power.brownout);
+    fn reordering_moves_which_circuit_goes_short() {
+        // The whole point of the ranking, and now it is continuous:
+        // the same tower under a different order serves different
+        // fractions rather than flipping something on or off.
+        let demand = [(PowerUse::Lifts, 20), (PowerUse::Legs, 20)];
+        let mut first = pool(100, &demand);
+        assert_eq!(first.allocate(30), 30);
+        assert_eq!(first.served(PowerUse::Lifts), FULL);
+        assert_eq!(first.served(PowerUse::Legs), 500);
+
+        let mut second = pool(100, &demand);
+        second.priority = vec![
+            PowerUse::Legs,
+            PowerUse::Lifts,
+            PowerUse::Works,
+            PowerUse::Guns,
+            PowerUse::Lamps,
+        ];
+        assert_eq!(second.allocate(30), 30);
+        assert_eq!(second.served(PowerUse::Legs), FULL);
+        assert_eq!(second.served(PowerUse::Lifts), 500);
     }
 
     #[test]
-    fn a_zero_draw_is_free_and_never_browns_out() {
-        let mut power = pool(0, 100);
-        assert!(power.draw(PowerUse::Legs, 0));
-        assert!(!power.brownout);
-        assert_eq!(power.spent_last, 0);
+    fn nothing_is_spent_on_a_circuit_that_was_not_served() {
+        // **The Factorio property, and the reason a poor tower is not
+        // also a wasteful one.** A refused draw used to cost nothing but
+        // achieve nothing; an unserved circuit now simply is not paid
+        // for, so the fuel bill falls with the work done.
+        let mut power = pool(100, &[(PowerUse::Works, 50), (PowerUse::Legs, 50)]);
+        assert_eq!(
+            power.allocate(50),
+            50,
+            "the supply is spent, not the demand"
+        );
+        assert_eq!(power.served(PowerUse::Legs), 0);
+    }
+
+    #[test]
+    fn a_tower_with_no_supply_serves_nothing_and_says_so() {
+        let mut power = pool(0, &[(PowerUse::Legs, 20)]);
+        assert_eq!(power.allocate(0), 0);
+        assert_eq!(power.served(PowerUse::Legs), 0);
+        assert!(power.brownout);
     }
 
     #[test]
     fn income_is_capped_at_capacity_and_the_overflow_is_lost() {
         // Losing the overflow is the design: it is the signal that the
         // tower needs another cell bank.
-        let mut power = pool(90, 100);
+        let mut power = Power::new(90);
+        power.capacity = 100;
         power.add(50);
         assert_eq!(power.charge, 100);
         assert_eq!(power.income_last, 10);
     }
 
     #[test]
-    fn income_into_a_full_pool_counts_nothing() {
-        let mut power = pool(100, 100);
-        power.add(25);
-        assert_eq!(power.charge, 100);
-        assert_eq!(power.income_last, 0);
-    }
-
-    #[test]
     fn fill_reads_zero_rather_than_dividing_by_zero() {
-        assert_eq!(pool(0, 0).fill_permille(), 0);
-        assert_eq!(pool(50, 100).fill_permille(), 500);
-        assert_eq!(pool(100, 100).fill_permille(), 1000);
-    }
-
-    #[test]
-    fn a_block_is_bought_once_and_then_spent_a_tick_at_a_time() {
-        // The whole reason blocks exist: a rate of 20 per 100 ticks
-        // must actually cost 20, not round to nothing eighty times.
-        let mut power = pool(100, 100);
-        assert!(power.buy_block(20, Credit::Stride));
-        assert_eq!(power.charge, 80, "the first tick pays for the block");
-
-        for _ in 0..99 {
-            assert!(power.buy_block(20, Credit::Stride));
-        }
-        assert_eq!(power.charge, 80, "the next 99 ticks ride on the credit");
-
-        assert!(power.buy_block(20, Credit::Stride));
-        assert_eq!(power.charge, 60, "tick 101 buys the next block");
-    }
-
-    #[test]
-    fn an_unaffordable_block_stops_the_consumer_dead() {
-        let mut power = pool(5, 100);
-        assert!(!power.buy_block(20, Credit::Stride));
-        assert_eq!(power.charge, 5);
-        assert!(power.brownout);
-    }
-
-    #[test]
-    fn the_two_meters_are_independent() {
-        // Striding and lighting must not spend each other's credit, or
-        // halting the legs would silently buy free lamps.
-        let mut power = pool(100, 100);
-        assert!(power.buy_block(20, Credit::Stride));
-        assert!(power.buy_block(10, Credit::Light));
-        assert_eq!(power.charge, 70);
-        assert_eq!(power.stride_credit, 99);
-        assert_eq!(power.light_credit, 99);
-    }
-
-    #[test]
-    fn a_free_rate_needs_no_purchase() {
-        let mut power = pool(0, 0);
-        assert!(power.buy_block(0, Credit::Light));
-        assert!(!power.brownout);
+        let mut empty = Power::new(0);
+        empty.capacity = 0;
+        assert_eq!(empty.fill_permille(), 0);
+        let mut half = Power::new(50);
+        half.capacity = 100;
+        assert_eq!(half.fill_permille(), 500);
     }
 }

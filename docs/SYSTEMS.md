@@ -586,7 +586,7 @@ Damage attaches to the things the player built, because that is what makes it le
 
 ### 2.4 Emplacements
 
-Rooms with a `defence` block: a dart battery on a balcony, a seed-bomb mortar on a deck.
+Rooms with a `defence` block: a dart battery on a balcony, a resonance array on a deck.
 They auto-fire at the nearest live target in range — a battery has no judgement of its own;
 the player's judgement went into where they put it — and consume ammo from a **local
 rack**, which is just an input stack, so feeding them is the haul system's existing job,
@@ -703,7 +703,7 @@ points and makes its destruction the end of the run.
   250. Until somebody has seen it, the legibility half of the first exit criterion above is
   a claim about code rather than about the game.
 - **One emplacement, and no priority targeting.** M2's brief in `v2-plan.md` §9 asked for
-  a dart battery *and* a seed-bomb mortar "with priority targeting." Only the battery is
+  a dart battery *and* a resonance array "with priority targeting." Only the battery is
   built, so "which defence to build" is not yet a decision — only "whether" — and
   `defence.rs` picks the nearest creature in range with no way for the player to say
   otherwise. The targeting half is a deliberate cut rather than an oversight: a priority
@@ -1077,7 +1077,7 @@ Wardens are content, `assets/data/enemies/feral_warden.ron`, with one new field 
 
 | Field | Value | Why |
 |---|---|---|
-| `wave_eligible` | `false` | Ordinary waves draw from every creature whose `min_provocation` the tower has passed. A warden is not summoned by attention; it is summoned by berthing, so it has to be excluded from that pool explicitly rather than fenced off with an out-of-range `min_provocation`. |
+| `encounter` | `RuinResident` | A warden is summoned by berthing, never by ordinary attention. The encounter source is explicit rather than hidden behind an unreachable tuning value. |
 
 **This is the counterweight to the cling rule, and it is the best thing in the milestone.**
 `DECISIONS.md` §11 makes a creature's grip count down only while the tower is actually
@@ -1367,7 +1367,7 @@ All the arithmetic assumes the tower's current 0.6 paces per tick and 30 Hz.
 | enclave `at_paces` | 8,000 into region 2 | About seven minutes of 1× walking past the boundary — one or two of the city's ruins, so the normal case is arriving with something to trade, while the remaining four-fifths of the region is still ahead of you to be provisioned for. |
 | salvage rig | `Ruin { ticks_per_item: 60, range_paces: 60 }`, `buffer_max` 8, 8 poles, ground floors only | Two seconds a unit. `range_paces` 60 matches the dart battery's reach, which is the number the player already has a feel for. Priced above a mill and below a dumbwaiter. |
 | cutter arm | `Terrain { paces_per_item: 78 }` | **Authored at 78, not the 54 this table first targeted.** 54 is the authored `ticks_per_item` of 90 converted at 0.6 paces/tick, but truncated intake had the arm running at 128 ticks, so 78 paces (130 ticks) is the rate the M2 economy was actually measured against. See §3.6. |
-| feral warden | hp 300, damage 12, `attack_ticks` 60, speed 20, `cling_ticks` 2,400, `threat` 30, Ground, `wave_eligible: false` | A dart battery needs 800 ticks and 20 darts to put one down (300 hp against 15 damage every 40 ticks), and takes about 160 damage doing it — roughly 16 poles to mend. Toughest thing in the pack, slowest approach, and the longest grip: 80 seconds of walking to shake one that you have decided to leave. |
+| feral warden | hp 300, damage 12, `attack_ticks` 60, speed 20, `cling_ticks` 2,400, `threat` 30, Ground, `encounter: RuinResident` | A dart battery needs 800 ticks and 20 darts to put one down (300 hp against 15 damage every 40 ticks), and takes about 160 damage doing it — roughly 16 poles to mend. Toughest thing in the pack, slowest approach, and the longest grip: 80 seconds of walking to shake one that you have decided to leave. |
 | `warden_threat_per_100_salvage` | 120 | A 25-unit ruin rouses one warden, a 50-unit ruin rouses two. The payout and the price are the same number, which is the whole point. |
 | `warden_wake_paces` | 120 | About twenty seconds between the ground moving and the first bite, at a warden's own pace — the same order of warning `spawn_paces_ahead` gives an ordinary wave. |
 | `provocation_per_100_salvaged` | 300 | The same three points per unit that cutting costs. The wardens are the price of a ruin; charging a much louder second price would make salvage a thing nobody does twice. |
@@ -1458,7 +1458,7 @@ the kind of thing a list like this is bad at catching.
 - **`TerrainDef.weight` is deleted**; `TerrainRuntime` loses the field and
   `content::validate`'s "no terrain band has a positive weight" check moves onto palettes.
 - **`siege::maybe_spawn_wave`** filters eligibility on `min_provocation` alone; without
-  `wave_eligible` wardens leak into ordinary waves.
+  `RuinResident` wardens leak into ordinary waves.
 - **`tests/balance_doc.rs` is bidirectional** — every new `balance.ron` field needs a graded
   `BALANCE.md` row in the same commit, and the content-constants group row needs rewording
   for `paces_per_item`.
@@ -2438,13 +2438,10 @@ one below says what would actually demonstrate it.
       criterion, and it cannot be self-assessed — the whole point of asking a stranger "what is
       this place?" is that the person who drew it already knows the answer.
 
-- [x] **The roster carries both schedules**, and `the roster writes both of the player's
-      schedules` in `web/e2e/smoke.spec.ts` drives them through the DOM the way a player does
-      rather than through the bridge, because a panel can look right and be wired to nothing.
-      It caught one thing immediately: the diagnostics readout sits in the same corner and was
-      silently eating clicks on the bottom of the crew list — the button highlighted, nothing
-      happened, and there was no way to tell that from a rejected command. It is
-      `pointer-events: none` now.
+- [x] **The roster keeps shaft controls physical.** Add-car and extend remain in the roster and
+      `the roster keeps shaft controls physical` drives them through the DOM. The per-daypart
+      floor-pip matrix was removed from the player UI because no measured alternative justified
+      the permanent control surface. `SetShaftProgram` remains replay-compatible core data.
 
 - [x] **The kitchen chain has visibly given bamboo somewhere to go.** `examples/journey.rs`'s
       shade-versus-sun comparison reported *exactly* 100 stalks on both routes at M3 and
@@ -2607,14 +2604,14 @@ full pack after M5, with the new entries in bold:
 | raw | `bamboo` | cutter arm, shade-weighted | mill, canteen, burner |
 | raw | `scrap` | salvage rig, at ruins | **sun-forge** (new) |
 | raw | **`fiber`** | **fiber comb** (new), mid-band-weighted | **ropery** (new) |
-| raw | **`produce`** | **garden** (new), sun-weighted | **bombary** (new) |
+| raw | **`resin feedstock`** | **garden** (new), sun-weighted | **resonator works** (new) |
 | T1 | `poles` | mill | construction, repair, thornwright, **fitter** |
 | T1 | `meals` | canteen | crew, three times a day |
 | T1 | `darts` | thornwright | dart battery |
 | T1 | **`rope`** | **ropery** (new) | every shaft and every emplacement's build cost |
 | T1 | **`alloy`** | **sun-forge** (new), charge-hungry | **fitter**, **cellwright** |
-| T2 | **`mechanisms`** | **fitter** (new) | elevator build cost, **seed thrower** (new) |
-| T2 | **`seed bombs`** | **bombary** (new) | seed thrower, as ammo |
+| T2 | **`mechanisms`** | **fitter** (new) | elevator build cost, **resonance array** (new) |
+| T2 | **`resonator drums`** | **resonator works** (new) | resonance array, as pulse elements |
 | T2 | **`charge cells`** | **cellwright** (new) | cell bank build cost |
 
 **Meals stay on bamboo, and that is a deliberate departure from `v2-plan.md` §6.1**, which
@@ -2622,7 +2619,7 @@ lists them as `produce`→kitchen. M4 built them from bamboo for a specific reas
 no consumer and the biomass axis was therefore unfeelable (§4.3) — and the measurement that
 justified it is on the record: two routes eight percent apart in weighted yield harvested 353
 stalks against 351 before the canteen was priced properly, and 576 against 539 after. Switching
-meals to produce now would hand that back. Produce gets seed bombs instead, which is a better
+meals to resin feedstock now would hand that back. Resin feedstock gets resonator drums instead, which is a better
 job for it anyway: a material that grows in the sun feeding a weapon that denies ground is a
 cleaner opposite to bamboo feeding poles than two food chains would be.
 
@@ -2636,7 +2633,7 @@ cleaner opposite to bamboo feeding poles than two food chains would be.
   makes it the first intake a *stopped* tower runs at full rate — the exact inverse of the
   cutter arm (§3.6), and therefore the first real argument for standing still.
 - The **fitter** is the point, because mechanisms gate the elevator (§5.3).
-- The **ropery**, the **bombary** and the **cellwright** are plumbing: one input, one output,
+- The **ropery**, the **resonator works** and the **cellwright** are plumbing: one input, one output,
   no decision of their own. They earn their slots by what they feed, and if any of them reads
   as a step rather than as a choice in play, the right answer is to fold its output into an
   existing room rather than to make it more interesting.
@@ -2652,9 +2649,9 @@ same commit (`DECISIONS.md` §7).
 | ropery | Production, 2 slots, 4 poles; 2 fiber → 1 rope, 120 ticks | The mill's price and rhythm exactly, because it is the mill's opposite number and the two should feel like siblings. |
 | sun-forge | Production, 2 slots, 8 poles; 3 scrap → 1 alloy, 240 ticks, `power_draw` 4 | Four times the thornwright's draw and the largest single sink in the tower: a forge running flat out costs more charge across a day than continuous striding, so *running the forge* and *walking far* become the same decision. Eight seconds a bar makes it visibly the slowest thing in the chain. |
 | fitter | Production, 2 slots, 6 poles + 4 rope; 1 alloy + 2 poles → 1 mechanism, 300 ticks | The first build cost that is not poles alone, and the first recipe drawing two inputs from different chains. |
-| bombary | Production, 2 slots, 6 poles + 4 rope; 2 produce + 1 fiber → 2 seed bombs, 200 ticks | Cheaper per shot than darts and slower to make, so a thrower is the answer to *many* things rather than to one hard thing. |
+| resonator works | Production, 2 slots, 6 poles + 4 rope; 2 resin feedstock + 1 fiber → 2 resonator drums, 200 ticks | Cheaper per pulse than darts and slower to make, so an array is the answer to *many* things rather than to one hard thing. |
 | cellwright | Production, 2 slots, 6 poles; 2 alloy → 1 charge cell, 300 ticks | Storage is built, so the tower's charge ceiling becomes something the chain earns rather than something poles buy. |
-| seed thrower | Defence, 2 slots, 6 poles + 3 rope + 2 mechanisms; 1 seed bomb a shot, 8 damage across a 30-pace band, `reload_ticks` 90 | **Area, not aim.** The dart battery answers one creature well; the thrower answers a wave badly and cheaply. Two emplacements with different failure modes is what makes "what do I build" a question at all. |
+| resonance array | Defence, 2 slots, 6 poles + 3 rope + 2 mechanisms; 1 resonator drum a pulse, 8 damage across a 30-pace band, `reload_ticks` 90 | **Area, not aim.** The dart battery answers one creature well; the array answers a wave badly and cheaply. Two emplacements with different failure modes is what makes "what do I build" a question at all. |
 | `rope` in shaft costs | stairs 0, dumbwaiter +3, elevator +6 | Shafts stop being a pure pole cost, so the material easiest to get in the *middle* bands is what buys vertical transport. A tower that never leaves the canopy can afford poles and not rope. |
 | `mechanisms` in the elevator's cost | 2 | **The elevator becomes a tier-two building**, which is the sharpest single expression of "depth within rules": M1's centrepiece stops being something a starting tower can rush, and the route that reaches it runs through the ruins. |
 | `charge cells` in the cell bank's cost | 2, replacing 8 poles | See above: batteries are built. |
@@ -2664,7 +2661,7 @@ same commit (`DECISIONS.md` §7).
 The content gate applied one item at a time, because "it feeds the next room" is not a
 consumer, it is a postponement.
 
-**`mechanisms` gate the elevator and the seed thrower.** This is the load-bearing one. Until M5
+**`mechanisms` gate the elevator and the resonance array.** This is the load-bearing one. Until M5
 the elevator is 18 poles and a decision about *when*; after M5 it is 18 poles, 6 rope and 2
 mechanisms and a decision about *whether the route you took can build one at all*. A tower that
 walked the shaded branches every time has bamboo and no scrap, so no alloy, so no mechanisms,
@@ -2676,7 +2673,7 @@ means the answer to "I keep browning out at night" stops being "spend poles" and
 the forge, which costs charge" — a loop to be climbed rather than bought out of. It is the first
 place in the game where fixing a problem costs the resource the problem is about.
 
-**`seed bombs` are the second emplacement's ammo**, and the second emplacement exists to give
+**`resonator drums` are the second emplacement's pulse elements**, and the second emplacement exists to give
 defence a *shape* rather than a level. A dart battery kills one thing at a time and is the right
 answer to a borer at a shaft column; a thrower scatters and is the right answer to four skitters
 on a panel. Neither is an upgrade of the other, which is the only way a second anything is
@@ -2734,7 +2731,7 @@ visible, which is a better game to add it to.
 | chute | Shaft, 1 slot column, **6 poles, no rope**, no charge, no capacity | Cheaper than a dumbwaiter (8 poles) because it does less: one direction, no machinery, nothing comes back up. **Specced at 6 poles + 2 rope and shipped without the rope**: rope needs a ropery, a ropery needs fiber to reach it, and fiber having nowhere to go *is the jam* — so the rope made the escape hatch affordable only before you needed it. Everything else in the pack may sit behind a chain; this one may not. |
 | spill priority | below `PRIORITY_SHELF` | Never preferred to somewhere useful. A chute is where things go when there is nowhere else, and a tower with spare shelf space should never spill. |
 | what may be spilled | nothing a live inbox wants, nothing anything is **built** with, nothing a **settlement takes** | The third clause was missing and a chute was eating salvage. `wanted` asked two questions — does a live room's inbox take it, and is it a build cost — and **scrap answers no to both**: its only room consumer is the sun forge, so a tower without one has no inbox wanting it, and nothing is built from it. Yet scrap is the entire point of berthing at a ruin (§3.4). A player with a chute stopped, woke the wardens, took the damage, collected the scrap, and watched their crew carry it out of the tower, with nothing on screen saying so. The gap is structural rather than an oversight: an enclave's `Trade`, `Recruit` and `Reinforce` are **commands**, so what they consume appears in no room's inputs and is invisible to a check that only reads rooms. `Content::settlements_take` closes it. Deliberately not conditional on a settlement being *in reach* — "there is no buyer within forty minutes" is not a reason to throw something away, and a chute that reasoned that way could not be planned around. |
-| what is left spillable | fiber, darts, meals, seed bombs, charge cells | Narrow on purpose, and narrower than it looks: rope is a build cost, so it was already safe; fiber is spillable only while no ropery is running, which is exactly the case §5.4 was written about. **Caught by the screenshot harness rather than by a test** — the capture run berthed, salvaged, and then photographed an enclave board it could not afford to buy from. |
+| what is left spillable | fiber, darts, meals, resonator drums, charge cells | Narrow on purpose, and narrower than it looks: rope is a build cost, so it was already safe; fiber is spillable only while no ropery is running, which is exactly the case §5.4 was written about. **Caught by the screenshot harness rather than by a test** — the capture run berthed, salvaged, and then photographed an enclave board it could not afford to buy from. |
 
 ### 5.5 The rest of the taxonomy, region 3, and the Refugia
 
@@ -2785,7 +2782,8 @@ is where that stops being aspirational.
   reversing it would take the point out of berthing at a ruin. **Scrap has one price at every
   board on purpose** — 4 for 3, everywhere — so there is nothing to buy in one region and sell in
   the next, which is §5.11 open question 3's whole worry.
-- **Ropewalk exists so region 1 can reach the elevator.** An elevator costs six rope; rope costs
+- **Ropewalk exists so region 1 can reach the elevator.** An elevator costs two rope plus its
+  per-boundary pole rail; rope costs
   a ropery, a ropery costs fiber, and fiber costs a comb. That put vertical transport — the bet
   the whole game rests on (`DESIGN.md` pillar 2) — three rooms deep on a tower twenty minutes
   old. Six poles a pair, four pairs, is one elevator and two spare — and poles are what the shaft's own
@@ -3190,7 +3188,7 @@ Damage attaches to the things the player built, because that is what makes it le
 
 ### 2.4 Emplacements
 
-Rooms with a `defence` block: a dart battery on a balcony, a seed-bomb mortar on a deck.
+Rooms with a `defence` block: a dart battery on a balcony, a resonance array on a deck.
 They auto-fire at the nearest live target in range — a battery has no judgement of its own;
 the player's judgement went into where they put it — and consume ammo from a **local
 rack**, which is just an input stack, so feeding them is the haul system's existing job,
@@ -3307,7 +3305,7 @@ points and makes its destruction the end of the run.
   250. Until somebody has seen it, the legibility half of the first exit criterion above is
   a claim about code rather than about the game.
 - **One emplacement, and no priority targeting.** M2's brief in `v2-plan.md` §9 asked for
-  a dart battery *and* a seed-bomb mortar "with priority targeting." Only the battery is
+  a dart battery *and* a resonance array "with priority targeting." Only the battery is
   built, so "which defence to build" is not yet a decision — only "whether" — and
   `defence.rs` picks the nearest creature in range with no way for the player to say
   otherwise. The targeting half is a deliberate cut rather than an oversight: a priority
@@ -3681,7 +3679,7 @@ Wardens are content, `assets/data/enemies/feral_warden.ron`, with one new field 
 
 | Field | Value | Why |
 |---|---|---|
-| `wave_eligible` | `false` | Ordinary waves draw from every creature whose `min_provocation` the tower has passed. A warden is not summoned by attention; it is summoned by berthing, so it has to be excluded from that pool explicitly rather than fenced off with an out-of-range `min_provocation`. |
+| `encounter` | `RuinResident` | A warden is summoned by berthing, never by ordinary attention. The encounter source is explicit rather than hidden behind an unreachable tuning value. |
 
 **This is the counterweight to the cling rule, and it is the best thing in the milestone.**
 `DECISIONS.md` §11 makes a creature's grip count down only while the tower is actually
@@ -3971,7 +3969,7 @@ All the arithmetic assumes the tower's current 0.6 paces per tick and 30 Hz.
 | enclave `at_paces` | 8,000 into region 2 | About seven minutes of 1× walking past the boundary — one or two of the city's ruins, so the normal case is arriving with something to trade, while the remaining four-fifths of the region is still ahead of you to be provisioned for. |
 | salvage rig | `Ruin { ticks_per_item: 60, range_paces: 60 }`, `buffer_max` 8, 8 poles, ground floors only | Two seconds a unit. `range_paces` 60 matches the dart battery's reach, which is the number the player already has a feel for. Priced above a mill and below a dumbwaiter. |
 | cutter arm | `Terrain { paces_per_item: 78 }` | **Authored at 78, not the 54 this table first targeted.** 54 is the authored `ticks_per_item` of 90 converted at 0.6 paces/tick, but truncated intake had the arm running at 128 ticks, so 78 paces (130 ticks) is the rate the M2 economy was actually measured against. See §3.6. |
-| feral warden | hp 300, damage 12, `attack_ticks` 60, speed 20, `cling_ticks` 2,400, `threat` 30, Ground, `wave_eligible: false` | A dart battery needs 800 ticks and 20 darts to put one down (300 hp against 15 damage every 40 ticks), and takes about 160 damage doing it — roughly 16 poles to mend. Toughest thing in the pack, slowest approach, and the longest grip: 80 seconds of walking to shake one that you have decided to leave. |
+| feral warden | hp 300, damage 12, `attack_ticks` 60, speed 20, `cling_ticks` 2,400, `threat` 30, Ground, `encounter: RuinResident` | A dart battery needs 800 ticks and 20 darts to put one down (300 hp against 15 damage every 40 ticks), and takes about 160 damage doing it — roughly 16 poles to mend. Toughest thing in the pack, slowest approach, and the longest grip: 80 seconds of walking to shake one that you have decided to leave. |
 | `warden_threat_per_100_salvage` | 120 | A 25-unit ruin rouses one warden, a 50-unit ruin rouses two. The payout and the price are the same number, which is the whole point. |
 | `warden_wake_paces` | 120 | About twenty seconds between the ground moving and the first bite, at a warden's own pace — the same order of warning `spawn_paces_ahead` gives an ordinary wave. |
 | `provocation_per_100_salvaged` | 300 | The same three points per unit that cutting costs. The wardens are the price of a ruin; charging a much louder second price would make salvage a thing nobody does twice. |
@@ -4062,7 +4060,7 @@ the kind of thing a list like this is bad at catching.
 - **`TerrainDef.weight` is deleted**; `TerrainRuntime` loses the field and
   `content::validate`'s "no terrain band has a positive weight" check moves onto palettes.
 - **`siege::maybe_spawn_wave`** filters eligibility on `min_provocation` alone; without
-  `wave_eligible` wardens leak into ordinary waves.
+  `RuinResident` wardens leak into ordinary waves.
 - **`tests/balance_doc.rs` is bidirectional** — every new `balance.ron` field needs a graded
   `BALANCE.md` row in the same commit, and the content-constants group row needs rewording
   for `paces_per_item`.
@@ -5042,13 +5040,10 @@ one below says what would actually demonstrate it.
       criterion, and it cannot be self-assessed — the whole point of asking a stranger "what is
       this place?" is that the person who drew it already knows the answer.
 
-- [x] **The roster carries both schedules**, and `the roster writes both of the player's
-      schedules` in `web/e2e/smoke.spec.ts` drives them through the DOM the way a player does
-      rather than through the bridge, because a panel can look right and be wired to nothing.
-      It caught one thing immediately: the diagnostics readout sits in the same corner and was
-      silently eating clicks on the bottom of the crew list — the button highlighted, nothing
-      happened, and there was no way to tell that from a rejected command. It is
-      `pointer-events: none` now.
+- [x] **The roster keeps shaft controls physical.** Add-car and extend remain in the roster and
+      `the roster keeps shaft controls physical` drives them through the DOM. The per-daypart
+      floor-pip matrix was removed from the player UI because no measured alternative justified
+      the permanent control surface. `SetShaftProgram` remains replay-compatible core data.
 
 - [x] **The kitchen chain has visibly given bamboo somewhere to go.** `examples/journey.rs`'s
       shade-versus-sun comparison reported *exactly* 100 stalks on both routes at M3 and
@@ -5211,14 +5206,14 @@ full pack after M5, with the new entries in bold:
 | raw | `bamboo` | cutter arm, shade-weighted | mill, canteen, burner |
 | raw | `scrap` | salvage rig, at ruins | **sun-forge** (new) |
 | raw | **`fiber`** | **fiber comb** (new), mid-band-weighted | **ropery** (new) |
-| raw | **`produce`** | **garden** (new), sun-weighted | **bombary** (new) |
+| raw | **`resin feedstock`** | **garden** (new), sun-weighted | **resonator works** (new) |
 | T1 | `poles` | mill | construction, repair, thornwright, **fitter** |
 | T1 | `meals` | canteen | crew, three times a day |
 | T1 | `darts` | thornwright | dart battery |
 | T1 | **`rope`** | **ropery** (new) | every shaft and every emplacement's build cost |
 | T1 | **`alloy`** | **sun-forge** (new), charge-hungry | **fitter**, **cellwright** |
-| T2 | **`mechanisms`** | **fitter** (new) | elevator build cost, **seed thrower** (new) |
-| T2 | **`seed bombs`** | **bombary** (new) | seed thrower, as ammo |
+| T2 | **`mechanisms`** | **fitter** (new) | elevator build cost, **resonance array** (new) |
+| T2 | **`resonator drums`** | **resonator works** (new) | resonance array, as pulse elements |
 | T2 | **`charge cells`** | **cellwright** (new) | cell bank build cost |
 
 **Meals stay on bamboo, and that is a deliberate departure from `v2-plan.md` §6.1**, which
@@ -5226,7 +5221,7 @@ lists them as `produce`→kitchen. M4 built them from bamboo for a specific reas
 no consumer and the biomass axis was therefore unfeelable (§4.3) — and the measurement that
 justified it is on the record: two routes eight percent apart in weighted yield harvested 353
 stalks against 351 before the canteen was priced properly, and 576 against 539 after. Switching
-meals to produce now would hand that back. Produce gets seed bombs instead, which is a better
+meals to resin feedstock now would hand that back. Resin feedstock gets resonator drums instead, which is a better
 job for it anyway: a material that grows in the sun feeding a weapon that denies ground is a
 cleaner opposite to bamboo feeding poles than two food chains would be.
 
@@ -5240,7 +5235,7 @@ cleaner opposite to bamboo feeding poles than two food chains would be.
   makes it the first intake a *stopped* tower runs at full rate — the exact inverse of the
   cutter arm (§3.6), and therefore the first real argument for standing still.
 - The **fitter** is the point, because mechanisms gate the elevator (§5.3).
-- The **ropery**, the **bombary** and the **cellwright** are plumbing: one input, one output,
+- The **ropery**, the **resonator works** and the **cellwright** are plumbing: one input, one output,
   no decision of their own. They earn their slots by what they feed, and if any of them reads
   as a step rather than as a choice in play, the right answer is to fold its output into an
   existing room rather than to make it more interesting.
@@ -5256,9 +5251,9 @@ same commit (`DECISIONS.md` §7).
 | ropery | Production, 2 slots, 4 poles; 2 fiber → 1 rope, 120 ticks | The mill's price and rhythm exactly, because it is the mill's opposite number and the two should feel like siblings. |
 | sun-forge | Production, 2 slots, 8 poles; 3 scrap → 1 alloy, 240 ticks, `power_draw` 4 | Four times the thornwright's draw and the largest single sink in the tower: a forge running flat out costs more charge across a day than continuous striding, so *running the forge* and *walking far* become the same decision. Eight seconds a bar makes it visibly the slowest thing in the chain. |
 | fitter | Production, 2 slots, 6 poles + 4 rope; 1 alloy + 2 poles → 1 mechanism, 300 ticks | The first build cost that is not poles alone, and the first recipe drawing two inputs from different chains. |
-| bombary | Production, 2 slots, 6 poles + 4 rope; 2 produce + 1 fiber → 2 seed bombs, 200 ticks | Cheaper per shot than darts and slower to make, so a thrower is the answer to *many* things rather than to one hard thing. |
+| resonator works | Production, 2 slots, 6 poles + 4 rope; 2 resin feedstock + 1 fiber → 2 resonator drums, 200 ticks | Cheaper per pulse than darts and slower to make, so an array is the answer to *many* things rather than to one hard thing. |
 | cellwright | Production, 2 slots, 6 poles; 2 alloy → 1 charge cell, 300 ticks | Storage is built, so the tower's charge ceiling becomes something the chain earns rather than something poles buy. |
-| seed thrower | Defence, 2 slots, 6 poles + 3 rope + 2 mechanisms; 1 seed bomb a shot, 8 damage across a 30-pace band, `reload_ticks` 90 | **Area, not aim.** The dart battery answers one creature well; the thrower answers a wave badly and cheaply. Two emplacements with different failure modes is what makes "what do I build" a question at all. |
+| resonance array | Defence, 2 slots, 6 poles + 3 rope + 2 mechanisms; 1 resonator drum a pulse, 8 damage across a 30-pace band, `reload_ticks` 90 | **Area, not aim.** The dart battery answers one creature well; the array answers a wave badly and cheaply. Two emplacements with different failure modes is what makes "what do I build" a question at all. |
 | `rope` in shaft costs | stairs 0, dumbwaiter +3, elevator +6 | Shafts stop being a pure pole cost, so the material easiest to get in the *middle* bands is what buys vertical transport. A tower that never leaves the canopy can afford poles and not rope. |
 | `mechanisms` in the elevator's cost | 2 | **The elevator becomes a tier-two building**, which is the sharpest single expression of "depth within rules": M1's centrepiece stops being something a starting tower can rush, and the route that reaches it runs through the ruins. |
 | `charge cells` in the cell bank's cost | 2, replacing 8 poles | See above: batteries are built. |
@@ -5268,7 +5263,7 @@ same commit (`DECISIONS.md` §7).
 The content gate applied one item at a time, because "it feeds the next room" is not a
 consumer, it is a postponement.
 
-**`mechanisms` gate the elevator and the seed thrower.** This is the load-bearing one. Until M5
+**`mechanisms` gate the elevator and the resonance array.** This is the load-bearing one. Until M5
 the elevator is 18 poles and a decision about *when*; after M5 it is 18 poles, 6 rope and 2
 mechanisms and a decision about *whether the route you took can build one at all*. A tower that
 walked the shaded branches every time has bamboo and no scrap, so no alloy, so no mechanisms,
@@ -5280,7 +5275,7 @@ means the answer to "I keep browning out at night" stops being "spend poles" and
 the forge, which costs charge" — a loop to be climbed rather than bought out of. It is the first
 place in the game where fixing a problem costs the resource the problem is about.
 
-**`seed bombs` are the second emplacement's ammo**, and the second emplacement exists to give
+**`resonator drums` are the second emplacement's pulse elements**, and the second emplacement exists to give
 defence a *shape* rather than a level. A dart battery kills one thing at a time and is the right
 answer to a borer at a shaft column; a thrower scatters and is the right answer to four skitters
 on a panel. Neither is an upgrade of the other, which is the only way a second anything is
@@ -5338,7 +5333,7 @@ visible, which is a better game to add it to.
 | chute | Shaft, 1 slot column, **6 poles, no rope**, no charge, no capacity | Cheaper than a dumbwaiter (8 poles) because it does less: one direction, no machinery, nothing comes back up. **Specced at 6 poles + 2 rope and shipped without the rope**: rope needs a ropery, a ropery needs fiber to reach it, and fiber having nowhere to go *is the jam* — so the rope made the escape hatch affordable only before you needed it. Everything else in the pack may sit behind a chain; this one may not. |
 | spill priority | below `PRIORITY_SHELF` | Never preferred to somewhere useful. A chute is where things go when there is nowhere else, and a tower with spare shelf space should never spill. |
 | what may be spilled | nothing a live inbox wants, nothing anything is **built** with, nothing a **settlement takes** | The third clause was missing and a chute was eating salvage. `wanted` asked two questions — does a live room's inbox take it, and is it a build cost — and **scrap answers no to both**: its only room consumer is the sun forge, so a tower without one has no inbox wanting it, and nothing is built from it. Yet scrap is the entire point of berthing at a ruin (§3.4). A player with a chute stopped, woke the wardens, took the damage, collected the scrap, and watched their crew carry it out of the tower, with nothing on screen saying so. The gap is structural rather than an oversight: an enclave's `Trade`, `Recruit` and `Reinforce` are **commands**, so what they consume appears in no room's inputs and is invisible to a check that only reads rooms. `Content::settlements_take` closes it. Deliberately not conditional on a settlement being *in reach* — "there is no buyer within forty minutes" is not a reason to throw something away, and a chute that reasoned that way could not be planned around. |
-| what is left spillable | fiber, darts, meals, seed bombs, charge cells | Narrow on purpose, and narrower than it looks: rope is a build cost, so it was already safe; fiber is spillable only while no ropery is running, which is exactly the case §5.4 was written about. **Caught by the screenshot harness rather than by a test** — the capture run berthed, salvaged, and then photographed an enclave board it could not afford to buy from. |
+| what is left spillable | fiber, darts, meals, resonator drums, charge cells | Narrow on purpose, and narrower than it looks: rope is a build cost, so it was already safe; fiber is spillable only while no ropery is running, which is exactly the case §5.4 was written about. **Caught by the screenshot harness rather than by a test** — the capture run berthed, salvaged, and then photographed an enclave board it could not afford to buy from. |
 
 ### 5.5 The rest of the taxonomy, region 3, and the Refugia
 
@@ -5389,7 +5384,8 @@ is where that stops being aspirational.
   reversing it would take the point out of berthing at a ruin. **Scrap has one price at every
   board on purpose** — 4 for 3, everywhere — so there is nothing to buy in one region and sell in
   the next, which is §5.11 open question 3's whole worry.
-- **Ropewalk exists so region 1 can reach the elevator.** An elevator costs six rope; rope costs
+- **Ropewalk exists so region 1 can reach the elevator.** An elevator costs two rope plus its
+  per-boundary pole rail; rope costs
   a ropery, a ropery costs fiber, and fiber costs a comb. That put vertical transport — the bet
   the whole game rests on (`DESIGN.md` pillar 2) — three rooms deep on a tower twenty minutes
   old. Six poles a pair, four pairs, is one elevator and two spare — and poles are what the shaft's own
@@ -5656,16 +5652,18 @@ Not a task list — the places where existing code assumes something M5 stops be
 
       **`examples/charge.rs` is that instrument, and it found the Power section was arithmetic
       nobody had ever checked.** Every row in it was a multiplication done by hand from the
-      constant beside it. Two survive contact and one does not: striding measures 2,712 charge a
-      day against a derived 2,880 (the gap is ticks spent standing at forks), and lamps measure
-      **648 against a derived ~380 — 70% more**. The constant is right and the day it was
+      constant beside it. Re-measured after the charge accounting repair: striding measures
+      2,869 charge a day against a derived 2,880 (the small gap is route interruptions), and
+      lamps measure **502 against a matching exposure-aware derivation of ~502** on the developed four-floor fixture. The
+      constant is right and the day it was
       multiplied by was wrong: exposure is sun *after terrain*, so a canopy region is dark for
       41–56% of a day rather than the ~33% the bare sun curve implies, and every hand-derived
       lighting figure in the file inherited that mistake.
 
-      It also puts a number on §6.3's height cost that is worth having: a tower four floors
-      taller earns **nothing at all** and browns out for the entire day, because the new roof
-      shades the sail deck. Not a tax on growing — a wall.
+      That instrument now names its tower. Its budget table is a developed `chain_tower` with
+      inputs filled by hand, not the shipped opening; a separate three-day row runs the actual
+      untouched two-floor opening. Conflating those two fixtures is how this file acquired a
+      starting-bank claim about a tower that already owned a cell bank.
 
       **`examples/needs.rs` does the same for M4's crew rows and finds the same shape of
       mistake.** `hungry_ticks` 4,800 is a third of a day and the row reads it as three meals a
@@ -5890,7 +5888,7 @@ Not a task list — the places where existing code assumes something M5 stops be
 
    Poles have a near-sink (construction, repair) that dries up when a
    tower is finished. Darts have one only while something is attacking.
-   Rope, alloy, mechanisms, charge cells and seed bombs all terminate in
+   Rope, alloy, mechanisms, charge cells and resonator drums all terminate in
    a buffer that fills and stops, and so, one step upstream, do fiber,
    scrap and produce. **A tower's harvest is therefore capped by its
    consumption, and its consumption is fixed** — so the ground underfoot
@@ -6099,10 +6097,18 @@ nothing held back. Without that the ranking would be decoration and the tick ord
 decide who gets the last of the bank.
 
 That needs each use's demand known before anything spends, so `estimate_demand` runs at the end
-of income. **They are estimates and the code says so.** A use that draws early cannot know what a
-late one will ask for without running it first; slightly high makes the tower cautious for a
-tick, slightly low costs the high-ranked use nothing because it still draws against whatever is
-actually left. Neither can create charge or lose it — this only decides who is refused first.
+of income. It mirrors actual eligibility as closely as the fixed tick order allows: only moving
+cars at a floor boundary, intact staffed rooms with ready inputs and output space, lamps below
+the light threshold, and legs that are walking and not blocked. A use that draws early still
+cannot know every late outcome without running the later system first, so these remain estimates;
+the important repair is that they no longer reserve charge for daylight lamps, a blocked tower,
+or a wrecked, unstaffed, starved or backed-up room. Neither reservation nor refusal can create
+or lose charge—only decide which circuit waits.
+
+Every refusal is recorded by `PowerUse` for the tick. Powered rooms copy a Works refusal into an
+`Unpowered` stall, and the snapshot carries all four circuit states. Aggregate `brownout` still
+answers “did anything fail?”, while the per-circuit state answers the player’s real question:
+*what did the switchboard shed?*
 
 **The default ranking is the old tick order**, and a test asserts every reserve is zero under it.
 An untouched tower behaves exactly as it did before, which every balance row measured against the
@@ -6110,13 +6116,11 @@ old behaviour depends on.
 
 ### 6.3 Focus, stationing, and what "equip" means here
 
-**Focus.** `defence.rs` shoots the nearest creature in range, and its comment says why: *a
-battery has no judgement — the player's judgement went into where they put it.* A focus does not
-give the battery judgement. It adds a second moment for the player to supply theirs, live, at the
-cost of their attention during a wave. Nothing focused is the normal case and the old behaviour
-exactly, and a focus out of range falls back to nearest rather than holding fire — a battery
-sitting idle while something chewed on the tower would be a trap rather than a decision. It is
-drawn as a soft ring of the tower's own lamplight, never a reticle.
+**Focus is retired by §6.44.** `defence.rs` shoots the nearest valid creature in range because a
+battery has no judgement — the player's judgement went into where they put it and which approach
+it answers. The old live focus command measured within one percent of that default while adding a
+targeting chore during a wave. It remains accepted only so an old replay does not become invalid;
+the simulation deliberately ignores the stored mark.
 
 **Stationing.** A person posted to a room runs it at `manned_work_pct` and stops hauling. **The
 price is the person, not a resource** — three crew and one staircase means posting somebody is a
@@ -6133,7 +6137,7 @@ which of them it is.
 
 | Kit | Answers | Where it comes from |
 |---|---|---|
-| **Hand lamp** | `dark_work_pct` (75), for one person | built at a kitbench, behind mechanisms |
+| **Hand lamp** | `dark_work_pct` (75), for one person | scarce route find; the repeatable kitbench was cut in §6.43 |
 | **Porter's harness** | one more item per trip | the coast enclave, one ever |
 | **Mender's kit** | `repair_hp_per_shift` at 150% | the coast enclave, one ever |
 
@@ -6277,6 +6281,15 @@ a forge all cost bamboo, and a parked tower with a full bank costs none. The old
 the dirty option" pressure is replaced by "working the tower hard is the dirty option", which is
 a better sentence and a better mechanic.
 
+The Heartseed begins with 800 charge in an 800-capacity built-in tank, and one burn is also 800.
+Without a cell bank, the burner therefore waits for a completely empty tank before it starts.
+That full-quantum rule is intentionally strict: it never spends a stalk into overflow, and its
+flame, smoke and sound remain off while it is waiting. A larger base tank was measured and
+rejected because the extra free headroom changed unrelated sleep-under-attack and shaft
+affordability outcomes; storage beyond the Heartseed remains something the tower builds.
+`Room.burning` now records actual progress, so flame, smoke and burner audio appear only while a
+burn is really underway—not merely because the room is switched on with fuel nearby.
+
 #### The three things that broke, which are the interesting part
 
 **1. A deadlock with no way out.** Every remaining source of charge required already having
@@ -6286,7 +6299,12 @@ parked at one pace for **160,000 ticks** — unrecoverable at any skill. The Hea
 the floor that fixes it, sized as a limp rather than an income (6 per 100 ticks against
 striding's 20), and `tests/power.rs::a_tower_that_runs_completely_dry_can_still_crawl_out` is
 the property stated directly. **Any future change that makes an income depend on an output of
-that income needs this test to still pass.**
+that income needs this test to still pass.** `examples/charge.rs` now adds the lived scale: after
+the starting bank is gone, the untouched shipped opening receives about 844 charge a day,
+browns out for 79–80%, and still covers about 1,900 paces. That proves recovery, not pleasure.
+
+Cell-bank capacity now counts intact rooms only. A wrecked bank therefore removes the storage
+its art says was destroyed instead of leaving an invisible capacity contribution behind.
 
 **2. `top_floor_only` was enforced in exactly one place, and it was inside the sails.**
 `collect_solar` filtered to the roof; nothing else did. Deleting it deleted the rule, and left
@@ -6357,15 +6375,16 @@ only ever filter a menu; a replay carries commands, so a veteran's saved run has
 identically for a first-time player. The ladder is a fact about *this tower on this run*, which
 is why it is allowed near the command layer at all. Keep the two apart.
 
-#### The farm needs two people
+#### The farm needed two people (superseded by §6.43)
 
 `RoomDef.crew_required` is a **requirement**, not M6's `manned_work_pct` bonus: a room with it
-does not work at all until that many crew are posted. The farm is the only room in the pack
-that carries it, and it is deliberately the first thing the game teaches — three crew, and two
-of them are now farmers. The other rooms merely go faster when somebody is standing in them.
+does not work at all until that many crew are posted. This milestone initially used the farm
+to teach it, taking two of the opening three people. The later retention/depth review removed
+that authored requirement from the Garden: roof space, sunlight, hauling and build stock are
+its costs, while permanent staffing made its branch lose the elevator on every measured seed.
 
-An unstaffed farm stalls in place rather than resetting, like a starved mill, so somebody being
-called away to eat does not throw away the crop.
+An authored staffed intake still stalls in place rather than resetting if one is added later,
+like a starved mill, so somebody being called away would not throw away partial work.
 
 #### Two things the shape forced
 
@@ -6377,12 +6396,11 @@ a storeroom's 80: enough that the opening cannot jam itself, nowhere near enough
 Two deadlocked, measured — bamboo and produce held both while the mill's poles had nowhere to
 land, and the storeroom that would have fixed it cost three of them.
 
-**`starting_stock` is 24 poles, and the number is arithmetic.** Until a mill exists the tower
-cannot make a single pole, so the founding stores have to cover the whole ladder and the first
-mill or the opening is a dead end that looks like a difficulty spike: farm 5, cutter arm 4,
-burner 5, the floor the mill stands on 6, mill 4 — **24 exactly**. At 16 the golden recorder
-finished the ladder with two poles and twenty produce and never afforded a floor in 63,000
-ticks.
+**`starting_stock` is 16 poles, and the number is arithmetic.** Until a Mill exists the tower
+cannot make another pole, so the founding stores cover Cutter Arm 4 + Burner 5 + Mill 4 = 13.
+Those rooms fit on the two founding floors now that the Garden is optional. Three poles remain:
+enough for a Storeroom or one short of the Comb, making the first branch a choice. The former 24
+priced a mandatory Garden and extra floor whose premises no longer exist.
 
 #### What it cost to build
 
@@ -6527,20 +6545,28 @@ Per-region intervals, so a region has its own rhythm — the deep jungle is thic
 (1,100 paces), the coast is nearly empty (2,000), and zero means none at all, which is a real
 authoring choice rather than an oversight.
 
-#### The four in the pack, and what the fourth one taught
+#### The twelve in the pack, and what the first four taught
 
 | | asks | gives | attention | ground |
 |---|---|---|---|---|
-| Seep Pool | stop and wash | — | **−45** | −90 |
+| Broken Funicular | strip the frame | 4 poles | +15 | −100 |
+| Cloud Cistern | wait by the cistern | — | **−30** | −120 |
 | Fallen Carrier | strip it | 5 poles | +15 | −140 |
-| Wire Tangle | 4 poles | 2 mechanisms | +10 | −110 |
+| Field Kitchen | 3 bamboo | 2 meals | **−5** | −70 |
+| Lantern Post | 4 poles | 1 hand lamp | +10 | −90 |
+| Relay Orchard | ease an actuator free | 1 mechanism | +20 | −120 |
+| Seep Pool | stop and wash | — | **−45** | −90 |
+| Signal Bridge | wake the geared span | — | +50 | **+360** |
 | Snare Thicket | push through | — | +60 | **+300** |
+| Tool Cradle | open it | 6 poles | +10 | −60 |
+| Windfall Rig | lower the bundle | 4 bamboo | +15 | −40 |
+| Wire Tangle | 4 poles | 2 mechanisms | +10 | −110 |
 
 **The Seep Pool is the only thing in the game that lowers provocation.** Everything else a
 tower does raises it — cutting, burning, pushing through — and a dial that only goes one way is
 a countdown rather than a decision.
 
-**Two of these gave the wrong things at first, and the golden recorder found it.** The Fallen
+**Two of the original four gave the wrong things at first, and the golden recorder found it.** The Fallen
 Carrier handed over scrap and the Seep Pool handed over produce: both thin supplies, both
 plausible, and both with almost no consumer in a young tower. A shelf holds one kind and the
 opening tower has three shelves. Measured: **thirty scrap and forty-three produce squatting the
@@ -6549,6 +6575,20 @@ a dart battery while holding a fortune in things it could not use.
 
 **A gift the tower cannot spend is a jam wearing a reward's clothes.** The beats give poles,
 mechanisms, ground and quiet — things every tower wants.
+
+**Eleven beats scatter; the thicket does not.** The Snare Thicket now occupies one authored,
+validated position two thirds through the Deep Jungle and cannot recur. The remaining eleven
+are still selected uniformly. They contain eight free beats, fifteen gifted poles (**15 / 11
+= 1.36 per scatter**) and 65 total attention (**5.9 per scatter**). Those are slightly more
+generous and quieter than the old twelve-way draw because the +60-attention, +300-pace thicket
+has become a once-per-run crisis rather than lottery ballast. Its economy is measured below,
+separately from the ambient route texture.
+
+The new set stays inside the verbs the journey already owns. Two places trade stock, four put
+useful stock on a shelf, one buys ground with attention, and one buys quiet with ground. There
+are no region gates, rarity weights, follow-ups or hidden refusal branches: those would be new
+mechanics rather than more route texture, and a beat that needs a decision tree is still an
+enclave.
 
 #### What it did to the fixture
 
@@ -6569,10 +6609,12 @@ the reasoning that set 4,800 still binds: at 2,400 a recorded run went into a sp
 not climb out of, 120 poles of repair against nothing in the bank, because a damaged mill mills
 more slowly and a tower that cannot mill cannot mend.
 
-**And something worth standing still for.** `enemy.thicket_mother` is 500 hp — half again a
-mire-hulk, the largest number in the pack — at threat 60, gated behind provocation 420. A dart
-battery needs 34 hits to fell one; a lone thorn gun would need 63 and run the tower out of
-bamboo first. It is felled by a *tower*, not by an emplacement.
+**And something worth standing still for.** The Snare Thicket is a unique Deep Jungle
+landmark, placed at authored `landmark_permille: 850`, not a random beat. Inside the last
+1,800 paces its resident appears as a dim, fogged silhouette behind the far scenery;
+the field console names the territory and the ordinary waypoint art remains in-world.
+Going around is free and never wakes anything. Cutting through gains 300 paces, draws 60
+attention and rouses exactly one `enemy.thicket_mother`; ordinary waves can never buy it.
 
 It drops 2 alloy and 8 scrap. **That is the whole point of it.**
 
@@ -6582,7 +6624,7 @@ ticks) and carries enough that you might not. Alloy otherwise needs a salvage ri
 a ruin to stop at, so felling one is a shortcut through a whole chain rather than a pile of the
 material you already have.
 
-#### It is a resident, not a boss
+#### The first walker-scale crisis is a resident, not a boss UI
 
 `DECISIONS.md` §8 is defenders rather than soldiers, and creatures defending territory rather
 than a gallery to clear. A mother is not a health bar with a name on it and it is not hunted:
@@ -6598,6 +6640,25 @@ today, whatever comes next tomorrow — because a drop that depends on *how* you
 distinction this game makes nowhere else. Anything that does not fit on a shelf is lost, which
 is the same rule the waypoints keep: a tower with nowhere to put two alloy has told you
 something about itself.
+
+The encounter uses only existing verbs and exposes three postures rather than three new
+buttons. **Go around** and forfeit the shortcut. **Cut through and keep walking** to take the
+pace/attention bargain and shed the resident. **Cut through and halt** only with a prepared
+defence economy, accepting the ammunition commitment for its 2 alloy + 8 scrap.
+
+`examples/bestiary.rs` pins both active answers. An unarmed moving tower breaks away with
+zero structure lost. A held-ground tower with two dart batteries and a tanglenet fells the
+Mother untouched, spending **30 darts and 5 rope**. That establishes a credible economic
+alternative, not that its neighbours feel right: no value is `PLAYTESTED`. There is still no
+enemy grid, subsystem targeting, phase script, boss health HUD or mirrored FTL combat screen.
+The result is the recommended depth pass: one visible problem that makes the tower the player
+already built answer differently.
+
+The granted bestiary loadout is deliberately stronger than the minimum natural posture.
+`an_untouched_opening_can_prepare_a_hold_ground_package_before_the_landmark` starts from the
+shipped two-floor tower and proves it can reach the warning with the starting thorn gun plus a
+Tanglenet. The alternative Dart Battery branch competes for those poles and rope; the test does
+not turn specialist defence into a checklist.
 
 ### 6.16 Growing sideways
 
@@ -6707,11 +6768,12 @@ edge, so it is the second.
 Two things, and they are one thing: **what somebody is good at, and what the tower
 reaches for first.**
 
-#### The work order
+#### Maintenance doctrine
 
-`assign_idle`'s ladder was hardcoded and had been since M0. It is still a ladder, and the
-top of it is still fixed — a trip already under way, the rota, and dinner, in that order —
-but the four rungs below are now `GameState.work`, which the player sets.
+`assign_idle` keeps one stable internal ladder. A trip already under way, sleep and dinner
+cannot be demoted; answering a thief, mending, a standing post and hauling remain reachable in
+that order. The former configurable work order measured as a control that did not buy the
+decision its arrows implied, so `GameState.work` and `SetWorkOrder` are deleted.
 
 | Job | What it is |
 | --- | --- |
@@ -6720,26 +6782,13 @@ but the four rungs below are now `GameState.work`, which the player sets.
 | working a post | Go to the room you were stationed to |
 | hauling | Carry something somewhere |
 
-The enum order is the default order and it is an argument rather than a habit: something
-happening *now* beats something that already happened, which beats a standing order, which
-beats the background work that is always there. A player who disagrees says so, and the
-one that matters most is **whether a stationed gunner leaves the post to mend a wall**.
-By default they do.
-
-**Needs are not jobs and are not offered as settings.** There is no rung for eating or
-sleeping, because a player who could rank hauling above dinner would only be building the
-starvation trap — offering it as a setting would be the game pretending a mistake is a
-strategy. `tests/needs.rs::no_work_order_lets_anybody_skip_dinner` is that property.
-
-`SetWorkOrder` takes the whole order and rejects anything that is not a permutation. A
-list with a job left out is a list that has quietly made that job unreachable: nobody
-would ever mend again and nothing would say so.
-
-**One order for the tower, not a rota per person.** A per-person matrix is the shape that
-turns crew into a spreadsheet, and it answers a question the player is rarely asking —
-what they want to say is *stop mending and get the harvest in*, which is one sentence
-about the whole tower. Somebody who should be doing one specific thing has `stationed`
-already, and that is per-person precisely because it is the exception.
+The second attempt—a selectable Emergency/Restore doctrine—was cut too. Restore spent 90 poles
+rather than 42, produced fewer crafts, and prevented no additional wrecks; repairing 422 extra
+hp moved final integrity only four points. Automatic maintenance now repairs only zero-health
+infrastructure for one shift, enough to restart it, then releases the worker. The player makes
+the real commitment through redundancy, relocation and how many poles remain available, not a
+policy row whose broad setting was dominated. Needs remain outside repair assignment;
+`automatic_maintenance_does_not_let_anybody_skip_dinner` pins that boundary.
 
 #### Practice
 
@@ -6863,16 +6912,17 @@ ruinous* rather than as a number about the lift.
 
 #### The prices
 
-10 poles + 3 rope, between the dumbwaiter's 8+3 and the lift's old 12+4 and nearer the low
-end: this is the cheap rung as well as the dear one now, and a tower that must save for the
-lift or have nothing has no answer at all for the first twelve minutes of queueing `lift.rs`
-measures. `charge_per_floor` drops 5 → 4, because one shaft doing both jobs runs in every gap
-between riders rather than only when called, and the per-floor draw is paid far more often.
+The logistics expansion remeasures the merged lift at **2 poles + 2 rope**. The chain-first
+whole-run fixture reaches arrival with 47 rope but only one pole after spending 110 on repair:
+at the former ten-pole price the lift no longer exists inside the 31–36 minute run. Two poles
+restores it while rope still requires the fiber → ropery chain, and the permanent full-height
+slot remains its largest spatial cost. `charge_per_floor` is 4, paid at departure for each
+floor segment rather than rounded down over travel ticks.
 
 #### What is not settled
 
-The merged shaft has not been swept — 10 poles and 4 charge are set against the two rows they
-replace, not measured against neighbours. And there is now exactly **one** built shaft that
+The merged shaft's new two-pole price is measured against the whole-run affordability failure,
+not playtested against neighbours. And there is now exactly **one** built shaft that
 goes up, so the whole "which shaft" decision the ladder was supposed to offer is gone. What is
 left is *whether*, *where* and *how tall*, which §6.9's shaft-placement question already says
 the game teaches nothing about.
@@ -7024,8 +7074,8 @@ problem. A weapon that answers one of them well and the others not at all is a *
 | --- | --- | --- | ---: | ---: | ---: | --- |
 | thorn gun | bamboo | all | 8 | 90 | 5 | the thing you can always feed |
 | dart battery | darts | all | 15 | 40 | 60 | the standoff workhorse |
-| seed thrower | seed bombs | all | 8 | 90 | 30 | the mid-range answer |
-| **lantern mast** | charge cells | canopy | 12 | 120 | 20 | *lighting your own canopy* |
+| resonance array | resonator drums | all | 8 | 90 | 30 | the mid-range answer |
+| **lantern mast** | charge cells | canopy | 12 | 120 | 60 | *lighting your own canopy* |
 | **tanglenet** | rope | ground | 4 | 20 | 12 | *making the ground sticky* |
 | **root ward** | alloy | burrow | 25 | 75 | 10 | *guarding your own legs* |
 
@@ -7203,7 +7253,12 @@ Three crew who are identical on day one and identical on day nine are three unit
 them does not fix it — that was §6.17's argument for practice, and this is its other half.
 Practice is what somebody *became*; a trait is what they arrived as.
 
-**Forty of them, in three rarity tiers**, so a run shows you a handful of many.
+> **Historical design, superseded by §6.45.** The shipped pack now has twelve orthogonal
+> traits and no rarity tiers. The larger table and rationale below record the discarded
+> breadth-first version; they are not the current content contract.
+
+**The earlier pack had forty of them, in three rarity tiers**, so a run showed you a handful
+of many.
 
 | tier | weight | how many | what they are |
 | --- | ---: | ---: | --- |
@@ -7211,7 +7266,7 @@ Practice is what somebody *became*; a trait is what they arrived as.
 | uncommon | 40 | 13 | two axes or a real trade — glutton, pathfinder, field medic, nightborn |
 | rare | 10 | 7 | striking — sleepless, ox, featherfoot, lamplighter, born aboard |
 
-**Rarity is the reason there are forty rather than five.** A pack where every trait is equally
+**Rarity was the reason there were forty rather than five.** A pack where every trait is equally
 likely has no rare ones by definition, and somebody merely *unusual* is worth more than
 somebody strong: the common traits are quirks you plan around, and the rare ones are why you
 remember a particular run's roster. Seven rare traits at a tenth of a common one's weight come
@@ -7383,8 +7438,8 @@ what a weapon **eats**:
 | --- | --- | --- | --- |
 | thorn gun | 3 poles | bamboo | intake — always |
 | dart battery | 6p + 2r | darts | thornwright |
-| tanglenet | 4p + 2r | rope | ropery |
-| seed thrower | 6p + 3r + 2 mech | seed bombs | bombary |
+| tanglenet | 3p + 2r | rope | ropery |
+| resonance array | 6p + 3r + 2 mech | resonator drums | resonator works |
 | **lantern mast** | 5p + 2r | charge cells | rig → *berth* → forge → cellwright |
 | **root ward** | 5p + 1 alloy | alloy | rig → *berth* → forge |
 
@@ -7402,19 +7457,18 @@ one weapon a tower can always feed.
 
 #### The garden was making a dead material
 
-`produce` had exactly one consumer — the bombary — whose output needs a seed thrower, which
+`resin feedstock` had exactly one consumer — the resonator works — whose output needs a resonance array, which
 cost **two mechanisms**, which need a salvage rig, a berth, a sun-forge and a fitter.
 
-The garden is **rung one of the opening ladder**. It is the first thing the game makes a player
-build, it demands `crew_required: 2` of a three-person crew, and what it grew had no consumer
-within reach of a run. The repo's own fixture says as much: *"nobody is posted to the farm, so
-the farm does not run… posting two of three crew to it would quietly take two thirds of the
-tower's hands away from hauling."* The garden was a tollgate.
+The garden is **not an opening rung now**. The Heartseed unlocks the Cutter Arm, the arm unlocks
+the Burner, and the Burner opens both the survival menu and the optional Garden. Its one required
+worker is therefore a visible commitment to the sun/resin branch rather than a toll paid before
+the tower can earn bamboo. Resin feeds both resonator drums and charge cells.
 
-The mechanisms are gone from the seed thrower. That row read *"the mechanisms are what make it
-tier two"*, which was right when a run was two to four hours; a run is **31–36 minutes** (§6.19),
-so "tier two" had quietly become "not in the game". Produce → bombary → seed bombs → thrower is
-now entirely tier one, and the sun axis buys something a run can reach.
+The resonance array uses **one mechanism**, not the former two. Together with Cell Banks, Busbar
+Risers and additional lift cars this makes mechanisms a manufactured precision-infrastructure
+branch; a waypoint actuator can bypass one purchase but does not replace a Fitter for a tower
+pursuing several. The array's deeper commitment remains resin → resonator drums → pulses.
 
 #### And a panel to see it from inside the game
 
@@ -7446,7 +7500,7 @@ version had bamboo looking terminal.
 
 **The lanes were clipped and nothing said so.** `overflow-x: auto` makes a flex child
 shrinkable below its content, so the long room list underneath squeezed the graph to three rows
-and quietly dropped scrap, rope and seed bombs — a graph hiding a third of itself while looking
+and quietly dropped scrap, rope and resonator drums — a graph hiding a third of itself while looking
 tidy. It is `flex: none` now, and a smoke spec walks every material the pack moves and asserts
 each one is on screen.
 
@@ -7483,18 +7537,16 @@ have opened a panel to learn.
 ### 6.29 A recruit is a person, not a purchase
 
 **§6.9's first open question, closed.** Recruiting was: berth at a settlement, pay the price,
-receive the next name off `names.ron`. Forty traits existed (§6.25) and a player never chose
-between them, because nobody was ever *shown* before the money changed hands.
+receive the next name off `names.ron`. The old broad trait table existed and a player never
+chose between it, because nobody was ever *shown* before the money changed hands.
 
-The settlement offers somebody now. The board says who they are and what is true about them —
-*Marek · sleeps through daylight, and does not mind the dark* — and `Recruit` hands over that
-person rather than a fresh roll.
+The settlement offers two people now. The board says who each is and what is true about them,
+and `Recruit { candidate }` hands over the chosen person rather than a fresh roll.
 
-**Drawn once when the tower berths and held until it walks on.** Rolling every tick would let a
-player stand still and watch the names cycle until an *Ox* came up; drawing on arrival means
-the person standing there is the person standing there, and **passing costs you the visit
-rather than nothing** — a region has one to three recruits in it and walking on spends the
-chance.
+**Drawn once for that enclave and persisted across reberthing.** Walking away and coming back
+shows the same pair, so the route cannot be used as a reroll button. Choosing one dismisses the
+other and advances both names; if the enclave has another place, the next pair is drawn only
+after the completed hire.
 
 There is no separate decline verb, deliberately. Not recruiting *is* declining, and a button
 that said so would only be a second way to do nothing.
@@ -7809,40 +7861,35 @@ comparison — the same trap `siege_run.rs` sprang four times, in a milder form.
 
 **What it does not cover**: three days, one seed family, and provocation held rather than earned.
 
-#### The other wave verb — charge priority — did not move a number either
+#### The other wave verb — charge priority — now moves the scarce tower
 
 `examples/watch.rs` grew a second question, because "focus does nothing" is not a reason to
 assume the milestone's other verb is fine. Charge priority is a different *shape* of verb: the
 bank is a hard constraint rather than a preference, and `PowerBank::draw` refuses a spender
 outright when taking its share would leave less than higher-ranked uses are owed.
 
-Five orders, two tower shapes, fourteen floors walking with a lift and two works rooms:
+Re-measured after demand reservations were made truthful: five orders, two tower shapes,
+fourteen floors walking with a lift and two works rooms, four seeds per order:
 
 | shape | income | spent | brown-out ticks | paces | crafts |
 |---|---|---|---|---|---|
-| with a cell bank | 14,331 | 13,274 | 0 | 25,818 | 166 |
-| no cell bank | 8,116 | 8,809 | 13,478 of 43,200 | 19,142 | 143 |
+| with a cell bank | 28,931 | 27,911 | 0 | 25,818 | 160 |
+| no cell bank, best-paces order | 21,129 | 21,706 | 11,758 of 43,200 | 19,523 | 140 |
+| no cell bank, worst-paces order | 15,130 | 15,617 | 20,578 of 43,200 | 16,291 | 136 |
 
-**Within each shape every row is identical to the digit** — same paces, crafts, hauls, dark ticks
-and brown-outs under all five orders. Three structural reasons, all readable in the code:
+The banked tower remains identical under all five orders because it can fund everything. The
+unbanked tower now moves materially: **16,291..19,523 paces (+20%)**, 133..140 crafts (+5%),
+214..253 hauls and 11,701..20,578 brownout ticks. That is the intended boundary: priority is
+irrelevant when the switchboard has enough, and consequential when it must shed load.
 
-1. **`draw` refuses on `charge < amount` before it consults the reservation.** A flat-broke tower
-   never reaches the ranking; a comfortable one never reaches it either. It can only bite in a
-   middle band where there is enough for *this* spender but not enough to also cover
-   higher-ranked uses that have not spent yet.
-2. **`estimate_demand` reports zero for Lamps and Legs on 99 ticks in 100**, and says so itself:
-   they buy in hundred-tick blocks, "so what they want on any given tick is either a whole block
-   or nothing at all". `reserved_against` sums `demand`, so ranking either reserves nothing
-   almost always.
-3. **Capacity is income.** A burner idles unless the bank can take the whole burn, so removing
-   the cell bank to make the tower poor cut income from 14,331 to 8,116 — the tower jumps from
-   comfortable to broke without passing through the middle.
-
-**Measured**: no order changed any outcome in either shape. **Inferred from the code**: why, and
-that the band is narrow by construction. **Not established**: that no tower can reach that band —
-three shapes were tried and none did, which is evidence rather than proof. The ranking is wired
-correctly end to end and every piece does what its comments say; what has not been shown is a
-tower on which turning the dial does anything. That is a question for the difficulty pass.
+The previous instrument showed every order identical because reservations claimed demand from
+things that could not act: daylight lamps, blocked legs, every nominal car, and active rooms
+regardless of damage, staffing, inputs or output space. Those false reservations drowned the
+player's ordering in noise. `estimate_demand` now uses each consumer's actual eligibility, and
+the snapshot exposes per-circuit refusal so both the instrument and the room art can say what
+was shed. **Measured:** the unbanked tower's order changes paces by 20% and crafts by 5%.
+**Limit:** one deliberately charge-poor fourteen-floor shape, four seeds per order; the banked
+control correctly remains unchanged.
 
 Getting there took four wrong tower shapes, and the asserts caught all four: a tower fed twelve
 bamboo every 120 ticks (over a million charge a day against ~1,900 of lamps — **height was never
@@ -7891,15 +7938,15 @@ walking tower down on its side, or clean water under the roots, and none of it w
 beat arrived as text from nowhere and left the same way. A decision you cannot see is still
 scenery.
 
-Four silhouettes now, keyed off the content id rather than the index — an index is a fact about
-load order, and a pack with a fifth beat in the middle would silently repaint the other four. An
-unrecognised id draws a neutral marker rather than nothing, because a pack is allowed to add
-beats before the renderer knows about them. The carrier is a hull lying down with its legs
-snapped out under it; the seep pool is the only cool thing in the set, because it is the only
-beat that *sheds* attention; the thicket is taller than it is wide and in the way; the tangle is
-brass loops low in the roots. Drawn small and never competing with the tower, because ignoring a
-beat is free and is the default (§6.14) — this is not a warning a player needs, it is the route
-having things in it.
+Twelve silhouettes now, keyed off the content id rather than the index — an index is a fact
+about load order, and adding `broken_funicular` ahead of `fallen_carrier` must not repaint the
+carrier as something else. An unrecognised id draws a neutral marker rather than nothing,
+because a pack is allowed to add beats before the renderer knows about them. Their differences
+are the authored places rather than alert icons: a collapsed cable carriage, a ticking rain
+cistern, a field stove, a relay orchard, a geared bridge, a service cradle and a dead loading
+rig join the original carrier, pool, thicket and tangle. Drawn small and never competing with
+the tower, because ignoring a beat is free and is the default (§6.14) — this is not a warning a
+player needs, it is the route having things in it.
 
 **And `waypoint_ahead` was a distance with no identity**, which is exactly the shape that had
 just gone wrong with the enclave. Two parallel `Option`s that must agree is the bug; it is one
@@ -8004,9 +8051,10 @@ deliberately.
 13. **Is stationing a decision or a default?** `manned_work_pct` is 150 and the price is a porter,
    but a tower with a spare person has no reason not to post them. The tell is whether anybody
    ever *un*-posts somebody, and nothing measures that.
-2. **Does the charge ranking ever get touched?** It defaults to the old order and behaves
-   identically, which is safe and may also be invisible. A ranking nobody reorders is a panel that
-   should not exist.
+2. **Does the charge ranking ever get touched?** The instrument now establishes an effect to
+   touch: on the unbanked fourteen-floor stress tower, order changes paces by 20% and crafts by
+   5%; the banked control remains identical. Whether a player understands and chooses the
+   per-room switches still needs playtesting, but the ranking is no longer a false control.
 3. **Is a kit a decision about a person, or a strictly-correct upgrade?** The harness and the
    mender's kit are one-of-each at the coast, so their scarcity is real; the lamp is craftable and
    may not be. If a tower ends every run with three lamps and no thought about who carries them,
@@ -8134,9 +8182,11 @@ pass.
 
 ### 6.33 The work order does not move the numbers either
 
-**Three verbs in a row now.** §6.31 measured focus (<=1% of damage, five policies, two tower
-shapes) and charge priority (identical to the digit, five orders). `examples/orders.rs` adds
-the work order: five seeds, 60,000 ticks, a five-floor chain tower.
+**This originally read as three verbs in a row.** §6.31 measured focus (<=1% of damage, five
+policies, two tower shapes), and the old charge-priority fixture reported five orders identical
+to the digit. The repaired reservation estimates overturn the second result: its unbanked tower
+now moves by 20% paces and 5% crafts. `examples/orders.rs` still adds the work order result below:
+five seeds, 60,000 ticks, a five-floor chain tower.
 
 ```text
   default        poles  119  hauls  152  hp mended  456  poles spent  48  whole 99%
@@ -8197,6 +8247,15 @@ hauling is how bamboo reaches the mill.
 
 #### The lift: revalued by roughly four
 
+> **Re-measured after the floor-local power pass (current).** The repaired fixture reserves
+> identical vent and busbar columns, puts a control busbar where the treatment puts its lift,
+> services both burners identically, and counts loaded freight as well as riders. It rejects a
+> lift that nobody uses. The twelve-seed sweep now measures **+44%, +123%, +219% and +238%
+> hauls** at five, eight, eleven and fourteen floors. The five-floor pair sheds no charge; the
+> taller lift towers shed for 9,151, 6,296 and 3,505 of 28,800 ticks respectively. That is not a
+> reason to erase the result: the lift's electrical appetite is one of its visible costs.
+> The historical table below is retained as history, not current evidence.
+
 The bigger finding is underneath. `SYSTEMS.md` §6.18 records the elevator at +119% / +256% /
 +493% / +913% across five, eight, eleven and fourteen floors. Twelve seeds, after the rota:
 
@@ -8216,19 +8275,21 @@ so the problem it solves got smaller.
 
 **This lands on the largest open balance question in the project.** §6.19 asks whether a tower
 can afford a lift inside a 31–36 minute run, and §6.32 moved the answer from 26 minutes to 32.
-This says the thing it is saving for is worth a quarter of what the record claims — and at the
-four-to-five floors a run actually reaches, **+11%**. A lift at ten poles for +11% is not
-obviously worth buying, which reframes the question: it may not be that the tower cannot afford
-the lift, but that the lift is not worth affording at the heights a run reaches.
+The current sweep supersedes this section's +11% finding: at five floors the lift is now +44%
+hauls with no shedding, while the acquisition instrument puts first useful service at roughly
+8–13 minutes on the transport-first route. At taller heights the lift becomes much stronger
+and starts competing visibly for power. That is the desired decision shape: a real early slot
+and material commitment that later repays itself, rather than an automatic early purchase or a
+late ornament.
 
 That is a design decision and it belongs to the difficulty pass. What is settled here is that
 the numbers it would have been decided on were four times too generous.
 
 #### Deferred out of 6.34
 
-- **Whether the lift's price should move, or its value.** Both are levers and this measures
-  neither. `lift.rs` sweeps height with the room plan fixed; growing the tower alongside the
-  crew is the sweep it asks for next.
+- **Whether players value the lift's reachable-height payoff.** The instrument now measures
+  +44% at five floors and the progression harness reaches useful service in-run; only a played
+  comparison with neighbouring prices can say whether that feels worth the column.
 - **§6.18's width row.** Re-measured only at the height sweep; the flat-across-width finding is
   untouched and may have moved the same way.
 
@@ -8362,3 +8423,712 @@ was copied four times and corrected twice by luck.
 - **The plating rows' comparison column.** Still `lost hp`, an absolute that
   rises with `panel_hp`. The rows are not wrong so much as unreadable against
   each other, and `AGENTS.md` §II rule 2 says why.
+
+---
+
+### 6.36 The rail: charge stops being a stock and starts being a supply
+
+**Charge was energy, and FTL's reactor is power.** A bar in FTL is instantaneous
+capacity: you never store it, you allocate it, and demand always exceeds supply so
+every bar is taken from something. Charge is a *stock*, and a stock only forces a
+choice at the boundary of running out — at which point the tower is already in a
+spiral. That is the mechanical reason `examples/watch.rs` measured charge priority
+(§6.2) as **identical to the digit across five orders**: there was no regime where
+the ranking bit for a bounded, recoverable interval. The tower was either fine or
+dead, and a ranking that only matters in the second case is a ranking nobody gets
+to use.
+
+Two changes close that, and neither adds a weapon or a combat verb.
+
+#### The bank is a reservoir; the rail is the pipe out of it
+
+`Power` gains a second constraint on withdrawal. The bank is unchanged — burners
+still produce into it in discrete 800-charge burns, and every hard-won rule in
+`run_burners` (headroom rather than fullness, headroom spent as it goes, progress
+held rather than reset) stays exactly as it was. What is new is that **the tower
+cannot pull charge out of the bank faster than the rail allows.**
+
+| Source | Contributes to the rail | Why |
+|---|---:|---|
+| A lit burner with fuel | `charge_per_burn / burn_ticks` (8/tick) | A running burner feeds the bus directly, not only the bank |
+| An intact cell bank | `discharge_per_tick` | A battery has a discharge rate; this is what makes a second bank buy supply and not only storage |
+| The Heartseed | `heartseed_rail_per_tick` | The floor, for the same reason the trickle is the floor |
+
+**So a tower can be rich and browned out**, because the pipe is too narrow — and
+that is the whole point. The ranking now decides who gets the pipe on an ordinary
+afternoon with a full bank, rather than only during the death spiral. A second
+burner becomes the reactor upgrade it should always have been.
+
+The arithmetic says it will bite without any tuning: one burner is 8/tick, and a
+developed tower running a sun forge (4), two thornwrights (2), striding (0.2) and
+lamps (0.16) sits at roughly 6.4 — about 80% of one burner, before a wave.
+
+#### Measured: the ranking moves the numbers now, and the economy did not move
+
+Two instruments, and they say different things on purpose.
+
+**`examples/watch.rs` — the ranking.** It is the file that found charge priority
+*identical to the digit across five orders*, and re-running it against the rail is
+the whole point of the change. On the tower with no cell bank, seven orders now
+spread **paces 19,350..21,830 (+13%) and crafts 179..193 (+8%)**, at four seeds an
+order:
+
+| charge goes to | paces | crafts | dark | brown-outs |
+|---|---:|---:|---:|---:|
+| Lifts > Works > Lamps > Legs > Guns | 21,830 | 187 | 4,471 | 8,373 |
+| Lifts > Works > Guns > Lamps > Legs *(the default)* | 20,163 | 184 | 4,587 | 10,034 |
+| Works > Lifts > Guns > Lamps > Legs | 21,518 | 193 | 3,843 | 7,766 |
+| Guns > Lifts > Works > Lamps > Legs | 19,350 | 179 | 5,116 | 11,394 |
+
+(These moved by a percent or two when §6.38 cut the burst cushion. The figures above are
+the current run; the shape of the finding did not change.)
+
+**The banked shape is nearly, but no longer exactly, flat:** paces vary 22,708..23,323
+(3%) and crafts 165..172 (4%). The no-bank shape is where the posture becomes a
+run-shaping decision; the bank turns it into insurance. That is the intended identity
+of storage rather than evidence the switchboard should grow another control.
+
+**Why it changed is one sentence.** `Power::draw` refused on `charge < amount`
+before it ever consulted the reservation, so a flat-broke tower never reached the
+ranking and a comfortable one never reached it either — and **capacity was income**,
+because a burner idles unless the bank can take the whole burn, so removing the cell
+bank to make a tower poor cut its income too. The tower did not pass through the
+middle band on the way down; it jumped from comfortable to broke. The rail is a
+second refusal reason that does not require an empty bank, so the band stopped being
+a knife edge.
+
+**`examples/charge.rs` — the economy, and it did not move.** Every figure it
+publishes is unchanged: striding 2,869 a day, lamps 503 at four floors and 1,760 at
+fourteen, three stalks of bamboo a day for the developed fixture, and the untouched
+opening at 843/844 with the same 52%/80%/79% brown-out days. **Every `MEASURED` row
+in `BALANCE.md`'s Power section survives this change**, which is the result worth
+having: the rail is inert for a tower that is not instantaneously constrained, and
+it was supposed to be.
+
+The one row that does move is the forge tower — `developed 4F + forge` sheds Works
+on 1,099 ticks and Legs on 2,825 — and that tower was already the constrained one.
+
+#### A token bucket, not a hard per-tick cap
+
+The obvious implementation is wrong in a way that hides. `buy_block` pays for a
+hundred ticks of striding *up front* — a 20-charge lump on one tick in a hundred —
+and lighting does the same. A hard 8/tick ceiling would make walking arithmetically
+impossible while the tower ran a comfortable surplus, which is not a design
+decision, it is a unit error.
+
+So the rail accrues into a bucket capped at `rail * rail_burst_ticks`. Lumpy
+purchases ride the accumulated credit; sustained over-demand drains it and the
+ranking starts shedding. That is the correct model of the thing being simulated —
+a supply that tolerates a surge and not a sustained overdraw — and it keeps every
+block-purchase figure in `BALANCE.md` valid.
+
+**The reserve applies to the bucket as well as the bank.** Otherwise a low-ranked
+use could empty the pipe ahead of a high-ranked one that draws later in the tick,
+which is exactly the failure §6.2's reserve exists to prevent, reintroduced through
+a new door.
+
+#### Guns are the fifth circuit
+
+**Nothing made a wave cost charge.** `power_draw` was read in exactly one place —
+`production.rs` — so it belonged to crafting rooms and nothing else. No
+emplacement had one, and `defence.rs` withdrew a dart and nothing more. The entire
+M6 verb set sat on a bus that combat never touched, which is the second reason the
+ranking measured at zero: **the moment the player is most attentive was the moment
+the charge system was most idle.**
+
+`DefenceDef` gains `charge_per_shot`, and `PowerUse` gains a fifth member.
+
+| Circuit | Tick position | Draws in |
+|---|---:|---|
+| Lifts | 0 | transport (3) |
+| Works | 1 | production (5) |
+| **Guns** | **2** | **defence (7)** |
+| Lamps | 3 | lighting (11) |
+| Legs | 4 | stride (12) |
+
+**Guns are not `Works`, and the reason is the reserve rather than tidiness.**
+`defence` runs at step 7 and `production` at step 5, so an emplacement drawing
+under `Works`'s tick position would claim to have already spent when it had not,
+and every reservation computed against it would be wrong. It also hides the one
+decision this whole section exists to create: *shed the mill, keep the guns* — or
+the reverse, which is a real answer for a tower that would rather lose a panel than
+lose an afternoon's poles.
+
+A refused emplacement **holds fire**; it does not lose its reload or its dart.
+Nothing this game hands the player ever vanishes (§6.3), and a gun that burned its
+ammunition into a brown-out would be exactly that.
+
+#### The tone gate
+
+`DECISIONS.md` §8 is the binding constraint on all of this, and it was checked
+before any of it was built.
+
+- **This adds no weapon and no combat verb.** Weapon loadouts and crew fighting
+  boarders were cut in §6 rather than softened, and "more FTL" is precisely the
+  pressure that would reopen them. What is stolen from FTL here is the *reactor*
+  and the *attention*, not the ship-to-ship fight.
+- **Charge priority remains a schedule the player writes**, the category §6.2
+  established as allowable — the same category as the per-daypart shaft programs.
+  A live per-tick reallocation dial is a *different* category and is deliberately
+  not built here. §6.32 cut the shift rota for being a menu whose every non-default
+  option was a trap, and a dial invites the same verdict from the other direction.
+- **The shed stays diegetic.** The circuit lamps already exist; a rail-limited
+  tower dims the same way a bank-limited one does. No new warning banner, no alarm
+  on a shed circuit — `DECISIONS.md` §8 and the audio rule in `AGENTS.md` both say
+  the absence *is* the signal.
+- **The escape valve survives.** §11 makes striding the free answer to any wave,
+  and Legs is still ranked last by default, so nothing here changes what an
+  untouched tower does. A player who wants to run during a wave can rank Legs up —
+  which is a decision, made with the pipe in front of them, and is the shape the
+  whole change is reaching for.
+
+#### What must not regress
+
+`tests/power.rs::a_tower_that_runs_completely_dry_can_still_crawl_out` is the
+property that a tower with no income has a path back, and the rail is a new way to
+violate it: a tower whose burners are out of fuel and whose banks are wrecked has
+**no supply at all**, so without a floor the pipe closes and the tower cannot spend
+the trickle it is still accruing. `heartseed_rail_per_tick` is that floor, and it
+exists for the same reason `heartseed_charge_per_100_ticks` does. Any change that
+makes the rail depend on an output of the rail needs that test to still pass.
+
+The default ranking must still produce zero reserves, so an untouched tower behaves
+exactly as it did — every balance row measured against the old behaviour depends on
+it, and a test asserts it.
+
+#### Deferred out of 6.36
+
+- **A live reallocation dial.** The tone argument above; not built, and not a
+  deferral that should be reversed without one.
+- **Ion damage.** Damage that sheds a circuit *temporarily* rather than wrecking a
+  room permanently is the obvious next FTL borrowing, and it is the one that would
+  make a wave reshape the switchboard rather than only load it. Wrecked cell banks
+  already cut capacity and now cut the rail; there is no temporary version.
+- **Chunked shedding.** `Works` is still all-or-nothing across every room. FTL is
+  legible because power is discrete and thresholded — shields at two bars is one
+  layer — and a partial shed with visible tiers (the top floors dark first, one car
+  parked instead of three) would turn a brown-out into a picture. The circuit lamps
+  are already the readout; they have nothing granular to report.
+
+---
+
+### 6.37 Bars: the cardinal experiment was cut
+
+> **Current status:** circuit bars and `SetCircuitPower` no longer exist. The experiment below
+> is retained as design history because it measured the exact failure: five extra controls
+> moved paces only 2% and crafts 9%, while the already-visible priority ordering moved stressed
+> outcomes substantially more. Understory keeps the five circuit lamps, refusal readouts,
+> per-room breakers and one ordinal priority list. It does not ask the player to maintain a
+> second allocation model whose alternatives are too small to explain.
+
+§6.36 gave the tower a rail and made the priority ranking bite for the first time —
+paces spread 16% across seven orders where they had been identical to the digit. It
+did not close the gap to FTL, and naming what was still missing is the whole of this
+section.
+
+**A ranking is only consulted while something is already being refused.** It says
+who yields to whom *once the tower is short*. FTL's reactor is asked a different
+question and asked it constantly: **how much does this system get**, decided before
+anything is short, with every bar taken from something else. That is a trade a
+player makes on a calm afternoon. A ranking is a contingency they set once and forget.
+
+`SetCircuitPower { circuit, bars }` is the cardinal half.
+
+#### An allocation, not a cap, and the difference is the entire design
+
+The obvious reading of "per-circuit power levels" is a ceiling: *the works may not
+draw more than 4 a tick*. **That mechanic is a trap and would never be used.** A
+ceiling can only ever make a tower worse, so the best setting is always "no ceiling",
+and a menu whose every non-default option is a loss is exactly what §6.32 cut the
+shift rota for being.
+
+So bars are **funded out of the same rail everybody else draws from**:
+
+- A circuit at **0 bars** rides the shared bus, exactly as it did before. This is the
+  default, so an untouched tower is unchanged and every balance row survives.
+- A circuit at **N bars** gets a private bucket filled at `N × charge_per_bar` a
+  tick, and that charge is *removed from the shared bus* in the same breath.
+
+A bar in the guns is a bar not in the works, and it is **guaranteed** to the guns.
+That is the trade. It is also bounded in both directions: a committed circuit cannot
+reach past its bars into the shared bus, so the commitment costs something whether or
+not it is used — which is what stops "allocate everything to everything" being the
+answer.
+
+**A committed circuit is not reserved for on top of its bars**, and forgetting this
+double-books the rail. `reserved_against` skips allocated circuits: their charge was
+already set aside, and holding shared headroom for them as well would charge the tower
+twice and starve everyone else for charge nobody can spend.
+
+#### Over-commitment is legal, and the ranking resolves it
+
+**The rail moves.** A burner runs dry, a cell bank is wrecked, and a tower that
+committed nine bars at noon can fund four at midnight. Two ways to handle that, and
+the tempting one is wrong:
+
+*Validate against the current rail.* Then a legal allocation becomes illegal because
+of the weather, and a command starts failing for reasons the player did not cause and
+cannot see. `SetCircuitPower` clamps to what the pack could ever supply and nothing
+finer.
+
+*Let it over-commit, and short somebody.* `accrue_rail` funds allocations **in the
+player's own priority order**, so the shortfall lands on whatever they ranked lowest.
+This is what losing reactor power looks like in FTL, and it reuses the ordinal ranking
+rather than inventing a second rule — the two halves of charge priority finally doing
+different jobs instead of competing for one.
+
+**Primed to what was funded, not to what was asked for.** A bug the tests caught: the
+first tick fills every bucket, and filling to the *aspiration* hands an over-committed
+tower charge the rail never supplied — free power on tick one. It primes to `funded`.
+
+#### Why circuits and not rooms
+
+The obvious ask is a power level per *room*, which is what FTL looks like from the
+outside. It is the wrong unit here and the arithmetic says so: FTL has about eight
+systems, and a fourteen-floor Understory tower at `max_slots: 16` holds thirty-plus
+rooms. **Thirty sliders is not FTL, it is a spreadsheet.** FTL is legible precisely
+because there are *few* systems with *chunky* thresholds — shields at two bars is one
+layer.
+
+The five circuits already *are* the systems: lifts, works, guns, lamps, legs map onto
+engines, oxygen, weapons, and the rest more cleanly than any room does. And the
+per-room control already exists and is binary — `SetRoomActive` — which is the right
+granularity for "this specific burner is off tonight".
+
+#### The tone gate
+
+- **It stays a schedule the player writes**, the category §6.2 established as
+  allowable and the same one the per-daypart shaft programs live in. Bars are set on a
+  panel between waves, not dragged during one.
+- **Nothing here is a weapon or a combat verb.** What is borrowed from FTL is the
+  reactor, again, and not the fight.
+- **The default is unchanged behaviour**, which is the load-bearing tone property as
+  much as the balance one: a player who never opens the panel is not playing a worse
+  game, they are playing the one that shipped.
+
+#### Measured: a trap first, then a trade that barely moves
+
+`examples/watch.rs` grew a `bars_question` sweep on the no-cell-bank tower — the shape
+§6.36 established actually lives in the band — with a control row that commits nothing
+and must reproduce the charge question's default exactly. It does (18,862 paces, 177
+crafts, 5,113 dark, 13,221 brown-outs), so the comparison is valid.
+
+**The first run said every commitment was a disaster:**
+
+| committed | paces | crafts | brown-outs |
+|---|---:|---:|---:|
+| nothing (control) | 18,862 | 177 | 13,221 |
+| 2 bars to the works | 10,144 | 111 | 27,182 |
+| 2 bars to the legs | 16,021 | 111 | 27,185 |
+| 8 bars to the works | **0** | 9 | 43,200 of 43,200 |
+
+Two bars anywhere cost 46% of the tower's paces and a third of its crafts, and eight
+bars locked the tower up completely — it never moved and browned out on every tick of
+three days. **That is precisely the failure this section claimed to have designed
+around**, and it was a bug rather than a balance problem.
+
+**A full private bucket was discarding its funding.** Most circuits draw far less than
+a bar is worth — the legs want 0.2 charge a tick and two bars is four — so a committed
+circuit sat on a full bucket while the rail it could not use evaporated instead of
+flowing on. The tell was the middle rows being *identical* to each other at 111 crafts
+and 168 hauls whatever circuit the bars went to: the loss was the shared bus shrinking,
+not the commitment doing anything.
+
+**The fix keeps the guarantee and returns the surplus.** A committed circuit still has
+first claim on its bars, before anything else sees the rail; what it cannot hold flows
+onward to the shared bus in the same tick. `a_full_committed_bucket_returns_the_rail_it_cannot_use`
+pins it.
+
+**After the fix, the mechanic is safe and small:**
+
+| committed | paces | crafts | dark |
+|---|---:|---:|---:|
+| nothing (control) | 18,862 | 177 | 5,113 |
+| 2 bars to the works | 18,649 | 177 | 5,006 |
+| 2 bars to the legs | 18,783 | 167 | 5,527 |
+| 8 bars to the works | 18,514 | **182** | 6,169 |
+
+**Paces spread 2% and crafts 9%.** The trade is visible and points the right way — eight
+bars to the works buys the most crafts in the table (182 against the control's 177) and
+pays for it in paces and dark ticks — but it is a small effect, and much smaller than
+the 16%/35% the *ranking* produces on the same tower.
+
+**So the honest summary is that the ordinal half is still doing most of the work.** That
+is worth saying plainly rather than burying: `SetCircuitPower` is correctly wired, its
+arithmetic is pinned by six tests, and nobody should balance around it until somebody has
+found a tower shape where committing bars is worth more than reordering them. It joins
+Focus (≤1%) and the work order (nothing) on the list of M6 verbs that are wired right and
+measure small — Focus and work order are retired in §6.44 and §6.45; this one remains because it at least moves in the direction its
+design predicts.
+
+#### Deferred out of 6.37
+
+- **Whether the trade is a good trade.** The arithmetic is pinned by five tests; that
+  three bars in the guns against three in the works is an interesting decision is a
+  claim no harness can check. It needs the difficulty pass.
+- **Per-room levels.** Argued against above rather than deferred, but the argument
+  rests on room *count* — if the tower ever grows a small set of named subsystems, it
+  is worth reopening.
+- **Ion damage**, still. §6.36 deferred it and bars make it more attractive, not less:
+  damage that knocks bars out of a circuit for a while is the thing that would make a
+  wave reshape the switchboard rather than only load it.
+
+---
+
+### 6.38 Why the rail still does not bind a healthy tower, and what it would take
+
+§6.36 gave charge a supply rail; §6.37 gave it FTL's cardinal allocation. Both are
+wired correctly and both measure small on any tower that is not already in trouble.
+This section is the attempt to fix that, which **did not succeed**, and the two
+measurements that say why. It also fixed a real bug on the way, which is the only part
+of it that shipped as a change.
+
+#### The gap, stated as arithmetic
+
+The banked fourteen-floor fixture in `examples/watch.rs` spends **38,621 charge over
+43,200 ticks — 0.89 a tick — against a rail of 14.** Supply is **15.7×** demand. The
+largest single lump it ever pays for is a fourteen-floor light block at 28.
+
+A tower like that cannot be made to shed by tuning, because nothing it does comes
+within an order of magnitude of what it can deliver. Two levers were tried.
+
+#### Attempt 1: give the rooms something to draw. Rejected — it starves the tower
+
+Of eight production rooms only three had a `power_draw` at all, and **the mill — the
+room nearly every tower runs nearly all the time — was not one of them.** That looked
+like the whole answer. Every production room is gated behind the burner, so
+electrifying them cannot break the opening ladder, and intake rooms are physically
+incapable of drawing (only `production.rs` reads the field), which keeps the charge
+loop — cutter arm → bamboo → burner → charge — free of anything that costs charge. The
+anti-deadlock property would have held by construction.
+
+Mill 2, ropery 2, fitter 3, cellwright 3, resonator works 3. Measured:
+
+| | before | after |
+|---|---:|---:|
+| developed 4F fixture, fuel burned per day | **3 stalks** | **19 stalks** |
+| chain-first tower reaches a shaft | 32 min | **never, in 45** |
+
+**`power_draw` is charged per tick, so its smallest non-zero value is already enormous
+against this economy.** One room drawing 1 a tick costs 14,400 charge a day — eighteen
+stalks — and the tower harvests about 92 stalks a day in total. So a single powered
+room is a fifth of the harvest, and the burner then out-competes the mill for the very
+bamboo the mill needs. `a_tower_that_wants_a_shaft_can_have_one` failed outright: the
+tower built all seven rooms and never afforded a lift.
+
+**Raising sustained demand cannot make the rail bind, because fuel binds first.**
+Reverted in full.
+
+#### Attempt 2: shrink the cushion. Kept, but it does not close the gap either
+
+`rail_burst_ticks` was 30, chosen to cover a 20-charge stride block on the opening
+tower's 2-a-tick rail. That bought it by handing a developed tower a **420-charge
+cushion** no spike in the game can drain.
+
+Splitting the lump requirement into its own constant — `rail_burst_floor` — lets the
+multiplier be sized for towers that have supply. It is 6 now, so a rail of 14 carries
+84 rather than 420.
+
+**Measured: it changes nothing that matters.** The banked tower is still identical to
+the digit across seven orders (0 brown-outs); the short tower still spreads 15% on
+paces and 38% on crafts. The cushion was not what was protecting the healthy tower —
+15.7× oversupply was.
+
+It is kept because 420 was arbitrary and 84 is not, and because the split is what
+exposed the following.
+
+#### What it did fix: the largest lump in the pack was unpayable
+
+Setting the floor against the stride block alone (30) made **a lantern mast unable to
+ever fire on a tower whose burner had run dry** — its shot is 40, the largest single
+draw in the game, and a bucket of 36 cannot hold it. Not a balance problem: the thing
+simply never happens.
+
+**Nothing about charge caught it. `a_mast_looks_up_and_a_ward_looks_down` did** — a
+targeting test, failing for a reason that had nothing to do with targeting.
+
+`the_burst_floor_covers_the_largest_lump_in_the_pack` now recomputes the requirement
+from the pack every run — `stride_charge_per_100_ticks`, `light_charge_per_100_ticks_per_floor
+× max_floors`, and every `charge_per_shot` — and fails if the floor drops below it. A
+rule attached to the data rather than written in a document, which `AGENTS.md` argues
+for and this is the case that earned it.
+
+#### What would actually close it
+
+**The mismatch is `charge_per_burn`.** A stalk of bamboo is 800 charge; a stride block
+is 20 and a lamp block is 2 a floor. One burner therefore delivers roughly sixteen
+times what a large tower spends, and every knob downstream of that is decorating a
+number that is an order of magnitude too big.
+
+Closing it means rescaling the charge economy — either a burn is worth far less, or the
+things a tower buys with charge cost far more. That is **not a tuning pass**, for a
+reason `AGENTS.md` states directly: `charge_per_burn` and `provocation_per_burn` are
+one constant in two columns, and moving one alone silently retunes the siege.
+`charge_per_burn` is also what decided whether the M6 opening tower lived at all, and
+its own `BALANCE.md` row records three corrections, each measured, each too small.
+
+So the honest position is: **the rail, the guns circuit and the bars are correct
+mechanisms sitting on top of an economy whose units are wrong for them**, and the fix
+is an economy-wide rebalance somebody should do deliberately, with `charge.rs` and
+`siege_run.rs` both open, rather than a constant somebody nudges.
+
+#### Deferred out of 6.38
+
+- **The rescale itself.** Above. The largest open question the charge work has produced.
+- **Per-tick granularity for `power_draw`.** A room cannot draw less than 1 a tick, which
+  is eighteen stalks a day. Until that has a fraction — or a per-craft cost rather than a
+  per-tick one — the pack cannot express "this room uses a little power", and every
+  powered room is a major economic commitment.
+
+---
+
+### 6.40 The exhaust stack: one visible utility, no ducts
+
+Burners and the sun-forge now author an `exhaust_draw`. Rooms connect through a touching
+inlet; the player builds no ducts and draws no overlay. The only topology is a
+`VentStack` shaft occupying one slot column across its span. It must reach the current roof,
+only serves touching rooms on or above its low floor, carries five smoke units while intact, and can be
+severed and mended like every other shaft.
+
+Growing the roof does not stretch a flue for free. `ExtendShaft` pays its authored cost,
+checks every new cell, and requires a vent extension to reach the current roof.
+
+Allocation is deterministic and deliberately asymmetric. Burners claim capacity first. When
+more than one eligible stack touches a machine, the nearest inlet below it wins; equal-distance
+stacks prefer the one with more capacity left, then the lower slot as a stable tie-break. A
+vented burner retains 35% of `provocation_per_burn`; an overloaded one still produces charge
+and pays the full smoke cost. This preserves the dry-tower recovery invariant: charge income
+never depends on already owning working exhaust. A ready sun-forge claims what remains and
+stalls with `StallTag::Unvented` if the stack is missing, full or severed. Starved and backed-up
+rooms reserve nothing.
+
+The numbers make one stack a layout decision rather than a checkbox: capacity 5 carries two
+burners (2 each) or one burner and one forge (3), but not two forges. A second stack buys
+capacity and redundancy at the permanent price of another shaft column. `RoomView.vented` and
+the stack's authored capacity cross the presentation boundary so the result can be read from
+quiet machinery, smoke and the physical flue rather than a utility dashboard.
+
+#### Deferred out of 6.40
+
+- **Freehand ducts, floor junctions and vent priorities.** One automatic floor connection and
+  one vertical utility are the complete interaction.
+- **Crew health or room damage from smoke.** Those would turn a legible placement constraint
+  into a second needs simulation. Overload already has two answers: loud smoke for burners and
+  a quiet forge.
+- **Making burners depend on exhaust.** That recreates the M6 recovery deadlock in a new layer.
+
+### 6.41 Material logistics, kept shallow
+
+The tower now exposes just enough horizontal topology for packing to matter without
+becoming a belt game. Every room has a **left-side input port** and a **right-side output
+port**. Haulers collect at the output and deliver at the input; both coordinates cross in
+`RoomView`, so the cross-section can draw the rule rather than teaching it in a panel.
+
+When those ports face across one slot on the same floor, loading and unloading each take
+five fewer ticks. The porter still claims the crate, walks the gap and performs both
+actions. Nothing moves automatically, adjacency cannot cross a floor, and the shared
+shafts remain the only answer to vertical freight. This also gives weapons a logistics
+shape without a bespoke ammunition rule: a storeroom or ammunition workshop packed
+immediately behind the leading-edge weapon hands its output straight into the magazine
+faster than one elsewhere.
+
+Dedicated storeroom shelves may now carry an optional **item filter**. Heartseed and machine
+buffers reject the command, so reservation remains a reason to build storage. A filtered shelf refuses
+every other material even while empty, reserving capacity against the fast input that
+would otherwise claim it first. Filters are changed through `SetShelfFilter`; changing a
+non-empty shelf to a different item is rejected before mutation, and clearing a filter
+never discards its contents. The filter crosses in `ShelfView` independently of the item
+currently held, because the reservation matters most while the shelf is empty.
+
+The existing shaft program already supplies the transport control this pass wanted:
+every daypart has its own served-floor mask and freight/crew priority, and the snapshot
+already publishes that program, car load, stops and queue count. No second floor-service
+mechanism was added.
+
+#### Deferred out of 6.41
+
+- **Belts, pipes and free-routed connections.** Crew and shafts remain the logistics
+  system. Ports are places people work, not endpoints that teleport material.
+- **Per-haul routing rules.** Shelf reservation prevents one material taking the whole
+  store without turning the tower into a priority matrix.
+- **A bespoke ammunition aura.** Weapon staging uses the same port and adjacency rule as
+  every other material; special-casing darts would make two logistics systems.
+
+---
+
+### 6.42 The power spine: floor buses, not cable drawing
+
+Charge now has a shallow spatial topology. Every deck owns an automatic horizontal bus;
+the player never draws individual wires. Vertical infrastructure contributes a rated link
+between every adjacent pair of floors it spans. The built-in stairs carry only a 2-charge
+emergency link, enough for controls and recovery but not industry. An elevator adds an
+incidental 6-charge machine trunk, while the mechanism-priced **busbar riser** is the primary
+12-charge trunk and spends a full shaft column on headroom and redundancy.
+Chutes and exhaust stacks conduct nothing.
+
+Storage and supply are physical. Charge held by a cell bank remains on that bank's floor,
+and burners generate on their own floor. Demand is calculated per floor and per existing
+circuit; within every reachable island the player's global priority still decides which
+circuit yields. A severed conductive shaft forms honest islands. A local burner or bank can
+keep one alive, while a floor with neither goes quiet. Several intact risers add capacity
+and give a damaged tower another path.
+
+Damage degrades a link in proportion to shaft health before severance cuts it completely.
+This makes the root-borer's existing shaft damage electrical as well as logistical without
+adding ion damage or a second repair system. Tests pin the load-bearing cases: the stairs
+connect the opening, severance makes islands, local generation/storage sustain an island,
+and the Heartseed dry-recovery crawl still works.
+
+Every circuit is allocated by the same progressive proportional pass. Requesting floors rise
+toward an equal service fraction in one-percent steps, with a deterministic rotating start for
+rounding ties; there is no unconstrained fast path and no lower-floor-first allocator. Sources
+are drawn nearest-first through the same remaining boundary capacities. Burner fuel, exhaust and
+smoke are then billed to the floor whose generation was actually consumed, so a remote burner
+cannot inherit another floor's bill merely because it appears first in tower order.
+
+Only stairs stretch automatically with a new floor. Elevators, busbars, chutes and vents use
+`ExtendShaft`. A new shaft costs its fixed authored frame plus its `span_cost` for every crossed
+floor boundary; an extension pays only for newly crossed boundaries and validates every added
+cell before mutation. Empty inactive non-Heart rooms may be moved with `RelocateRoom`; identity,
+damage, settings and partial machine progress survive, while stock in a generic room's buffers
+refuses the refit. Chutes are automatic overflow relief rather than a false on/off setting, and
+accept unwanted stock only when the actual source is a dedicated storeroom touching their column
+on a floor they span. Another shelf holding the same item cannot lend adjacency from elsewhere.
+Together these rules make layout experimentation reversible without turning live production or
+disposal into teleportation.
+
+#### Deferred out of 6.42
+
+- **Free-routed wire.** The placement decision is the vertical column, not drawing lines.
+- **Per-room circuits.** The five readable circuit classes remain the switchboard unit.
+- **Transformer and voltage simulation.** Link capacity and connectivity are the whole
+  utility layer; impedance and phase would be bookkeeping without a new visible decision.
+
+---
+
+### 6.43 The economy keeps dilemmas, not checklist rooms
+
+The retention review asked whether each material and room creates a recurring choice or merely
+another box to build. Four weak links changed.
+
+**The garden no longer consumes a permanent porter.** The Garden already pays in five poles,
+two roof slots, exposure and hauling; that is the branch commitment. The repaired
+`prices.rs` policy grows its four common decks before widening and preserves a lift column:
+transport-first gets a useful elevator in 7.6–12.7 minutes, while resin-first gets one in
+7.8–19.0. Both routes work; resin is the slower infrastructure bet rather than a hidden
+staffing/layout failure. Its crop
+has a second destination: a cellwright winds one resin feedstock into every charge cell, so
+open routes support local reserves even without the resonance chain.
+
+**The rope line is secondary infrastructure, not a duplicate main line.** A comb now needs
+180 paces per fiber rather than 90, and a ropery costs three poles rather than four. This
+reduces the continuous freight pressure that starved the mill while slightly lowering entry
+cost. It adds no upkeep, decay or invisible tax; the price remains space and crew attention.
+
+**Mechanisms are precision infrastructure.** Cell banks, busbar risers and additional
+elevator cars each use one. The first elevator remains rope-gated and reachable; mechanisms
+buy local switching, electrical headroom and transport capacity after the scrap chain exists.
+
+**The kitbench is cut.** It made one repeatable hand lamp while the other two kits were unique
+settlement goods. Once everybody carried a lamp it offered no further decision. All three kits
+remain scarce route and enclave finds, so equipping one named person matters without spending
+two floor slots on a finite crafting menu.
+
+#### Deferred out of 6.43
+
+- **A multi-recipe workshop.** Recipe selection would be a new command, state and UI system
+  for three finite objects. Scarce finds preserve the decision with less surface.
+- **Material decay or generic upkeep.** Sinks come from construction, movement, damage and
+  threats; no resource disappears merely to justify its production room.
+
+---
+
+### 6.44 Defence is a set of answers, not a damage ladder
+
+The front deck's emplacements now change what a wave does rather than differing mostly by
+damage and ammunition. The thorn gun remains the raw-bamboo emergency generalist. A dart
+battery is the long-range workhorse for ground and canopy approaches, but cannot acquire a
+burrower. A tanglenet anchors a ground creature for 150 ticks, giving a walking tower time to
+open distance. A resonance array damages and staggers every creature within fourteen paces of
+its primary target. Its expensive drum therefore buys crowd control rather than a larger
+single-target number.
+
+The two directional specialists alter the approach itself. A Lantern Mast may stand only on
+the current roof and spends a charge cell to make a canopy creature leave without counting it
+as felled. A Root Ward lives on floors zero or one, must touch a shaft column, and interrupts a
+burrower already working on circulation before pinning it for 120 ticks. The ward is not
+`front_only`: it points inward and down, and competes for the valuable cells beside the shaft
+rather than for the leading edge.
+
+`examples/watch.rs` now measures these as route-matched packages, not as five policies for the
+deleted Focus command. It holds the same six-floor hull, preserves the cutter, removes temporary
+ammo factories from the efficacy comparison, and pairs each specialist with the dart workhorse.
+At attention 600, the canopy package loses 1,750 structure with no deaths (neutral darts: 2,531),
+the ground package 2,732, and the louder 55% burrow route's ward package 3,736; all survive. At
+attention 1,000 the mast and ward packages fail while the net package survives, so specialists
+are forecast answers rather than a checklist that makes every wave safe. The mast's acquisition
+range is 60 rather than 20 so it reaches launch branches before contact.
+
+Temporary control is deterministic siege state keyed by creature id. It changes only approach
+speed and attack interruption, expires in authored whole ticks, and vanishes with its subject.
+The snapshot marks controlled creatures and publishes each emplacement's qualitative effect so
+the renderer and cards can show the truth without reconstructing it from room ids.
+
+Enemy Focus is deleted. Measurements put its result within one percent of the nearest-target
+default while adding a live targeting chore during the game's most attentive moment. There is
+no command, state, snapshot mark or renderer hit target left; batteries select their nearest
+valid approach target.
+
+#### Deferred out of 6.44
+
+- **Aiming and per-shot commands.** Placement, supply and approach coverage remain the player's
+  verbs; these are working machines rather than turrets awaiting orders.
+- **Damage types, armour classes and status stacks.** One restraint per creature is the whole
+  control vocabulary. Reapplying it refreshes duration and keeps the stronger slowdown.
+- **Kills for the Lantern Mast.** Repulsion is deliberately not `repelled`; it preserves the
+  distinction between making territory uncomfortable and turning the jungle into a gallery.
+
+---
+
+### 6.45 Route pressure, automatic recovery, and people are choices with consequences
+
+Every region and fork branch now authors a ground/canopy/burrow ecology in addition to total
+threat. Ordinary waves spend their budget through those weights, while ruin wardens keep their
+authored encounter. The fork card derives a qualitative forecast — ground, canopy, burrow or
+mixed pressure — from the same weights the allocator consumes. Route choice therefore changes
+which defensive answer is likely to matter, not only how large the next wave is.
+
+The ineffective configurable work order is gone, and the replacement doctrine control is gone
+too. A direct comparison found Restore spent 90 poles rather than 42, produced fewer crafts,
+and prevented no additional wrecks; its extra 422 repaired hp moved final integrity only four
+points. That is a dominated tax, not triage. Repair is therefore automatic and conservative:
+one shift restores a stopped room or shaft from zero health, then ordinary work resumes. The
+player's meaningful repair decisions remain physical—build redundancy, relocate an inactive
+room, preserve poles, or accept downtime—not a policy menu with a mathematically best answer.
+
+An enclave persists two named recruit candidates per available place and `Recruit` chooses
+index 0 or 1. Walking away and reberthing reveals the same pair; hiring one dismisses the other
+and advances both names. The trait pack is twelve orthogonal facts rather than thirty-eight
+magnitudes of the same few stats: two appetite directions, two endurance directions, carrying
+and mobility tradeoffs, stairs, darkness, sleep phase, and three learned jobs. The pair makes
+those facts comparable before the price is paid.
+
+Waypoint cards project the canopy's qualitative attention word after taking the offer, using
+the same thresholds as the standing weather readout. A cost in provocation is therefore visible
+as a change in mood rather than a hidden integer tax. Inactive front-edge defence rooms are the
+narrow exception to empty-room relocation: their ammunition rack moves intact and any porter
+route to the old cell replans. This lets a loaded roof mast follow a newly built roof without
+turning the floor purchase into discarded cells.
+
+The opening unlock graph now branches instead of exploding after the Burner. Its six direct
+choices are Mill, Fiber Comb, Garden, Salvage Rig, Thornwright and Cell Bank. Canteen follows
+the Mill; Ropery follows the Comb; the Forge follows the Rig; precision rooms follow the Forge;
+and specialist defences follow the workshops that feed them. Unlocks now reveal alternatives
+when their material story is legible, while price, footprint, crew and route timing remain the
+actual gates.
+
+Ropewalk buys **3 resin for 2 rope**, twice. This is the Garden's first-region payoff: optional
+roof space and sunlight can advance a lift or feed a Tanglenet before the salvage/Forge chain
+exists. The finite board stock preserves resin's later cell and resonator uses. The natural-run
+test starts at the shipped opening, builds the Garden without grants, reaches Ropewalk holding
+the resin, and completes the trade.

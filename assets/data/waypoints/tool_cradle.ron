@@ -1,0 +1,14 @@
+// The larger of the two new pole gifts. Paired with the broken
+// funicular it keeps the twelve-beat set's expected construction-stock
+// income equal to the old four-beat set rather than diluting it.
+#![enable(implicit_some)]
+WaypointDef(
+    id: "waypoint.tool_cradle",
+    name: "Tool Cradle",
+    said: "A roadside service cradle, drawers swollen shut with rain. The long stock inside is dry.",
+    take: "Open the cradle",
+    costs: [],
+    gives: [CostEntryDef(item: "item.poles", amount: 6)],
+    provocation: 10,
+    paces: -60,
+)
